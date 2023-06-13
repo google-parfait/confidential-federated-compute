@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+  "examples/square_enclave_app",
+  "examples/square_service",
+  "examples/sum_enclave_app",
+  "examples/sum_service",
+  "pipeline_transforms",
+]
+
+[workspace.dependencies]
+micro_rpc = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+oak_enclave_runtime_support = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+oak_channel = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+oak_core = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+oak_restricted_kernel_api = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }

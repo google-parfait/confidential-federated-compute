@@ -1,0 +1,10 @@
+[package]
+name = "square_service"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+byteorder = { version = "*", default-features = false }
+micro_rpc = { workspace = true }
+pipeline_transforms = { path = "../../pipeline_transforms" }

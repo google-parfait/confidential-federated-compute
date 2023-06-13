@@ -1,0 +1,23 @@
+cargo-features = ["per-package-target"]
+
+[package]
+name = "square_enclave_app"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+forced-target = "x86_64-unknown-none"
+
+[dependencies]
+log = "*"
+micro_rpc = { workspace = true }
+oak_channel = { workspace = true }
+oak_core = { workspace = true }
+oak_enclave_runtime_support = { workspace = true }
+oak_restricted_kernel_api = { workspace = true }
+pipeline_transforms = { path = "../../pipeline_transforms" }
+square_service = { path = "../square_service" }
+
+[[bin]]
+name = "square_enclave_app"
+test = false
+bench = false
