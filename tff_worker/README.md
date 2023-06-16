@@ -33,3 +33,15 @@ docker image prune
 ```
 docker container prune
 ```
+
+# Regenerate requirements.txt for the tff_worker
+
+To ensure safe downloads in the case that an attacker compromises the PyPI
+account of a library we depend on, we require hashes for all packages installed
+by Pip. We use requirements.txt to specify dependencies needed by the docker
+image along with their hashes.
+
+To regenerate requirements.txt, run the gen_requirements.sh shell script. Note
+that it is imperative that the resulting requirements.txt is checked in; if
+generating the requirements were part of the docker build process of the
+tff_worker, we wouldn't get the security benefits of using hashes.

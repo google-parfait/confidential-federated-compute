@@ -4,11 +4,13 @@ FROM python:3.10.0-slim
 RUN apt-get --yes update \
   && apt-get install --no-install-recommends --yes \
   g++
+
+COPY requirements.txt /tmp
+WORKDIR /tmp
 RUN python3 -m venv /opt/venv
 # Enable venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --upgrade pip
-RUN pip install tensorflow-federated==0.59.0
+RUN pip install --require-hashes -r requirements.txt
 
 # Final stage
 # Use a base image that contains dependencies for running Python as well as a
