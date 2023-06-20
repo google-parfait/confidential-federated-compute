@@ -16,14 +16,18 @@
 
 extern crate alloc;
 
-use alloc::vec;
+use alloc::{format, vec};
 use byteorder::{ByteOrder, LittleEndian};
-use pipeline_transforms::proto::{
-    transform_response::Output, PipelineTransform, TransformRequest, TransformResponse,
+use pipeline_transforms::{
+    io::{EncryptionMode, RecordDecoder, RecordEncoder},
+    proto::{PipelineTransform, TransformRequest, TransformResponse},
 };
 
 #[derive(Default)]
-pub struct SquareService;
+pub struct SquareService {
+    record_decoder: RecordDecoder,
+    record_encoder: RecordEncoder,
+}
 
 impl PipelineTransform for SquareService {
     fn transform(
@@ -37,14 +41,23 @@ impl PipelineTransform for SquareService {
             ));
         }
 
-        if request.inputs[0].data.len() != 8 {
+        let data = self
+            .record_decoder
+            .decode(&request.inputs[0])
+            .map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("failed to decode input: {:?}", err),
+                )
+            })?;
+        if data.len() != 8 {
             return Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
                 "input must be 8 bytes",
             ));
         }
 
-        let value = LittleEndian::read_u64(&request.inputs[0].data);
+        let value = LittleEndian::read_u64(&data);
         let product = value.checked_mul(value).ok_or_else(|| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
@@ -54,10 +67,17 @@ impl PipelineTransform for SquareService {
         let mut buffer = [0; 8];
         LittleEndian::write_u64(&mut buffer, product);
 
+        let output = self
+            .record_encoder
+            .encode(EncryptionMode::Unencrypted, &buffer)
+            .map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::Internal,
+                    format!("failed to encode output: {:?}", err),
+                )
+            })?;
         Ok(TransformResponse {
-            outputs: vec![Output {
-                data: buffer.to_vec(),
-            }],
+            outputs: vec![output],
         })
     }
 }
@@ -65,15 +85,19 @@ impl PipelineTransform for SquareService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pipeline_transforms::proto::transform_request::Input;
+    use pipeline_transforms::proto::Record;
+
+    /// Helper function to convert data to an unencrypted Record.
+    fn encode_unencrypted(data: &[u8]) -> Record {
+        RecordEncoder::default()
+            .encode(EncryptionMode::Unencrypted, data)
+            .unwrap()
+    }
 
     #[test]
     fn test_transform_requires_one_input() {
         let mut service = SquareService::default();
-        let input = Input {
-            data: vec![0; 8],
-            ..Default::default()
-        };
+        let input = encode_unencrypted(&[0; 8]);
         for count in [0, 2, 3] {
             let request = TransformRequest {
                 inputs: vec![input.clone(); count],
@@ -88,10 +112,7 @@ mod tests {
         let mut service = SquareService::default();
         for length in (0..7).chain(9..16) {
             let request = TransformRequest {
-                inputs: vec![Input {
-                    data: vec![0; length],
-                    ..Default::default()
-                }],
+                inputs: vec![encode_unencrypted(&vec![0; length])],
                 ..Default::default()
             };
             assert!(service.transform(&request).is_err());
@@ -102,10 +123,7 @@ mod tests {
     fn test_transform_overflow() {
         let mut service = SquareService::default();
         let request = TransformRequest {
-            inputs: vec![Input {
-                data: vec![0, 0, 0, 0, 0, 0, 0, 1],
-                ..Default::default()
-            }],
+            inputs: vec![encode_unencrypted(&[0, 0, 0, 0, 0, 0, 0, 1])],
             ..Default::default()
         };
         assert!(service.transform(&request).is_err());
@@ -115,19 +133,13 @@ mod tests {
     fn test_transform_squares_input() -> Result<(), micro_rpc::Status> {
         let mut service = SquareService::default();
         let request = TransformRequest {
-            inputs: vec![Input {
-                data: vec![2, 1, 0, 0, 0, 0, 0, 0],
-                ..Default::default()
-            }],
+            inputs: vec![encode_unencrypted(&[2, 1, 0, 0, 0, 0, 0, 0])],
             ..Default::default()
         };
         assert_eq!(
             service.transform(&request)?,
             TransformResponse {
-                outputs: vec![Output {
-                    data: vec![4, 4, 1, 0, 0, 0, 0, 0],
-                    ..Default::default()
-                }],
+                outputs: vec![encode_unencrypted(&[4, 4, 1, 0, 0, 0, 0, 0])],
                 ..Default::default()
             }
         );

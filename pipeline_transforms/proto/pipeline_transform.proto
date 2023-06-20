@@ -26,18 +26,39 @@ service PipelineTransform {
 
 // A request providing the inputs to be transformed.
 message TransformRequest {
-  repeated Input inputs = 1;
-
-  message Input {
-    bytes data = 1;
-  }
+  repeated Record inputs = 1;
 }
 
 // A response providing the results of the transformation.
 message TransformResponse {
-  repeated Output outputs = 1;
+  repeated Record outputs = 1;
+}
 
-  message Output {
-    bytes data = 1;
+// A data record used as one of the inputs or outputs of a transform.
+message Record {
+  oneof kind {
+    bytes unencrypted_data = 1;
+    HpkePlusAeadData hpke_plus_aead_data = 2;
+  }
+
+  // Information about plaintext encrypted with AEAD, with the symmetric key
+  // then encrypted with HPKE.
+  message HpkePlusAeadData {
+    // The data, encrypted using AES-128-GCM.
+    bytes ciphertext = 1;
+
+    // The associated data for `ciphertext`.
+    bytes ciphertext_associated_data = 2;
+
+    // The symmetric key used to encrypt `ciphertext`, encrypted using HPKE.
+    bytes encrypted_symmetric_key = 3;
+
+    // The associated data for `encrypted_symmetric_key`. This field may be
+    // left unset if it's equal to `ciphertext_associated_data`.
+    optional bytes encrypted_symmetric_key_associated_data = 4;
+
+    // The ephemeral Diffe-Hellman key needed to derive the symmetric key used
+    // to encrypt `encrypted_secret_key`.
+    bytes encapsulated_public_key = 5;
   }
 }

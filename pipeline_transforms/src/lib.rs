@@ -22,3 +22,5 @@ pub mod proto {
     use prost::Message;
     include!(concat!(env!("OUT_DIR"), "/pipeline_transform.rs"));
 }
+
+pub mod io;
