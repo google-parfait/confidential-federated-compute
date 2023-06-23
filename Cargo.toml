@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "cfc_crypto",
   "examples/square_enclave_app",
   "examples/square_service",
   "examples/sum_enclave_app",
