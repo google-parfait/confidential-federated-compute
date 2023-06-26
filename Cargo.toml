@@ -7,6 +7,7 @@ members = [
   "examples/sum_enclave_app",
   "examples/sum_service",
   "pipeline_transforms",
+  "third_party/federated_compute",
 ]
 
 [workspace.dependencies]

@@ -307,6 +307,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "federated_compute"
+version = "0.1.0"
+dependencies = [
+ "micro_rpc",
+ "micro_rpc_build",
+ "prost",
+ "prost-types",
+]
+
+[[package]]
 name = "ff"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
