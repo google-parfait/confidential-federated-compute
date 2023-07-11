@@ -649,6 +649,7 @@ dependencies = [
  "micro_rpc",
  "micro_rpc_build",
  "prost",
+ "prost-types",
 ]
 
 [[package]]
@@ -885,6 +886,7 @@ name = "square_service"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "cfc_crypto",
  "micro_rpc",
  "pipeline_transforms",
 ]

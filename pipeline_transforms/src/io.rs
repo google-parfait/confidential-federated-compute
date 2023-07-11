@@ -97,6 +97,7 @@ impl Default for RecordDecoder {
 }
 
 /// The type of encryption that should be performed by a RecordEncoder.
+#[derive(Clone, Copy)]
 pub enum EncryptionMode<'a> {
     Unencrypted,
     HpkePlusAead {

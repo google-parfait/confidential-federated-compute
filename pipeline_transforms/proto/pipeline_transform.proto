@@ -16,12 +16,34 @@ syntax = "proto3";
 
 package pipeline_transform;
 
+import "google/protobuf/any.proto";
+
 service PipelineTransform {
+  // Performs one-time initialization of the service. This method must be the
+  // first method called on the service and must not be called more than once.
+  // method_id: 1
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+
   // Transforms zero or more inputs into zero or more outputs. This method can
   // be used to implement map (1 -> 1), filter (1 -> 0 or 1), combine (N ->
   // 1), "do" (1 -> N), or more general (M -> N) operations.
-  // method_id: 1
+  // method_id: 2
   rpc Transform(TransformRequest) returns (TransformResponse);
+}
+
+// A request to initialize the service.
+message InitializeRequest {
+  // Implementation-specific configuration (if any).
+  google.protobuf.Any configuration = 1;
+}
+
+// The result of initializing the service.
+message InitializeResponse {
+  // The serialized bytes of the enclave's Curve 25519 public key.
+  bytes public_key = 1;
+
+  // The attestation for the application supplying the public key.
+  bytes attestation = 2;
 }
 
 // A request providing the inputs to be transformed.

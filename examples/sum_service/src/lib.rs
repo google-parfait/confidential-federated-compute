@@ -20,7 +20,10 @@ use alloc::{format, vec};
 use byteorder::{ByteOrder, LittleEndian};
 use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
-    proto::{PipelineTransform, TransformRequest, TransformResponse},
+    proto::{
+        InitializeRequest, InitializeResponse, PipelineTransform, TransformRequest,
+        TransformResponse,
+    },
 };
 
 #[derive(Default)]
@@ -30,6 +33,16 @@ pub struct SumService {
 }
 
 impl PipelineTransform for SumService {
+    fn initialize(
+        &mut self,
+        _request: &InitializeRequest,
+    ) -> Result<InitializeResponse, micro_rpc::Status> {
+        Ok(InitializeResponse {
+            public_key: self.record_decoder.public_key().to_vec(),
+            ..Default::default()
+        })
+    }
+
     fn transform(
         &mut self,
         request: &TransformRequest,
@@ -62,6 +75,7 @@ impl PipelineTransform for SumService {
         let mut buffer = [0; 8];
         LittleEndian::write_u64(&mut buffer, sum);
 
+        // SumService always produces unencrypted outputs.
         let output = self
             .record_encoder
             .encode(EncryptionMode::Unencrypted, &buffer)
@@ -87,6 +101,14 @@ mod tests {
         RecordEncoder::default()
             .encode(EncryptionMode::Unencrypted, data)
             .unwrap()
+    }
+
+    #[test]
+    fn test_initialize() -> Result<(), micro_rpc::Status> {
+        let mut service = SumService::default();
+        let response = service.initialize(&InitializeRequest::default())?;
+        assert_ne!(response.public_key, vec!());
+        Ok(())
     }
 
     #[test]
@@ -130,6 +152,38 @@ mod tests {
                 }
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
+        let mut service = SumService::default();
+        let initialize_response = service.initialize(&InitializeRequest::default())?;
+        let mode = EncryptionMode::HpkePlusAead {
+            public_key: &initialize_response.public_key,
+            associated_data: b"associated data",
+        };
+
+        let record_encoder = RecordEncoder::default();
+        let request = TransformRequest {
+            inputs: vec![
+                record_encoder
+                    .encode(mode, &[1, 0, 0, 0, 0, 0, 0, 0])
+                    .unwrap(),
+                record_encoder
+                    .encode(mode, &[2, 0, 0, 0, 0, 0, 0, 0])
+                    .unwrap(),
+            ],
+            ..Default::default()
+        };
+        let expected = encode_unencrypted(&[3, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            service.transform(&request)?,
+            TransformResponse {
+                outputs: vec![expected],
+                ..Default::default()
+            }
+        );
         Ok(())
     }
 }

@@ -8,3 +8,6 @@ license = "Apache-2.0"
 byteorder = { version = "*", default-features = false }
 micro_rpc = { workspace = true }
 pipeline_transforms = { path = "../../pipeline_transforms" }
+
+[dev-dependencies]
+cfc_crypto = { path = "../../cfc_crypto" }
