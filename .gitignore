@@ -2,3 +2,8 @@
 /.cargo-cache/
 /.sccache-cache/
 /target/
+bazel-bin
+bazel-confidential-federated-compute
+bazel-out
+bazel-testlogs
+bazel-workspace
