@@ -2,6 +2,7 @@
 /.cargo-cache/
 /.sccache-cache/
 /target/
+/.vscode/
 bazel-bin
 bazel-confidential-federated-compute
 bazel-out

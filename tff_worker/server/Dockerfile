@@ -42,25 +42,24 @@ ENV BAZEL_CXXOPTS="-std=c++14"
 
 # Copy the source code needed for building the Pipeline Transform Server.
 COPY WORKSPACE WORKSPACE
-COPY tff_worker/* tff_worker/
-COPY visibility/* visibility/
-COPY pipeline_transforms/proto/* pipeline_transforms/proto/
+COPY tff_worker/server/* tff_worker/server/
 
 # Install Bazel.
 RUN ./bazel-installer.sh
 
+RUN ls tff_worker/
 # Build the Python gRPC Pipeline Transform Server.
-RUN bazel --output_base=/tmp/build_output build --build_python_zip tff_worker:pipeline_transform_server
+RUN bazel --output_base=/tmp/build_output build --build_python_zip tff_worker/server:pipeline_transform_server
 
 # Final stage
 # Use a base image that contains dependencies for running Python.
 FROM python:3.10.0
 # Copy the necessary build artifacts into the final stage.
-COPY --from=0 /bazel-bin/tff_worker/pipeline_transform_server.zip /bazel-bin/tff_worker/pipeline_transform_server.zip
+COPY --from=0 /bazel-bin/tff_worker/server/pipeline_transform_server.zip /bazel-bin/tff_worker/server/pipeline_transform_server.zip
 COPY --from=0 /tmp/build_output/ /tmp/build_output/
 # Document that the server will be running on port 50051.
 # The port still needs to be published and mapped when running the docker container.
 EXPOSE 50051
 # Configure the container to run the server on startup.
 ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
-CMD [ "python3 /bazel-bin/tff_worker/pipeline_transform_server.zip" ]
+CMD [ "python3 /bazel-bin/tff_worker/server/pipeline_transform_server.zip" ]

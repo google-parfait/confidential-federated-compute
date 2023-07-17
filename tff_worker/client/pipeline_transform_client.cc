@@ -20,15 +20,15 @@
 
 #include <memory>
 
-#include "pipeline_transforms/proto/pipeline_transform.grpc.pb.h"
-#include "pipeline_transforms/proto/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
+#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
+using fcp::confidentialcompute::PipelineTransform;
+using fcp::confidentialcompute::TransformRequest;
+using fcp::confidentialcompute::TransformResponse;
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
-using pipeline_transform::PipelineTransform;
-using pipeline_transform::TransformRequest;
-using pipeline_transform::TransformResponse;
 
 int main(int argc, char** argv) {
   std::cout << "Starting RPC Client for Pipeline Transform Server."

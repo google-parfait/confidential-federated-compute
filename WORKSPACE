@@ -43,3 +43,10 @@ grpc_deps()
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 
 grpc_extra_deps()
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+git_repository(
+    name = "federated-compute",
+    remote = "https://github.com/google/federated-compute.git",
+    commit = "e7378f8",
+)
