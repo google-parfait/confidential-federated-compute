@@ -1,3 +1,3 @@
 [submodule "third_party/federated_compute/federated-compute"]
 	path = third_party/federated_compute/federated-compute
-	url = https://github.com/google/federated-compute.git
+	url = ../external/federated-compute

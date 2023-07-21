@@ -18,6 +18,7 @@ fn main() {
             "federated-compute/fcp/protos/confidentialcompute/access_policy.proto",
             "federated-compute/fcp/protos/confidentialcompute/blob_header.proto",
             "federated-compute/fcp/protos/confidentialcompute/ledger.proto",
+            "federated-compute/fcp/protos/confidentialcompute/pipeline_transform.proto",
         ],
         &["federated-compute/fcp/protos/confidentialcompute"],
     );

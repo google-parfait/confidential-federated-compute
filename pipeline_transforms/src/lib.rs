@@ -13,14 +13,16 @@
 // limitations under the License.
 
 #![no_std]
-#![feature(never_type)]
-
-extern crate alloc;
 
 pub mod proto {
-    #![allow(dead_code)]
-    use prost::Message;
-    include!(concat!(env!("OUT_DIR"), "/pipeline_transform.rs"));
+    pub use federated_compute::proto::{
+        InitializeRequest, InitializeResponse, PipelineTransform, PipelineTransformServer, Record,
+        TransformRequest, TransformResponse,
+    };
+
+    pub mod record {
+        pub use federated_compute::proto::record::*;
+    }
 }
 
 pub mod io;
