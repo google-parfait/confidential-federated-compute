@@ -12,23 +12,23 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <grpc/grpc.h>
-#include <grpcpp/channel.h>
-#include <grpcpp/client_context.h>
-#include <grpcpp/create_channel.h>
-#include <grpcpp/security/credentials.h>
 
+#include <iostream>
 #include <memory>
 
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/client_context.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
 
-using fcp::confidentialcompute::PipelineTransform;
-using fcp::confidentialcompute::TransformRequest;
-using fcp::confidentialcompute::TransformResponse;
-using grpc::Channel;
-using grpc::ClientContext;
-using grpc::Status;
+using ::fcp::confidentialcompute::PipelineTransform;
+using ::fcp::confidentialcompute::TransformRequest;
+using ::fcp::confidentialcompute::TransformResponse;
+using ::grpc::Channel;
+using ::grpc::ClientContext;
+using ::grpc::Status;
 
 int main(int argc, char** argv) {
   std::cout << "Starting RPC Client for Pipeline Transform Server."

@@ -16,7 +16,7 @@
 
 from concurrent import futures
 import grpc
-from tff_worker.server.pipeline_transform_py_grpc_pb.fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
+from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
 
 
 class PipelineTransformServicer(

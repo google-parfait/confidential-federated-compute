@@ -1,0 +1,2 @@
+# Building //... should not recurse into submodules.
+third_party/federated_compute/federated-compute

@@ -1,0 +1,26 @@
+--- fcp/protos/confidentialcompute/BUILD
++++ fcp/protos/confidentialcompute/BUILD
+@@ -13,6 +13,7 @@
+ # limitations under the License.
+
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
+
+ package(
+     default_visibility = ["//visibility:public"],
+@@ -71,3 +72,14 @@
+     grpc_only = True,
+     deps = [":pipeline_transform_cc_proto"],
+ )
++
++py_proto_library(
++    name = "pipeline_transform_py_proto",
++    deps = [":pipeline_transform_proto"],
++)
++
++py_grpc_library(
++    name = "pipeline_transform_py_grpc",
++    srcs = [":pipeline_transform_proto"],
++    deps = [":pipeline_transform_py_proto"],
++)
+

@@ -43,6 +43,7 @@ ENV BAZEL_CXXOPTS="-std=c++14"
 # Copy the source code needed for building the Pipeline Transform Server.
 COPY WORKSPACE WORKSPACE
 COPY tff_worker/server/* tff_worker/server/
+COPY third_party/federated_compute/BUILD third_party/federated_compute/*.patch third_party/federated_compute/
 
 # Install Bazel.
 RUN ./bazel-installer.sh
