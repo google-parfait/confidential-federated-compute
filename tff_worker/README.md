@@ -65,79 +65,61 @@ confidential-federated-compute repository.
 We use bazel from within a Docker container to build the C++ client via the
 following steps:
 
-Since we are using rootless docker, we need to make sure the user running docker
-can write to any directories that are shared between the docker container and
-the host.
+1.  Install [bazelisk](https://github.com/bazelbuild/bazelisk#installation).
 
-```
-chmod a+rw /tmp/build_output
-```
+2.  Build the Pipeline Transform client:
 
-```
-chmod a+rw ../confidential-federated-compute
-```
+    ```
+    bazelisk build //tff_worker/client:pipeline_transform_cpp_client
+    ```
 
-Next, start a shell from a docker container that contains dependencies necessary
-to run Bazel.
+    The C++ client should now be runnable from the host.
 
-```
-docker run -it -e BAZEL_CXXOPTS="-std=c++14" -v "$(pwd)":"$(pwd)" -v /tmp/build_output:/tmp/build_output -w "$(pwd)" --entrypoint=/bin/bash gcr.io/bazel-public/bazel:latest
-```
+    ```
+    bazel-bin/tff_worker/client/pipeline_transform_cpp_client
+    ```
 
-Within this shell, build the C++ binary for the Pipeline Transform client.
+    Since there is no server running, the C++ client is expected to produce
+    output like the following:
 
-```
-ubuntu@2fb777e52785:/src/workspace$ bazel --output_base=/tmp/build_output build tff_worker/client:pipeline_transform_cpp_client
-```
+    ```
+    Starting RPC Client for Pipeline Transform Server.
+    RPC failed: 14: failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50051: Failed to connect to remote host: Connection refused
+    ```
 
-At this point you can use ^D to exit the docker container shell. The C++ client
-should now be runnable from the host.
+3.  Build the Docker image that will run the Python server. The '.' argument
+    specifies the context that is available to access files that are used when
+    building the Docker image. Since the build process uses Bazel, the context
+    needs to include the workspace root, so it is important that this command is
+    run from the root of the confidential-federated-compute repo. Building the
+    image may take a while the first time it runs, but on subsequent runs parts
+    of the image building process will be cached.
 
-```
-bazel-bin/tff_worker/client/pipeline_transform_cpp_client
-```
+    ```
+    docker build -f tff_worker/server/Dockerfile -t pipeline_transform_server .
+    ```
 
-Since there is no server running, the C++ client is expected to produce output
-like the following:
+    Once the image has successfully built, you can run the server in the docker
+    container, publishing and mapping the gRPC server port so it can be accessed
+    from localhost:
 
-```
-Starting RPC Client for Pipeline Transform Server.
-RPC failed: 14: failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50051: Failed to connect to remote host: Connection refused
-```
+    ```
+    docker run -i -p 127.0.0.1:50051:50051 pipeline_transform_server:latest &
+    ```
 
-Now, we build the Docker image that will run the Python server. The '.' argument
-specifies the context that is available to access files that are used when
-building the Docker image. Since the build process uses Bazel, the context needs
-to include the workspace root, so it is important that this command is run from
-the root of the confidential-federated-compute repo. Building the image may take
-a while the first time it runs, but on subsequent runs parts of the image
-building process will be cached.
+4.  Now the server should be running as a background job, so you can try running
+    the C++ client again:
 
-```
-docker build -f tff_worker/server/Dockerfile -t pipeline_transform_server .
-```
+    ```
+    bazel-bin/tff_worker/client/pipeline_transform_cpp_client
+    ```
 
-Once the image has successfully built, you can run the server in the docker
-container, publishing and mapping the gRPC server port so it can be accessed
-from localhost:
+    This time, it should produce the following output:
 
-```
-docker run -i -p 127.0.0.1:50051:50051 pipeline_transform_server:latest &
-```
+    ```
+    Starting RPC Client for Pipeline Transform Server.
+    RPC failed: 12: Transform not implemented!
+    ```
 
-Now the server should be running as a background job, so you can try running the
-C++ client again:
-
-```
-bazel-bin/tff_worker/client/pipeline_transform_cpp_client
-```
-
-This time, it should produce the following output:
-
-```
-Starting RPC Client for Pipeline Transform Server.
-RPC failed: 12: Method not implemented!
-```
-
-To bring the docker process back to the foreground in order to quit the server,
-use the `fg` command.
+5.  To bring the docker process back to the foreground in order to quit the
+    server, use the `fg` command.
