@@ -25,39 +25,30 @@
 # tools and instead use this Dockerfile to assemble the image.
 FROM python:3.10.0
 # Ensure all requirements needed by bazel are present.
-RUN apt-get update && apt-get install -y apt-transport-https curl software-properties-common git gcc gnupg2 g++ default-jre python3-dev zip wget vim
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
-RUN add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
-RUN apt-get update && apt-get install -y docker-ce
+RUN apt-get update && apt-get install -y apt-transport-https curl software-properties-common git gcc gnupg2 g++ default-jre python3-dev zip wget
 
-# Download Bazel.
-# Using the same base image for both stages and installing bazel,
-# instead of using a base image with bazel preinstalled,
-# allows bazel to build the python artifacts for the right
-# system dependencies.
-RUN wget https://github.com/bazelbuild/bazel/releases/download/6.2.1/bazel-6.2.1-installer-linux-x86_64.sh -O ./bazel-installer.sh && chmod 755 ./bazel-installer.sh
-
-# Building gRPC requires c++14.
-ENV BAZEL_CXXOPTS="-std=c++14"
+# Use bazelisk to ensure this docker build process uses the same version of
+# bazel as builds outside the container.
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.17.0/bazelisk-linux-amd64 && \
+    chmod 755 bazelisk-linux-amd64 && \
+    mv bazelisk-linux-amd64 /usr/bin/bazelisk
 
 # Copy the source code needed for building the Pipeline Transform Server.
+COPY .bazelrc .bazelrc
+COPY .bazelignore .bazelignore
+COPY .bazelversion .bazelversion
 COPY WORKSPACE WORKSPACE
-COPY tff_worker/server/* tff_worker/server/
 COPY third_party/federated_compute/BUILD third_party/federated_compute/*.patch third_party/federated_compute/
+COPY tff_worker/server/BUILD tff_worker/server/pipeline_transform_server.py tff_worker/server/
 
-# Install Bazel.
-RUN ./bazel-installer.sh
-
-RUN ls tff_worker/
 # Build the Python gRPC Pipeline Transform Server.
-RUN bazel --output_base=/tmp/build_output build --build_python_zip tff_worker/server:pipeline_transform_server
+RUN bazelisk --output_base=/tmp/build_output build --build_python_zip tff_worker/server:pipeline_transform_server
 
 # Final stage
 # Use a base image that contains dependencies for running Python.
 FROM python:3.10.0
 # Copy the necessary build artifacts into the final stage.
 COPY --from=0 /bazel-bin/tff_worker/server/pipeline_transform_server.zip /bazel-bin/tff_worker/server/pipeline_transform_server.zip
-COPY --from=0 /tmp/build_output/ /tmp/build_output/
 # Document that the server will be running on port 50051.
 # The port still needs to be published and mapped when running the docker container.
 EXPOSE 50051

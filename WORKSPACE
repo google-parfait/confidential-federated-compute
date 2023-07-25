@@ -66,7 +66,7 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 git_repository(
     name = "federated-compute",
     remote = "https://github.com/google/federated-compute.git",
-    commit = "e7378f8",
+    commit = "e7378f8c9e049702a3a55d086eec430c2762787b",
     patches = [
         "//third_party/federated_compute:pipeline_transform.patch",
     ],
