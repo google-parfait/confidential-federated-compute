@@ -224,6 +224,7 @@ impl Ledger for LedgerService {
             &header.blob_id,
             header.access_policy_node_id,
             &access_policy,
+            &header.access_policy_sha256,
             &recipient_app,
         )?;
 
@@ -251,6 +252,7 @@ impl Ledger for LedgerService {
             &header.blob_id,
             transform_index,
             &access_policy,
+            &header.access_policy_sha256,
         )?;
 
         // TODO(b/288282266): Include the selected transform's destination node id in the response.
@@ -277,7 +279,7 @@ impl Ledger for LedgerService {
 
         per_key_ledger
             .budget_tracker
-            .consume_budget(&request.blob_id)?;
+            .consume_budget(&request.blob_id);
         Ok(RevokeAccessResponse {})
     }
 }
@@ -287,7 +289,10 @@ mod tests {
     use super::*;
 
     use alloc::{borrow::ToOwned, vec};
-    use federated_compute::proto::{data_access_policy::Transform, ApplicationMatcher};
+    use federated_compute::proto::{
+        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
+        ApplicationMatcher,
+    };
 
     /// Macro asserting that a result is failed with a particular code and message.
     macro_rules! assert_err {
@@ -299,7 +304,7 @@ mod tests {
                             |err| err.code == *code_val && err.message.contains(*substr_val)),
                             "assertion failed: \
                              `(val.err().code == code && val.err().message.contains(substr)`\n\
-                             left: {:?}\n\
+                             val: {:?}\n\
                              code: {:?}\n\
                              substr: {:?}",
                             left_val,
@@ -771,18 +776,103 @@ mod tests {
     }
 
     #[test]
-    fn test_revoke_access() {
-        let (mut ledger, _, public_key_id) = create_ledger_service();
+    fn test_authorize_access_updates_budget() {
+        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(1)),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: b"blob-id".to_vec(),
+            public_key_id,
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+
+        // The first access should succeed.
+        assert!(ledger
+            .authorize_access(&AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                blob_header: blob_header.clone(),
+                encapsulated_key: encapsulated_key.clone(),
+                encrypted_symmetric_key: encrypted_symmetric_key.clone(),
+                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce1".to_vec(),
+                ..Default::default()
+            })
+            .is_ok());
+
+        // But the second should fail because the budget has been exhausted.
         assert_err!(
-            ledger.revoke_access(&RevokeAccessRequest {
-                public_key_id,
-                blob_id: "blob-id".into(),
+            ledger.authorize_access(&AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce2".to_vec(),
+                ..Default::default()
             }),
-            micro_rpc::StatusCode::Unimplemented,
+            micro_rpc::StatusCode::ResourceExhausted,
             ""
         );
-        // TODO(b/288282266): Once budgets are tracked, split this test into the cases where the
-        // blob_id was and was not seen before and verify that authorize_access fails.
+    }
+
+    #[test]
+    fn test_revoke_access() {
+        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let blob_id = b"blob-id";
+        assert_eq!(
+            ledger.revoke_access(&RevokeAccessRequest {
+                public_key_id,
+                blob_id: blob_id.to_vec(),
+            }),
+            Ok(RevokeAccessResponse::default())
+        );
+
+        // Subsequent access should not be granted.
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform::default()],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: blob_id.to_vec(),
+            public_key_id,
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+
+        assert_err!(
+            ledger.authorize_access(&AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce".to_vec(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::ResourceExhausted,
+            ""
+        );
     }
 
     #[test]
