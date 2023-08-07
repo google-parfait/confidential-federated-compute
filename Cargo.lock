@@ -493,6 +493,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "ledger_enclave_app"
+version = "0.1.0"
+dependencies = [
+ "federated_compute",
+ "ledger_service",
+ "log",
+ "micro_rpc",
+ "oak_channel",
+ "oak_core",
+ "oak_enclave_runtime_support",
+ "oak_restricted_kernel_api",
+]
+
+[[package]]
+name = "ledger_service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cfc_crypto",
+ "federated_compute",
+ "micro_rpc",
+ "prost",
+ "prost-types",
+ "rand",
+ "sha2",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.146"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -752,6 +780,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9ab9c7eadfd8df19006f1cf1a4aed13540ed5cbc047010ece5826e10825488"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "rand_core 0.6.4",
 ]
 
 [[package]]

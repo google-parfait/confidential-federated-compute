@@ -6,6 +6,8 @@ members = [
   "examples/square_service",
   "examples/sum_enclave_app",
   "examples/sum_service",
+  "ledger_enclave_app",
+  "ledger_service",
   "pipeline_transforms",
   "third_party/federated_compute",
 ]
