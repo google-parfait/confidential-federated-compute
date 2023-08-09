@@ -1,0 +1,34 @@
+#!/usr/bin/env -S dot -o components.svg -Tsvg
+
+digraph {
+  graph [splines=ortho, nodesep=1, ranksep=0.8]
+  node [shape=box, style="filled,rounded", fontcolor="#3c4043", height=0.6]
+
+  Client
+  Policy [label="Access\nPolicy", shape=note, style="", fontcolor=black, height=1]
+  Storage [shape=cylinder]
+  {
+    node [style="filled,rounded", color="#57bb8a", fillcolor="#e2f3eb"]
+    Ledger
+    Transform1 [label="Transform 1"]
+    Transform2 [label="Transform 2"]
+  }
+  Out [label="...", shape=none, style="", height=0.2]
+
+  subgraph cluster_transforms {
+    graph [label="Pipeline", labeljust=l, style=dashed, penwidth=0.5, pencolor="#616161", fontcolor="#616161", margin="16pt"]
+    Transform1; Transform2; Out
+  }
+
+  Client -> Policy [dir=back, headlabel=" ① AP"]
+  Client -> Ledger [dir=back, headlabel="  ① PKʟ", labeldistance=3.5, labelangle=-40]
+
+  { rank = same; Client -> Storage [xlabel="② HDRᴄ, Enc(EKᴄ, PKʟ, HDRᴄ),\nEnc(Mᴄ, EKᴄ, HDRᴄ)", minlen=3.5] }
+  Storage -> Transform1 [xlabel=" ③ ", weight=2]
+  Ledger -> Transform1 [dir=back, taillabel=" ④ PK₁, N₁, HDRᴄ,\nEnc(EKᴄ, PKʟ, HDRᴄ)", minlen=3.5, labelangle=8, labeldistance=13, constraint=false]
+  Ledger -> Transform1 [headlabel="⑤ PKʟ, Enc(EKᴄ, PK₁, PKʟ || N₁)", minlen=3.5, labelangle=6, labeldistance=11, constraint=false]
+  Transform1 -> Transform2 [taillabel="⑥ HDR₁, Enc(EK₁, PKʟ, HDR₁),  \nEnc(M₁, EK₁, HDR₁)", labeldistance=11, labelangle=70, weight=2]
+  Ledger -> Transform2 [dir=back, headlabel="⑦ PK₂, N₂, HDR₁,\nEnc(EK₁, PKʟ, HDR₁)", labelangle=-8, labeldistance=13, constraint=false]
+  Ledger -> Transform2 [headlabel="⑧ PKʟ, Enc(EK₁, PK₂, PKʟ || N₂)", labelangle=6, labeldistance=12, constraint=false]
+  Transform2 -> Out [taillabel="⑨ HDR₂, Enc(EK₂, PKʟ, HDR₂),  \nEnc(M₂, EK₂, HDR₂)", labeldistance=11, labelangle=70]
+}

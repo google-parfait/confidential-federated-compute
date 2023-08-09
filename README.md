@@ -41,8 +41,9 @@ that component. This will allow the component to carry out its transformation on
 the data. The result of that transformation will continue to be subject to the
 same policy as the original data.
 
-The code for the Ledger is located in the `ledger_service` and
-`ledger_enclave_app` directories. The Ledger will run on a TEE using the
+The code for the Ledger is located in the [`ledger_service`](ledger_service) and
+[`ledger_enclave_app`](ledger_enclave_app) directories; see the latter for
+additional documentation. The Ledger will run on a TEE using the
 [Oak Restricted Kernel](https://github.com/project-oak/oak/tree/main/oak_restricted_kernel).
 
 ### Transformations
@@ -82,11 +83,11 @@ consists of the use of a trusted builder along with provenance and endorsement
 statements that are signed and published in a transparency log, as described in
 detail in Oak's
 [Transparent Release documentation](https://github.com/project-oak/transparent-release#release-transparency).
-Another strategy is making the build process fully reproducible, so that
-given a particular version of the source code, bitwise identical artifacts will
-be produced by the build process regardless of where or when the build process
-runs. This allows an external auditor to run the build process themselves
-in order to verify that the source code at a particular version produces the
+Another strategy is making the build process fully reproducible, so that given a
+particular version of the source code, bitwise identical artifacts will be
+produced by the build process regardless of where or when the build process
+runs. This allows an external auditor to run the build process themselves in
+order to verify that the source code at a particular version produces the
 specified binary.
 
 We provide the following instructions for building the code. As we make progress
@@ -98,8 +99,8 @@ particular binary.
 
 #### Bazelisk
 
-Bazelisk is the bazel-recommended way to obtain a specific bazel version.
-See https://github.com/bazelbuild/bazelisk#installation for installation
+Bazelisk is the bazel-recommended way to obtain a specific bazel version. See
+https://github.com/bazelbuild/bazelisk#installation for installation
 instructions.
 
 The build scripts in this repository require either bazelisk to be in your
