@@ -21,8 +21,9 @@ use byteorder::{ByteOrder, LittleEndian};
 use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
-        InitializeRequest, InitializeResponse, PipelineTransform, TransformRequest,
-        TransformResponse,
+        ConfigureAndAttestRequest, ConfigureAndAttestResponse, GenerateNoncesRequest,
+        GenerateNoncesResponse, InitializeRequest, InitializeResponse, PipelineTransform,
+        TransformRequest, TransformResponse,
     },
 };
 
@@ -41,6 +42,20 @@ impl PipelineTransform for SumService {
             public_key: self.record_decoder.public_key().to_vec(),
             ..Default::default()
         })
+    }
+
+    fn configure_and_attest(
+        &mut self,
+        _request: &ConfigureAndAttestRequest,
+    ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
+        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
+    }
+
+    fn generate_nonces(
+        &mut self,
+        _request: &GenerateNoncesRequest,
+    ) -> Result<GenerateNoncesResponse, micro_rpc::Status> {
+        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn transform(

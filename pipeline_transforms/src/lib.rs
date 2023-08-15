@@ -16,8 +16,9 @@
 
 pub mod proto {
     pub use federated_compute::proto::{
-        InitializeRequest, InitializeResponse, PipelineTransform, PipelineTransformServer, Record,
-        TransformRequest, TransformResponse,
+        ConfigureAndAttestRequest, ConfigureAndAttestResponse, GenerateNoncesRequest,
+        GenerateNoncesResponse, InitializeRequest, InitializeResponse, PipelineTransform,
+        PipelineTransformServer, Record, TransformRequest, TransformResponse,
     };
 
     pub mod record {
