@@ -43,8 +43,9 @@ COPY .bazelignore .bazelignore
 COPY .bazelversion .bazelversion
 COPY WORKSPACE WORKSPACE
 COPY third_party/federated_compute/BUILD third_party/federated_compute/*.patch third_party/federated_compute/
+COPY third_party/tensorflow_federated/BUILD third_party/tensorflow_federated/*.patch third_party/tensorflow_federated/
 COPY tff_worker/BUILD tff_worker/requirements.txt tff_worker/
-COPY tff_worker/server/BUILD tff_worker/server/pipeline_transform_server.py tff_worker/server/
+COPY tff_worker/server/BUILD tff_worker/server/pipeline_transform_server.py tff_worker/server/tff_transforms.py tff_worker/server/
 
 # Run Bazelisk as a user rather than root in order to use hermetic python
 # version.

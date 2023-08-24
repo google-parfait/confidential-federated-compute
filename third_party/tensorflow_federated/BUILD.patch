@@ -1,0 +1,10 @@
+--- BUILD
++++ BUILD
+@@ -8,6 +8,7 @@ package(
+ license(
+     name = "package_license",
+     package_name = "tensorflow_federated",
++    license_kinds = ["@rules_license//licenses/generic:notice"],
+ )
+
+ licenses(["notice"])

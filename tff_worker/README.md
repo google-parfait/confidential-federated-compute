@@ -99,12 +99,11 @@ following steps:
 
     ```
     Starting RPC Client for Pipeline Transform Server.
-    RPC failed: 12: Transform not implemented!
+    RPC failed: 9: ConfigureAndAttest must be called before Transform.
     ```
 
 5.  To bring the docker process back to the foreground in order to quit the
     server, use the `fg` command.
-
 
 ## Debugging common issues
 

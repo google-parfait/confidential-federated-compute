@@ -88,8 +88,17 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 git_repository(
     name = "federated-compute",
     remote = "https://github.com/google/federated-compute.git",
-    commit = "e7378f8c9e049702a3a55d086eec430c2762787b",
+    commit = "1e024a81da9da4d46e682db1dc056680a09dafe2",
+)
+
+# We must build TFF protos from source as they are not included in the version
+# of TFF released as a python package.
+git_repository(
+    name = "tensorflow-federated",
+    remote = "https://github.com/tensorflow/federated.git",
+    # Keep commit in sync with version in requirements.txt
+    commit = "3df19403ffaff0ac2d116e80b30185351b7292c5",
     patches = [
-        "//third_party/federated_compute:pipeline_transform.patch",
+        "//third_party/tensorflow_federated:BUILD.patch",
     ],
 )
