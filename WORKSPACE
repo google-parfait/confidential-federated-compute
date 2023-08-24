@@ -62,6 +62,28 @@ rules_proto_dependencies()
 
 rules_proto_toolchains()
 
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+python_register_toolchains(
+    name = "python_3_10",
+    python_version = "3.10",
+)
+
+load("@python_3_10//:defs.bzl", "interpreter")
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+# Create a central repo that knows about the dependencies needed from
+# requirements.txt.
+pip_parse(
+   name = "pypi_deps",
+   requirements_lock = "//tff_worker:requirements.txt",
+   python_interpreter_target = interpreter,
+)
+# Load the starlark macro, which will define your dependencies.
+load("@pypi_deps//:requirements.bzl", "install_deps")
+# Call it to define repos for your requirements.
+install_deps()
+
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 git_repository(
     name = "federated-compute",
