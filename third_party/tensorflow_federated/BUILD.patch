@@ -1,10 +1,11 @@
 --- BUILD
 +++ BUILD
-@@ -8,6 +8,7 @@ package(
- license(
-     name = "package_license",
-     package_name = "tensorflow_federated",
-+    license_kinds = ["@rules_license//licenses/generic:notice"],
+@@ -2,7 +2,7 @@ load("@rules_license//rules:license.bzl", "license")
+
+ package(
+     default_applicable_licenses = [":package_license"],
+-    default_visibility = ["//visibility:private"],
++    default_visibility = ["//visibility:public"],
  )
 
- licenses(["notice"])
+ license(

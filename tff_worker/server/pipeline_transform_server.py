@@ -20,7 +20,7 @@ from fcp.protos.confidentialcompute import pipeline_transform_pb2
 from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
 from fcp.protos.confidentialcompute import tff_worker_configuration_pb2
 import grpc
-from tff_worker.server import tff_transforms
+import tff_transforms
 
 
 def _get_input_data_from_record(

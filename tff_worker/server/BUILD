@@ -22,6 +22,7 @@ py_binary(
     # TFF protos are not included in the version of TFF released as a python
     # package so we import them separately from a git_repository rule.
     deps = [
+        ":tff_transforms",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_py_proto",
