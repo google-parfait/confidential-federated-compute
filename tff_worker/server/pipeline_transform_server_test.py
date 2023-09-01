@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import OrderedDict
 from concurrent import futures
 import unittest
 from fcp.protos.confidentialcompute import pipeline_transform_pb2
 from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
-from fcp.protos.confidentialcompute import tff_worker_configuration_pb2
+from fcp.protos.confidentialcompute import tff_worker_configuration_pb2 as worker_pb2
 from google.protobuf import any_pb2
 import grpc
 import portpicker
 import tensorflow as tf
+from tensorflow.core.framework import types_pb2
 import tensorflow_federated as tff
 from tff_worker.server import pipeline_transform_server
+from tff_worker.server.testing import checkpoint_test_utils
 
 
 class PipelineTransformServicerTest(unittest.TestCase):
@@ -37,7 +40,6 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
     self._port = portpicker.pick_unused_port()
     self._server.add_insecure_port('[::]:%d' % self._port)
-    print('Starting Pipeline Transform server')
     self._server.start()
     self._channel = grpc.insecure_channel('localhost:%d' % self._port)
     self._stub = pipeline_transform_pb2_grpc.PipelineTransformStub(
@@ -61,7 +63,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self.assertIs(e.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
 
   def test_configure_and_attest(self):
-    config = tff_worker_configuration_pb2.TffWorkerConfiguration()
+    config = worker_pb2.TffWorkerConfiguration()
     any_config = any_pb2.Any()
     any_config.Pack(config)
     request = pipeline_transform_pb2.ConfigureAndAttestRequest(
@@ -110,11 +112,38 @@ class PipelineTransformServicerTest(unittest.TestCase):
         'ConfigureAndAttest must be called before Transform', str(e.exception)
     )
 
-  def test_transform_client_work_unimplemented(self):
-    config = tff_worker_configuration_pb2.TffWorkerConfiguration()
-    config.client_work.MergeFrom(
-        tff_worker_configuration_pb2.TffWorkerConfiguration.ClientWork()
+  def test_transform_executes_client_work(self):
+    # Define a simple computation that adds a broadcasted value to all floats in
+    # a single input tensor.
+    @tff.tf_computation(
+        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
+        tf.float32,
     )
+    def client_work_comp(
+        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+    ) -> OrderedDict[str, tf.Tensor]:
+      result = OrderedDict()
+      for name, t in example.items():
+        result[name] = tf.add(t, broadcasted_data)
+      return result
+
+    serialized_broadcasted_data, _ = tff.framework.serialize_value(
+        tf.constant(10.0), tf.float32
+    )
+    client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
+        serialized_client_work_computation=tff.framework.serialize_computation(
+            client_work_comp
+        ).SerializeToString(),
+        serialized_broadcasted_data=(
+            serialized_broadcasted_data.SerializeToString()
+        ),
+    )
+    client_work_config.fed_sql_tensorflow_checkpoint.fed_sql_columns.append(
+        checkpoint_test_utils.column_config(
+            name='float', data_type=types_pb2.DT_FLOAT
+        )
+    )
+    config = worker_pb2.TffWorkerConfiguration(client_work=client_work_config)
     any_config = any_pb2.Any()
     any_config.Pack(config)
     configure_and_attest_request = (
@@ -125,13 +154,25 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self._stub.ConfigureAndAttest(configure_and_attest_request)
 
     transform_request = pipeline_transform_pb2.TransformRequest()
-    with self.assertRaises(grpc.RpcError) as e:
-      self._stub.Transform(transform_request)
-    self.assertIs(e.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
-    self.assertIn(
-        'Performing a `client_work` Transform is unimplemented',
-        str(e.exception),
+    transform_request.inputs.add().unencrypted_data = (
+        checkpoint_test_utils.create_checkpoint_bytes(
+            ['float'], [tf.constant([1.0, 2.0, 3.0])]
+        )
     )
+
+    serialized_expected_output, _ = tff.framework.serialize_value(
+        OrderedDict([
+            ('float', tf.constant([11.0, 12.0, 13.0])),
+        ]),
+        OrderedDict([
+            ('float', tff.TensorType(tf.float32, shape=(3))),
+        ]),
+    )
+    expected_response = pipeline_transform_pb2.TransformResponse()
+    expected_response.outputs.add().unencrypted_data = (
+        serialized_expected_output.SerializeToString()
+    )
+    self.assertEqual(expected_response, self._stub.Transform(transform_request))
 
   def test_transform_executes_aggregation(self):
     aggregation_comp = tff.tf_computation(
@@ -144,7 +185,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     serialized_temp_state, _ = tff.framework.serialize_value(
         tf.constant('The'), tf.string
     )
-    config = tff_worker_configuration_pb2.TffWorkerConfiguration()
+    config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
         serialized_aggregation_comp.SerializeToString()
     )
@@ -190,7 +231,65 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
     self.assertEqual(expected_response, self._stub.Transform(transform_request))
 
-  def test_transform_invalid_input(self):
+  def test_transform_client_work_invalid_input(self):
+    # Define a simple computation that adds a broadcasted value to all floats in
+    # a single input tensor.
+    @tff.tf_computation(
+        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
+        tf.float32,
+    )
+    def client_work_comp(
+        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+    ) -> OrderedDict[str, tf.Tensor]:
+      result = OrderedDict()
+      for name, t in example.items():
+        result[name] = tf.add(t, broadcasted_data)
+      return result
+
+    serialized_broadcasted_data, _ = tff.framework.serialize_value(
+        tf.constant(10.0), tf.float32
+    )
+    client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
+        serialized_client_work_computation=tff.framework.serialize_computation(
+            client_work_comp
+        ).SerializeToString(),
+        serialized_broadcasted_data=(
+            serialized_broadcasted_data.SerializeToString()
+        ),
+    )
+    client_work_config.fed_sql_tensorflow_checkpoint.fed_sql_columns.append(
+        checkpoint_test_utils.column_config(
+            name='float', data_type=types_pb2.DT_FLOAT
+        )
+    )
+    config = worker_pb2.TffWorkerConfiguration(client_work=client_work_config)
+    any_config = any_pb2.Any()
+    any_config.Pack(config)
+    configure_and_attest_request = (
+        pipeline_transform_pb2.ConfigureAndAttestRequest(
+            configuration=any_config
+        )
+    )
+    self._stub.ConfigureAndAttest(configure_and_attest_request)
+
+    transform_request = pipeline_transform_pb2.TransformRequest()
+    # The tensor name in the checkpoint doesn't match the name expected in the
+    # configuration.
+    transform_request.inputs.add().unencrypted_data = (
+        checkpoint_test_utils.create_checkpoint_bytes(
+            ['other_name'], [tf.constant([1.0, 2.0, 3.0])]
+        )
+    )
+
+    with self.assertRaises(grpc.RpcError) as e:
+      self._stub.Transform(transform_request)
+    self.assertIs(e.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
+    self.assertIn(
+        'TypeError when executing client work computation',
+        str(e.exception),
+    )
+
+  def test_transform_aggregation_invalid_input(self):
     aggregation_comp = tff.tf_computation(
         lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
         (tf.string, tf.string),
@@ -201,7 +300,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     serialized_temp_state, _ = tff.framework.serialize_value(
         tf.constant('The'), tf.string
     )
-    config = tff_worker_configuration_pb2.TffWorkerConfiguration()
+    config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
         serialized_aggregation_comp.SerializeToString()
     )
@@ -237,6 +336,65 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self.assertIs(e.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
     self.assertIn(
         'TypeError when executing aggregation computation',
+        str(e.exception),
+    )
+
+  def test_transform_client_work_wrong_num_inputs(self):
+    # Define a simple computation that adds a broadcasted value to all floats in
+    # a single input tensor.
+    @tff.tf_computation(
+        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
+        tf.float32,
+    )
+    def client_work_comp(
+        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+    ) -> OrderedDict[str, tf.Tensor]:
+      result = OrderedDict()
+      for name, t in example.items():
+        result[name] = tf.add(t, broadcasted_data)
+      return result
+
+    serialized_broadcasted_data, _ = tff.framework.serialize_value(
+        tf.constant(10.0), tf.float32
+    )
+    client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
+        serialized_client_work_computation=tff.framework.serialize_computation(
+            client_work_comp
+        ).SerializeToString(),
+        serialized_broadcasted_data=(
+            serialized_broadcasted_data.SerializeToString()
+        ),
+    )
+    client_work_config.fed_sql_tensorflow_checkpoint.fed_sql_columns.append(
+        checkpoint_test_utils.column_config(
+            name='float', data_type=types_pb2.DT_FLOAT
+        )
+    )
+    config = worker_pb2.TffWorkerConfiguration(client_work=client_work_config)
+    any_config = any_pb2.Any()
+    any_config.Pack(config)
+    configure_and_attest_request = (
+        pipeline_transform_pb2.ConfigureAndAttestRequest(
+            configuration=any_config
+        )
+    )
+    self._stub.ConfigureAndAttest(configure_and_attest_request)
+
+    transform_request = pipeline_transform_pb2.TransformRequest()
+    # Add two inputs each containing a valid checkpoint. `client_work`
+    # transforms expect only one input.
+    unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
+        ['float'], [tf.constant([1.0, 2.0, 3.0])]
+    )
+    transform_request.inputs.add().unencrypted_data = unencrypted_data
+    transform_request.inputs.add().unencrypted_data = unencrypted_data
+
+    with self.assertRaises(grpc.RpcError) as e:
+      self._stub.Transform(transform_request)
+    self.assertIs(e.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
+    self.assertIn(
+        'Exactly one input must be provided to a `client_work` transform but'
+        ' got 2',
         str(e.exception),
     )
 

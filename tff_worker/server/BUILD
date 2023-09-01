@@ -38,6 +38,7 @@ py_test(
     deps = [
         ":pipeline_transform_server",
         ":tff_transforms",
+        "//tff_worker/server/testing:checkpoint_test_utils",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_py_proto",
@@ -61,6 +62,9 @@ py_test(
     srcs = ["tff_transforms_test.py"],
     deps = [
         ":tff_transforms",
+        "//tff_worker/server/testing:checkpoint_test_utils",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_py_proto",
+        "@org_tensorflow//tensorflow/core:protos_all_py",
         "@pypi_deps_tensorflow_federated//:pkg",
         "@tensorflow-federated//tensorflow_federated/proto/v0:computation_py_pb2",
         "@tensorflow-federated//tensorflow_federated/proto/v0:executor_py_pb2",

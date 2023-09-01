@@ -51,7 +51,7 @@ def _get_input_data_from_record(
 class PipelineTransformServicer(
     pipeline_transform_pb2_grpc.PipelineTransformServicer
 ):
-  """Provides methods that implement functionality of Pipeline Transform server."""
+  """Implements functionality of Pipeline Transform server."""
 
   def __init__(self):
     self._configuration = None
@@ -111,10 +111,26 @@ class PipelineTransformServicer(
 
     response = pipeline_transform_pb2.TransformResponse()
     if self._configuration.HasField('client_work'):
-      context.abort(
-          grpc.StatusCode.UNIMPLEMENTED,
-          'Performing a `client_work` Transform is unimplemented.',
+      if len(request.inputs) != 1:
+        context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT,
+            'Exactly one input must be provided to a `client_work` transform'
+            f' but got {len(request.inputs)}',
+        )
+      unencrypted_input = _get_input_data_from_record(
+          context, request.inputs[0]
       )
+      try:
+        output_data = tff_transforms.perform_client_work(
+            self._configuration.client_work,
+            unencrypted_input,
+        )
+      except TypeError as e:
+        context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT,
+            'TypeError when executing client work computation: %s' % str(e),
+        )
+      response.outputs.add().unencrypted_data = output_data
     elif self._configuration.HasField('aggregation'):
       unencrypted_inputs = [
           _get_input_data_from_record(context, record)
@@ -122,8 +138,7 @@ class PipelineTransformServicer(
       ]
       try:
         output_data = tff_transforms.aggregate(
-            self._configuration.aggregation.serialized_client_to_server_aggregation_computation,
-            self._configuration.aggregation.serialized_temporary_state,
+            self._configuration.aggregation,
             unencrypted_inputs,
         )
       except TypeError as e:
