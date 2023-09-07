@@ -2,6 +2,8 @@
 
 set -e
 
+cd $(dirname "$0")/..
+
 readonly DOCKER_IMAGE_ID='europe-west2-docker.pkg.dev/oak-ci/oak-development/oak-development@sha256:7b6e401df8e90fec2597806a8c912649b9802de83abe9f6724c3dffe7772f07d'
 declare -ar DOCKER_RUN_FLAGS=(
   '--rm'
@@ -9,8 +11,6 @@ declare -ar DOCKER_RUN_FLAGS=(
   "--volume=$PWD:/workspace"
   '--workdir=/workspace'
 )
-
-cd $(dirname "$0")/..
 
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_ID}" sh -c 'cargo build && cargo test'
 
