@@ -28,6 +28,34 @@ from tff_worker.server import pipeline_transform_server
 from tff_worker.server.testing import checkpoint_test_utils
 
 
+# Define a simple computation that adds a broadcasted value to all floats in
+# a single input tensor.
+@tff.tf_computation(
+    OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
+    tf.float32,
+)
+def tf_comp(
+    example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+) -> OrderedDict[str, tf.Tensor]:
+  result = OrderedDict()
+  for name, t in example.items():
+    result[name] = tf.add(t, broadcasted_data)
+  return result
+
+
+# Define a federated computation using tf_comp to be performed per-client.
+@tff.federated_computation(
+    tff.type_at_clients(
+        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))])
+    ),
+    tff.type_at_clients(tf.float32, all_equal=True),
+)
+def client_work_comp(
+    example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+) -> OrderedDict[str, tf.Tensor]:
+  return tff.federated_map(tf_comp, (example, broadcasted_data))
+
+
 class PipelineTransformServicerTest(unittest.TestCase):
 
   # Initialize a server on the local machine for testing purposes, because
@@ -113,22 +141,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
   def test_transform_executes_client_work(self):
-    # Define a simple computation that adds a broadcasted value to all floats in
-    # a single input tensor.
-    @tff.tf_computation(
-        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
-        tf.float32,
-    )
-    def client_work_comp(
-        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
-    ) -> OrderedDict[str, tf.Tensor]:
-      result = OrderedDict()
-      for name, t in example.items():
-        result[name] = tf.add(t, broadcasted_data)
-      return result
-
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
@@ -161,17 +175,22 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
     serialized_expected_output, _ = tff.framework.serialize_value(
-        OrderedDict([
-            ('float', tf.constant([11.0, 12.0, 13.0])),
-        ]),
-        OrderedDict([
-            ('float', tff.TensorType(tf.float32, shape=(3))),
-        ]),
+        [
+            OrderedDict([
+                ('float', tf.constant([11.0, 12.0, 13.0])),
+            ])
+        ],
+        tff.types.at_clients(
+            OrderedDict([
+                ('float', tff.TensorType(tf.float32, shape=([None]))),
+            ])
+        ),
     )
     expected_response = pipeline_transform_pb2.TransformResponse()
     expected_response.outputs.add().unencrypted_data = (
         serialized_expected_output.SerializeToString()
     )
+
     self.assertEqual(expected_response, self._stub.Transform(transform_request))
 
   def test_transform_executes_aggregation(self):
@@ -232,22 +251,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self.assertEqual(expected_response, self._stub.Transform(transform_request))
 
   def test_transform_client_work_invalid_input(self):
-    # Define a simple computation that adds a broadcasted value to all floats in
-    # a single input tensor.
-    @tff.tf_computation(
-        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
-        tf.float32,
-    )
-    def client_work_comp(
-        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
-    ) -> OrderedDict[str, tf.Tensor]:
-      result = OrderedDict()
-      for name, t in example.items():
-        result[name] = tf.add(t, broadcasted_data)
-      return result
-
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
@@ -340,22 +345,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
   def test_transform_client_work_wrong_num_inputs(self):
-    # Define a simple computation that adds a broadcasted value to all floats in
-    # a single input tensor.
-    @tff.tf_computation(
-        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
-        tf.float32,
-    )
-    def client_work_comp(
-        example: OrderedDict[str, tf.Tensor], broadcasted_data: float
-    ) -> OrderedDict[str, tf.Tensor]:
-      result = OrderedDict()
-      for name, t in example.items():
-        result[name] = tf.add(t, broadcasted_data)
-      return result
-
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
