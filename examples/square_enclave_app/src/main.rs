@@ -34,6 +34,7 @@ fn _start() -> ! {
 }
 
 fn main() -> ! {
+    log::info!("In main!");
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
     let service = square_service::SquareService::default();
     let server = pipeline_transforms::proto::PipelineTransformServer::new(service);

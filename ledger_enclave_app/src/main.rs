@@ -34,6 +34,7 @@ fn _start() -> ! {
 }
 
 fn main() -> ! {
+    log::info!("In main!");
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
     let service = ledger_service::LedgerService::default();
     let server = federated_compute::proto::LedgerServer::new(service);
