@@ -122,6 +122,13 @@ def _check_client_input_type_and_fedsql_config_compatible(
 ) -> None:
   """Determines if the client input type matches the checkpoint specification.
 
+  When using a FedSQL tensorflow checkpoint as the input type, a preprocessing
+  computation should be applied to the customer-provided computation making it
+  compatible with the input type created from a FedSQL checkpoint. This method
+  ensures that this is the case. If it fails, there is a mismatch between the
+  computation generation logic and the logic in this file to convert a FedSQL
+  tensorflow checkpoint into an input to the computation.
+
   Args:
     client_input_type: The TFF type that is expected as the client input to the
       client work computation.
@@ -139,38 +146,46 @@ def _check_client_input_type_and_fedsql_config_compatible(
   """
   _check_type(
       client_input_type,
-      tff.StructType,
+      tff.FederatedType,
       name='client work computation client input type',
   )
+  client_input_struct = client_input_type.member
+  _check_type(
+      client_input_struct,
+      tff.StructType,
+      name='client work computation client input type member',
+  )
   expected_num_columns = len(fed_sql_tf_checkpoint_spec.fed_sql_columns)
-  if len(client_input_type) != expected_num_columns:
+  if len(client_input_struct) != expected_num_columns:
     raise TypeError(
-        'Number of elements expected in client input by computation'
-        f' ({len(client_input_type)}) does not match number of FedSql columns'
-        f' provided by configuration ({expected_num_columns}).'
+        'Number of elements computation expects in client input '
+        f'({len(client_input_struct)}) does not match the number of FedSql '
+        f'columns provided by configuration ({expected_num_columns}).'
     )
-  fedsql_struct_type = tff.types.to_type(
-      OrderedDict(
-          [
-              (
-                  col.name,
-                  tff.TensorType(
-                      tf.dtypes.as_dtype(col.data_type), shape=[None]
-                  ),
-              )
-              for col in fed_sql_tf_checkpoint_spec.fed_sql_columns
-          ]
+  fedsql_type = tff.types.at_clients(
+      tff.types.to_type(
+          OrderedDict(
+              [
+                  (
+                      col.name,
+                      tff.TensorType(
+                          tf.dtypes.as_dtype(col.data_type), shape=[None]
+                      ),
+                  )
+                  for col in fed_sql_tf_checkpoint_spec.fed_sql_columns
+              ]
+          )
       )
   )
   try:
-    client_input_type.check_assignable_from(fedsql_struct_type)
+    client_input_type.check_assignable_from(fedsql_type)
   except TypeError as e:
     raise TypeError(
         'FedSql checkpoint specification incompatible with client work'
         ' computation client input type.\nFedSql checkpoint spec:'
         f' {repr(fed_sql_tf_checkpoint_spec)}\nClient work computation client'
         f' input type: {repr(client_input_type)}'
-    )
+    ) from e
 
 
 def _restore_tensorflow_checkpoint_to_dict(
@@ -317,7 +332,9 @@ def perform_client_work(
   client_input_dict = _restore_tensorflow_checkpoint_to_dict(
       client_work_config.fed_sql_tensorflow_checkpoint, unencrypted_input
   )
-  output = computation(client_input_dict, broadcasted_data)
+  # Wrap the client input as a list as TFF expects clients-placed inputs that
+  # are not all equal to be in a list form.
+  output = computation([client_input_dict], broadcasted_data)
 
   return _serialize_output(output, computation.type_signature.result)
 

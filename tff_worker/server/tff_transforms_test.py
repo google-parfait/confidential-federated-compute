@@ -18,6 +18,7 @@ from fcp.protos.confidentialcompute import tff_worker_configuration_pb2 as worke
 import tensorflow as tf
 from tensorflow.core.framework import types_pb2
 import tensorflow_federated as tff
+from tensorflow_federated.proto.v0 import executor_pb2
 import tff_transforms
 from tff_worker.server.testing import checkpoint_test_utils
 
@@ -38,7 +39,7 @@ _TENSORS = [_FLOAT_A, _INT_A, _FLOAT_B, _STRING_B]
     ]),
     tf.float32,
 )
-def client_work_comp(
+def tf_comp(
     example: OrderedDict[str, tf.Tensor], broadcasted_data: float
 ) -> OrderedDict[str, tf.Tensor]:
   result = OrderedDict()
@@ -46,6 +47,23 @@ def client_work_comp(
     if 'float' in name:
       result[name] = tf.add(t, broadcasted_data)
   return result
+
+
+@tff.federated_computation(
+    tff.type_at_clients(
+        OrderedDict([
+            ('float_a', tff.TensorType(tf.float32, shape=[None])),
+            ('int_a', tff.TensorType(tf.int32, shape=[None])),
+            ('float_b', tff.TensorType(tf.float32, shape=[None])),
+            ('string_b', tff.TensorType(tf.string, shape=[None])),
+        ])
+    ),
+    tff.type_at_clients(tf.float32, all_equal=True),
+)
+def client_work_comp(
+    example: OrderedDict[str, tf.Tensor], broadcasted_data: float
+) -> OrderedDict[str, tf.Tensor]:
+  return tff.federated_map(tf_comp, (example, broadcasted_data))
 
 
 def column_config(
@@ -77,15 +95,16 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
     )
+    serialized_client_work = tff.framework.serialize_computation(
+        client_work_comp
+    )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
-        serialized_client_work_computation=tff.framework.serialize_computation(
-            client_work_comp
-        ).SerializeToString(),
+        serialized_client_work_computation=serialized_client_work.SerializeToString(),
         serialized_broadcasted_data=(
             serialized_broadcasted_data.SerializeToString()
         ),
@@ -93,26 +112,33 @@ class TffTransformsTest(unittest.TestCase):
     client_work_config.fed_sql_tensorflow_checkpoint.CopyFrom(
         get_checkpoint_config_matching_computation()
     )
-    serialized_expected_output, _ = tff.framework.serialize_value(
-        OrderedDict([
-            ('float_a', tf.constant([11.0, 12.0])),
-            ('float_b', tf.constant([13.0, 14.0])),
-        ]),
-        OrderedDict([
-            ('float_a', tff.TensorType(tf.float32, shape=(2))),
-            ('float_b', tff.TensorType(tf.float32, shape=(2))),
-        ]),
+    result_bytes = tff_transforms.perform_client_work(
+        client_work_config, unencrypted_data
     )
-    self.assertEqual(
-        serialized_expected_output.SerializeToString(),
-        tff_transforms.perform_client_work(
-            client_work_config, unencrypted_data
+    result_proto = executor_pb2.Value.FromString(result_bytes)
+    (serialized_expected_result, _) = tff.framework.serialize_value(
+        [
+            OrderedDict([
+                ('float_a', tf.constant([11.0, 12.0])),
+                ('float_b', tf.constant([13.0, 14.0])),
+            ])
+        ],
+        tff.types.at_clients(
+            OrderedDict([
+                ('float_a', tff.TensorType(tf.float32, shape=([None]))),
+                ('float_b', tff.TensorType(tf.float32, shape=([None]))),
+            ])
         ),
+    )
+    self.assertEqual(serialized_expected_result, result_proto)
+    self.assertEqual(
+        serialized_client_work.type.function.result.federated,
+        result_proto.federated.type,
     )
 
   def test_client_work_unparseable_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -152,7 +178,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_name_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # Add a tensor to the checkpoint that has an unexpected name.
     names = ['float_a', 'int_a', 'other_name', 'string_b']
@@ -179,7 +205,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_type_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # The third tensor will have tf.string datatype but the FedSql config
     # expects it to be a float.
@@ -208,7 +234,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_count_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # One of the expected tensors in the FedSql configuration is not present in
     # the input checkpoint.
@@ -237,7 +263,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_shape_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     # The third tensor has more elements than the rest, but all the tensor
@@ -267,7 +293,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_scalars_in_checkpoint(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # Providing scalars in the checkpoint instead of 1-dimensional tensors
     # should succeed.
@@ -297,7 +323,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_dims_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     # The third tensor has more dimensions than the rest, but all the tensor
@@ -324,7 +350,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_name_mismatch_with_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # The third tensor will have a name which matches the expected FedSql
     # checkpoint configuration, but doesn't match the expected name in the
@@ -359,7 +385,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_type_mismatch_with_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     float_a = tf.constant([1.0, 2.0])
@@ -401,7 +427,7 @@ class TffTransformsTest(unittest.TestCase):
       self,
   ):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     # One of the expected tensors in the computation input spec is not present
     # in the input checkpoint or the FedSql configuration.
@@ -429,8 +455,8 @@ class TffTransformsTest(unittest.TestCase):
     with self.assertRaises(TypeError) as e:
       tff_transforms.perform_client_work(client_work_config, unencrypted_data),
     self.assertIn(
-        'Number of elements expected in client input by computation (4) does'
-        ' not match number of FedSql columns provided by configuration (3)',
+        'Number of elements computation expects in client input (4) does'
+        ' not match the number of FedSql columns provided by configuration (3)',
         str(e.exception),
     )
 
@@ -453,7 +479,7 @@ class TffTransformsTest(unittest.TestCase):
       return result
 
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -473,18 +499,57 @@ class TffTransformsTest(unittest.TestCase):
       tff_transforms.perform_client_work(client_work_config, unencrypted_data),
     self.assertIn('Unexpected number of elements', str(e.exception))
 
-  def test_client_work_computation_client_input_type_not_struct(self):
+  def test_client_work_computation_client_input_type_not_federated(self):
+    # This test will use a tensorflow computation that expects a regular float
+    # input, not a float with an @CLIENTS placement.
+    serialized_broadcasted_data, _ = tff.framework.serialize_value(
+        tf.constant(10.0), tf.float32
+    )
+    unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
+        _NAMES, _TENSORS
+    )
+    client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
+        # Use the raw tensorflow computation rather than the computation
+        # wrapped in a federated map.
+        serialized_client_work_computation=tff.framework.serialize_computation(
+            tf_comp
+        ).SerializeToString(),
+        serialized_broadcasted_data=(
+            serialized_broadcasted_data.SerializeToString()
+        ),
+    )
+    client_work_config.fed_sql_tensorflow_checkpoint.CopyFrom(
+        get_checkpoint_config_matching_computation()
+    )
+    with self.assertRaises(TypeError) as e:
+      tff_transforms.perform_client_work(client_work_config, unencrypted_data),
+    self.assertIn(
+        'Expected client work computation client input type to be an '
+        'instance of type',
+        str(e.exception),
+    )
+
+  def test_client_work_computation_client_input_type_member_not_struct(self):
     @tff.tf_computation(
         tff.TensorType(tf.float32, shape=[None]),
         tf.float32,
     )
-    def client_work_comp_not_struct(
+    def comp_not_struct(
         example: tf.Tensor, broadcasted_data: float
     ) -> tf.Tensor:
       return tf.add(example, broadcasted_data)
 
+    @tff.federated_computation(
+        tff.type_at_clients(tff.TensorType(tf.float32, shape=[None])),
+        tff.type_at_clients(tf.float32, all_equal=True),
+    )
+    def client_work_comp_not_struct(
+        example: tf.Tensor, broadcasted_data: float
+    ) -> tf.Tensor:
+      return tff.federated_map(comp_not_struct, (example, broadcasted_data))
+
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tf.float32
+        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -503,8 +568,8 @@ class TffTransformsTest(unittest.TestCase):
     with self.assertRaises(TypeError) as e:
       tff_transforms.perform_client_work(client_work_config, unencrypted_data),
     self.assertIn(
-        'Expected client work computation client input type to be an instance'
-        ' of type',
+        'Expected client work computation client input type member to be an '
+        'instance of type',
         str(e.exception),
     )
 
@@ -512,7 +577,7 @@ class TffTransformsTest(unittest.TestCase):
     # The computation expects that the broadcasted data is a float, but provide
     # a string.
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant('a string'), tf.string
+        tf.constant('a string'), tff.types.at_clients(tf.string, all_equal=True)
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -531,7 +596,8 @@ class TffTransformsTest(unittest.TestCase):
     with self.assertRaises(TypeError) as e:
       tff_transforms.perform_client_work(client_work_config, unencrypted_data),
     self.assertIn(
-        'Type `string` is not assignable to type `float32`', str(e.exception)
+        'Type `string@CLIENTS` is not assignable to type `float32@CLIENTS`',
+        str(e.exception),
     )
 
   def test_aggregate(self):
