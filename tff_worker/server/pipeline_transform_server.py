@@ -77,6 +77,8 @@ class PipelineTransformServicer(
           'ConfigureAndAttestRequest must contain configuration.',
       )
     self._configuration = tff_worker_configuration_pb2.TffWorkerConfiguration()
+    # TODO: Introduce additional early configuration checks to fail faster on
+    # invalid configuration.
     if not request.configuration.Unpack(self._configuration):
       context.abort(
           grpc.StatusCode.INVALID_ARGUMENT,

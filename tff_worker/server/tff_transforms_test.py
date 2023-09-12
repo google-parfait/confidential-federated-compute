@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import OrderedDict
-from typing import List
+from typing import List, Tuple
 import unittest
 from fcp.protos.confidentialcompute import tff_worker_configuration_pb2 as worker_pb2
 import tensorflow as tf
@@ -64,6 +64,22 @@ def client_work_comp(
     example: OrderedDict[str, tf.Tensor], broadcasted_data: float
 ) -> OrderedDict[str, tf.Tensor]:
   return tff.federated_map(tf_comp, (example, broadcasted_data))
+
+
+@tff.federated_computation(
+    tff.type_at_server(tf.int32), tff.type_at_clients(tf.int32)
+)
+def aggregation_comp(
+    state: int, value: List[int]
+) -> tff.templates.MeasuredProcessOutput:
+  state_at_clients = tff.federated_broadcast(state)
+  scaled_value = tff.federated_map(
+      tff.tf_computation(lambda x, y: x * y), (value, state_at_clients)
+  )
+  summed_value = tff.federated_sum(scaled_value)
+  return tff.templates.MeasuredProcessOutput(
+      state=state, result=summed_value, measurements=summed_value
+  )
 
 
 def column_config(
@@ -601,12 +617,8 @@ class TffTransformsTest(unittest.TestCase):
     )
 
   def test_aggregate(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -617,45 +629,256 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
-    serialized_expected_output, _ = tff.framework.serialize_value(
-        tf.constant('The quick brown fox'), tf.string
+    result_bytes = tff_transforms.aggregate(
+        aggregation_config,
+        [
+            serialized_input_a.SerializeToString(),
+            serialized_input_b.SerializeToString(),
+            serialized_input_c.SerializeToString(),
+        ],
     )
-    self.assertEqual(
-        serialized_expected_output.SerializeToString(),
-        tff_transforms.aggregate(
-            aggregation_config,
-            [
-                serialized_input_a.SerializeToString(),
-                serialized_input_b.SerializeToString(),
-                serialized_input_c.SerializeToString(),
-            ],
+    result_proto = executor_pb2.Value.FromString(result_bytes)
+    (serialized_expected_result, _) = tff.framework.serialize_value(
+        tff.templates.MeasuredProcessOutput(
+            state=tf.constant(2),
+            result=tf.constant(2 * (5 + 6 + 7)),
+            measurements=(tf.constant(2 * (5 + 6 + 7))),
         ),
+        tff.StructType([
+            (
+                'state',
+                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+            ),
+            (
+                'result',
+                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+            ),
+            (
+                'measurements',
+                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+            ),
+        ]),
     )
+    self.assertEqual(serialized_expected_result, result_proto)
+
+  def test_aggregate_structs(self):
+    @tff.federated_computation(
+        tff.type_at_server(tf.string),
+        OrderedDict([
+            (
+                'weights',
+                tff.type_at_clients(
+                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                ),
+            ),
+            (
+                'counts',
+                tff.type_at_clients(
+                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                ),
+            ),
+        ]),
+    )
+    def aggregation_comp(
+        state: str, value: OrderedDict[str, List[tf.Tensor]]
+    ) -> tf.float32:
+      return (
+          tff.federated_mean(value.weights),
+          tff.federated_sum(value.counts),
+          state,
+      )
+
+    serialized_temp_state, _ = tff.framework.serialize_value(
+        tf.constant('hello world'), tff.types.at_server(tf.string)
+    )
+    aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
+        serialized_client_to_server_aggregation_computation=(
+            tff.framework.serialize_computation(
+                aggregation_comp
+            ).SerializeToString()
+        ),
+        serialized_temporary_state=serialized_temp_state.SerializeToString(),
+    )
+    serialized_input_a, _ = tff.framework.serialize_value(
+        OrderedDict(
+            [('weights', [tf.constant(3.0)]), ('counts', [tf.constant(5)])]
+        ),
+        OrderedDict([
+            (
+                'weights',
+                tff.type_at_clients(
+                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                ),
+            ),
+            (
+                'counts',
+                tff.type_at_clients(
+                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                ),
+            ),
+        ]),
+    )
+    serialized_input_b, _ = tff.framework.serialize_value(
+        OrderedDict(
+            [('weights', [tf.constant(7.0)]), ('counts', [tf.constant(6)])]
+        ),
+        OrderedDict([
+            (
+                'weights',
+                tff.type_at_clients(
+                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                ),
+            ),
+            (
+                'counts',
+                tff.type_at_clients(
+                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                ),
+            ),
+        ]),
+    )
+    serialized_input_c, _ = tff.framework.serialize_value(
+        OrderedDict(
+            [('weights', [tf.constant(2.0)]), ('counts', [tf.constant(8)])]
+        ),
+        OrderedDict([
+            (
+                'weights',
+                tff.type_at_clients(
+                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                ),
+            ),
+            (
+                'counts',
+                tff.type_at_clients(
+                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                ),
+            ),
+        ]),
+    )
+    result_bytes = tff_transforms.aggregate(
+        aggregation_config,
+        [
+            serialized_input_a.SerializeToString(),
+            serialized_input_b.SerializeToString(),
+            serialized_input_c.SerializeToString(),
+        ],
+    )
+    result_proto = executor_pb2.Value.FromString(result_bytes)
+    (serialized_expected_result, _) = tff.framework.serialize_value(
+        ((3.0 + 7.0 + 2.0) / 3.0, (5 + 6 + 8), 'hello world'),
+        tff.StructType([
+            tff.types.at_server(tff.TensorType(tf.float32, shape=())),
+            tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+            tff.types.at_server(tff.TensorType(tf.string, shape=())),
+        ]),
+    )
+    self.assertEqual(serialized_expected_result, result_proto)
+
+  def test_aggregate_unnamed_structs(self):
+    @tff.federated_computation(
+        tff.type_at_server(tf.string),
+        tff.types.StructType([
+            tff.type_at_clients(
+                tff.TensorType(tf.float32, shape=()), all_equal=False
+            ),
+            tff.type_at_clients(
+                tff.TensorType(tf.int32, shape=()), all_equal=False
+            ),
+        ]),
+    )
+    def aggregation_comp(
+        state: str, value: Tuple[List[tf.Tensor]]
+    ) -> tf.float32:
+      return (tff.federated_mean(value[0]), tff.federated_sum(value[1]), state)
+
+    serialized_temp_state, _ = tff.framework.serialize_value(
+        tf.constant('hello world'), tff.types.at_server(tf.string)
+    )
+    aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
+        serialized_client_to_server_aggregation_computation=(
+            tff.framework.serialize_computation(
+                aggregation_comp
+            ).SerializeToString()
+        ),
+        serialized_temporary_state=serialized_temp_state.SerializeToString(),
+    )
+    serialized_input_a, _ = tff.framework.serialize_value(
+        ([tf.constant(3.0)], [tf.constant(5)]),
+        tff.types.StructType([
+            tff.type_at_clients(
+                tff.TensorType(tf.float32, shape=()), all_equal=False
+            ),
+            tff.type_at_clients(
+                tff.TensorType(tf.int32, shape=()), all_equal=False
+            ),
+        ]),
+    )
+    serialized_input_b, _ = tff.framework.serialize_value(
+        ([tf.constant(7.0)], [tf.constant(6)]),
+        tff.types.StructType([
+            tff.type_at_clients(
+                tff.TensorType(tf.float32, shape=()), all_equal=False
+            ),
+            tff.type_at_clients(
+                tff.TensorType(tf.int32, shape=()), all_equal=False
+            ),
+        ]),
+    )
+    serialized_input_c, _ = tff.framework.serialize_value(
+        ([tf.constant(2.0)], [tf.constant(8)]),
+        tff.types.StructType([
+            tff.type_at_clients(
+                tff.TensorType(tf.float32, shape=()), all_equal=False
+            ),
+            tff.type_at_clients(
+                tff.TensorType(tf.int32, shape=()), all_equal=False
+            ),
+        ]),
+    )
+    result_bytes = tff_transforms.aggregate(
+        aggregation_config,
+        [
+            serialized_input_a.SerializeToString(),
+            serialized_input_b.SerializeToString(),
+            serialized_input_c.SerializeToString(),
+        ],
+    )
+    result_proto = executor_pb2.Value.FromString(result_bytes)
+    (serialized_expected_result, _) = tff.framework.serialize_value(
+        ((3.0 + 7.0 + 2.0) / 3.0, (5 + 6 + 8), 'hello world'),
+        tff.types.StructType([
+            tff.types.at_server(tff.TensorType(tf.float32, shape=())),
+            tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+            tff.types.at_server(tff.TensorType(tf.string, shape=())),
+        ]),
+    )
+    self.assertEqual(serialized_expected_result, result_proto)
 
   def test_aggregate_unparseable_computation(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=b'invalid',
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -669,26 +892,22 @@ class TffTransformsTest(unittest.TestCase):
     self.assertIn('Could not parse serialized computation', str(e.exception))
 
   def test_aggregate_unparseable_state(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
             tff.framework.serialize_computation(
                 aggregation_comp
             ).SerializeToString()
         ),
-        serialized_temporary_state=b'invalid_temp_state',
+        serialized_temporary_state=b'invalid',
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -704,12 +923,8 @@ class TffTransformsTest(unittest.TestCase):
     )
 
   def test_aggregate_unparseable_client_input(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -720,10 +935,10 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -737,30 +952,33 @@ class TffTransformsTest(unittest.TestCase):
     self.assertIn('Could not parse serialized client input', str(e.exception))
 
   def test_aggregate_computation_wrong_num_args(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x: tf.strings.join([x, 'fox'], separator=' ', name=None),
-        (tf.string),
-    )
-    serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
-    )
+    # Create a computation that doesn't take in any server state.
+    @tff.federated_computation(tff.type_at_clients(tf.int32))
+    def aggregation_comp(value: List[int]):
+      scaled_value = tff.federated_map(
+          tff.tf_computation(lambda x: x * 2), value
+      )
+      summed_value = tff.federated_sum(scaled_value)
+      return tff.templates.MeasuredProcessOutput(
+          state=summed_value, result=summed_value, measurements=summed_value
+      )
+
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
             tff.framework.serialize_computation(
                 aggregation_comp
             ).SerializeToString()
         ),
-        serialized_temporary_state=serialized_temp_state.SerializeToString(),
+        serialized_temporary_state=b'invalid',
     )
-
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -776,12 +994,8 @@ class TffTransformsTest(unittest.TestCase):
     )
 
   def test_aggregate_computation_wrong_temp_state_type(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(1.0), tf.float32
+        tf.constant(1.0), tff.types.at_server(tf.float32)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -792,13 +1006,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -810,16 +1024,13 @@ class TffTransformsTest(unittest.TestCase):
           ],
       )
     self.assertIn(
-        'Type `float32` is not assignable to type `string`', str(e.exception)
+        'Type `float32@SERVER` is not assignable to type `int32@SERVER`',
+        str(e.exception),
     )
 
   def test_aggregate_computation_wrong_client_input_type(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -830,13 +1041,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant(1.0), tf.float32
+        [tf.constant('input')], tff.types.at_clients(tf.string)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -848,7 +1059,45 @@ class TffTransformsTest(unittest.TestCase):
           ],
       )
     self.assertIn(
-        'Type `float32` is not assignable to type `string`', str(e.exception)
+        'Type `{string}@CLIENTS` is not assignable to type `{int32}@CLIENTS`',
+        str(e.exception),
+    )
+
+  def test_aggregate_computation_client_input_type_all_equal_fails(self):
+    serialized_temp_state, _ = tff.framework.serialize_value(
+        tf.constant(2), tff.types.at_server(tf.int32)
+    )
+    aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
+        serialized_client_to_server_aggregation_computation=(
+            tff.framework.serialize_computation(
+                aggregation_comp
+            ).SerializeToString()
+        ),
+        serialized_temporary_state=serialized_temp_state.SerializeToString(),
+    )
+    # Client inputs where all_equal is True are invalid. TFF expects the client
+    # input to have all_equal=False.
+    serialized_input_a, _ = tff.framework.serialize_value(
+        tf.constant(5), tff.types.at_clients(tf.int32, all_equal=True)
+    )
+    serialized_input_b, _ = tff.framework.serialize_value(
+        tf.constant(6), tff.types.at_clients(tf.int32, all_equal=True)
+    )
+    serialized_input_c, _ = tff.framework.serialize_value(
+        tf.constant(7), tff.types.at_clients(tf.int32, all_equal=True)
+    )
+    with self.assertRaises(TypeError) as e:
+      tff_transforms.aggregate(
+          aggregation_config,
+          [
+              serialized_input_a.SerializeToString(),
+              serialized_input_b.SerializeToString(),
+              serialized_input_c.SerializeToString(),
+          ],
+      )
+    self.assertIn(
+        'Expected client input to be an instance of type',
+        str(e.exception),
     )
 
 

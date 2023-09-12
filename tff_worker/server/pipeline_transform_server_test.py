@@ -14,6 +14,7 @@
 
 from collections import OrderedDict
 from concurrent import futures
+from typing import List
 import unittest
 from fcp.protos.confidentialcompute import pipeline_transform_pb2
 from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
@@ -54,6 +55,18 @@ def client_work_comp(
     example: OrderedDict[str, tf.Tensor], broadcasted_data: float
 ) -> OrderedDict[str, tf.Tensor]:
   return tff.federated_map(tf_comp, (example, broadcasted_data))
+
+
+@tff.federated_computation(
+    tff.type_at_server(tf.int32), tff.type_at_clients(tf.int32)
+)
+def aggregation_comp(state: int, value: List[int]) -> int:
+  state_at_clients = tff.federated_broadcast(state)
+  scaled_value = tff.federated_map(
+      tff.tf_computation(lambda x, y: x * y), (value, state_at_clients)
+  )
+  summed_value = tff.federated_sum(scaled_value)
+  return summed_value
 
 
 class PipelineTransformServicerTest(unittest.TestCase):
@@ -194,19 +207,14 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self.assertEqual(expected_response, self._stub.Transform(transform_request))
 
   def test_transform_executes_aggregation(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
-    serialized_aggregation_comp = tff.framework.serialize_computation(
-        aggregation_comp
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
-        serialized_aggregation_comp.SerializeToString()
+        tff.framework.serialize_computation(
+            aggregation_comp
+        ).SerializeToString()
     )
     config.aggregation.serialized_temporary_state = (
         serialized_temp_state.SerializeToString()
@@ -223,13 +231,13 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
     transform_request = pipeline_transform_pb2.TransformRequest()
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant('fox'), tf.string
+        [tf.constant(7)], tff.types.at_clients(tf.int32)
     )
     transform_request.inputs.add().unencrypted_data = (
         serialized_input_a.SerializeToString()
@@ -242,7 +250,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
     serialized_expected_output, _ = tff.framework.serialize_value(
-        tf.constant('The quick brown fox'), tf.string
+        tf.constant(2 * (5 + 6 + 7)), tff.types.at_server(tf.int32)
     )
     expected_response = pipeline_transform_pb2.TransformResponse()
     expected_response.outputs.add().unencrypted_data = (
@@ -295,19 +303,14 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
   def test_transform_aggregation_invalid_input(self):
-    aggregation_comp = tff.tf_computation(
-        lambda x, y: tf.strings.join([x, y], separator=' ', name=None),
-        (tf.string, tf.string),
-    )
-    serialized_aggregation_comp = tff.framework.serialize_computation(
-        aggregation_comp
-    )
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('The'), tf.string
+        tf.constant(2), tff.types.at_server(tf.int32)
     )
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
-        serialized_aggregation_comp.SerializeToString()
+        tff.framework.serialize_computation(
+            aggregation_comp
+        ).SerializeToString()
     )
     config.aggregation.serialized_temporary_state = (
         serialized_temp_state.SerializeToString()
@@ -324,10 +327,10 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
     transform_request = pipeline_transform_pb2.TransformRequest()
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant('quick'), tf.string
+        [tf.constant(5)], tff.types.at_clients(tf.int32)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant('brown'), tf.string
+        [tf.constant(6)], tff.types.at_clients(tf.int32)
     )
     transform_request.inputs.add().unencrypted_data = (
         serialized_input_a.SerializeToString()

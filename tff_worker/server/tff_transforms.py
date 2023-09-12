@@ -14,6 +14,7 @@
 
 """Library for executing TFF transforms on unencrypted data."""
 from collections import OrderedDict
+import logging
 from typing import Any, List, Tuple, Type, Union
 import uuid
 from fcp.protos.confidentialcompute import tff_worker_configuration_pb2 as worker_pb2
@@ -262,6 +263,82 @@ def _restore_tensorflow_checkpoint_to_dict(
     tf.io.gfile.remove(tmp_path)
 
 
+def _join_clients_placed_inputs(inputs: List[Any], type: tff.Type) -> Any:
+  """Joins all client inputs into a single object containing data to aggregate.
+
+  TFF encodes clients-placed values which are not all equal as lists, even if
+  they have only a single client value, which is the case in Trusted Brella
+  since the client_work computation is executed independently on each client.
+  Thus, the code must join the singleton lists for each client together to
+  obtain a single object containing all the data to aggregate to obtain an input
+  with the right type to pass to the aggregation computation. However, the
+  `tff.types.FederatedType` that encodes the client placement is not necessarily
+  at the top level- the client input type may contain nested
+  `tff.types.StructType` objects. In that case, it is the lists nested within
+  the structs that need to be joined together. Structs may be named or unnamed.
+
+
+  Args:
+    inputs: A list of client inputs of the TFF type specified by `type`.
+    type: The TFF type of each of the client inputs in the list and also of the
+      output that this function will generate containing the data from all
+      client inputs.
+
+  Returns:
+    An object of TFF type `type` which contains the data from all of the client
+    inputs in the `inputs` list.
+
+  Raises:
+    TypeError if the TFF type is not a `tff.types.FederatedType` or nested
+      layers of `tff.types.StructType` types for which each branch contains a
+      `tff.types.FederatedType`. There may be other types nested within each
+      `tff.types.FederatedType`, but no other types should be present above the
+      `tff.types.FederatedType`. A TypeError is also raised if any
+      `tff.types.FederatedType` encountered is not placed @CLIENTS or has
+      all_equal=True.
+  """
+  if isinstance(type, tff.FederatedType):
+    if type.placement is not tff.CLIENTS:
+      raise TypeError(
+          'Expected client input type to contain only CLIENTS-placed inputs.'
+      )
+    if type.all_equal:
+      raise TypeError(
+          'Expected client input type to contain CLIENTS-placed inputs that are'
+          ' not all equal.'
+      )
+    result = []
+    for input in inputs:
+      _check_type(input, list, name='client input')
+      result.extend(input)
+    return result
+  elif isinstance(type, tff.StructType):
+    result = None
+    for index, (name, element) in enumerate(tff.structure.to_elements(type)):
+      if name is not None:
+        if result is None:
+          result = OrderedDict()
+        inputs_for_element = [input[name] for input in inputs]
+        result[name] = _join_clients_placed_inputs(
+            inputs_for_element, type=element
+        )
+      else:
+        if result is None:
+          result = []
+        inputs_for_element = [input[index] for input in inputs]
+        result.append(
+            _join_clients_placed_inputs(inputs_for_element, type=element)
+        )
+    if isinstance(result, list):
+      return tuple(result)
+    return result
+  else:
+    raise TypeError(
+        'Unexpected client input type. Expected only StructTypes to wrap a'
+        ' FederatedType of placement CLIENTS and all_equal=False.'
+    )
+
+
 def perform_client_work(
     client_work_config: worker_pb2.TffWorkerConfiguration.ClientWork,
     unencrypted_input: bytes,
@@ -303,6 +380,10 @@ def perform_client_work(
   computation = _get_tff_computation(
       client_work_config.serialized_client_work_computation
   )
+  logging.info(
+      'Client work computation type signature is: %s',
+      computation.type_signature.formatted_representation(),
+  )
   # Check that the deserialized computation has the expected types for a
   # client work computation.
   input_type_spec = computation.type_signature.parameter
@@ -332,10 +413,15 @@ def perform_client_work(
   client_input_dict = _restore_tensorflow_checkpoint_to_dict(
       client_work_config.fed_sql_tensorflow_checkpoint, unencrypted_input
   )
+  logging.info('Executing client work computation on 1 input')
   # Wrap the client input as a list as TFF expects clients-placed inputs that
   # are not all equal to be in a list form.
   output = computation([client_input_dict], broadcasted_data)
 
+  logging.info(
+      'Serializing client work computation output to type signature %s',
+      repr(computation.type_signature.result),
+  )
   return _serialize_output(output, computation.type_signature.result)
 
 
@@ -380,6 +466,10 @@ def aggregate(
   computation = _get_tff_computation(
       aggregation_config.serialized_client_to_server_aggregation_computation
   )
+  logging.info(
+      'Aggregation computation type signature is: %s',
+      computation.type_signature.formatted_representation(),
+  )
   # Check that the deserialized computation has the expected types for an
   # aggregation computation.
   input_type_spec = computation.type_signature.parameter
@@ -397,12 +487,31 @@ def aggregate(
       temp_state_type,
       name='serialized temporary state',
   )
+
+  client_inputs = []
   for serialized_input_data in unencrypted_inputs:
     # Aggregation inputs should be serialized TFF values, until we move to
     # using the client report wire format everywhere.
     client_input = _get_tff_value(
         serialized_input_data, client_input_type, name='serialized client input'
     )
-    temp_state = computation(temp_state, client_input)
+    client_inputs.append(client_input)
+  logging.info(
+      'Joining client inputs to pass to aggregation computation. Client input'
+      ' type: %s',
+      repr(client_input_type),
+  )
+  joined_inputs = _join_clients_placed_inputs(client_inputs, client_input_type)
 
-  return _serialize_output(temp_state, computation.type_signature.result)
+  logging.info(
+      'Executing aggregation computation on %d inputs', len(client_inputs)
+  )
+  updated_server_state = computation(temp_state, joined_inputs)
+
+  logging.info(
+      'Serializing aggregation computation output to type signature %s',
+      repr(computation.type_signature.result),
+  )
+  return _serialize_output(
+      updated_server_state, computation.type_signature.result
+  )
