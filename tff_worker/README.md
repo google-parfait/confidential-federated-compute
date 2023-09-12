@@ -85,7 +85,7 @@ following steps:
     from localhost:
 
     ```
-    docker run -i -p 127.0.0.1:50051:50051 pipeline_transform_server:latest &
+    docker run -i -p 127.0.0.1:50051:8080 pipeline_transform_server:latest &
     ```
 
 4.  Now the server should be running as a background job, so you can try running

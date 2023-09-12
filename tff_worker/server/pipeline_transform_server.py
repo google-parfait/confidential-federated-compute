@@ -162,7 +162,7 @@ def serve():
   pipeline_transform_pb2_grpc.add_PipelineTransformServicer_to_server(
       PipelineTransformServicer(), server
   )
-  server.add_insecure_port('[::]:50051')
+  server.add_insecure_port('[::]:8080')
   logging.info('Starting Pipeline Transform server')
   server.start()
   server.wait_for_termination()

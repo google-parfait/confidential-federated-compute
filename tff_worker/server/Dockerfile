@@ -62,9 +62,9 @@ RUN bazelisk --output_base=/tmp/build_output build --build_python_zip tff_worker
 FROM python:3.10.0
 # Copy the necessary build artifacts into the final stage.
 COPY --from=0 /home/user/bazel-bin/tff_worker/server/pipeline_transform_server.zip /bazel-bin/tff_worker/server/pipeline_transform_server.zip
-# Document that the server will be running on port 50051.
+# Document that the server can run on port 8080
 # The port still needs to be published and mapped when running the docker container.
-EXPOSE 50051
+EXPOSE 8080
 # Configure the container to run the server on startup.
 ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 CMD [ "python3 /bazel-bin/tff_worker/server/pipeline_transform_server.zip" ]
