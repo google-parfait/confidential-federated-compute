@@ -68,16 +68,10 @@ following steps:
     RPC failed: 14: failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50051: Failed to connect to remote host: Connection refused
     ```
 
-3.  Build the Docker image that will run the Python server. The '.' argument
-    specifies the context that is available to access files that are used when
-    building the Docker image. Since the build process uses Bazel, the context
-    needs to include the workspace root, so it is important that this command is
-    run from the root of the confidential-federated-compute repo. Building the
-    image may take a while the first time it runs, but on subsequent runs parts
-    of the image building process will be cached.
+3.  Build the Docker image that will run the Python server.
 
     ```
-    docker build -f tff_worker/server/Dockerfile -t pipeline_transform_server .
+    ./kokoro/build_bazel.sh release
     ```
 
     Once the image has successfully built, you can run the server in the docker
