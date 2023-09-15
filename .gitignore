@@ -8,3 +8,4 @@ bazel-confidential-federated-compute
 bazel-out
 bazel-testlogs
 bazel-workspace
+bazelisk-linux-amd64
