@@ -77,6 +77,11 @@ if [ -z "${CONTAINER_CMD}" ]; then
   exit 1
 fi
 
+if ! command -v runc &> /dev/null
+then
+  apt-get install runc
+fi
+
 echo "[INFO] Container entry point cmd: \"${CONTAINER_CMD}\""
 
 echo "[INFO] Creating config.json"
