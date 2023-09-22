@@ -26,6 +26,7 @@ py_binary(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_py_proto",
+        "@oak//oak_containers/proto:interfaces_py_grpc",
         "@pypi_deps_tensorflow_federated//:pkg",
         "@tensorflow-federated//tensorflow_federated/proto/v0:computation_py_pb2",
         "@tensorflow-federated//tensorflow_federated/proto/v0:executor_py_pb2",

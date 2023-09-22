@@ -96,4 +96,10 @@ echo "[INFO] Creating config.json"
 
 echo "[INFO] Creating runtime bundle"
 
+# By default /etc/hosts is empty. To enable name resolution, add a mapping for
+# localhost.
+echo '127.0.0.1 localhost' >> "${ROOTFS_DIR}/etc/hosts"
+
+echo "[INFO] Contents of /etc/hosts: $(cat ${ROOTFS_DIR}/etc/hosts)"
+
 tar --create --file="${OUTPUT_FILE}" --directory="${WORK_DIR}" ./rootfs ./config.json

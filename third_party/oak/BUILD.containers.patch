@@ -1,0 +1,30 @@
+--- /dev/null
++++ oak_containers/proto/BUILD
+@@ -0,0 +0,27 @@
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++)
++
++proto_library(
++    name = "interfaces_proto",
++    srcs = ["interfaces.proto"],
++    deps = [
++      "//oak_crypto/proto/v1:crypto_proto",
++      "//oak_remote_attestation/proto/v1:messages_proto",
++      "@com_google_protobuf//:empty_proto",
++    ]
++)
++
++py_proto_library(
++    name = "interfaces_py_proto",
++    deps = [":interfaces_proto"],
++)
++
++py_grpc_library(
++    name = "interfaces_py_grpc",
++    srcs = [":interfaces_proto"],
++    deps = [":interfaces_py_proto"],
++)
++

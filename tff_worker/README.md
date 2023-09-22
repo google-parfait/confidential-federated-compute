@@ -48,7 +48,7 @@ following steps:
 
 1.  Install [bazelisk](https://github.com/bazelbuild/bazelisk#installation).
 
-2.  Build the Pipeline Transform client:
+1.  Build the Pipeline Transform client:
 
     ```
     bazelisk build //tff_worker/client:pipeline_transform_cpp_client
@@ -68,13 +68,13 @@ following steps:
     RPC failed: 14: failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50051: Failed to connect to remote host: Connection refused
     ```
 
-3.  Build the Docker image that will run the Python server.
+1.  Build the Docker image that will run the Python server.
 
     ```
     ./kokoro/build_bazel.sh release
     ```
 
-    Once the image has successfully built, you can run the server in the docker
+1.  Once the image has successfully built, you can run the server in the docker
     container, publishing and mapping the gRPC server port so it can be accessed
     from localhost:
 
@@ -82,7 +82,7 @@ following steps:
     docker run -i -p 127.0.0.1:50051:8080 pipeline_transform_server:latest &
     ```
 
-4.  Now the server should be running as a background job, so you can try running
+1.  Now the server should be running as a background job, so you can try running
     the C++ client again:
 
     ```
@@ -96,7 +96,7 @@ following steps:
     RPC failed: 9: ConfigureAndAttest must be called before Transform.
     ```
 
-5.  To bring the docker process back to the foreground in order to quit the
+1.  To bring the docker process back to the foreground in order to quit the
     server, use the `fg` command.
 
 ## Debugging common issues

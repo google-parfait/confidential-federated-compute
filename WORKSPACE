@@ -166,3 +166,13 @@ git_repository(
     ],
     remote = "https://github.com/tensorflow/federated.git",
 )
+
+git_repository(
+  name = "oak",
+  commit = "c57b8467d767396f236a7daf833d0b98545d909c",
+  patches = [
+      "//third_party/oak:BUILD.containers.patch",
+      "//third_party/oak:BUILD.remote_attestation.patch",
+  ],
+  remote = "https://github.com/project-oak/oak.git",
+)

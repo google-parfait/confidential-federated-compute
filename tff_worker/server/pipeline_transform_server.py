@@ -19,7 +19,9 @@ import logging
 from fcp.protos.confidentialcompute import pipeline_transform_pb2
 from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
 from fcp.protos.confidentialcompute import tff_worker_configuration_pb2
+from google.protobuf import empty_pb2
 import grpc
+from oak.oak_containers.proto import interfaces_pb2_grpc as oak_containers_pb2_grpc
 import tff_transforms
 
 
@@ -165,8 +167,18 @@ def serve():
       PipelineTransformServicer(), server
   )
   server.add_insecure_port('[::]:8080')
+
+  # The Orchestrator gRPC service is listening on a UDS path. See
+  # https://github.com/project-oak/oak/blob/55901b8a4c898c00ecfc14ef4bc65f30cd31d6a9/oak_containers_hello_world_trusted_app/src/orchestrator_client.rs#L45
+  channel = grpc.insecure_channel('unix:/oak_utils/orchestrator_ipc')
+  oak_orchestrator_stub = oak_containers_pb2_grpc.OrchestratorStub(channel)
+
   logging.info('Starting Pipeline Transform server')
   server.start()
+
+  empty_request = empty_pb2.Empty()
+  _ = oak_orchestrator_stub.NotifyAppReady(empty_request)
+
   server.wait_for_termination()
 
 

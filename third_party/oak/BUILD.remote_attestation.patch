@@ -1,0 +1,42 @@
+--- oak_remote_attestation/proto/v1/BUILD
++++ oak_remote_attestation/proto/v1/BUILD
+@@ -15,9 +15,7 @@
+ #
+
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+-load("@io_grpc_grpc_java//:java_grpc_library.bzl", "java_grpc_library")
+ load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+-load("@rules_java//java:defs.bzl", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+@@ -87,29 +85,3 @@ cc_grpc_library(
+     deps = [":service_unary_cc_proto"],
+ )
+
+-java_proto_library(
+-    name = "messages_java_proto",
+-    deps = [":messages_proto"],
+-)
+-
+-java_proto_library(
+-    name = "service_streaming_java_proto",
+-    deps = [":service_streaming_proto"],
+-)
+-
+-java_grpc_library(
+-    name = "service_streaming_java_grpc",
+-    srcs = [":service_streaming_proto"],
+-    deps = [":service_streaming_java_proto"],
+-)
+-
+-java_proto_library(
+-    name = "service_unary_java_proto",
+-    deps = [":service_unary_proto"],
+-)
+-
+-java_grpc_library(
+-    name = "service_unary_java_grpc",
+-    srcs = [":service_unary_proto"],
+-    deps = [":service_unary_java_proto"],
+-)
