@@ -5,12 +5,120 @@ that use TFF for use in Trusted Brella.
 
 ## Prerequisites
 
-Installing Docker is a prerequisite for the commands in this README. Rootless
-Docker is recommended for compatibility with Oak. See
-[Oak's Rootless Docker](https://github.com/project-oak/oak/blob/main/docs/development.md#rootless-docker)
-installation instructions.
+### Rootless Docker
 
-## Regenerate requirements.txt for the TFF Pipeline Transform Server
+Installing Docker is a prerequisite for the commands in this README.
+
+Scripts in this repository that use Docker expect that the Docker daemon is
+running as the local user instead of root.
+
+In order to run Docker without root privileges, follow the guide at
+https://docs.docker.com/engine/security/rootless/ .
+
+Below is a quick summary of the relevant steps:
+
+1.  If you have an existing version of Docker running as root, uninstall that
+    first:
+
+    ```bash
+    sudo systemctl disable --now docker.service docker.socket
+    sudo apt remove docker-ce docker-engine docker-runc docker-containerd
+    ```
+
+1.  Install `uidmap`:
+
+    ```bash
+    sudo apt install uidmap
+    ```
+
+1.  Add a range of subids for the current user:
+
+    ```bash
+    sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 $USER
+    ```
+
+1.  Download the install script for rootless Docker, and run it as the current
+    user:
+
+    ```bash
+    curl -fSSL https://get.docker.com/rootless > $HOME/rootless
+    sh $HOME/rootless
+    ```
+
+1.  Add the generated environment variables to your shell:
+
+    ```bash
+    export PATH=$HOME/bin:$PATH
+    export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock
+    ```
+
+    **As an alternative** to setting the `DOCKER_HOST` environment variable, it
+    is possible to instead run the following command to set the Docker context:
+
+    ```bash
+    docker context use rootless
+    ```
+
+    In either case, running the following command should show the current
+    status:
+
+    ```console
+    $ docker context ls
+    NAME        DESCRIPTION                               DOCKER ENDPOINT                       KUBERNETES ENDPOINT   ORCHESTRATOR
+    default *   Current DOCKER_HOST based configuration   unix:///run/user/152101/docker.sock                         swarm
+    rootless    Rootless mode                             unix:///run/user/152101/docker.sock
+    Warning: DOCKER_HOST environment variable overrides the active context. To use a context, either set the global --context flag, or unset DOCKER_HOST environment variable.
+    ```
+
+    This should show either that the default context is selected and is using
+    the user-local docker endpoint from the `DOCKER_HOST` variable, or that the
+    `rootless` context is selected.
+
+### Bazelisk
+
+We use Bazelisk to ensure a consistent Bazel version and setup between local
+development and continuous integration builds. Install bazelisk by following the
+[instructions in the repo](https://github.com/bazelbuild/bazelisk#installation).
+
+## Building the TFF Worker Pipeline Transform Server for use with Oak Containers
+
+The TFF Worker Pipeline Transform server is a gRPC server running on Oak
+Containers and implementing the PipelineTransform API so that the untrusted
+application can instruct it to perform transformations on data using TFF.
+
+The following commands should all be executed from the root of the
+confidential-federated-compute repository.
+
+Build the Docker image that will run the Python server and package it as an OCI
+runtime bundle. To ensure the resulting OCI runtime bundle is copied to a
+desired directory, ensure the `KOKORO_ARTIFACTS_DIR` environment variable is
+set. The following command should print a directory:
+
+```
+echo "${KOKORO_ARTIFACTS_DIR}"
+```
+
+Now run the release build to create the Docker container, package it as an OCI
+runtime bundle, and copy it to `KOKORO_ARTIFACTS_DIR`.
+
+```
+./kokoro/build_bazel.sh release
+```
+
+### Debugging common issues
+
+If you are running low on disk space you should prune dangling images and
+containers:
+
+```
+docker image prune
+```
+
+```
+docker container prune
+```
+
+## Regenerating requirements.txt for the TFF Pipeline Transform Server
 
 To ensure safe downloads in the case that an attacker compromises the PyPI
 account of a library we depend on, we require hashes for all packages installed
@@ -26,88 +134,3 @@ bazelisk run tff_worker:requirements.update
 Note that it is imperative that the resulting requirements.txt is checked in; if
 generating the requirements were part of the docker build process of the
 tff_worker, we wouldn't get the security benefits of using hashes.
-
-## TFF Worker Pipeline Transform Server
-
-The TFF Worker Pipeline Transform server will be a gRPC server running on Oak
-Containers and implementing the pipeline_transform API so that the untrusted
-application can instruct it to perform transformations on data using TFF.
-
-For now, we can run a Python gRPC server as a docker container with a port
-exposed to the host. For testing purposes, we run a C++ client on the host.
-Using a C++ client makes it easier to build within a docker container but
-produce a binary that can be run on the host, so that people who want to develop
-using this repo don't need to have a particular version of bazel installed on
-their host.
-
-The following commands should all be executed from the root of the
-confidential-federated-compute repository.
-
-We use bazel from within a Docker container to build the C++ client via the
-following steps:
-
-1.  Install [bazelisk](https://github.com/bazelbuild/bazelisk#installation).
-
-1.  Build the Pipeline Transform client:
-
-    ```
-    bazelisk build //tff_worker/client:pipeline_transform_cpp_client
-    ```
-
-    The C++ client should now be runnable from the host.
-
-    ```
-    bazel-bin/tff_worker/client/pipeline_transform_cpp_client
-    ```
-
-    Since there is no server running, the C++ client is expected to produce
-    output like the following:
-
-    ```
-    Starting RPC Client for Pipeline Transform Server.
-    RPC failed: 14: failed to connect to all addresses; last error: UNKNOWN: ipv4:127.0.0.1:50051: Failed to connect to remote host: Connection refused
-    ```
-
-1.  Build the Docker image that will run the Python server.
-
-    ```
-    ./kokoro/build_bazel.sh release
-    ```
-
-1.  Once the image has successfully built, you can run the server in the docker
-    container, publishing and mapping the gRPC server port so it can be accessed
-    from localhost:
-
-    ```
-    docker run -i -p 127.0.0.1:50051:8080 pipeline_transform_server:latest &
-    ```
-
-1.  Now the server should be running as a background job, so you can try running
-    the C++ client again:
-
-    ```
-    bazel-bin/tff_worker/client/pipeline_transform_cpp_client
-    ```
-
-    This time, it should produce the following output:
-
-    ```
-    Starting RPC Client for Pipeline Transform Server.
-    RPC failed: 9: ConfigureAndAttest must be called before Transform.
-    ```
-
-1.  To bring the docker process back to the foreground in order to quit the
-    server, use the `fg` command.
-
-## Debugging common issues
-
-If you are running low on disk space you should prune dangling images and
-containers:
-
-```
-docker image prune
-```
-
-```
-docker container prune
-```
