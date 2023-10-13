@@ -9,3 +9,4 @@ bazel-out
 bazel-testlogs
 bazel-workspace
 bazelisk-linux-amd64
+tff_worker/server/__pycache__

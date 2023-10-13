@@ -13,7 +13,7 @@ declare -ar DOCKER_RUN_FLAGS=(
 )
 
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_ID}" sh -c 'cargo build && cargo test'
-./kokoro/bazel_build.sh "$@"
+./kokoro/bazel_build.sh
 
 if [ "$1" == "release" ]; then
   docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_ID}" \

@@ -80,19 +80,47 @@ We use Bazelisk to ensure a consistent Bazel version and setup between local
 development and continuous integration builds. Install bazelisk by following the
 [instructions in the repo](https://github.com/bazelbuild/bazelisk#installation).
 
-## Building the TFF Worker Pipeline Transform Server for use with Oak Containers
+## Developing the TFF Worker Pipeline Transform Server
 
 The TFF Worker Pipeline Transform server is a gRPC server running on Oak
 Containers and implementing the PipelineTransform API so that the untrusted
 application can instruct it to perform transformations on data using TFF.
 
-The following commands should all be executed from the root of the
+Note: The following commands should all be executed from the root of the
 confidential-federated-compute repository.
 
-Build the Docker image that will run the Python server and package it as an OCI
-runtime bundle. To ensure the resulting OCI runtime bundle is copied to a
-desired directory, ensure the `KOKORO_ARTIFACTS_DIR` environment variable is
-set. The following command should print a directory:
+### Building for fast iteration during development
+
+To build and test the code while you are actively making changes, you can start
+up a shell in a Docker container that has all the necessary build dependencies
+by running the following command:
+
+```
+./scripts/docker_run.sh bash
+```
+
+This may take a while the first time since it has to build the Docker container
+with the necessary build dependencies but should be faster on future iterations.
+
+Within this shell you can build and test the code using Bazelisk commands. For
+example, to run all Bazel tests in the repository you can try:
+
+```
+bazelisk test ...
+```
+
+The Bazel build artifacts will be cached within the `.bazel_cache` folder so
+that they last beyond the lifetime of the Docker container which improves build
+times.
+
+### Building for use with Oak Containers
+
+Once you are ready to test your local version of the Python Pipeline
+Transform server as part of the larger system, you will need to build the Docker
+image that will run the server and package it as an OCI runtime bundle. To
+ensure the resulting OCI runtime bundle is copied to a desired directory, ensure
+the `KOKORO_ARTIFACTS_DIR` environment variable is set. The following command
+should print a directory:
 
 ```
 echo "${KOKORO_ARTIFACTS_DIR}"
@@ -102,7 +130,7 @@ Now run the release build to create the Docker container, package it as an OCI
 runtime bundle, and copy it to `KOKORO_ARTIFACTS_DIR`.
 
 ```
-./kokoro/build_bazel.sh release
+./scripts/docker_run.sh ./scripts/bazel_build.sh release
 ```
 
 ### Debugging common issues
