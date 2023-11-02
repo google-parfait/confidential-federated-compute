@@ -170,7 +170,7 @@ git_repository(
 
 git_repository(
   name = "oak",
-  commit = "c57b8467d767396f236a7daf833d0b98545d909c",
+  commit = "6440d8db80570da5dfd2882ab00601a8fd0204bc",
   patches = [
       "//third_party/oak:BUILD.containers.patch",
       "//third_party/oak:BUILD.remote_attestation.patch",
