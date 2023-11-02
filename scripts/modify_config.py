@@ -1,7 +1,14 @@
-# Python script for use in scripts/export_container_bundle.sh to replace
-# the process.args field in a json object read from stdin with a json object
-# provided as a string to the --command argument, and output the result to
-# stdout.
+# Python script for use in scripts/export_container_bundle.sh to modify a
+# config.json object read from stdin to make it suitable for use with Oak
+# Containers.
+#
+# Replaces the process.args field with a json object provided as a string to the
+# --command argument.
+#
+# Also sets the root.readonly field to False which is necessary to allow python
+# to write to temporary directories.
+#
+# Outputs the modified json object to stdout.
 #
 # Used to avoid an additional dependency on jq.
 import argparse
@@ -22,4 +29,5 @@ args = argparser.parse_args()
 command_list = json.loads(args.command)
 json_obj = json.load(sys.stdin)
 json_obj['process']['args'] = command_list
+json_obj['root']['readonly'] = False
 json.dump(json_obj, sys.stdout)

@@ -83,8 +83,9 @@ echo "[INFO] Creating config.json"
 (
     cd "${WORK_DIR}"
     runc spec --rootless
-    # Replace the entrypoint. Use a python script so as not to require a dependency on jq.
-    python3 ${ABSOLUTE_SCRIPT_PATH}/replace_config_command.py ${CONTAINER_CMD} < config.json > new.json
+    # Update the config.json to make it suitable for use with Oak Containers.
+    # Use a python script so as not to require a dependency on jq.
+    python3 ${ABSOLUTE_SCRIPT_PATH}/modify_config.py ${CONTAINER_CMD} < config.json > new.json
     mv --force new.json config.json
     echo "[INFO] Contents of config.json after replacing process.args with CMD: $(cat config.json)"
 )
