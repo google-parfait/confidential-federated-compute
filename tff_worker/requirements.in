@@ -1,2 +1,2 @@
-tensorflow-federated
+tensorflow-federated==0.61.0
 portpicker
