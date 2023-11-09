@@ -150,7 +150,7 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
     name = "federated-compute",
-    commit = "04653d706de4ea1206dbbb2aec49f4e012c837c4",
+    commit = "07693e76f28273ab97fdbf20488de3264c143d77",
     remote = "https://github.com/google/federated-compute.git",
 )
 
@@ -176,4 +176,26 @@ git_repository(
       "//third_party/oak:BUILD.remote_attestation.patch",
   ],
   remote = "https://github.com/project-oak/oak.git",
+)
+
+http_archive(
+    name = "googletest",
+    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
+    strip_prefix = "googletest-1.14.0",
+
+)
+
+# TODO: Switch to using the official SQLite repo. This is used for convenience during prototyping since it's bazel-friendly.
+SQLITE_BAZEL_COMMIT = "2a512f90dcdabfc7c3279cc324f1abd84af49911"
+
+http_archive(
+    name = "sqlite_bazel",
+    strip_prefix = "sqlite-bazel-" + SQLITE_BAZEL_COMMIT,
+    urls = ["https://github.com/rockwotj/sqlite-bazel/archive/%s.zip" % SQLITE_BAZEL_COMMIT],
+)
+
+http_archive(
+  name = "com_google_absl",
+  urls = ["https://github.com/abseil/abseil-cpp/archive/98eb410c93ad059f9bba1bf43f5bb916fc92a5ea.zip"],
+  strip_prefix = "abseil-cpp-98eb410c93ad059f9bba1bf43f5bb916fc92a5ea",
 )
