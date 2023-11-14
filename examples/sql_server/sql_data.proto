@@ -6,7 +6,9 @@ import "fcp/client/example_query_result.proto";
 
 // TODO: Move these protos to FCP.
 message SqlData {
-  fcp.client.ExampleQueryResult vector_data = 1;
+  fcp.client.ExampleQueryResult.VectorData vector_data = 1;
+
+  int64 num_rows = 2;
 }
 
 // Schema information describing a column in the schema.
@@ -50,8 +52,11 @@ message DatabaseSchema {
 
 message SqlQuery {
   // Schema information for the client database required to run this query.
-  DatabaseSchema database_schema = 2;
+  DatabaseSchema input_schema = 2;
 
   // The raw SQL query string.
   string raw_sql = 3;
+
+  // Schema information for results of `raw_query`.
+  DatabaseSchema output_schema = 4;
 }

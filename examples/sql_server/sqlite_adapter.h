@@ -1,7 +1,6 @@
 #include <memory>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -11,6 +10,7 @@
 
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::sql_data::ColumnSchema;
+using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
 
@@ -50,17 +50,12 @@ class SqliteAdapter {
 
   // Clears contents from the given `table` and inserts the specified
   // `contents`. The table must be created first via `DefineTable`.
-  absl::Status SetTableContents(
-      TableSchema schema,
-      absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-          contents,
-      int num_rows);
+  absl::Status SetTableContents(TableSchema schema, SqlData contents);
 
   // Evaluates the given SQL `query` statement, producing results in the
   // provided `output_schema`.
-  absl::StatusOr<
-      absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>>
-  EvaluateQuery(absl::string_view query, TableSchema output_schema) const;
+  absl::StatusOr<SqlData> EvaluateQuery(absl::string_view query,
+                                        TableSchema output_schema) const;
 
  private:
   // The `db` must be non-null. This object takes ownership of the databaseß

@@ -7,6 +7,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Int64Values;
 using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
@@ -81,13 +82,14 @@ class SetTableContentsTest : public SqliteAdapterTest {
     return values;
   }
 
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-  CreateTableContents(std::initializer_list<int> int_vals,
-                      std::initializer_list<std::string> str_vals) {
-    absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-        contents;
-    contents["int_vals"] = CreateInt64Values(int_vals);
-    contents["str_vals"] = CreateStringValues(str_vals);
+  SqlData CreateTableContents(std::initializer_list<int> int_vals,
+                              std::initializer_list<std::string> str_vals) {
+    SqlData contents;
+    ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
+    (*vector_data->mutable_vectors())["int_vals"] = CreateInt64Values(int_vals);
+    (*vector_data->mutable_vectors())["str_vals"] =
+        CreateStringValues(str_vals);
+    contents.set_num_rows(int_vals.size());
     return contents;
   }
 
@@ -107,58 +109,84 @@ class SetTableContentsTest : public SqliteAdapterTest {
 };
 
 TEST_F(SetTableContentsTest, BasicUsage) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+  SqlData contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
   TableSchema schema = CreateInputTableSchema();
-  int num_rows = 3;
 
-  CHECK_OK(sqlite_->SetTableContents(schema, contents, num_rows));
+  CHECK_OK(sqlite_->SetTableContents(schema, contents));
 }
 
 TEST_F(SetTableContentsTest, TableDoesNotExist) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1}, {"a"});
+  SqlData contents = CreateTableContents({1}, {"a"});
   TableSchema schema = CreateInputTableSchema("nonexistent");
-  int num_rows = 1;
 
-  absl::Status result_status =
-      sqlite_->SetTableContents(schema, contents, num_rows);
+  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(), HasSubstr("no such table"));
 }
 
 TEST_F(SetTableContentsTest, ExtraColumn) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1}, {"a"});
+  SqlData contents = CreateTableContents({1}, {"a"});
   TableSchema schema = CreateInputTableSchema(kTableName, "extra_col");
-  int num_rows = 1;
 
-  absl::Status result_status =
-      sqlite_->SetTableContents(schema, contents, num_rows);
+  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
-              HasSubstr("table t has no column named extra_col"));
+              HasSubstr("Column `extra_col` is missing from `contents`"));
 }
 
 TEST_F(SetTableContentsTest, MissingColumn) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents;
-  contents["int_vals"] = CreateInt64Values({1, 2, 3});
+  SqlData contents;
+  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
+  (*vector_data->mutable_vectors())["int_vals"] = CreateInt64Values({1, 2, 3});
+  contents.set_num_rows(3);
   TableSchema schema = CreateInputTableSchema();
-  int num_rows = 3;
 
-  absl::Status result_status =
-      sqlite_->SetTableContents(schema, contents, num_rows);
+  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
               HasSubstr("don't have the same number of columns"));
 }
 
-TEST_F(SetTableContentsTest, ZeroRows) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({}, {});
+TEST_F(SetTableContentsTest, NumRowsTooLarge) {
+  std::string col_name = "int_vals";
+  SqlData contents;
+  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
+  (*vector_data->mutable_vectors())[col_name] = CreateInt64Values({1, 2, 3});
+  contents.set_num_rows(4);
+  TableSchema schema;
+  schema.set_name(std::string("t"));
+  ColumnSchema* col1 = schema.add_column();
+  col1->set_name(col_name);
+  col1->set_type(ColumnSchema::DataType::ColumnSchema_DataType_INT64);
 
-  CHECK_OK(sqlite_->SetTableContents(CreateInputTableSchema(), contents, 0));
+  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
+  ASSERT_TRUE(absl::IsInvalidArgument(result_status));
+  ASSERT_THAT(result_status.message(),
+              HasSubstr("Column has the wrong number of rows"));
+}
+
+TEST_F(SetTableContentsTest, NumRowsTooSmall) {
+  std::string col_name = "int_vals";
+  SqlData contents;
+  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
+  (*vector_data->mutable_vectors())[col_name] = CreateInt64Values({1, 2, 3});
+  contents.set_num_rows(1);
+  TableSchema schema;
+  schema.set_name(std::string("t"));
+  ColumnSchema* col1 = schema.add_column();
+  col1->set_name(col_name);
+  col1->set_type(ColumnSchema::DataType::ColumnSchema_DataType_INT64);
+
+  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
+  ASSERT_TRUE(absl::IsInvalidArgument(result_status));
+  ASSERT_THAT(result_status.message(),
+              HasSubstr("Column has the wrong number of rows"));
+}
+
+TEST_F(SetTableContentsTest, ZeroRows) {
+  SqlData contents = CreateTableContents({}, {});
+
+  CHECK_OK(sqlite_->SetTableContents(CreateInputTableSchema(), contents));
 }
 
 class EvaluateQueryTest : public SetTableContentsTest {
@@ -179,11 +207,12 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(query, output_schema);
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(results->at(output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(0), 2);
+  auto result_status = sqlite_->EvaluateQuery(query, output_schema);
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 2);
 }
 
 TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
@@ -195,11 +224,12 @@ TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(query, output_schema);
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(results->at(output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(0), 2);
+  auto result_status = sqlite_->EvaluateQuery(query, output_schema);
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 2);
 }
 
 TEST_F(EvaluateQueryTest, InvalidQueryParseError) {
@@ -255,46 +285,45 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(
+  auto result_status = sqlite_->EvaluateQuery(
       R"sql(
                             WITH D (x) AS (VALUES (1), (2), (3))
                             SELECT * FROM D WHERE FALSE;
                            )sql",
       output_schema);
 
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(!results->at(output_col_name).has_int64_values());
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(!result.at(output_col_name).has_int64_values());
 }
 
 TEST_F(EvaluateQueryTest, ResultsFromTable) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({42}, {"a"});
+  SqlData contents = CreateTableContents({42}, {"a"});
   TableSchema schema = CreateInputTableSchema();
-  int num_rows = 1;
-  CHECK_OK(sqlite_->SetTableContents(schema, contents, num_rows));
+  CHECK_OK(sqlite_->SetTableContents(schema, contents));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results =
+  auto result_status =
       sqlite_->EvaluateQuery(R"sql(SELECT int_vals FROM t;)sql", output_schema);
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(results->at(output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(0), 42);
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 42);
 }
 
 TEST_F(EvaluateQueryTest, SetTableContentsClearsPreviousContents) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+  SqlData contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
   TableSchema schema = CreateInputTableSchema();
   int num_rows = 3;
   int kNumSetContents = 5;
   for (int i = 0; i < kNumSetContents; ++i) {
-    CHECK_OK(sqlite_->SetTableContents(schema, contents, num_rows));
+    CHECK_OK(sqlite_->SetTableContents(schema, contents));
   }
 
   std::string output_col_name = "n";
@@ -302,42 +331,40 @@ TEST_F(EvaluateQueryTest, SetTableContentsClearsPreviousContents) {
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(R"sql(SELECT COUNT(*) AS n FROM t;)sql",
-                                        output_schema);
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(results->at(output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(0), num_rows);
+  auto result_status = sqlite_->EvaluateQuery(
+      R"sql(SELECT COUNT(*) AS n FROM t;)sql", output_schema);
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), num_rows);
 }
 
 TEST_F(EvaluateQueryTest, MultipleResultRows) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1, 2}, {"a", "b"});
+  SqlData contents = CreateTableContents({1, 2}, {"a", "b"});
   TableSchema schema = CreateInputTableSchema();
-  int num_rows = 2;
-  CHECK_OK(sqlite_->SetTableContents(schema, contents, num_rows));
+  CHECK_OK(sqlite_->SetTableContents(schema, contents));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(
+  auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals FROM t ORDER BY int_vals;)sql", output_schema);
 
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(output_col_name));
-  ASSERT_TRUE(results->at(output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(0), 1);
-  ASSERT_EQ(results->at(output_col_name).int64_values().value(1), 2);
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(output_col_name));
+  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 1);
+  ASSERT_EQ(result.at(output_col_name).int64_values().value(1), 2);
 }
 
 TEST_F(EvaluateQueryTest, MultipleColumns) {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      contents = CreateTableContents({1}, {"a"});
+  SqlData contents = CreateTableContents({1}, {"a"});
   TableSchema schema = CreateInputTableSchema();
-  int num_rows = 1;
-  CHECK_OK(sqlite_->SetTableContents(schema, contents, num_rows));
+  CHECK_OK(sqlite_->SetTableContents(schema, contents));
 
   std::string int_output_col_name = "int_vals";
   std::string str_output_col_name = "str_vals";
@@ -347,16 +374,17 @@ TEST_F(EvaluateQueryTest, MultipleColumns) {
   SetColumnNameAndType(output_schema.add_column(), str_output_col_name,
                        sql_data::ColumnSchema_DataType_STRING);
 
-  auto results = sqlite_->EvaluateQuery(
+  auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals, str_vals FROM t;)sql", output_schema);
 
-  ASSERT_TRUE(results.ok());
-  ASSERT_TRUE(results->contains(int_output_col_name));
-  ASSERT_TRUE(results->at(int_output_col_name).has_int64_values());
-  ASSERT_EQ(results->at(int_output_col_name).int64_values().value(0), 1);
-  ASSERT_TRUE(results->contains(str_output_col_name));
-  ASSERT_TRUE(results->at(str_output_col_name).has_string_values());
-  ASSERT_EQ(results->at(str_output_col_name).string_values().value(0), "a");
+  ASSERT_TRUE(result_status.ok());
+  auto result = result_status->vector_data().vectors();
+  ASSERT_TRUE(result.contains(int_output_col_name));
+  ASSERT_TRUE(result.at(int_output_col_name).has_int64_values());
+  ASSERT_EQ(result.at(int_output_col_name).int64_values().value(0), 1);
+  ASSERT_TRUE(result.contains(str_output_col_name));
+  ASSERT_TRUE(result.at(str_output_col_name).has_string_values());
+  ASSERT_EQ(result.at(str_output_col_name).string_values().value(0), "a");
 }
 
 TEST_F(EvaluateQueryTest, IncorrectSchemaNumColumns) {
@@ -366,16 +394,16 @@ TEST_F(EvaluateQueryTest, IncorrectSchemaNumColumns) {
   column->set_name(output_col_name);
   column->set_type(sql_data::ColumnSchema_DataType_INT64);
 
-  auto results = sqlite_->EvaluateQuery(
+  auto result_status = sqlite_->EvaluateQuery(
       R"sql(
                     WITH D (v1, v2) AS (VALUES (1, 2), (3, 4), (5, 6))
                     SELECT * FROM D;
                     )sql",
       output_schema);
 
-  ASSERT_TRUE(absl::IsInvalidArgument(results.status()));
+  ASSERT_TRUE(absl::IsInvalidArgument(result_status.status()));
   ASSERT_THAT(
-      results.status().message(),
+      result_status.status().message(),
       HasSubstr("Query results did not match the specified output schema"));
 }
 
@@ -385,12 +413,12 @@ TEST_F(EvaluateQueryTest, IncorrectSchemaColumnNames) {
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
                        sql_data::ColumnSchema_DataType_INT64);
 
-  auto results =
+  auto result_status =
       sqlite_->EvaluateQuery(R"sql(SELECT 42 AS v)sql", output_schema);
 
-  ASSERT_TRUE(absl::IsInvalidArgument(results.status()));
+  ASSERT_TRUE(absl::IsInvalidArgument(result_status.status()));
   ASSERT_THAT(
-      results.status().message(),
+      result_status.status().message(),
       HasSubstr("Query results did not match the specified output schema"));
 }
 
@@ -411,7 +439,7 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
   SetColumnNameAndType(output_schema.add_column(), "binary_val",
                        sql_data::ColumnSchema_DataType_BYTES);
 
-  auto results = sqlite_->EvaluateQuery(
+  auto result_status = sqlite_->EvaluateQuery(
       R"sql(
                             SELECT
                               1 AS int32_val,
@@ -424,6 +452,6 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
                             )sql",
       output_schema);
 
-  LOG(INFO) << results.status().message();
-  ASSERT_TRUE(results.ok());
+  LOG(INFO) << result_status.status().message();
+  ASSERT_TRUE(result_status.ok());
 }

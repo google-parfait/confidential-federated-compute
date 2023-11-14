@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -17,8 +16,10 @@
 #include "fcp/client/example_query_result.pb.h"
 #include "sqlite3.h"
 
+using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::sql_data::ColumnSchema;
+using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
 
@@ -127,6 +128,10 @@ absl::Status ValidateQueryOutputSchema(sqlite3_stmt* stmt,
   return absl::OkStatus();
 }
 
+// Read the result value of a SQLite statement at the specified column index.
+//
+// The result value is appended to the `ExampleQueryResult_VectorData_Values*
+// result` column.
 absl::Status ReadSqliteColumn(sqlite3_stmt* stmt,
                               ColumnSchema::DataType column_type,
                               int column_index,
@@ -172,6 +177,44 @@ absl::Status ReadSqliteColumn(sqlite3_stmt* stmt,
     default:
       return absl::InvalidArgumentError(
           "Not a valid column type, can't read this column");
+  }
+  return absl::OkStatus();
+}
+
+// Validate that all `Values` have the same expected number of rows.
+absl::Status ValidateNumRows(ExampleQueryResult_VectorData_Values values,
+                             ColumnSchema::DataType column_type,
+                             int expected_num_rows) {
+  int num_values;
+  switch (column_type) {
+    case ColumnSchema::INT32:
+      num_values = values.int32_values().value_size();
+      break;
+    case ColumnSchema::INT64:
+      num_values = values.int64_values().value_size();
+      break;
+    case ColumnSchema::BOOL:
+      num_values = values.bool_values().value_size();
+      break;
+    case ColumnSchema::FLOAT:
+      num_values = values.float_values().value_size();
+      break;
+    case ColumnSchema::DOUBLE:
+      num_values = values.double_values().value_size();
+      break;
+    case ColumnSchema::STRING:
+      num_values = values.string_values().value_size();
+      break;
+    case ColumnSchema::BYTES:
+      num_values = values.bytes_values().value_size();
+      break;
+    default:
+      return absl::InvalidArgumentError("Unsupported column type.");
+  }
+  if (num_values != expected_num_rows) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Column has the wrong number of rows: expected %d but got %d.",
+        expected_num_rows, num_values));
   }
   return absl::OkStatus();
 }
@@ -231,12 +274,9 @@ absl::Status SqliteAdapter::DefineTable(absl::string_view create_table_stmt) {
   return absl::OkStatus();
 }
 
-absl::Status SqliteAdapter::SetTableContents(
-    TableSchema schema,
-    absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-        contents,
-    int num_rows) {
-  if (contents.size() != schema.column_size()) {
+absl::Status SqliteAdapter::SetTableContents(TableSchema schema,
+                                             SqlData contents) {
+  if (contents.vector_data().vectors().size() != schema.column_size()) {
     return absl::InvalidArgumentError(
         "`schema` and `contents` don't have the same number of columns");
   }
@@ -250,7 +290,15 @@ absl::Status SqliteAdapter::SetTableContents(
   // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ?);
   std::vector<std::string> column_names(schema.column_size());
   for (int i = 0; i < schema.column_size(); ++i) {
-    column_names[i] = schema.column(i).name();
+    std::string column_name = schema.column(i).name();
+    if (!contents.vector_data().vectors().contains(column_name)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Column `%s` is missing from `contents`.", column_name));
+    }
+    column_names[i] = column_name;
+    FCP_RETURN_IF_ERROR(
+        ValidateNumRows(contents.vector_data().vectors().at(column_name),
+                        schema.column(i).type(), contents.num_rows()));
   }
 
   std::string insert_stmt = absl::StrFormat(
@@ -264,11 +312,11 @@ absl::Status SqliteAdapter::SetTableContents(
       db_, insert_stmt.data(), insert_stmt.size(), &stmt, nullptr)));
   StatementFinalizer finalizer(stmt);
 
-  for (int row_num = 0; row_num < num_rows; ++row_num) {
-    for (int col_num = 0; col_num < contents.size(); ++col_num) {
+  for (int row_num = 0; row_num < contents.num_rows(); ++row_num) {
+    for (int col_num = 0; col_num < schema.column_size(); ++col_num) {
       std::string column_name = column_names[col_num];
       ExampleQueryResult_VectorData_Values column_values =
-          contents[column_name];
+          contents.vector_data().vectors().at(column_name);
       FCP_RETURN_IF_ERROR(
           BindSqliteParameter(stmt, col_num + 1, row_num, column_values,
                               schema.column(col_num).type(), result_handler_));
@@ -281,14 +329,12 @@ absl::Status SqliteAdapter::SetTableContents(
   return absl::OkStatus();
 }
 
-absl::StatusOr<
-    absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>>
-SqliteAdapter::EvaluateQuery(absl::string_view query,
-                             TableSchema output_schema) const {
-  absl::flat_hash_map<std::string, ExampleQueryResult_VectorData_Values>
-      query_result;
+absl::StatusOr<SqlData> SqliteAdapter::EvaluateQuery(
+    absl::string_view query, TableSchema output_schema) const {
+  SqlData result;
+  ExampleQueryResult_VectorData* result_vectors = result.mutable_vector_data();
   for (auto& column : output_schema.column()) {
-    query_result[column.name()];
+    (*result_vectors->mutable_vectors())[column.name()];
   }
 
   sqlite3_stmt* stmt;
@@ -299,12 +345,14 @@ SqliteAdapter::EvaluateQuery(absl::string_view query,
 
   // SQLite uses `sqlite3_step()` to iterate over result rows, and
   // `sqlite_column_*()` functions to extract values for each column.
+  int num_result_rows = 0;
   while (true) {
     int step_result = sqlite3_step(stmt);
     FCP_RETURN_IF_ERROR(result_handler_.ToStatus(step_result));
     if (step_result != SQLITE_ROW) {
       break;
     }
+    num_result_rows += 1;
     for (int i = 0; i < output_schema.column_size(); ++i) {
       if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
         return absl::InvalidArgumentError(absl::StrFormat(
@@ -315,8 +363,11 @@ SqliteAdapter::EvaluateQuery(absl::string_view query,
       ColumnSchema::DataType column_type = output_schema.column(i).type();
       std::string column_name = output_schema.column(i).name();
       FCP_RETURN_IF_ERROR(ReadSqliteColumn(
-          stmt, column_type, i, result_handler_, &query_result[column_name]));
+          stmt, column_type, i, result_handler_,
+          &result_vectors->mutable_vectors()->at(column_name)));
     }
   }
-  return query_result;
+  result.set_num_rows(num_result_rows);
+
+  return result;
 }
