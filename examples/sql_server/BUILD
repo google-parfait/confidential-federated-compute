@@ -58,3 +58,35 @@ proto_library(
     srcs = ["sql_data.proto"],
     deps = ["@federated-compute//fcp/client:example_query_result_proto"],
 )
+
+cc_library(
+    name = "sql_data_converter",
+    srcs = ["sql_data_converter.cc"],
+    hdrs = ["sql_data_converter.h"],
+    deps = [
+        ":sql_data_cc_proto",
+        "@com_google_absl//absl/log",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_parser",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/client:example_query_result_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+cc_test(
+    name = "sql_data_converter_test",
+    size = "small",
+    srcs = ["sql_data_converter_test.cc"],
+    deps = [
+        ":sql_data_converter",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/aggregation/testing:test_data",
+        "@googletest//:gtest_main",
+    ],
+)
