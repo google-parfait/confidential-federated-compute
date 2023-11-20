@@ -15,6 +15,7 @@
 package(default_visibility = ["//:__subpackages__"])
 
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_cc_test")
 
 cc_library(
     name = "sqlite_adapter",
@@ -65,13 +66,13 @@ cc_library(
     hdrs = ["sql_data_converter.h"],
     deps = [
         ":sql_data_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_parser",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -84,9 +85,43 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@federated-compute//fcp/aggregation/testing:test_data",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pipeline_transform_server",
+    srcs = ["pipeline_transform_server.cc"],
+    hdrs = ["pipeline_transform_server.h"],
+    deps = [
+        ":sql_data_cc_proto",
+        ":sql_data_converter",
+        ":sqlite_adapter",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/base:status_converters",
+    ],
+)
+
+cc_test(
+    name = "pipeline_transform_server_test",
+    size = "small",
+    srcs = ["pipeline_transform_server_test.cc"],
+    deps = [
+        ":pipeline_transform_server",
+        ":sql_data_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
         "@federated-compute//fcp/aggregation/testing:test_data",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@googletest//:gtest_main",
     ],
 )
