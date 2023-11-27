@@ -1,4 +1,4 @@
-#include "examples/sql_server/pipeline_transform_server.h"
+#include "containers/sql_server/pipeline_transform_server.h"
 
 #include <stdio.h>
 
@@ -6,8 +6,8 @@
 #include <string>
 
 #include "absl/log/log.h"
-#include "examples/sql_server/sql_data.pb.h"
-#include "examples/sql_server/sql_data_converter.h"
+#include "containers/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data_converter.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"

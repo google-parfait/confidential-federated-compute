@@ -1,7 +1,7 @@
-#include "examples/sql_server/pipeline_transform_server.h"
+#include "containers/sql_server/pipeline_transform_server.h"
 
 #include "absl/log/check.h"
-#include "examples/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"

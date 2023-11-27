@@ -5,7 +5,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "examples/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"

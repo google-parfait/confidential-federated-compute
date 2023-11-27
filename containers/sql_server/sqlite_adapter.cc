@@ -1,4 +1,4 @@
-#include "examples/sql_server/sqlite_adapter.h"
+#include "containers/sql_server/sqlite_adapter.h"
 
 #include <memory>
 #include <string>
@@ -11,7 +11,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "examples/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "sqlite3.h"

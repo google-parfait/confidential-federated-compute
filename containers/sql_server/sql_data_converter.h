@@ -4,7 +4,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "examples/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"

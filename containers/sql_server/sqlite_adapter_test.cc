@@ -1,4 +1,4 @@
-#include "examples/sql_server/sqlite_adapter.h"
+#include "containers/sql_server/sqlite_adapter.h"
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"

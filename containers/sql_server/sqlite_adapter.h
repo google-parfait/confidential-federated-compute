@@ -4,7 +4,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "examples/sql_server/sql_data.pb.h"
+#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "sqlite3.h"
 
