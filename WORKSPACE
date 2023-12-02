@@ -150,7 +150,7 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
     name = "federated-compute",
-    commit = "435d53e9e549006ded61daab591b3b95f732ad4d",
+    commit = "84d5e0774a1128cac5c246438c662c28ea400176",
     remote = "https://github.com/google/federated-compute.git",
 )
 

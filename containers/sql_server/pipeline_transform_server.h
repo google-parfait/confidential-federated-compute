@@ -23,43 +23,35 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
-using ::fcp::client::ExampleQueryResult_VectorData;
-using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
-using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
-using ::fcp::confidentialcompute::PipelineTransform;
-using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::TransformRequest;
-using ::fcp::confidentialcompute::TransformResponse;
-using grpc::Server;
-using grpc::ServerBuilder;
-using ::grpc::ServerContext;
-using ::grpc::Status;
-using ::grpc::StatusCode;
-using ::sql_data::ColumnSchema;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
+namespace confidential_federated_compute::sql_server {
 
-class SqlPipelineTransform final : public PipelineTransform::Service {
+class SqlPipelineTransform final
+    : public fcp::confidentialcompute::PipelineTransform::Service {
  public:
-  Status ConfigureAndAttest(ServerContext* context,
-                            const ConfigureAndAttestRequest* request,
-                            ConfigureAndAttestResponse* response) override;
+  grpc::Status ConfigureAndAttest(
+      grpc::ServerContext* context,
+      const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
+      fcp::confidentialcompute::ConfigureAndAttestResponse* response) override;
 
-  Status Transform(ServerContext* context, const TransformRequest* request,
-                   TransformResponse* response) override;
+  grpc::Status Transform(
+      grpc::ServerContext* context,
+      const fcp::confidentialcompute::TransformRequest* request,
+      fcp::confidentialcompute::TransformResponse* response) override;
 
  private:
-  absl::Status SqlConfigureAndAttest(const ConfigureAndAttestRequest* request,
-                                  ConfigureAndAttestResponse* response);
+  absl::Status SqlConfigureAndAttest(
+      const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
+      fcp::confidentialcompute::ConfigureAndAttestResponse* response);
 
-  absl::Status SqlTransform(const TransformRequest* request,
-                   TransformResponse* response);
+  absl::Status SqlTransform(
+      const fcp::confidentialcompute::TransformRequest* request,
+      fcp::confidentialcompute::TransformResponse* response);
 
   absl::Mutex mutex_;
   std::string query_ ABSL_GUARDED_BY(mutex_) = "";
-  TableSchema input_schema_ ABSL_GUARDED_BY(mutex_);
-  TableSchema output_schema_ ABSL_GUARDED_BY(mutex_);
+  sql_data::TableSchema input_schema_ ABSL_GUARDED_BY(mutex_);
+  sql_data::TableSchema output_schema_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<SqliteAdapter> sqlite_ ABSL_GUARDED_BY(mutex_);
 };
+
+}  // namespace confidential_federated_compute::sql_server

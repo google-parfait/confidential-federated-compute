@@ -12,6 +12,8 @@
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
+namespace confidential_federated_compute::sql_server {
+
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -20,6 +22,7 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ServerContext;
 using ::sql_data::SqlQuery;
+using ::sql_data::SqlData;
 
 absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
                                                 TransformResponse* response) {
@@ -76,3 +79,5 @@ grpc::Status SqlPipelineTransform::Transform(ServerContext* context,
                                              TransformResponse* response) {
   return ToGrpcStatus(SqlTransform(request, response));
 }
+
+}  // namespace confidential_federated_compute::sql_server

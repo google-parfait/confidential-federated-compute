@@ -11,20 +11,126 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+namespace confidential_federated_compute::sql_server {
 using ::fcp::aggregation::CheckpointBuilder;
 using ::fcp::aggregation::CreateTestData;
 using ::fcp::aggregation::DataType;
 using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
+using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
 using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
+using ::fcp::client::ExampleQueryResult_VectorData;
+using ::fcp::client::ExampleQueryResult_VectorData_BoolValues;
+using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::TransformRequest;
+using ::sql_data::ColumnSchema;
+using ::sql_data::ColumnSchema_DataType;
+using ::sql_data::SqlData;
+using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
+
+namespace sql_data_converter_internal {
+
+namespace {
+
+TEST(ConvertValuesToTensorTest, Int32ValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_int32_values()->add_value(42);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, Int64ValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_int64_values()->add_value(42);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, BoolValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_bool_values()->add_value(true);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, FloatValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_float_values()->add_value(1.1);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_FLOAT);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, DoubleValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_double_values()->add_value(1.1);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_DOUBLE);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, StringValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_string_values()->add_value("foo");
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, BytesValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_bytes_values()->add_value("foo");
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
+  ASSERT_EQ(tensor->shape(), TensorShape({1}));
+}
+
+TEST(ConvertValuesToTensorTest, EmptyValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  values.mutable_bytes_values();
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
+  ASSERT_EQ(tensor->shape(), TensorShape({0}));
+}
+
+TEST(ConvertValuesToTensorTest, MultipleValuesConvertedCorrectly) {
+  ExampleQueryResult_VectorData_Values values;
+  auto* bool_values = values.mutable_bool_values();
+  bool_values->add_value(false);
+  bool_values->add_value(true);
+  auto tensor = ConvertValuesToTensor(values);
+  ASSERT_TRUE(tensor.ok());
+  ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(tensor->shape(), TensorShape({2}));
+  for (const auto& [index, value] : tensor->AsAggVector<int32_t>()) {
+    ASSERT_EQ(index, value);
+  }
+}
+
+}  // namespace
+
+}  // namespace sql_data_converter_internal
+
+namespace {
 
 class ConvertWireFormatRecordsToSqlDataTest : public Test {
  protected:
   void SetColumnNameAndType(ColumnSchema* col, std::string name,
-                            sql_data::ColumnSchema_DataType type) {
+                            ColumnSchema_DataType type) {
     col->set_name(name);
     col->set_type(type);
   }
@@ -227,7 +333,7 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, TableSchemaTypeMismatch) {
   ASSERT_TRUE(absl::IsInvalidArgument(sql_data.status()));
   ASSERT_THAT(sql_data.status().message(),
               HasSubstr("Checkpoint column type does not match the column "
-                            "type specified in the TableSchema."));
+                        "type specified in the TableSchema."));
 }
 
 TEST_F(ConvertWireFormatRecordsToSqlDataTest, MultipleRecords) {
@@ -334,3 +440,67 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, BoolColumnConvertedCorrectly) {
   ASSERT_EQ(vectors.at(col_name).bool_values().value(0), false);
   ASSERT_EQ(vectors.at(col_name).bool_values().value(1), true);
 }
+
+TEST(ConvertSqlDataToWireFormatTest, EmptyColumn) {
+  SqlData sql_data;
+  ExampleQueryResult_VectorData* vector_data = sql_data.mutable_vector_data();
+  ExampleQueryResult_VectorData_Values empty_val;
+  empty_val.mutable_bool_values();
+  (*vector_data->mutable_vectors())["empty_col"] = empty_val;
+  FederatedComputeCheckpointParserFactory parser_factory;
+
+  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(response.ok());
+  ASSERT_EQ(response->outputs_size(), 1);
+
+  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(ckpt);
+  ASSERT_TRUE(parser.ok());
+  auto empty_col_values = (*parser)->GetTensor("empty_col");
+  ASSERT_EQ(empty_col_values->num_elements(), 0);
+}
+
+TEST(ConvertSqlDataToWireFormatTest, EmptySqlData) {
+  SqlData sql_data;
+  FederatedComputeCheckpointParserFactory parser_factory;
+
+  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(response.ok());
+  ASSERT_EQ(response->outputs_size(), 1);
+
+  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(ckpt);
+  ASSERT_TRUE(parser.ok());
+}
+
+TEST(ConvertSqlDataToWireFormatTest, MultipleColumns) {
+  SqlData sql_data;
+  ExampleQueryResult_VectorData* vector_data = sql_data.mutable_vector_data();
+
+  ExampleQueryResult_VectorData_Values int_val;
+  int_val.mutable_int64_values()->add_value(100);
+
+  ExampleQueryResult_VectorData_Values float_val;
+  float_val.mutable_float_values()->add_value(2.2);
+
+  (*vector_data->mutable_vectors())["int_val"] = int_val;
+  (*vector_data->mutable_vectors())["float_val"] = float_val;
+  FederatedComputeCheckpointParserFactory parser_factory;
+
+  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(response.ok());
+  ASSERT_EQ(response->outputs_size(), 1);
+
+  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(ckpt);
+  auto int_col_values = (*parser)->GetTensor("int_val");
+  ASSERT_EQ(int_col_values->num_elements(), 1);
+  ASSERT_EQ(int_col_values->dtype(), DataType::DT_INT64);
+  auto float_col_values = (*parser)->GetTensor("float_val");
+  ASSERT_EQ(float_col_values->num_elements(), 1);
+  ASSERT_EQ(float_col_values->dtype(), DataType::DT_FLOAT);
+}
+
+}  // namespace
+
+}  // namespace confidential_federated_compute::sql_server

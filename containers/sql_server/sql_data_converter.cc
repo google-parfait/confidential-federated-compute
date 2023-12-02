@@ -6,23 +6,104 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "containers/sql_server/sql_data.pb.h"
+#include "fcp/aggregation/core/mutable_vector_data.h"
+#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
+namespace confidential_federated_compute::sql_server {
+
+using ::fcp::aggregation::CheckpointBuilder;
 using ::fcp::aggregation::DataType;
+using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
 using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
+using ::fcp::aggregation::MutableVectorData;
 using ::fcp::aggregation::Tensor;
+using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TransformRequest;
+using ::fcp::confidentialcompute::TransformResponse;
 using ::sql_data::ColumnSchema;
 using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
+
+namespace sql_data_converter_internal {
+
+// `values` must outlive the returned Tensor.
+absl::StatusOr<Tensor> ConvertValuesToTensor(
+    const ExampleQueryResult_VectorData_Values& values) {
+  if (values.has_int32_values()) {
+    std::unique_ptr<MutableVectorData<int32_t>> vector_data =
+        std::make_unique<MutableVectorData<int32_t>>(
+            values.int32_values().value().begin(),
+            values.int32_values().value().end());
+    return Tensor::Create(DataType::DT_INT32,
+                          TensorShape({values.int32_values().value_size()}),
+                          std::move(vector_data));
+  } else if (values.has_int64_values()) {
+    std::unique_ptr<MutableVectorData<int64_t>> vector_data =
+        std::make_unique<MutableVectorData<int64_t>>(
+            values.int64_values().value().begin(),
+            values.int64_values().value().end());
+    return Tensor::Create(DataType::DT_INT64,
+                          TensorShape({values.int64_values().value_size()}),
+                          std::move(vector_data));
+
+  } else if (values.has_bool_values()) {
+    std::unique_ptr<MutableVectorData<int32_t>> vector_data =
+        std::make_unique<MutableVectorData<int32_t>>(
+            values.bool_values().value().begin(),
+            values.bool_values().value().end());
+    return Tensor::Create(DataType::DT_INT32,
+                          TensorShape({values.bool_values().value_size()}),
+                          std::move(vector_data));
+  } else if (values.has_float_values()) {
+    std::unique_ptr<MutableVectorData<float>> vector_data =
+        std::make_unique<MutableVectorData<float>>(
+            values.float_values().value().begin(),
+            values.float_values().value().end());
+    return Tensor::Create(DataType::DT_FLOAT,
+                          TensorShape({values.float_values().value_size()}),
+                          std::move(vector_data));
+  } else if (values.has_double_values()) {
+    std::unique_ptr<MutableVectorData<double>> vector_data =
+        std::make_unique<MutableVectorData<double>>(
+            values.double_values().value().begin(),
+            values.double_values().value().end());
+    return Tensor::Create(DataType::DT_DOUBLE,
+                          TensorShape({values.double_values().value_size()}),
+                          std::move(vector_data));
+
+  } else if (values.has_string_values()) {
+    std::unique_ptr<MutableVectorData<absl::string_view>> vector_data =
+        std::make_unique<MutableVectorData<absl::string_view>>(
+            values.string_values().value().begin(),
+            values.string_values().value().end());
+    return Tensor::Create(DataType::DT_STRING,
+                          TensorShape({values.string_values().value_size()}),
+                          std::move(vector_data));
+  } else if (values.has_bytes_values()) {
+    std::unique_ptr<MutableVectorData<absl::string_view>> vector_data =
+        std::make_unique<MutableVectorData<absl::string_view>>(
+            values.bytes_values().value().begin(),
+            values.bytes_values().value().end());
+    return Tensor::Create(DataType::DT_STRING,
+                          TensorShape({values.bytes_values().value_size()}),
+                          std::move(vector_data));
+  } else {
+    return absl::InvalidArgumentError(
+        "Not a valid Values type, can't convert this value to a Tensor.");
+  }
+}
+
+}  // namespace sql_data_converter_internal
 
 bool TensorTypeMatchesColumnType(ColumnSchema::DataType column_type,
                                  DataType tensor_type) {
@@ -158,3 +239,26 @@ absl::StatusOr<SqlData> ConvertWireFormatRecordsToSqlData(
 
   return sql_data;
 }
+
+absl::StatusOr<TransformResponse> ConvertSqlDataToWireFormat(SqlData data) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  for (const auto& [col_name, column] : data.vector_data().vectors()) {
+    FCP_ASSIGN_OR_RETURN(
+        Tensor tensor,
+        sql_data_converter_internal::ConvertValuesToTensor(column));
+    FCP_RETURN_IF_ERROR(ckpt_builder->Add(col_name, tensor));
+  }
+
+  FCP_ASSIGN_OR_RETURN(absl::Cord ckpt_cord, ckpt_builder->Build());
+  TransformResponse response;
+  // Protobuf version 23.0 is required to use [ctype = CORD], however, we can't
+  // use this since it isn't currently compatible with TensorFlow.
+  std::string ckpt_string;
+  absl::CopyCordToString(ckpt_cord, &ckpt_string);
+  response.add_outputs()->set_unencrypted_data(ckpt_string);
+  return response;
+}
+
+}  // namespace confidential_federated_compute::sql_server

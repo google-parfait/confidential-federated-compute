@@ -69,10 +69,13 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_parser",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@federated-compute//fcp/aggregation/core:tensor",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/base:status_converters",
     ],
 )
 

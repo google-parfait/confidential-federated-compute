@@ -16,24 +16,36 @@
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
 
+namespace confidential_federated_compute::sql_server {
+
+namespace {
+
 using ::fcp::aggregation::CheckpointBuilder;
 using ::fcp::aggregation::CreateTestData;
 using ::fcp::aggregation::DataType;
 using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
+using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
 using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
+using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
+using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
-using grpc::Server;
-using grpc::ServerBuilder;
+using ::grpc::Server;
+using ::grpc::ServerBuilder;
+using ::grpc::ServerContext;
+using ::grpc::StatusCode;
+using ::sql_data::ColumnSchema;
 using ::sql_data::DatabaseSchema;
+using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
+using ::sql_data::SqlData;
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               ColumnSchema column) {
@@ -215,3 +227,7 @@ TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {
   ASSERT_THAT(status.error_message(),
               HasSubstr("ConfigureAndAttest must be called before Transform"));
 }
+
+}  // namespace
+
+}  // namespace confidential_federated_compute::sql_server
