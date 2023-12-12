@@ -169,20 +169,20 @@ git_repository(
 )
 
 git_repository(
-  name = "oak",
-  commit = "6440d8db80570da5dfd2882ab00601a8fd0204bc",
-  patches = [
-      "//third_party/oak:BUILD.containers.patch",
-      "//third_party/oak:BUILD.remote_attestation.patch",
-  ],
-  remote = "https://github.com/project-oak/oak.git",
+    name = "oak",
+    commit = "6440d8db80570da5dfd2882ab00601a8fd0204bc",
+    patches = [
+        "//third_party/oak:BUILD.containers.patch",
+        "//third_party/oak:BUILD.remote_attestation.patch",
+    ],
+    remote = "https://github.com/project-oak/oak.git",
 )
 
 http_archive(
     name = "googletest",
-    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
+    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     strip_prefix = "googletest-1.14.0",
-
+    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
 )
 
 # TODO: Switch to using the official SQLite repo. This is used for convenience during prototyping since it's bazel-friendly.
@@ -190,12 +190,14 @@ SQLITE_BAZEL_COMMIT = "2a512f90dcdabfc7c3279cc324f1abd84af49911"
 
 http_archive(
     name = "sqlite_bazel",
+    sha256 = "079ae321db00b2a697dc8c27acc21e63e05c353b89bdb510bb6d6778d3a05866",
     strip_prefix = "sqlite-bazel-" + SQLITE_BAZEL_COMMIT,
     urls = ["https://github.com/rockwotj/sqlite-bazel/archive/%s.zip" % SQLITE_BAZEL_COMMIT],
 )
 
 http_archive(
-  name = "com_google_absl",
-  urls = ["https://github.com/abseil/abseil-cpp/archive/98eb410c93ad059f9bba1bf43f5bb916fc92a5ea.zip"],
-  strip_prefix = "abseil-cpp-98eb410c93ad059f9bba1bf43f5bb916fc92a5ea",
+    name = "com_google_absl",
+    sha256 = "aabf6c57e3834f8dc3873a927f37eaf69975d4b28117fc7427dfb1c661542a87",
+    strip_prefix = "abseil-cpp-98eb410c93ad059f9bba1bf43f5bb916fc92a5ea",
+    urls = ["https://github.com/abseil/abseil-cpp/archive/98eb410c93ad059f9bba1bf43f5bb916fc92a5ea.zip"],
 )
