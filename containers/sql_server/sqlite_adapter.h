@@ -8,11 +8,7 @@
 #include "fcp/client/example_query_result.pb.h"
 #include "sqlite3.h"
 
-using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::sql_data::ColumnSchema;
-using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
+namespace confidential_federated_compute::sql_server {
 
 // Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
@@ -50,12 +46,13 @@ class SqliteAdapter {
 
   // Clears contents from the given `table` and inserts the specified
   // `contents`. The table must be created first via `DefineTable`.
-  absl::Status SetTableContents(TableSchema schema, SqlData contents);
+  absl::Status SetTableContents(sql_data::TableSchema schema,
+                                sql_data::SqlData contents);
 
   // Evaluates the given SQL `query` statement, producing results in the
   // provided `output_schema`.
-  absl::StatusOr<SqlData> EvaluateQuery(absl::string_view query,
-                                        TableSchema output_schema) const;
+  absl::StatusOr<sql_data::SqlData> EvaluateQuery(
+      absl::string_view query, sql_data::TableSchema output_schema) const;
 
  private:
   // The `db` must be non-null. This object takes ownership of the databaseß
@@ -66,3 +63,5 @@ class SqliteAdapter {
   SqliteResultHandler result_handler_;
   sqlite3* db_;
 };
+
+}  // namespace confidential_federated_compute::sql_server

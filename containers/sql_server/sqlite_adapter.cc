@@ -16,6 +16,8 @@
 #include "fcp/client/example_query_result.pb.h"
 #include "sqlite3.h"
 
+namespace confidential_federated_compute::sql_server {
+
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::sql_data::ColumnSchema;
@@ -371,3 +373,5 @@ absl::StatusOr<SqlData> SqliteAdapter::EvaluateQuery(
 
   return result;
 }
+
+}  // namespace confidential_federated_compute::sql_server

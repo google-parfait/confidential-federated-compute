@@ -7,10 +7,16 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+namespace confidential_federated_compute::sql_server {
+
+namespace {
+
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Int64Values;
 using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
+using ::sql_data::ColumnSchema;
+using ::sql_data::SqlData;
 using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
@@ -455,3 +461,7 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
   LOG(INFO) << result_status.status().message();
   ASSERT_TRUE(result_status.ok());
 }
+
+}  // namespace
+
+}  // namespace confidential_federated_compute::sql_server
