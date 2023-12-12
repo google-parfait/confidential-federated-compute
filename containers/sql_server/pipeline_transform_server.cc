@@ -21,8 +21,8 @@ using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ServerContext;
-using ::sql_data::SqlQuery;
 using ::sql_data::SqlData;
+using ::sql_data::SqlQuery;
 
 absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
                                                 TransformResponse* response) {
@@ -38,7 +38,9 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
 
   FCP_ASSIGN_OR_RETURN(SqlData result,
                        sqlite_->EvaluateQuery(query_, output_schema_));
-  response->add_outputs()->set_unencrypted_data(result.SerializeAsString());
+
+  FCP_ASSIGN_OR_RETURN(*response, ConvertSqlDataToWireFormat(result));
+
   return absl::OkStatus();
 }
 

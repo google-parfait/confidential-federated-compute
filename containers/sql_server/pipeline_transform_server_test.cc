@@ -41,11 +41,11 @@ using ::grpc::ServerContext;
 using ::grpc::StatusCode;
 using ::sql_data::ColumnSchema;
 using ::sql_data::DatabaseSchema;
+using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
-using ::sql_data::SqlData;
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               ColumnSchema column) {
@@ -167,6 +167,7 @@ TEST_F(SqlPipelineTransformTest, ValidConfigureAndAttest) {
 }
 
 TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
+  FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
   ConfigureAndAttestRequest configure_request;
   ConfigureAndAttestResponse configure_response;
@@ -204,18 +205,14 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
   ASSERT_EQ(transform_response.outputs_size(), 1);
   ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
 
-  SqlData query_result;
-  query_result.ParseFromString(
+  absl::Cord wire_format_result(
       transform_response.outputs(0).unencrypted_data());
-  ASSERT_EQ(query_result.num_rows(), 1);
-  ASSERT_TRUE(query_result.vector_data().vectors().contains(output_col_name));
-
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
   // The query sums the input column
-  ExampleQueryResult_VectorData_Values result_values =
-      query_result.vector_data().vectors().at(output_col_name);
-  ASSERT_TRUE(result_values.has_int64_values());
-  ASSERT_EQ(result_values.int64_values().value_size(), 1);
-  ASSERT_EQ(result_values.int64_values().value(0), 3);
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
 }
 
 TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {
