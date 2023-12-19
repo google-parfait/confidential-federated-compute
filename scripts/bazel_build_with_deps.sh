@@ -27,7 +27,7 @@ cd $(dirname "$0")/..
 readonly WORKSPACE_DIR="$PWD"
 readonly SCRIPTS_DIR="${WORKSPACE_DIR}/scripts"
 
-bazelisk test ...
+bazelisk test -- ... -containers/sql_server:pipeline_transform_server_benchmarks
 
 if [ "$1" == "release" ]; then
   ${BAZEL_USER_MODIFIER} bazelisk build --build_python_zip tff_worker/server:pipeline_transform_server

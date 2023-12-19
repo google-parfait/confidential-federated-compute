@@ -127,3 +127,22 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "pipeline_transform_server_benchmarks",
+    size = "small",
+    srcs = ["pipeline_transform_server_benchmarks.cc"],
+    deps = [
+        ":pipeline_transform_server",
+        ":sql_data_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@federated-compute//fcp/aggregation/testing:test_data",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@googletest//:gtest_main",
+        "@google_benchmark//:benchmark",
+    ],
+)
