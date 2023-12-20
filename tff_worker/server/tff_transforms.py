@@ -123,12 +123,12 @@ def _check_client_input_type_and_fedsql_config_compatible(
 ) -> None:
   """Determines if the client input type matches the checkpoint specification.
 
-  When using a FedSQL tensorflow checkpoint as the input type, a preprocessing
+  When using a FedSQL TensorFlow checkpoint as the input type, a preprocessing
   computation should be applied to the customer-provided computation making it
   compatible with the input type created from a FedSQL checkpoint. This method
   ensures that this is the case. If it fails, there is a mismatch between the
   computation generation logic and the logic in this file to convert a FedSQL
-  tensorflow checkpoint into an input to the computation.
+  TensorFlow checkpoint into an input to the computation.
 
   Args:
     client_input_type: The TFF type that is expected as the client input to the
