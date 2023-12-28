@@ -46,10 +46,11 @@ def tf_comp(
 
 # Define a federated computation using tf_comp to be performed per-client.
 @tff.federated_computation(
-    tff.type_at_clients(
-        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))])
+    tff.FederatedType(
+        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
+        tff.CLIENTS,
     ),
-    tff.type_at_clients(tf.float32, all_equal=True),
+    tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
 )
 def client_work_comp(
     example: OrderedDict[str, tf.Tensor], broadcasted_data: float
@@ -58,7 +59,8 @@ def client_work_comp(
 
 
 @tff.federated_computation(
-    tff.type_at_server(tf.int32), tff.type_at_clients(tf.int32)
+    tff.FederatedType(tf.int32, tff.SERVER),
+    tff.FederatedType(tf.int32, tff.CLIENTS),
 )
 def aggregation_comp(state: int, value: List[int]) -> int:
   state_at_clients = tff.federated_broadcast(state)
@@ -155,7 +157,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
   def test_transform_executes_client_work(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
@@ -193,10 +196,11 @@ class PipelineTransformServicerTest(unittest.TestCase):
                 ('float', tf.constant([11.0, 12.0, 13.0])),
             ])
         ],
-        tff.types.at_clients(
+        tff.FederatedType(
             OrderedDict([
                 ('float', tff.TensorType(tf.float32, shape=([None]))),
-            ])
+            ]),
+            tff.CLIENTS,
         ),
     )
     expected_response = pipeline_transform_pb2.TransformResponse()
@@ -208,7 +212,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
   def test_transform_executes_aggregation(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
@@ -231,13 +235,13 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
     transform_request = pipeline_transform_pb2.TransformRequest()
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     transform_request.inputs.add().unencrypted_data = (
         serialized_input_a.SerializeToString()
@@ -250,7 +254,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
     serialized_expected_output, _ = tff.framework.serialize_value(
-        tf.constant(2 * (5 + 6 + 7)), tff.types.at_server(tf.int32)
+        tf.constant(2 * (5 + 6 + 7)), tff.FederatedType(tf.int32, tff.SERVER)
     )
     expected_response = pipeline_transform_pb2.TransformResponse()
     expected_response.outputs.add().unencrypted_data = (
@@ -260,7 +264,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
   def test_transform_client_work_invalid_input(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
@@ -304,7 +309,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
   def test_transform_aggregation_invalid_input(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
@@ -327,10 +332,10 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
     transform_request = pipeline_transform_pb2.TransformRequest()
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     transform_request.inputs.add().unencrypted_data = (
         serialized_input_a.SerializeToString()
@@ -349,7 +354,8 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
   def test_transform_client_work_wrong_num_inputs(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.type_at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(

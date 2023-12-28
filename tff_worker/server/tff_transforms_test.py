@@ -50,15 +50,16 @@ def tf_comp(
 
 
 @tff.federated_computation(
-    tff.type_at_clients(
+    tff.FederatedType(
         OrderedDict([
             ('float_a', tff.TensorType(tf.float32, shape=[None])),
             ('int_a', tff.TensorType(tf.int32, shape=[None])),
             ('float_b', tff.TensorType(tf.float32, shape=[None])),
             ('string_b', tff.TensorType(tf.string, shape=[None])),
-        ])
+        ]),
+        tff.CLIENTS,
     ),
-    tff.type_at_clients(tf.float32, all_equal=True),
+    tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
 )
 def client_work_comp(
     example: OrderedDict[str, tf.Tensor], broadcasted_data: float
@@ -67,7 +68,8 @@ def client_work_comp(
 
 
 @tff.federated_computation(
-    tff.type_at_server(tf.int32), tff.type_at_clients(tf.int32)
+    tff.FederatedType(tf.int32, tff.SERVER),
+    tff.FederatedType(tf.int32, tff.CLIENTS),
 )
 def aggregation_comp(
     state: int, value: List[int]
@@ -111,7 +113,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -139,11 +142,12 @@ class TffTransformsTest(unittest.TestCase):
                 ('float_b', tf.constant([13.0, 14.0])),
             ])
         ],
-        tff.types.at_clients(
+        tff.FederatedType(
             OrderedDict([
                 ('float_a', tff.TensorType(tf.float32, shape=([None]))),
                 ('float_b', tff.TensorType(tf.float32, shape=([None]))),
-            ])
+            ]),
+            tff.CLIENTS,
         ),
     )
     self.assertEqual(serialized_expected_result, result_proto)
@@ -154,7 +158,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_unparseable_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -194,7 +199,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_name_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # Add a tensor to the checkpoint that has an unexpected name.
     names = ['float_a', 'int_a', 'other_name', 'string_b']
@@ -221,7 +227,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_type_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # The third tensor will have tf.string datatype but the FedSql config
     # expects it to be a float.
@@ -250,7 +257,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_count_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # One of the expected tensors in the FedSql configuration is not present in
     # the input checkpoint.
@@ -279,7 +287,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_shape_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     # The third tensor has more elements than the rest, but all the tensor
@@ -309,7 +318,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_scalars_in_checkpoint(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # Providing scalars in the checkpoint instead of 1-dimensional tensors
     # should succeed.
@@ -339,7 +349,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_dims_mismatch(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     # The third tensor has more dimensions than the rest, but all the tensor
@@ -366,7 +377,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_name_mismatch_with_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # The third tensor will have a name which matches the expected FedSql
     # checkpoint configuration, but doesn't match the expected name in the
@@ -401,7 +413,8 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_client_work_client_input_tensor_type_mismatch_with_computation(self):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     names = ['float_a', 'int_a', 'float_b', 'string_b']
     float_a = tf.constant([1.0, 2.0])
@@ -443,7 +456,8 @@ class TffTransformsTest(unittest.TestCase):
       self,
   ):
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     # One of the expected tensors in the computation input spec is not present
     # in the input checkpoint or the FedSql configuration.
@@ -495,7 +509,8 @@ class TffTransformsTest(unittest.TestCase):
       return result
 
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -556,8 +571,8 @@ class TffTransformsTest(unittest.TestCase):
       return tf.add(example, broadcasted_data)
 
     @tff.federated_computation(
-        tff.type_at_clients(tff.TensorType(tf.float32, shape=[None])),
-        tff.type_at_clients(tf.float32, all_equal=True),
+        tff.FederatedType(tff.TensorType(tf.float32, shape=[None]), tff.CLIENTS),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     def client_work_comp_not_struct(
         example: tf.Tensor, broadcasted_data: float
@@ -565,7 +580,8 @@ class TffTransformsTest(unittest.TestCase):
       return tff.federated_map(comp_not_struct, (example, broadcasted_data))
 
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant(10.0), tff.types.at_clients(tf.float32, all_equal=True)
+        tf.constant(10.0),
+        tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -593,7 +609,8 @@ class TffTransformsTest(unittest.TestCase):
     # The computation expects that the broadcasted data is a float, but provide
     # a string.
     serialized_broadcasted_data, _ = tff.framework.serialize_value(
-        tf.constant('a string'), tff.types.at_clients(tf.string, all_equal=True)
+        tf.constant('a string'),
+        tff.FederatedType(tf.string, tff.CLIENTS, all_equal=True),
     )
     unencrypted_data = checkpoint_test_utils.create_checkpoint_bytes(
         _NAMES, _TENSORS
@@ -618,7 +635,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -629,13 +646,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     result_bytes = tff_transforms.aggregate(
         aggregation_config,
@@ -655,15 +672,21 @@ class TffTransformsTest(unittest.TestCase):
         tff.StructType([
             (
                 'state',
-                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()), tff.SERVER
+                ),
             ),
             (
                 'result',
-                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()), tff.SERVER
+                ),
             ),
             (
                 'measurements',
-                tff.types.at_server(tff.TensorType(tf.int32, shape=())),
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()), tff.SERVER
+                ),
             ),
         ]),
     )
@@ -671,18 +694,22 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_structs(self):
     @tff.federated_computation(
-        tff.type_at_server(tf.string),
+        tff.FederatedType(tf.string, tff.SERVER),
         OrderedDict([
             (
                 'weights',
-                tff.type_at_clients(
-                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.float32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
             (
                 'counts',
-                tff.type_at_clients(
-                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
         ]),
@@ -697,7 +724,7 @@ class TffTransformsTest(unittest.TestCase):
       )
 
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('hello world'), tff.types.at_server(tf.string)
+        tf.constant('hello world'), tff.FederatedType(tf.string, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -714,14 +741,18 @@ class TffTransformsTest(unittest.TestCase):
         OrderedDict([
             (
                 'weights',
-                tff.type_at_clients(
-                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.float32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
             (
                 'counts',
-                tff.type_at_clients(
-                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
         ]),
@@ -733,14 +764,18 @@ class TffTransformsTest(unittest.TestCase):
         OrderedDict([
             (
                 'weights',
-                tff.type_at_clients(
-                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.float32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
             (
                 'counts',
-                tff.type_at_clients(
-                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
         ]),
@@ -752,14 +787,18 @@ class TffTransformsTest(unittest.TestCase):
         OrderedDict([
             (
                 'weights',
-                tff.type_at_clients(
-                    tff.TensorType(tf.float32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.float32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
             (
                 'counts',
-                tff.type_at_clients(
-                    tff.TensorType(tf.int32, shape=()), all_equal=False
+                tff.FederatedType(
+                    tff.TensorType(tf.int32, shape=()),
+                    tff.CLIENTS,
+                    all_equal=False,
                 ),
             ),
         ]),
@@ -776,22 +815,24 @@ class TffTransformsTest(unittest.TestCase):
     (serialized_expected_result, _) = tff.framework.serialize_value(
         ((3.0 + 7.0 + 2.0) / 3.0, (5 + 6 + 8), 'hello world'),
         tff.StructType([
-            tff.types.at_server(tff.TensorType(tf.float32, shape=())),
-            tff.types.at_server(tff.TensorType(tf.int32, shape=())),
-            tff.types.at_server(tff.TensorType(tf.string, shape=())),
+            tff.FederatedType(tff.TensorType(tf.float32, shape=()), tff.SERVER),
+            tff.FederatedType(tff.TensorType(tf.int32, shape=()), tff.SERVER),
+            tff.FederatedType(tff.TensorType(tf.string, shape=()), tff.SERVER),
         ]),
     )
     self.assertEqual(serialized_expected_result, result_proto)
 
   def test_aggregate_unnamed_structs(self):
     @tff.federated_computation(
-        tff.type_at_server(tf.string),
+        tff.FederatedType(tf.string, tff.SERVER),
         tff.types.StructType([
-            tff.type_at_clients(
-                tff.TensorType(tf.float32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.float32, shape=()),
+                tff.CLIENTS,
+                all_equal=False,
             ),
-            tff.type_at_clients(
-                tff.TensorType(tf.int32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.int32, shape=()), tff.CLIENTS, all_equal=False
             ),
         ]),
     )
@@ -801,7 +842,7 @@ class TffTransformsTest(unittest.TestCase):
       return (tff.federated_mean(value[0]), tff.federated_sum(value[1]), state)
 
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant('hello world'), tff.types.at_server(tf.string)
+        tf.constant('hello world'), tff.FederatedType(tf.string, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -814,33 +855,39 @@ class TffTransformsTest(unittest.TestCase):
     serialized_input_a, _ = tff.framework.serialize_value(
         ([tf.constant(3.0)], [tf.constant(5)]),
         tff.types.StructType([
-            tff.type_at_clients(
-                tff.TensorType(tf.float32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.float32, shape=()),
+                tff.CLIENTS,
+                all_equal=False,
             ),
-            tff.type_at_clients(
-                tff.TensorType(tf.int32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.int32, shape=()), tff.CLIENTS, all_equal=False
             ),
         ]),
     )
     serialized_input_b, _ = tff.framework.serialize_value(
         ([tf.constant(7.0)], [tf.constant(6)]),
         tff.types.StructType([
-            tff.type_at_clients(
-                tff.TensorType(tf.float32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.float32, shape=()),
+                tff.CLIENTS,
+                all_equal=False,
             ),
-            tff.type_at_clients(
-                tff.TensorType(tf.int32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.int32, shape=()), tff.CLIENTS, all_equal=False
             ),
         ]),
     )
     serialized_input_c, _ = tff.framework.serialize_value(
         ([tf.constant(2.0)], [tf.constant(8)]),
         tff.types.StructType([
-            tff.type_at_clients(
-                tff.TensorType(tf.float32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.float32, shape=()),
+                tff.CLIENTS,
+                all_equal=False,
             ),
-            tff.type_at_clients(
-                tff.TensorType(tf.int32, shape=()), all_equal=False
+            tff.FederatedType(
+                tff.TensorType(tf.int32, shape=()), tff.CLIENTS, all_equal=False
             ),
         ]),
     )
@@ -856,29 +903,29 @@ class TffTransformsTest(unittest.TestCase):
     (serialized_expected_result, _) = tff.framework.serialize_value(
         ((3.0 + 7.0 + 2.0) / 3.0, (5 + 6 + 8), 'hello world'),
         tff.types.StructType([
-            tff.types.at_server(tff.TensorType(tf.float32, shape=())),
-            tff.types.at_server(tff.TensorType(tf.int32, shape=())),
-            tff.types.at_server(tff.TensorType(tf.string, shape=())),
+            tff.FederatedType(tff.TensorType(tf.float32, shape=()), tff.SERVER),
+            tff.FederatedType(tff.TensorType(tf.int32, shape=()), tff.SERVER),
+            tff.FederatedType(tff.TensorType(tf.string, shape=()), tff.SERVER),
         ]),
     )
     self.assertEqual(serialized_expected_result, result_proto)
 
   def test_aggregate_unparseable_computation(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=b'invalid',
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -901,13 +948,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=b'invalid',
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -924,7 +971,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_unparseable_client_input(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -935,10 +982,10 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -953,7 +1000,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_computation_wrong_num_args(self):
     # Create a computation that doesn't take in any server state.
-    @tff.federated_computation(tff.type_at_clients(tf.int32))
+    @tff.federated_computation(tff.FederatedType(tf.int32, tff.CLIENTS))
     def aggregation_comp(value: List[int]):
       scaled_value = tff.federated_map(
           tff.tf_computation(lambda x: x * 2), value
@@ -972,13 +1019,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=b'invalid',
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -995,7 +1042,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_computation_wrong_temp_state_type(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(1.0), tff.types.at_server(tf.float32)
+        tf.constant(1.0), tff.FederatedType(tf.float32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -1006,13 +1053,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant(7)], tff.types.at_clients(tf.int32)
+        [tf.constant(7)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -1030,7 +1077,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_computation_wrong_client_input_type(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -1041,13 +1088,13 @@ class TffTransformsTest(unittest.TestCase):
         serialized_temporary_state=serialized_temp_state.SerializeToString(),
     )
     serialized_input_a, _ = tff.framework.serialize_value(
-        [tf.constant(5)], tff.types.at_clients(tf.int32)
+        [tf.constant(5)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        [tf.constant(6)], tff.types.at_clients(tf.int32)
+        [tf.constant(6)], tff.FederatedType(tf.int32, tff.CLIENTS)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        [tf.constant('input')], tff.types.at_clients(tf.string)
+        [tf.constant('input')], tff.FederatedType(tf.string, tff.CLIENTS)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
@@ -1065,7 +1112,7 @@ class TffTransformsTest(unittest.TestCase):
 
   def test_aggregate_computation_client_input_type_all_equal_fails(self):
     serialized_temp_state, _ = tff.framework.serialize_value(
-        tf.constant(2), tff.types.at_server(tf.int32)
+        tf.constant(2), tff.FederatedType(tf.int32, tff.SERVER)
     )
     aggregation_config = worker_pb2.TffWorkerConfiguration.Aggregation(
         serialized_client_to_server_aggregation_computation=(
@@ -1078,13 +1125,13 @@ class TffTransformsTest(unittest.TestCase):
     # Client inputs where all_equal is True are invalid. TFF expects the client
     # input to have all_equal=False.
     serialized_input_a, _ = tff.framework.serialize_value(
-        tf.constant(5), tff.types.at_clients(tf.int32, all_equal=True)
+        tf.constant(5), tff.FederatedType(tf.int32, tff.CLIENTS, all_equal=True)
     )
     serialized_input_b, _ = tff.framework.serialize_value(
-        tf.constant(6), tff.types.at_clients(tf.int32, all_equal=True)
+        tf.constant(6), tff.FederatedType(tf.int32, tff.CLIENTS, all_equal=True)
     )
     serialized_input_c, _ = tff.framework.serialize_value(
-        tf.constant(7), tff.types.at_clients(tf.int32, all_equal=True)
+        tf.constant(7), tff.FederatedType(tf.int32, tff.CLIENTS, all_equal=True)
     )
     with self.assertRaises(TypeError) as e:
       tff_transforms.aggregate(
