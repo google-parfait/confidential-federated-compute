@@ -1,6 +1,21 @@
+// Copyright 2024 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #include "containers/sql_server/pipeline_transform_server.h"
 
 #include "absl/log/check.h"
+#include "containers/crypto.h"
+#include "containers/crypto_test_utils.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
@@ -29,8 +44,12 @@ using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
+using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
+using ::fcp::confidentialcompute::GenerateNoncesRequest;
+using ::fcp::confidentialcompute::GenerateNoncesResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TransformRequest;
@@ -45,6 +64,7 @@ using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
 using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
+using ::testing::SizeIs;
 using ::testing::Test;
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
@@ -215,6 +235,174 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
   ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
 }
 
+TEST_F(SqlPipelineTransformTest, TransformDecryptsRecordAndExecutesSqlQuery) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name, ColumnSchema::INT64));
+  TableSchema output_schema = CreateTableSchema(
+      "output",
+      absl::StrFormat("CREATE TABLE output (%s INTEGER)", output_col_name),
+      CreateColumnSchema(output_col_name, ColumnSchema::INT64));
+  SqlQuery query =
+      CreateSqlQuery(input_schema,
+                     absl::StrFormat("SELECT SUM(%s) AS %s FROM input",
+                                     input_col_name, output_col_name),
+                     output_schema);
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+  std::string recipient_public_key = configure_response.public_key();
+
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(1);
+  grpc::Status generate_nonces_status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_TRUE(generate_nonces_status.ok())
+      << "GenerateNonces status code was: "
+      << generate_nonces_status.error_code();
+  ASSERT_THAT(nonces_response.nonces(), SizeIs(1));
+  std::string nonce = nonces_response.nonces(0);
+
+  std::string reencryption_public_key = "";
+  std::string ciphertext_associated_data = "ciphertext associated data";
+  std::string message =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2});
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, nonce,
+          reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
+  // The query sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
+}
+
+TEST_F(SqlPipelineTransformTest,
+       TransformDecryptsMultipleRecordsAndExecutesSqlQuery) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name, ColumnSchema::INT64));
+  TableSchema output_schema = CreateTableSchema(
+      "output",
+      absl::StrFormat("CREATE TABLE output (%s INTEGER)", output_col_name),
+      CreateColumnSchema(output_col_name, ColumnSchema::INT64));
+  SqlQuery query =
+      CreateSqlQuery(input_schema,
+                     absl::StrFormat("SELECT SUM(%s) AS %s FROM input",
+                                     input_col_name, output_col_name),
+                     output_schema);
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  std::string recipient_public_key = configure_response.public_key();
+
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(3);
+  grpc::Status generate_nonces_status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_TRUE(generate_nonces_status.ok())
+      << "GenerateNonces status code was: "
+      << generate_nonces_status.error_code();
+  ASSERT_THAT(nonces_response.nonces(), SizeIs(3));
+
+  std::string reencryption_public_key = "";
+  std::string ciphertext_associated_data = "ciphertext associated data";
+
+  std::string message_1 =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2});
+  absl::StatusOr<Record> rewrapped_record_1 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_1, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(0), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
+
+  std::string message_2 =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {3, 4, 5});
+  absl::StatusOr<Record> rewrapped_record_2 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_2, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(1), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_2.ok()) << rewrapped_record_2.status();
+
+  std::string message_3 =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {6, 7, 8, 9});
+  absl::StatusOr<Record> rewrapped_record_3 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_3, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(2), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_3.ok()) << rewrapped_record_3.status();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_1);
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_2);
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_3);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
+  // The query sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 45);
+}
+
 TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {
   grpc::ClientContext context;
   TransformRequest request;
@@ -223,6 +411,19 @@ TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
               HasSubstr("ConfigureAndAttest must be called before Transform"));
+}
+
+TEST_F(SqlPipelineTransformTest, GenerateNoncesBeforeConfigureAndAttest) {
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(1);
+  auto status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr("ConfigureAndAttest must be called before GenerateNonces"));
 }
 
 }  // namespace

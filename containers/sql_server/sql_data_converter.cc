@@ -1,3 +1,16 @@
+// Copyright 2024 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #include <stdio.h>
 
 #include <memory>
@@ -12,8 +25,6 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/client/example_query_result.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -26,9 +37,6 @@ using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::TransformRequest;
-using ::fcp::confidentialcompute::TransformResponse;
 using ::sql_data::ColumnSchema;
 using ::sql_data::SqlData;
 using ::sql_data::SqlQuery;
@@ -129,118 +137,113 @@ bool TensorTypeMatchesColumnType(ColumnSchema::DataType column_type,
   }
 }
 
-absl::StatusOr<SqlData> ConvertWireFormatRecordsToSqlData(
-    const TransformRequest* request, const TableSchema& table_schema) {
-  SqlData sql_data;
+absl::Status AddWireFormatDataToSqlData(
+    absl::string_view wire_format_data,
+    const sql_data::TableSchema& table_schema, sql_data::SqlData& sql_data) {
   ExampleQueryResult_VectorData* vector_data = sql_data.mutable_vector_data();
   for (auto& column : table_schema.column()) {
     (*vector_data->mutable_vectors())[column.name()];
   }
 
   FederatedComputeCheckpointParserFactory parser_factory;
-  int total_num_rows = 0;
-  for (auto& record : request->inputs()) {
-    absl::Cord client_stacked_tensor_result(record.unencrypted_data());
-    auto parser = parser_factory.Create(client_stacked_tensor_result);
-    int record_num_rows = -1;
-    for (auto& column : table_schema.column()) {
-      FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
-                           (*parser)->GetTensor(column.name()));
-      if (tensor_column_values.num_elements() == 0) {
-        continue;
-      }
-      if (record_num_rows < 0) {
-        record_num_rows = tensor_column_values.num_elements();
-      } else if (record_num_rows != tensor_column_values.num_elements()) {
-        return absl::InvalidArgumentError(
-            "Record has columns with differing numbers of rows.");
-      }
-      if (!TensorTypeMatchesColumnType(column.type(),
-                                       tensor_column_values.dtype())) {
-        return absl::InvalidArgumentError(
-            "Checkpoint column type does not match the column type specified "
-            "in the TableSchema.");
-      }
-      switch (column.type()) {
-        case ColumnSchema::INT32: {
-          for (const auto& [unused_index, value] :
-               tensor_column_values.AsAggVector<int32_t>()) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_int32_values()
-                ->add_value(value);
-          }
-          break;
-        }
-        case ColumnSchema::INT64: {
-          auto agg_vector = tensor_column_values.AsAggVector<int64_t>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_int64_values()
-                ->add_value(value);
-          }
-          break;
-        }
-        case ColumnSchema::BOOL: {
-          auto agg_vector = tensor_column_values.AsAggVector<int32_t>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_bool_values()
-                ->add_value(value);
-          }
-          break;
-        }
-        case ColumnSchema::FLOAT: {
-          auto agg_vector = tensor_column_values.AsAggVector<float>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_float_values()
-                ->add_value(value);
-          }
-          break;
-        }
-        case ColumnSchema::DOUBLE: {
-          auto agg_vector = tensor_column_values.AsAggVector<double>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_double_values()
-                ->add_value(value);
-          }
-          break;
-        }
-        case ColumnSchema::BYTES: {
-          auto agg_vector =
-              tensor_column_values.AsAggVector<absl::string_view>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_bytes_values()
-                ->add_value(std::string(value));
-          }
-          break;
-        }
-        case ColumnSchema::STRING: {
-          auto agg_vector =
-              tensor_column_values.AsAggVector<absl::string_view>();
-          for (const auto& [unused_index, value] : agg_vector) {
-            (*vector_data->mutable_vectors())[column.name()]
-                .mutable_string_values()
-                ->add_value(std::string(value));
-          }
-          break;
-        }
-        default:
-          return absl::InvalidArgumentError(
-              "Not a valid column type, can't read this column from the "
-              "TransformRequest.");
-      }
+  int total_num_rows = sql_data.num_rows();
+  absl::Cord client_stacked_tensor_result(wire_format_data);
+  auto parser = parser_factory.Create(client_stacked_tensor_result);
+  int record_num_rows = -1;
+  for (auto& column : table_schema.column()) {
+    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
+                         (*parser)->GetTensor(column.name()));
+    if (tensor_column_values.num_elements() == 0) {
+      continue;
     }
-    total_num_rows += record_num_rows;
+    if (record_num_rows < 0) {
+      record_num_rows = tensor_column_values.num_elements();
+    } else if (record_num_rows != tensor_column_values.num_elements()) {
+      return absl::InvalidArgumentError(
+          "Record has columns with differing numbers of rows.");
+    }
+    if (!TensorTypeMatchesColumnType(column.type(),
+                                     tensor_column_values.dtype())) {
+      return absl::InvalidArgumentError(
+          "Checkpoint column type does not match the column type specified "
+          "in the TableSchema.");
+    }
+    switch (column.type()) {
+      case ColumnSchema::INT32: {
+        for (const auto& [unused_index, value] :
+             tensor_column_values.AsAggVector<int32_t>()) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_int32_values()
+              ->add_value(value);
+        }
+        break;
+      }
+      case ColumnSchema::INT64: {
+        auto agg_vector = tensor_column_values.AsAggVector<int64_t>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_int64_values()
+              ->add_value(value);
+        }
+        break;
+      }
+      case ColumnSchema::BOOL: {
+        auto agg_vector = tensor_column_values.AsAggVector<int32_t>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_bool_values()
+              ->add_value(value);
+        }
+        break;
+      }
+      case ColumnSchema::FLOAT: {
+        auto agg_vector = tensor_column_values.AsAggVector<float>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_float_values()
+              ->add_value(value);
+        }
+        break;
+      }
+      case ColumnSchema::DOUBLE: {
+        auto agg_vector = tensor_column_values.AsAggVector<double>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_double_values()
+              ->add_value(value);
+        }
+        break;
+      }
+      case ColumnSchema::BYTES: {
+        auto agg_vector = tensor_column_values.AsAggVector<absl::string_view>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_bytes_values()
+              ->add_value(std::string(value));
+        }
+        break;
+      }
+      case ColumnSchema::STRING: {
+        auto agg_vector = tensor_column_values.AsAggVector<absl::string_view>();
+        for (const auto& [unused_index, value] : agg_vector) {
+          (*vector_data->mutable_vectors())[column.name()]
+              .mutable_string_values()
+              ->add_value(std::string(value));
+        }
+        break;
+      }
+      default:
+        return absl::InvalidArgumentError(
+            "Not a valid column type, can't read this column from the "
+            "TransformRequest.");
+    }
   }
+  total_num_rows += record_num_rows;
   sql_data.set_num_rows(total_num_rows);
-
-  return sql_data;
+  return absl::OkStatus();
 }
 
-absl::StatusOr<TransformResponse> ConvertSqlDataToWireFormat(SqlData data) {
+absl::StatusOr<std::string> ConvertSqlDataToWireFormat(SqlData data) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
 
@@ -252,13 +255,11 @@ absl::StatusOr<TransformResponse> ConvertSqlDataToWireFormat(SqlData data) {
   }
 
   FCP_ASSIGN_OR_RETURN(absl::Cord ckpt_cord, ckpt_builder->Build());
-  TransformResponse response;
   // Protobuf version 23.0 is required to use [ctype = CORD], however, we can't
   // use this since it isn't currently compatible with TensorFlow.
   std::string ckpt_string;
   absl::CopyCordToString(ckpt_cord, &ckpt_string);
-  response.add_outputs()->set_unencrypted_data(ckpt_string);
-  return response;
+  return ckpt_string;
 }
 
 }  // namespace confidential_federated_compute::sql_server

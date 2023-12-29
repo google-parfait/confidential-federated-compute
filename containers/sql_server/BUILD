@@ -1,10 +1,10 @@
-# Copyright 2023 The Confidential Federated Compute Authors.
+# Copyright 2024 Google LLC.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http:#www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,7 +26,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_parser",
-        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
@@ -73,8 +73,6 @@ cc_library(
         "@federated-compute//fcp/aggregation/core:tensor",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/base:status_converters",
     ],
 )
@@ -89,8 +87,6 @@ cc_test(
         "@com_google_absl//absl/log:check",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
         "@federated-compute//fcp/aggregation/testing:test_data",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@googletest//:gtest_main",
     ],
 )
@@ -100,6 +96,7 @@ cc_library(
     srcs = ["pipeline_transform_server.cc"],
     hdrs = ["pipeline_transform_server.h"],
     deps = [
+        "//containers:crypto",
         ":sql_data_cc_proto",
         ":sql_data_converter",
         ":sqlite_adapter",
@@ -116,6 +113,8 @@ cc_test(
     size = "small",
     srcs = ["pipeline_transform_server_test.cc"],
     deps = [
+        "//containers:crypto",
+        "//containers:crypto_test_utils",
         ":pipeline_transform_server",
         ":sql_data_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
