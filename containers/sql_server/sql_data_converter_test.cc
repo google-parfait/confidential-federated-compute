@@ -1,3 +1,16 @@
+// Copyright 2024 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #include "containers/sql_server/sql_data_converter.h"
 
 #include "absl/log/check.h"
@@ -6,8 +19,6 @@
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -22,8 +33,6 @@ using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_BoolValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::TransformRequest;
 using ::sql_data::ColumnSchema;
 using ::sql_data::ColumnSchema_DataType;
 using ::sql_data::SqlData;
@@ -39,7 +48,7 @@ TEST(ConvertValuesToTensorTest, Int32ValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_int32_values()->add_value(42);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -48,7 +57,7 @@ TEST(ConvertValuesToTensorTest, Int64ValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_int64_values()->add_value(42);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_INT64);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -57,7 +66,7 @@ TEST(ConvertValuesToTensorTest, BoolValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_bool_values()->add_value(true);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -66,7 +75,7 @@ TEST(ConvertValuesToTensorTest, FloatValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_float_values()->add_value(1.1);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_FLOAT);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -75,7 +84,7 @@ TEST(ConvertValuesToTensorTest, DoubleValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_double_values()->add_value(1.1);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_DOUBLE);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -84,7 +93,7 @@ TEST(ConvertValuesToTensorTest, StringValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_string_values()->add_value("foo");
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -93,7 +102,7 @@ TEST(ConvertValuesToTensorTest, BytesValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_bytes_values()->add_value("foo");
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
   ASSERT_EQ(tensor->shape(), TensorShape({1}));
 }
@@ -102,7 +111,7 @@ TEST(ConvertValuesToTensorTest, EmptyValuesConvertedCorrectly) {
   ExampleQueryResult_VectorData_Values values;
   values.mutable_bytes_values();
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_STRING);
   ASSERT_EQ(tensor->shape(), TensorShape({0}));
 }
@@ -113,7 +122,7 @@ TEST(ConvertValuesToTensorTest, MultipleValuesConvertedCorrectly) {
   bool_values->add_value(false);
   bool_values->add_value(true);
   auto tensor = ConvertValuesToTensor(values);
-  ASSERT_TRUE(tensor.ok());
+  ASSERT_TRUE(tensor.ok()) << tensor.status();
   ASSERT_EQ(tensor->dtype(), DataType::DT_INT32);
   ASSERT_EQ(tensor->shape(), TensorShape({2}));
   for (const auto& [index, value] : tensor->AsAggVector<int32_t>()) {
@@ -127,7 +136,7 @@ TEST(ConvertValuesToTensorTest, MultipleValuesConvertedCorrectly) {
 
 namespace {
 
-class ConvertWireFormatRecordsToSqlDataTest : public Test {
+class AddWireFormatDataToSqlDataTest : public Test {
  protected:
   void SetColumnNameAndType(ColumnSchema* col, std::string name,
                             ColumnSchema_DataType type) {
@@ -136,7 +145,7 @@ class ConvertWireFormatRecordsToSqlDataTest : public Test {
   }
 };
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, BasicUsage) {
+TEST_F(AddWireFormatDataToSqlDataTest, BasicUsage) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string col_name = "t1";
@@ -151,24 +160,22 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, BasicUsage) {
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
 
-  TransformRequest request;
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  ASSERT_TRUE(sql_data->vector_data().vectors().contains(col_name));
-  ASSERT_TRUE(
-      sql_data->vector_data().vectors().at(col_name).has_int64_values());
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(add_data_status.ok()) << add_data_status;
+  ASSERT_TRUE(sql_data.vector_data().vectors().contains(col_name));
+  ASSERT_TRUE(sql_data.vector_data().vectors().at(col_name).has_int64_values());
   ASSERT_EQ(
-      sql_data->vector_data().vectors().at(col_name).int64_values().value(0),
+      sql_data.vector_data().vectors().at(col_name).int64_values().value(0),
       42);
-  ASSERT_EQ(sql_data->num_rows(), 1);
+  ASSERT_EQ(sql_data.num_rows(), 1);
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, AllDataTypes) {
+TEST_F(AddWireFormatDataToSqlDataTest, AllDataTypes) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
 
@@ -229,16 +236,15 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, AllDataTypes) {
                        ColumnSchema::BYTES);
   SetColumnNameAndType(schema.add_column(), bool_col_name, ColumnSchema::BOOL);
 
-  TransformRequest request;
-
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  auto vectors = sql_data->vector_data().vectors();
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(add_data_status.ok()) << add_data_status;
+
+  auto vectors = sql_data.vector_data().vectors();
   ASSERT_TRUE(vectors.contains(int32_col_name));
   ASSERT_TRUE(vectors.contains(int64_col_name));
   ASSERT_TRUE(vectors.contains(str_col_name));
@@ -248,7 +254,7 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, AllDataTypes) {
   ASSERT_TRUE(vectors.contains(bool_col_name));
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, EmptyCheckpoint) {
+TEST_F(AddWireFormatDataToSqlDataTest, EmptyCheckpoint) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string col_name = "t1";
@@ -263,20 +269,19 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, EmptyCheckpoint) {
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
 
-  TransformRequest request;
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  ASSERT_TRUE(sql_data->vector_data().vectors().contains(col_name));
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(add_data_status.ok()) << add_data_status;
+  ASSERT_TRUE(sql_data.vector_data().vectors().contains(col_name));
   ASSERT_FALSE(
-      sql_data->vector_data().vectors().at(col_name).has_int64_values());
+      sql_data.vector_data().vectors().at(col_name).has_int64_values());
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, DifferentLengthTensors) {
+TEST_F(AddWireFormatDataToSqlDataTest, DifferentLengthTensors) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string one_val_name = "one_val";
@@ -297,19 +302,18 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, DifferentLengthTensors) {
   SetColumnNameAndType(schema.add_column(), one_val_name, ColumnSchema::INT64);
   SetColumnNameAndType(schema.add_column(), two_vals_name, ColumnSchema::FLOAT);
 
-  TransformRequest request;
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(absl::IsInvalidArgument(sql_data.status()));
-  ASSERT_THAT(sql_data.status().message(),
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(absl::IsInvalidArgument(add_data_status)) << add_data_status;
+  ASSERT_THAT(add_data_status.message(),
               HasSubstr("Record has columns with differing numbers of rows."));
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, TableSchemaTypeMismatch) {
+TEST_F(AddWireFormatDataToSqlDataTest, TableSchemaTypeMismatch) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string col_name = "col_name";
@@ -323,20 +327,20 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, TableSchemaTypeMismatch) {
 
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::STRING);
-  TransformRequest request;
+
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(absl::IsInvalidArgument(sql_data.status()));
-  ASSERT_THAT(sql_data.status().message(),
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(absl::IsInvalidArgument(add_data_status)) << add_data_status;
+  ASSERT_THAT(add_data_status.message(),
               HasSubstr("Checkpoint column type does not match the column "
                         "type specified in the TableSchema."));
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, MultipleRecords) {
+TEST_F(AddWireFormatDataToSqlDataTest, MultipleRecords) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder1 = builder_factory.Create();
   std::unique_ptr<CheckpointBuilder> builder2 = builder_factory.Create();
@@ -357,29 +361,31 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, MultipleRecords) {
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
 
-  TransformRequest request;
   std::string checkpoint_string1;
   std::string checkpoint_string2;
   absl::CopyCordToString(*checkpoint1, &checkpoint_string1);
   absl::CopyCordToString(*checkpoint2, &checkpoint_string2);
-  Record* record1 = request.add_inputs();
-  record1->set_unencrypted_data(checkpoint_string1);
-  Record* record2 = request.add_inputs();
-  record2->set_unencrypted_data(checkpoint_string2);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  auto vectors = sql_data->vector_data().vectors();
+  sql_data::SqlData sql_data;
+
+  absl::Status add_data_status1 =
+      AddWireFormatDataToSqlData(checkpoint_string1, schema, sql_data);
+  ASSERT_TRUE(add_data_status1.ok()) << add_data_status1;
+  absl::Status add_data_status2 =
+      AddWireFormatDataToSqlData(checkpoint_string2, schema, sql_data);
+  ASSERT_TRUE(add_data_status2.ok()) << add_data_status2;
+
+  auto vectors = sql_data.vector_data().vectors();
   ASSERT_TRUE(vectors.contains(col_name));
   ASSERT_TRUE(vectors.at(col_name).has_int64_values());
   ASSERT_EQ(vectors.at(col_name).int64_values().value(0), 42);
   ASSERT_EQ(vectors.at(col_name).int64_values().value(1), 1);
   ASSERT_EQ(vectors.at(col_name).int64_values().value(2), 2);
   ASSERT_EQ(vectors.at(col_name).int64_values().value_size(), 3);
-  ASSERT_EQ(sql_data->num_rows(), 3);
+  ASSERT_EQ(sql_data.num_rows(), 3);
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, ByteColumnConvertedCorrectly) {
+TEST_F(AddWireFormatDataToSqlDataTest, ByteColumnConvertedCorrectly) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string col_name = "col_name";
@@ -396,21 +402,20 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, ByteColumnConvertedCorrectly) {
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::BYTES);
 
-  TransformRequest request;
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  auto vectors = sql_data->vector_data().vectors();
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(add_data_status.ok()) << add_data_status;
+  auto vectors = sql_data.vector_data().vectors();
   ASSERT_TRUE(vectors.contains(col_name));
   ASSERT_TRUE(vectors.at(col_name).has_bytes_values());
   ASSERT_EQ(vectors.at(col_name).bytes_values().value(0), "bytes");
 }
 
-TEST_F(ConvertWireFormatRecordsToSqlDataTest, BoolColumnConvertedCorrectly) {
+TEST_F(AddWireFormatDataToSqlDataTest, BoolColumnConvertedCorrectly) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
   std::string col_name = "col_name";
@@ -426,15 +431,14 @@ TEST_F(ConvertWireFormatRecordsToSqlDataTest, BoolColumnConvertedCorrectly) {
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::BOOL);
 
-  TransformRequest request;
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  Record* record = request.add_inputs();
-  record->set_unencrypted_data(checkpoint_string);
 
-  auto sql_data = ConvertWireFormatRecordsToSqlData(&request, schema);
-  ASSERT_TRUE(sql_data.ok());
-  auto vectors = sql_data->vector_data().vectors();
+  sql_data::SqlData sql_data;
+  absl::Status add_data_status =
+      AddWireFormatDataToSqlData(checkpoint_string, schema, sql_data);
+  ASSERT_TRUE(add_data_status.ok()) << add_data_status;
+  auto vectors = sql_data.vector_data().vectors();
   ASSERT_TRUE(vectors.contains(col_name));
   ASSERT_TRUE(vectors.at(col_name).has_bool_values());
   ASSERT_EQ(vectors.at(col_name).bool_values().value(0), false);
@@ -449,13 +453,12 @@ TEST(ConvertSqlDataToWireFormatTest, EmptyColumn) {
   (*vector_data->mutable_vectors())["empty_col"] = empty_val;
   FederatedComputeCheckpointParserFactory parser_factory;
 
-  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
-  ASSERT_TRUE(response.ok());
-  ASSERT_EQ(response->outputs_size(), 1);
+  auto wire_format = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(wire_format.ok());
 
-  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  absl::Cord ckpt(*wire_format);
   auto parser = parser_factory.Create(ckpt);
-  ASSERT_TRUE(parser.ok());
+  ASSERT_TRUE(parser.ok()) << parser.status();
   auto empty_col_values = (*parser)->GetTensor("empty_col");
   ASSERT_EQ(empty_col_values->num_elements(), 0);
 }
@@ -464,13 +467,12 @@ TEST(ConvertSqlDataToWireFormatTest, EmptySqlData) {
   SqlData sql_data;
   FederatedComputeCheckpointParserFactory parser_factory;
 
-  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
-  ASSERT_TRUE(response.ok());
-  ASSERT_EQ(response->outputs_size(), 1);
+  auto wire_format = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(wire_format.ok()) << wire_format.status();
 
-  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  absl::Cord ckpt(*wire_format);
   auto parser = parser_factory.Create(ckpt);
-  ASSERT_TRUE(parser.ok());
+  ASSERT_TRUE(parser.ok()) << parser.status();
 }
 
 TEST(ConvertSqlDataToWireFormatTest, MultipleColumns) {
@@ -487,11 +489,10 @@ TEST(ConvertSqlDataToWireFormatTest, MultipleColumns) {
   (*vector_data->mutable_vectors())["float_val"] = float_val;
   FederatedComputeCheckpointParserFactory parser_factory;
 
-  auto response = ConvertSqlDataToWireFormat(std::move(sql_data));
-  ASSERT_TRUE(response.ok());
-  ASSERT_EQ(response->outputs_size(), 1);
+  auto wire_format = ConvertSqlDataToWireFormat(std::move(sql_data));
+  ASSERT_TRUE(wire_format.ok()) << wire_format.status();
 
-  absl::Cord ckpt(response->outputs(0).unencrypted_data());
+  absl::Cord ckpt(*wire_format);
   auto parser = parser_factory.Create(ckpt);
   auto int_col_values = (*parser)->GetTensor("int_val");
   ASSERT_EQ(int_col_values->num_elements(), 1);

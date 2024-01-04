@@ -30,12 +30,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "crypto_test_utils",
+    srcs = ["crypto_test_utils.cc"],
+    hdrs = ["crypto_test_utils.h"],
+    testonly = True,
+    deps = [
+        ":crypto",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/confidentialcompute:crypto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/base",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "crypto_test",
     size = "small",
     srcs = ["crypto_test.cc"],
     deps = [
         ":crypto",
+        ":crypto_test_utils",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@com_google_absl//absl/log",

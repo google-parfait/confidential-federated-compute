@@ -1,3 +1,19 @@
+// Copyright 2024 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQL_DATA_CONVERTER_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQL_DATA_CONVERTER_H_
+
 #include <stdio.h>
 
 #include <memory>
@@ -6,8 +22,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
 // These conversions are unnecessary and are implemented to get the SQL server
 // working end-to-end sooner. This is not the desired end state, and these
@@ -26,12 +40,13 @@ absl::StatusOr<fcp::aggregation::Tensor> ConvertValuesToTensor(
 //
 // TODO: Remove this when the SQLite adapter switches to using an interface
 // that abstracts away the data format.
-absl::StatusOr<sql_data::SqlData> ConvertWireFormatRecordsToSqlData(
-    const fcp::confidentialcompute::TransformRequest* request,
-    const sql_data::TableSchema& table_schema);
+absl::Status AddWireFormatDataToSqlData(
+    absl::string_view wire_format_data,
+    const sql_data::TableSchema& table_schema, sql_data::SqlData& sql_data);
 
 // Convert `SqlData` to the federated compute wire format.
-absl::StatusOr<fcp::confidentialcompute::TransformResponse>
-ConvertSqlDataToWireFormat(sql_data::SqlData data);
+absl::StatusOr<std::string> ConvertSqlDataToWireFormat(sql_data::SqlData data);
 
 }  // namespace confidential_federated_compute::sql_server
+
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQL_DATA_CONVERTER_H_

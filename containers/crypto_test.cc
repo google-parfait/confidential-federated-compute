@@ -17,77 +17,18 @@
 #include <cstdint>
 #include <string>
 
+#include "containers/crypto_test_utils.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
-#include "google/protobuf/timestamp.pb.h"
 #include "gtest/gtest.h"
 
 namespace confidential_federated_compute {
 namespace {
 
-using ::fcp::confidential_compute::EncryptMessageResult;
-using ::fcp::confidential_compute::MessageEncryptor;
-using ::fcp::confidential_compute::crypto_internal::UnwrapSymmetricKey;
-using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKey;
-using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKeyResult;
 using ::fcp::confidentialcompute::Record;
 using ::testing::HasSubstr;
-
-absl::StatusOr<Record> CreateRewrappedRecord(
-    absl::string_view message, absl::string_view ciphertext_associated_data,
-    absl::string_view recipient_public_key, absl::string_view nonce,
-    absl::string_view reencryption_public_key) {
-  MessageEncryptor encryptor;
-  // Encrypt the symmetric key with the public key of an intermediary.
-  bssl::ScopedEVP_HPKE_KEY intermediary_key;
-  const EVP_HPKE_KEM* kem = EVP_hpke_x25519_hkdf_sha256();
-  const EVP_HPKE_KDF* kdf = EVP_hpke_hkdf_sha256();
-  const EVP_HPKE_AEAD* aead = EVP_hpke_aes_128_gcm();
-  FCP_CHECK(EVP_HPKE_KEY_generate(intermediary_key.get(), kem) == 1);
-  size_t public_key_len;
-  std::string intermediary_public_key(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0');
-  FCP_CHECK(EVP_HPKE_KEY_public_key(
-                intermediary_key.get(),
-                reinterpret_cast<uint8_t*>(intermediary_public_key.data()),
-                &public_key_len, intermediary_public_key.size()) == 1);
-  intermediary_public_key.resize(public_key_len);
-  FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypt_result,
-                       encryptor.Encrypt(message, intermediary_public_key,
-                                         ciphertext_associated_data));
-
-  // Have the intermediary rewrap the symmetric key with the public key of the
-  // final recipient.
-  FCP_ASSIGN_OR_RETURN(
-      std::string symmetric_key,
-      UnwrapSymmetricKey(intermediary_key.get(), kdf, aead,
-                         encrypt_result.encrypted_symmetric_key,
-                         encrypt_result.encapped_key,
-                         ciphertext_associated_data));
-
-  FCP_ASSIGN_OR_RETURN(
-      WrapSymmetricKeyResult rewrapped_symmetric_key_result,
-      WrapSymmetricKey(kem, kdf, aead, symmetric_key, recipient_public_key,
-                       absl::StrCat(reencryption_public_key, nonce)));
-
-  Record record;
-  record.mutable_hpke_plus_aead_data()->set_ciphertext(
-      encrypt_result.ciphertext);
-  record.mutable_hpke_plus_aead_data()->set_ciphertext_associated_data(
-      std::string(ciphertext_associated_data));
-  record.mutable_hpke_plus_aead_data()->set_encrypted_symmetric_key(
-      rewrapped_symmetric_key_result.encrypted_symmetric_key);
-  record.mutable_hpke_plus_aead_data()->set_encapsulated_public_key(
-      rewrapped_symmetric_key_result.encapped_key);
-  record.mutable_hpke_plus_aead_data()
-      ->mutable_rewrapped_symmetric_key_associated_data()
-      ->set_nonce(std::string(nonce));
-  record.mutable_hpke_plus_aead_data()
-      ->mutable_rewrapped_symmetric_key_associated_data()
-      ->set_reencryption_public_key(std::string(reencryption_public_key));
-  return record;
-}
 
 TEST(CryptoTest, EncryptAndDecrypt) {
   std::string message = "some plaintext message";
@@ -108,9 +49,10 @@ TEST(CryptoTest, EncryptAndDecrypt) {
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
-  absl::StatusOr<Record> rewrapped_record = CreateRewrappedRecord(
-      message, ciphertext_associated_data, recipient_public_key, *nonce,
-      reencryption_public_key);
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
   absl::StatusOr<std::string> decrypt_result =
@@ -141,9 +83,10 @@ TEST(CryptoTest, EncryptAndDecryptWrongRecipient) {
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
-  absl::StatusOr<Record> rewrapped_record = CreateRewrappedRecord(
-      message, ciphertext_associated_data, recipient_public_key, *nonce,
-      reencryption_public_key);
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
   absl::StatusOr<std::string> decrypt_result =
@@ -226,9 +169,10 @@ TEST(CryptoTest, DecryptTwiceFails) {
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
-  absl::StatusOr<Record> rewrapped_record = CreateRewrappedRecord(
-      message, ciphertext_associated_data, recipient_public_key, *nonce,
-      reencryption_public_key);
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
   absl::StatusOr<std::string> decrypt_result =
