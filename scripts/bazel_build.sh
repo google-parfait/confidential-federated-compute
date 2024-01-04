@@ -19,8 +19,8 @@
 # necessary dependencies for building are present, so it is recommended to run
 # this script from within the development Docker container. If `release` is
 # passed, also builds the Pipeline Transform Server Docker container, and
-# creates a tarball of an OCI Runtime Bundle from the Docker container to
-# export.
+# creates a tarball of an OCI Runtime Bundle from the Docker container and
+# exports it to KOKORO_ARTIFACTS_DIR.
 set -e
 
 cd $(dirname "$0")/..
