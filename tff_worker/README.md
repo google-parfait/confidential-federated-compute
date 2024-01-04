@@ -5,80 +5,8 @@ that use TFF for use in Trusted Brella.
 
 ## Prerequisites
 
-### Rootless Docker
-
-Installing Docker is a prerequisite for the commands in this README.
-
-Scripts in this repository that use Docker expect that the Docker daemon is
-running as the local user instead of root.
-
-In order to run Docker without root privileges, follow the guide at
-https://docs.docker.com/engine/security/rootless/ .
-
-Below is a quick summary of the relevant steps:
-
-1.  If you have an existing version of Docker running as root, uninstall that
-    first:
-
-    ```bash
-    sudo systemctl disable --now docker.service docker.socket
-    sudo apt remove docker-ce docker-engine docker-runc docker-containerd
-    ```
-
-1.  Install `uidmap`:
-
-    ```bash
-    sudo apt install uidmap
-    ```
-
-1.  Add a range of subids for the current user:
-
-    ```bash
-    sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 $USER
-    ```
-
-1.  Download the install script for rootless Docker, and run it as the current
-    user:
-
-    ```bash
-    curl -fSSL https://get.docker.com/rootless > $HOME/rootless
-    sh $HOME/rootless
-    ```
-
-1.  Add the generated environment variables to your shell:
-
-    ```bash
-    export PATH=$HOME/bin:$PATH
-    export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock
-    ```
-
-    **As an alternative** to setting the `DOCKER_HOST` environment variable, it
-    is possible to instead run the following command to set the Docker context:
-
-    ```bash
-    docker context use rootless
-    ```
-
-    In either case, running the following command should show the current
-    status:
-
-    ```console
-    $ docker context ls
-    NAME        DESCRIPTION                               DOCKER ENDPOINT                       KUBERNETES ENDPOINT   ORCHESTRATOR
-    default *   Current DOCKER_HOST based configuration   unix:///run/user/152101/docker.sock                         swarm
-    rootless    Rootless mode                             unix:///run/user/152101/docker.sock
-    Warning: DOCKER_HOST environment variable overrides the active context. To use a context, either set the global --context flag, or unset DOCKER_HOST environment variable.
-    ```
-
-    This should show either that the default context is selected and is using
-    the user-local docker endpoint from the `DOCKER_HOST` variable, or that the
-    `rootless` context is selected.
-
-### Bazelisk
-
-We use Bazelisk to ensure a consistent Bazel version and setup between local
-development and continuous integration builds. Install bazelisk by following the
-[instructions in the repo](https://github.com/bazelbuild/bazelisk#installation).
+See the main repo [README](../README.md#prerequisites) for the prerequisites required for building the
+container.
 
 ## Developing the TFF Worker Pipeline Transform Server
 
@@ -108,6 +36,10 @@ example, to run all Bazel tests in the repository you can try:
 ```
 bazelisk test ...
 ```
+
+We use Bazelisk rather than directly using Bazel, as use of Bazelisk is the
+recommended way to install Bazel according to the
+[installation instructions](https://bazel.build/install).
 
 The Bazel build artifacts will be cached within the `.bazel_cache` folder so
 that they last beyond the lifetime of the Docker container which improves build
