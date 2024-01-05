@@ -17,7 +17,7 @@
 # A script that runs the portions of continuous integration that use cargo,
 # including building and testing all targets in the workspace. If `release` is
 # passed, also builds the binaries in release mode and exports them to
-# KOKORO_ARTIFACTS_DIR.
+# BINARY_OUTPUTS_DIR.
 set -e
 
 cd $(dirname "$0")/..
@@ -39,14 +39,14 @@ if [ "$1" == "release" ]; then
           -p square_enclave_app \
           -p sum_enclave_app
 
-  # KOKORO_ARTIFACTS_DIR may be unset if this script is run manually; it'll
+  # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
-  if [[ ! -z "${KOKORO_ARTIFACTS_DIR}" ]]; then
-    mkdir -p "${KOKORO_ARTIFACTS_DIR}/binaries"
+  if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
+    mkdir -p "${BINARY_OUTPUTS_DIR}"
     cp -v \
         target/x86_64-unknown-none/release/ledger_enclave_app \
         target/x86_64-unknown-none/release/square_enclave_app \
         target/x86_64-unknown-none/release/sum_enclave_app \
-        "${KOKORO_ARTIFACTS_DIR}/binaries/"
+        "${BINARY_OUTPUTS_DIR}/"
   fi
 fi

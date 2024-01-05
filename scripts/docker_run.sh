@@ -34,8 +34,8 @@ docker_run_flags=(
   '--workdir=/workspace'
   '--network=host'
   '--security-opt=seccomp=unconfined'
-  '--env=KOKORO_ARTIFACTS_DIR'
-  "--volume=$KOKORO_ARTIFACTS_DIR:$KOKORO_ARTIFACTS_DIR"
+  '--env=BINARY_OUTPUTS_DIR'
+  "--volume=$BINARY_OUTPUTS_DIR:$BINARY_OUTPUTS_DIR"
 )
 
 if [ -t 0 ]; then

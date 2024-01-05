@@ -175,7 +175,7 @@ following command. Consider adding the line below to your ~/.bashrc or ~/.zshrc
 so you don't have to run this step every time you enter a new shell.
 
 ```
-export KOKORO_ARTIFACTS_DIR=/tmp/kokoro/artifacts
+export OUTPUT_BINARIES_DIR=/tmp/confidential-federated-compute/binaries
 ```
 
 To build all artifacts which can be run in enclaves, run the following command:
@@ -188,7 +188,7 @@ After the above command completes, use the following command to list the output
 binaries:
 
 ```
-ls "${KOKORO_ARTIFACTS_DIR}/binaries"
+ls "${OUTPUT_BINARIES_DIR}"
 ```
 
 You should see several binaries in the folder, including the following:

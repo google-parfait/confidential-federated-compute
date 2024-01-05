@@ -51,15 +51,15 @@ Once you are ready to test your local version of the Python Pipeline
 Transform server as part of the larger system, you will need to build the Docker
 image that will run the server and package it as an OCI runtime bundle. To
 ensure the resulting OCI runtime bundle is copied to a desired directory, ensure
-the `KOKORO_ARTIFACTS_DIR` environment variable is set. The following command
+the `BINARY_OUTPUTS_DIR` environment variable is set. The following command
 should print a directory:
 
 ```
-echo "${KOKORO_ARTIFACTS_DIR}"
+echo "${BINARY_OUTPUTS_DIR}"
 ```
 
 Now run the release build to create the Docker container, package it as an OCI
-runtime bundle, and copy it to `KOKORO_ARTIFACTS_DIR`.
+runtime bundle, and copy it to `BINARY_OUTPUTS_DIR`.
 
 ```
 ./scripts/docker_run.sh ./scripts/bazel_build.sh release

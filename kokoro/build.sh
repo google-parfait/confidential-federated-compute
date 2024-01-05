@@ -19,10 +19,10 @@
 # If `release` is passed, this indicates that the script should build the
 # artifacts for release. In other words, it will build binaries in the form in
 # which they can be executed in an enclave and export them to
-# KOKORO_ARTIFACTS_DIR.
+# BINARY_OUTPUTS_DIR.
 set -e
 
 cd $(dirname "$0")/..
 
-./kokoro/cargo_build.sh "$@"
-./kokoro/bazel_build.sh "$@"
+./scripts/cargo_build.sh "$@"
+./scripts/bazel_build.sh "$@"
