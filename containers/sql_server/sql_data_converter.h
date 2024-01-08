@@ -34,9 +34,13 @@ absl::StatusOr<fcp::aggregation::Tensor> ConvertValuesToTensor(
     const fcp::client::ExampleQueryResult_VectorData_Values& values);
 }  // namespace sql_data_converter_internal
 
-// Convert `Record`s with unencrypted SQL results in the federated compute
-// wire format to SqlData. All rows from each record are added to the same
-// `SqlData` result.
+// Converts a `Record` with unencrypted SQL results in the federated compute
+// wire format to SqlData. All rows from the record are added to the
+// `SqlData` proto.
+//
+// This function may be called multiple times with the same `SqlData` proto and
+// different `Record` protos in order to add the contents of each `Record` proto
+// to the same `SqlData` proto.
 //
 // TODO: Remove this when the SQLite adapter switches to using an interface
 // that abstracts away the data format.
