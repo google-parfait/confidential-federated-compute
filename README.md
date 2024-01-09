@@ -175,20 +175,20 @@ following command. Consider adding the line below to your ~/.bashrc or ~/.zshrc
 so you don't have to run this step every time you enter a new shell.
 
 ```
-export OUTPUT_BINARIES_DIR=/tmp/confidential-federated-compute/binaries
+export BINARY_OUTPUTS_DIR=/tmp/confidential-federated-compute/binaries
 ```
 
 To build all artifacts which can be run in enclaves, run the following command:
 
 ```
-./kokoro/build.sh release
+./scripts/build.sh release
 ```
 
 After the above command completes, use the following command to list the output
 binaries:
 
 ```
-ls "${OUTPUT_BINARIES_DIR}"
+ls "${BINARY_OUTPUTS_DIR}"
 ```
 
 You should see several binaries in the folder, including the following:

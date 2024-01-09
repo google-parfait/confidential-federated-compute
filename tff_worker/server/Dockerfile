@@ -16,7 +16,7 @@
 # implementing the Pipeline Transform service.
 #
 # Rather than building this docker container directly, use
-# `kokoro/build_bazel.sh release` to build and test the correct Bazel artifacts
+# `scripts/bazel_build.sh release` to build and test the correct Bazel artifacts
 # and also build the container.
 #
 # Use a base image that contains dependencies for running Python.
