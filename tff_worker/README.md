@@ -62,7 +62,7 @@ Now run the release build to create the Docker container, package it as an OCI
 runtime bundle, and copy it to `BINARY_OUTPUTS_DIR`.
 
 ```
-./scripts/docker_run.sh ./scripts/bazel_build.sh release
+./scripts/bazel_build.sh release
 ```
 
 ### Debugging common issues
