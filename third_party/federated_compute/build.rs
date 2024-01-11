@@ -21,5 +21,6 @@ fn main() {
             "federated-compute/fcp/protos/confidentialcompute/pipeline_transform.proto",
         ],
         &["federated-compute/fcp/protos/confidentialcompute"],
+        Default::default(),
     );
 }
