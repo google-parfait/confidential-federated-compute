@@ -36,7 +36,7 @@ pub struct SumService {
 impl PipelineTransform for SumService {
     fn initialize(
         &mut self,
-        _request: &InitializeRequest,
+        _request: InitializeRequest,
     ) -> Result<InitializeResponse, micro_rpc::Status> {
         Ok(InitializeResponse {
             public_key: self.record_decoder.public_key().to_vec(),
@@ -46,21 +46,21 @@ impl PipelineTransform for SumService {
 
     fn configure_and_attest(
         &mut self,
-        _request: &ConfigureAndAttestRequest,
+        _request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
         Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn generate_nonces(
         &mut self,
-        _request: &GenerateNoncesRequest,
+        _request: GenerateNoncesRequest,
     ) -> Result<GenerateNoncesResponse, micro_rpc::Status> {
         Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn transform(
         &mut self,
-        request: &TransformRequest,
+        request: TransformRequest,
     ) -> Result<TransformResponse, micro_rpc::Status> {
         let mut sum: u64 = 0;
         for input in &request.inputs {
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_initialize() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
-        let response = service.initialize(&InitializeRequest::default())?;
+        let response = service.initialize(InitializeRequest::default())?;
         assert_ne!(response.public_key, vec!());
         Ok(())
     }
@@ -134,7 +134,7 @@ mod tests {
                 inputs: vec![encode_unencrypted(&vec![0; length])],
                 ..Default::default()
             };
-            assert!(service.transform(&request).is_err());
+            assert!(service.transform(request).is_err());
         }
     }
 
@@ -145,7 +145,7 @@ mod tests {
             inputs: vec![encode_unencrypted(&[0, 0, 0, 0, 0, 0, 0, 0xFF]); 2],
             ..Default::default()
         };
-        assert!(service.transform(&request).is_err());
+        assert!(service.transform(request).is_err());
     }
 
     #[test]
@@ -160,7 +160,7 @@ mod tests {
             };
             let expected = encode_unencrypted(&[0, (1..(count + 1)).sum(), 0, 0, 0, 0, 0, 0]);
             assert_eq!(
-                service.transform(&request)?,
+                service.transform(request)?,
                 TransformResponse {
                     outputs: vec![expected],
                     ..Default::default()
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
-        let initialize_response = service.initialize(&InitializeRequest::default())?;
+        let initialize_response = service.initialize(InitializeRequest::default())?;
         let mode = EncryptionMode::HpkePlusAead {
             public_key: &initialize_response.public_key,
             associated_data: b"associated data",
@@ -193,7 +193,7 @@ mod tests {
         };
         let expected = encode_unencrypted(&[3, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(
-            service.transform(&request)?,
+            service.transform(request)?,
             TransformResponse {
                 outputs: vec![expected],
                 ..Default::default()

@@ -37,7 +37,7 @@ pub struct SquareService {
 impl PipelineTransform for SquareService {
     fn initialize(
         &mut self,
-        _request: &InitializeRequest,
+        _request: InitializeRequest,
     ) -> Result<InitializeResponse, micro_rpc::Status> {
         Ok(InitializeResponse {
             public_key: self.record_decoder.public_key().to_vec(),
@@ -47,21 +47,21 @@ impl PipelineTransform for SquareService {
 
     fn configure_and_attest(
         &mut self,
-        _request: &ConfigureAndAttestRequest,
+        _request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
         Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn generate_nonces(
         &mut self,
-        _request: &GenerateNoncesRequest,
+        _request: GenerateNoncesRequest,
     ) -> Result<GenerateNoncesResponse, micro_rpc::Status> {
         Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn transform(
         &mut self,
-        request: &TransformRequest,
+        request: TransformRequest,
     ) -> Result<TransformResponse, micro_rpc::Status> {
         if request.inputs.len() != 1 {
             return Err(micro_rpc::Status::new_with_message(
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn test_initialize() -> Result<(), micro_rpc::Status> {
         let mut service = SquareService::default();
-        let response = service.initialize(&InitializeRequest::default())?;
+        let response = service.initialize(InitializeRequest::default())?;
         assert_ne!(response.public_key, vec!());
         Ok(())
     }
@@ -156,7 +156,7 @@ mod tests {
                 inputs: vec![input.clone(); count],
                 ..Default::default()
             };
-            assert!(service.transform(&request).is_err());
+            assert!(service.transform(request).is_err());
         }
     }
 
@@ -168,7 +168,7 @@ mod tests {
                 inputs: vec![encode_unencrypted(&vec![0; length])],
                 ..Default::default()
             };
-            assert!(service.transform(&request).is_err());
+            assert!(service.transform(request).is_err());
         }
     }
 
@@ -179,7 +179,7 @@ mod tests {
             inputs: vec![encode_unencrypted(&[0, 0, 0, 0, 0, 0, 0, 1])],
             ..Default::default()
         };
-        assert!(service.transform(&request).is_err());
+        assert!(service.transform(request).is_err());
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            service.transform(&request)?,
+            service.transform(request)?,
             TransformResponse {
                 outputs: vec![encode_unencrypted(&[4, 4, 1, 0, 0, 0, 0, 0])],
                 ..Default::default()
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
         let mut service = SquareService::default();
-        let initialize_response = service.initialize(&InitializeRequest::default())?;
+        let initialize_response = service.initialize(InitializeRequest::default())?;
 
         // Emulate the Ledger rewrapping the record.
         let (ledger_private_key, ledger_public_key) = cfc_crypto::gen_keypair();
@@ -244,7 +244,7 @@ mod tests {
             inputs: vec![rewrapped_record],
             ..Default::default()
         };
-        let response = service.transform(&request)?;
+        let response = service.transform(request)?;
         assert_eq!(response.outputs.len(), 1);
         // The output record should be encrypted using the public key provided as the encrypted
         // symmetric key associated data.
@@ -281,7 +281,7 @@ mod tests {
     fn test_transform_encrypted_without_encrypted_symmetric_key_associated_data(
     ) -> Result<(), micro_rpc::Status> {
         let mut service = SquareService::default();
-        let initialize_response = service.initialize(&InitializeRequest::default())?;
+        let initialize_response = service.initialize(InitializeRequest::default())?;
         let mode = EncryptionMode::HpkePlusAead {
             public_key: &initialize_response.public_key,
             associated_data: b"associated data",
@@ -294,7 +294,7 @@ mod tests {
                 .unwrap()],
             ..Default::default()
         };
-        assert!(service.transform(&request).is_err());
+        assert!(service.transform(request).is_err());
         Ok(())
     }
 }

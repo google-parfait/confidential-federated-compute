@@ -13,9 +13,10 @@ members = [
 ]
 
 [workspace.dependencies]
-micro_rpc = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
-micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
-oak_enclave_runtime_support = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
-oak_channel = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
-oak_core = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
-oak_restricted_kernel_api = { git = "https://github.com/project-oak/oak", rev = "ced2f479801f8c0360fafd51663109ca64b5a4d3" }
+micro_rpc = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+oak_enclave_runtime_support = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+oak_channel = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+oak_core = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+oak_restricted_kernel_interface = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }
+oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev = "1a9582119e4458667d794914f6f41ebb93090098" }

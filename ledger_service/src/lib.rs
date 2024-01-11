@@ -83,7 +83,7 @@ impl LedgerService {
 impl Ledger for LedgerService {
     fn create_key(
         &mut self,
-        request: &CreateKeyRequest,
+        request: CreateKeyRequest,
     ) -> Result<CreateKeyResponse, micro_rpc::Status> {
         self.update_current_time(&request.now).map_err(|err| {
             micro_rpc::Status::new_with_message(
@@ -148,7 +148,7 @@ impl Ledger for LedgerService {
 
     fn delete_key(
         &mut self,
-        request: &DeleteKeyRequest,
+        request: DeleteKeyRequest,
     ) -> Result<DeleteKeyResponse, micro_rpc::Status> {
         match self.per_key_ledgers.remove(&request.public_key_id) {
             Some(_) => Ok(DeleteKeyResponse::default()),
@@ -161,7 +161,7 @@ impl Ledger for LedgerService {
 
     fn authorize_access(
         &mut self,
-        request: &AuthorizeAccessRequest,
+        request: AuthorizeAccessRequest,
     ) -> Result<AuthorizeAccessResponse, micro_rpc::Status> {
         self.update_current_time(&request.now).map_err(|err| {
             micro_rpc::Status::new_with_message(
@@ -265,7 +265,7 @@ impl Ledger for LedgerService {
 
     fn revoke_access(
         &mut self,
-        request: &RevokeAccessRequest,
+        request: RevokeAccessRequest,
     ) -> Result<RevokeAccessResponse, micro_rpc::Status> {
         let per_key_ledger = self
             .per_key_ledgers
@@ -318,7 +318,7 @@ mod tests {
     fn create_ledger_service() -> (LedgerService, Vec<u8>, u32) {
         let mut ledger = LedgerService::default();
         let response = ledger
-            .create_key(&CreateKeyRequest {
+            .create_key(CreateKeyRequest {
                 ttl: Some(prost_types::Duration {
                     seconds: 3600,
                     ..Default::default()
@@ -335,7 +335,7 @@ mod tests {
         let mut ledger = LedgerService::default();
 
         let response1 = ledger
-            .create_key(&CreateKeyRequest {
+            .create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 1000,
                     ..Default::default()
@@ -367,7 +367,7 @@ mod tests {
         // Since the response contains many random fields, we can't check them directly. Instead,
         // we create a second key and verify that those fields are different.
         let response2 = ledger
-            .create_key(&CreateKeyRequest {
+            .create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 1000,
                     ..Default::default()
@@ -388,14 +388,14 @@ mod tests {
     fn test_delete_key() {
         let (mut ledger, _, public_key_id) = create_ledger_service();
         assert_eq!(
-            ledger.delete_key(&DeleteKeyRequest { public_key_id }),
+            ledger.delete_key(DeleteKeyRequest { public_key_id }),
             Ok(DeleteKeyResponse::default())
         );
 
         // To verify that the key was actually deleted, we check that attempting to delete it again
         // produces an error.
         assert_err!(
-            ledger.delete_key(&DeleteKeyRequest { public_key_id }),
+            ledger.delete_key(DeleteKeyRequest { public_key_id }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
         );
@@ -405,7 +405,7 @@ mod tests {
     fn test_delete_key_not_found() {
         let (mut ledger, _, public_key_id) = create_ledger_service();
         assert_err!(
-            ledger.delete_key(&DeleteKeyRequest {
+            ledger.delete_key(DeleteKeyRequest {
                 public_key_id: public_key_id.wrapping_add(1)
             }),
             micro_rpc::StatusCode::NotFound,
@@ -446,7 +446,7 @@ mod tests {
         let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair();
         let recipient_nonce: &[u8] = b"nonce";
         let response = ledger
-            .authorize_access(&AuthorizeAccessRequest {
+            .authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header.clone(),
                 encapsulated_key,
@@ -506,7 +506,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: "invalid".into(),
                 encapsulated_key,
@@ -551,7 +551,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header,
                 encapsulated_key,
@@ -586,7 +586,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy: access_policy.to_vec(),
                 blob_header: blob_header,
                 encapsulated_key,
@@ -621,7 +621,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header,
                 encapsulated_key,
@@ -666,7 +666,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header,
                 encapsulated_key,
@@ -711,7 +711,7 @@ mod tests {
 
         // Request access.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header,
                 encapsulated_key,
@@ -756,7 +756,7 @@ mod tests {
 
         // Request access. Since `now` is after the key's expiration time, access should be denied.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 1_000_000_000,
                     ..Default::default()
@@ -801,7 +801,7 @@ mod tests {
 
         // The first access should succeed.
         assert!(ledger
-            .authorize_access(&AuthorizeAccessRequest {
+            .authorize_access(AuthorizeAccessRequest {
                 access_policy: access_policy.clone(),
                 blob_header: blob_header.clone(),
                 encapsulated_key: encapsulated_key.clone(),
@@ -815,7 +815,7 @@ mod tests {
 
         // But the second should fail because the budget has been exhausted.
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header.clone(),
                 encapsulated_key,
@@ -835,7 +835,7 @@ mod tests {
         let (mut ledger, public_key, public_key_id) = create_ledger_service();
         let blob_id = b"blob-id";
         assert_eq!(
-            ledger.revoke_access(&RevokeAccessRequest {
+            ledger.revoke_access(RevokeAccessRequest {
                 public_key_id,
                 blob_id: blob_id.to_vec(),
             }),
@@ -860,7 +860,7 @@ mod tests {
             cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
 
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header.clone(),
                 encapsulated_key,
@@ -879,7 +879,7 @@ mod tests {
     fn test_revoke_access_key_not_found() {
         let (mut ledger, _, public_key_id) = create_ledger_service();
         assert_err!(
-            ledger.revoke_access(&RevokeAccessRequest {
+            ledger.revoke_access(RevokeAccessRequest {
                 public_key_id: public_key_id.wrapping_add(1),
                 blob_id: "blob-id".into(),
             }),
@@ -892,7 +892,7 @@ mod tests {
     fn test_monotonic_time() {
         let mut ledger = LedgerService::default();
         ledger
-            .create_key(&CreateKeyRequest {
+            .create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 1000,
                     ..Default::default()
@@ -903,7 +903,7 @@ mod tests {
 
         // Timestamps passed to the LedgerService must be non-decreasing.
         assert_err!(
-            ledger.create_key(&CreateKeyRequest {
+            ledger.create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 500,
                     ..Default::default()
@@ -914,7 +914,7 @@ mod tests {
             "time must be monotonic"
         );
         assert_err!(
-            ledger.authorize_access(&AuthorizeAccessRequest {
+            ledger.authorize_access(AuthorizeAccessRequest {
                 now: Some(prost_types::Timestamp {
                     seconds: 500,
                     ..Default::default()
