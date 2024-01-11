@@ -46,14 +46,21 @@ class SqliteResultHandler final {
 // SQLite's C interface. This class is not threasdafe.
 class SqliteAdapter {
  public:
-  // Creates a new `SqliteAdapter` object. Can fail if the underlying
-  // SQLite library fails to initialize.
+  //  Initializes the SQLite library.
+  static absl::Status Initialize();
+
+  // Creates a new `SqliteAdapter` object. The SQLite library must be
+  // initialized with `Initialize` before any adapters are created.
   static absl::StatusOr<std::unique_ptr<SqliteAdapter>> Create();
+
+  // Shuts down the SQLite library. All open database connections must be closed
+  // before invoking this.
+  static void ShutDown();
 
   SqliteAdapter(const SqliteAdapter&) = delete;
   SqliteAdapter& operator=(const SqliteAdapter&) = delete;
 
-  // Releases `db_` resources and cleans up the SQLite library.
+  // Closes the database connection.
   ~SqliteAdapter();
 
   // Adds a table to the SQLite database context. `create_table_stmt` must be

@@ -13,10 +13,13 @@
 // limitations under the License.
 #include "containers/sql_server/sqlite_adapter.h"
 
+#include <thread>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "fcp/base/monitoring.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -39,12 +42,40 @@ class SqliteAdapterTest : public Test {
   std::unique_ptr<SqliteAdapter> sqlite_;
 
   void SetUp() override {
+    CHECK_OK(SqliteAdapter::Initialize());
     absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
         SqliteAdapter::Create();
     CHECK_OK(create_status);
     sqlite_ = std::move(create_status.value());
   }
+
+  void TearDown() override {
+    sqlite_.reset();
+    SqliteAdapter::ShutDown();
+  }
 };
+
+TEST(MultipleThreadsTest, ConcurrentDefineTable) {
+  CHECK_OK(SqliteAdapter::Initialize());
+  std::thread thread1([]() {
+    absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
+        SqliteAdapter::Create();
+    CHECK_OK(create_status);
+    std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
+    CHECK_OK(adapter->DefineTable(R"sql(CREATE TABLE t (str_vals TEXT);)sql"));
+  });
+  std::thread thread2([]() {
+    absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
+        SqliteAdapter::Create();
+    CHECK_OK(create_status);
+    std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
+    CHECK_OK(
+        adapter->DefineTable(R"sql(CREATE TABLE t (int_vals INTEGER);)sql"));
+  });
+  thread1.join();
+  thread2.join();
+  SqliteAdapter::ShutDown();
+}
 
 class DefineTableTest : public SqliteAdapterTest {};
 

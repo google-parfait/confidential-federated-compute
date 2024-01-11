@@ -66,10 +66,6 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
                          .output_schema = sql_query.output_schema().table(0)});
     record_decryptor_.emplace(request->configuration());
 
-    FCP_ASSIGN_OR_RETURN(sqlite_, SqliteAdapter::Create());
-    FCP_RETURN_IF_ERROR(
-        sqlite_->DefineTable(configuration_->input_schema.create_table_sql()));
-
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a
     // local pointer to it and access the object without a lock after we check
@@ -137,16 +133,18 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   }
 
   SqlData result;
-  {
-    // The sqlite adapter must only be used from one thread at a time.
-    absl::MutexLock l(&mutex_);
-    FCP_RETURN_IF_ERROR(sqlite_->SetTableContents(configuration_->input_schema,
-                                                  sql_input_data));
 
-    FCP_ASSIGN_OR_RETURN(result,
-                         sqlite_->EvaluateQuery(configuration_->query,
-                                                configuration_->output_schema));
-  }
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
+                       SqliteAdapter::Create());
+  FCP_RETURN_IF_ERROR(
+      sqlite->DefineTable(configuration->input_schema.create_table_sql()));
+
+  FCP_RETURN_IF_ERROR(
+      sqlite->SetTableContents(configuration->input_schema, sql_input_data));
+
+  FCP_ASSIGN_OR_RETURN(result,
+                       sqlite->EvaluateQuery(configuration->query,
+                                             configuration->output_schema));
 
   FCP_ASSIGN_OR_RETURN(std::string output_data,
                        ConvertSqlDataToWireFormat(result));
@@ -155,6 +153,12 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
 
   return absl::OkStatus();
 }
+
+SqlPipelineTransform::SqlPipelineTransform() {
+  FCP_CHECK_STATUS(SqliteAdapter::Initialize());
+}
+
+SqlPipelineTransform::~SqlPipelineTransform() { SqliteAdapter::ShutDown(); };
 
 grpc::Status SqlPipelineTransform::ConfigureAndAttest(
     ServerContext* context, const ConfigureAndAttestRequest* request,

@@ -119,9 +119,10 @@ class SqlPipelineTransformTest : public Test {
     int port;
     const std::string server_address = "[::1]:";
     ServerBuilder builder;
+    service_ = std::make_unique<SqlPipelineTransform>();
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(&service_);
+    builder.RegisterService(service_.get());
     server_ = builder.BuildAndStart();
     LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
               << std::endl;
@@ -130,13 +131,19 @@ class SqlPipelineTransformTest : public Test {
     stub_ = PipelineTransform::NewStub(channel_);
   }
 
-  void TearDown() override { server_->Shutdown(); }
+  void TearDown() override {
+    stub_.reset();
+    channel_.reset();
+    server_->Shutdown();
+    server_.reset();
+    service_.reset();
+  }
 
  protected:
-  SqlPipelineTransform service_;
-  std::unique_ptr<Server> server_;
-  std::shared_ptr<grpc::Channel> channel_;
-  std::unique_ptr<PipelineTransform::Stub> stub_;
+  std::unique_ptr<SqlPipelineTransform> service_ = nullptr;
+  std::unique_ptr<Server> server_ = nullptr;
+  std::shared_ptr<grpc::Channel> channel_ = nullptr;
+  std::unique_ptr<PipelineTransform::Stub> stub_ = nullptr;
 };
 
 TEST_F(SqlPipelineTransformTest, InvalidConfigureAndAttestRequest) {

@@ -248,14 +248,19 @@ absl::Status SqliteResultHandler::ToStatus(
                                       sqlite3_errstr(result_code)));
 }
 
-absl::StatusOr<std::unique_ptr<SqliteAdapter>> SqliteAdapter::Create() {
+absl::Status SqliteAdapter::Initialize() {
   int init_result = sqlite3_initialize();
   if (init_result != SQLITE_OK) {
     return absl::InternalError(
         absl::StrFormat("Unable to initialize SQLite library: %s",
                         sqlite3_errstr(init_result)));
   }
+  return absl::OkStatus();
+}
 
+void SqliteAdapter::ShutDown() { sqlite3_shutdown(); }
+
+absl::StatusOr<std::unique_ptr<SqliteAdapter>> SqliteAdapter::Create() {
   sqlite3* db;
   int open_result = sqlite3_open_v2(
       "in_memory_db", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_MEMORY, nullptr);
@@ -272,10 +277,7 @@ absl::StatusOr<std::unique_ptr<SqliteAdapter>> SqliteAdapter::Create() {
   return absl::WrapUnique(new SqliteAdapter(db));
 }
 
-SqliteAdapter::~SqliteAdapter() {
-  sqlite3_close(db_);
-  sqlite3_shutdown();
-}
+SqliteAdapter::~SqliteAdapter() { sqlite3_close(db_); }
 
 absl::Status SqliteAdapter::DefineTable(absl::string_view create_table_stmt) {
   sqlite3_stmt* stmt;

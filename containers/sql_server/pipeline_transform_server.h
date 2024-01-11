@@ -46,6 +46,10 @@ namespace confidential_federated_compute::sql_server {
 class SqlPipelineTransform final
     : public fcp::confidentialcompute::PipelineTransform::Service {
  public:
+  explicit SqlPipelineTransform();
+
+  ~SqlPipelineTransform();
+
   grpc::Status ConfigureAndAttest(
       grpc::ServerContext* context,
       const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
@@ -83,7 +87,6 @@ class SqlPipelineTransform final
       fcp::confidentialcompute::TransformResponse* response);
 
   absl::Mutex mutex_;
-  std::unique_ptr<SqliteAdapter> sqlite_ ABSL_GUARDED_BY(mutex_);
   // The mutex is used to protect the optional wrapping the SqlConfiguration to
   // ensure the SqlConfiguration is initialized, but the SqlConfiguration itself
   // is threadsafe.
