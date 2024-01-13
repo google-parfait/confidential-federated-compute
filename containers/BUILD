@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-package(default_visibility = ["//:__subpackages__"])
+package(default_visibility = ["//containers:__subpackages__"])
 
 cc_library(
     name = "crypto",
