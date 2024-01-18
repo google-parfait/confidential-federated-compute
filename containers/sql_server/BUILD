@@ -17,6 +17,18 @@ package(default_visibility = ["//:__subpackages__"])
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_cc_test")
 
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":pipeline_transform_server",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@oak//oak_containers/proto:interfaces_cc_grpc",
+        "@oak//oak_containers/proto:interfaces_cc_proto",
+    ],
+)
+
 cc_library(
     name = "sqlite_adapter",
     srcs = ["sqlite_adapter.cc"],

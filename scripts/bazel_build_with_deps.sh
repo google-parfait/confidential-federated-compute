@@ -18,9 +18,10 @@
 # including building and testing all targets in the workspace. Assumes all
 # necessary dependencies for building are present, so it is recommended to run
 # this script from within the development Docker container. If `release` is
-# passed, also builds the Pipeline Transform Server Docker container, and
-# creates a tarball of an OCI Runtime Bundle from the Docker container and
-# exports it to BINARY_OUTPUTS_DIR.
+# passed, also builds a Pipeline Transform Server Docker container for
+# executing TFF computations and a Pipeline Transform Server Docker container
+# for executing SQL queries. Also creates tarballs of OCI Runtime Bundles
+# from the Docker containers and exports them to BINARY_OUTPUTS_DIR.
 set -e
 
 cd $(dirname "$0")/..
@@ -31,6 +32,8 @@ bazelisk test -- ... -containers/sql_server:pipeline_transform_server_benchmarks
 
 if [ "$1" == "release" ]; then
   ${BAZEL_USER_MODIFIER} bazelisk build --build_python_zip tff_worker/server:pipeline_transform_server
+  ${BAZEL_USER_MODIFIER} bazelisk build containers/sql_server:main
+
   # Run a command to obtain the bazel-bin output directory for the current
   # configuration. This is guaranteed to be correct even in cases where the
   # bazel-bin symlink cannot be created for some reason- which may be the case
@@ -42,27 +45,38 @@ if [ "$1" == "release" ]; then
   readonly TARGET_DIR="./target/bazel"
   rm --recursive --force "${TARGET_DIR}"
   mkdir --parents "${TARGET_DIR}"
+
   cp "${BAZEL_BIN_DIR}/tff_worker/server/pipeline_transform_server.zip" "${TARGET_DIR}/pipeline_transform_server.zip"
+  cp "${BAZEL_BIN_DIR}/containers/sql_server/main" "${TARGET_DIR}/main"
 
-
-  readonly CONTAINER_IMAGE='pipeline_transform_server'
-  echo "[INFO] Building the docker image ${CONTAINER_IMAGE} with workspace ${WORKSPACE_DIR}"
+  readonly TFF_CONTAINER_IMAGE='tff_pipeline_transform_server'
+  readonly SQL_CONTAINER_IMAGE='sql_pipeline_transform_server'
+  echo "[INFO] Building the docker images ${TFF_CONTAINER_IMAGE} and ${SQL_CONTAINER_IMAGE} with workspace ${WORKSPACE_DIR}"
   (
     cd "${TARGET_DIR}"
-    docker build -f "${WORKSPACE_DIR}/tff_worker/server/Dockerfile" -t "${CONTAINER_IMAGE}" .
+    docker build -f "${WORKSPACE_DIR}/tff_worker/server/Dockerfile" -t "${TFF_CONTAINER_IMAGE}" .
+    docker build -f "${WORKSPACE_DIR}/containers/sql_server/Dockerfile" -t "${SQL_CONTAINER_IMAGE}" .
   )
 
-  readonly TAR_FILE_NAME="${TARGET_DIR}/pipeline_transform_server_oci_filesystem_bundle.tar"
+  readonly TFF_TAR_FILE_NAME="${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar"
   "${SCRIPTS_DIR}/export_container_bundle.sh" \
-      -c "${CONTAINER_IMAGE}" \
-      -o "${TAR_FILE_NAME}"
+      -c "${TFF_CONTAINER_IMAGE}" \
+      -o "${TFF_TAR_FILE_NAME}"
+
+  readonly SQL_TAR_FILE_NAME="${TARGET_DIR}/sql_pipeline_transform_server_oci_filesystem_bundle.tar"
+  "${SCRIPTS_DIR}/export_container_bundle.sh" \
+      -c "${SQL_CONTAINER_IMAGE}" \
+      -o "${SQL_TAR_FILE_NAME}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
     mkdir --parents "${BINARY_OUTPUTS_DIR}"
     cp -v \
-        "${TAR_FILE_NAME}" \
+        "${TFF_TAR_FILE_NAME}" \
+        "${BINARY_OUTPUTS_DIR}/"
+    cp -v \
+        "${SQL_TAR_FILE_NAME}" \
         "${BINARY_OUTPUTS_DIR}/"
   fi
 fi

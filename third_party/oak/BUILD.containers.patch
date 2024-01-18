@@ -1,7 +1,8 @@
 --- /dev/null
 +++ oak_containers/proto/BUILD
-@@ -0,0 +0,27 @@
+@@ -0,0 +1,40 @@
 +load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
++load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 +
 +package(
 +    default_visibility = ["//visibility:public"],
@@ -26,5 +27,17 @@
 +    name = "interfaces_py_grpc",
 +    srcs = [":interfaces_proto"],
 +    deps = [":interfaces_py_proto"],
++)
++
++cc_proto_library(
++    name = "interfaces_cc_proto",
++    deps = [":interfaces_proto"],
++)
++
++cc_grpc_library(
++    name = "interfaces_cc_grpc",
++    srcs = [":interfaces_proto"],
++    grpc_only = True,
++    deps = [":interfaces_cc_proto"],
 +)
 +
