@@ -22,6 +22,7 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":pipeline_transform_server",
+        "//containers:oak_orchestrator_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@oak//oak_containers/proto:interfaces_cc_grpc",

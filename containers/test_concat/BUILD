@@ -12,6 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":pipeline_transform_server",
+        "//containers:oak_orchestrator_client",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@oak//oak_containers/proto:interfaces_cc_grpc",
+        "@oak//oak_containers/proto:interfaces_cc_proto",
+    ],
+)
+
 cc_library(
     name = "pipeline_transform_server",
     srcs = ["pipeline_transform_server.cc"],

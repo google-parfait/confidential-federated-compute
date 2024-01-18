@@ -11,19 +11,19 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #include <string>
 
 #include "absl/log/log.h"
 #include "containers/oak_orchestrator_client.h"
-#include "containers/sql_server/pipeline_transform_server.h"
+#include "containers/test_concat/pipeline_transform_server.h"
 #include "oak_containers/proto/interfaces.grpc.pb.h"
 #include "oak_containers/proto/interfaces.pb.h"
 
-namespace confidential_federated_compute::sql_server {
+namespace confidential_federated_compute::test_concat {
 
 namespace {
 
-using ::google::protobuf::Empty;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::Orchestrator;
@@ -31,12 +31,12 @@ using ::oak::containers::Orchestrator;
 void RunServer() {
   std::string server_address("[::]:8080");
 
-  SqlPipelineTransform service;
+  TestConcatPipelineTransform service;
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server = builder.BuildAndStart();
-  LOG(INFO) << "SQL Server listening on " << server_address << "\n";
+  LOG(INFO) << "Test Concat Server listening on " << server_address << "\n";
 
   std::unique_ptr<Orchestrator::Stub> orchestrator_stub =
       CreateOakOrchestratorStub();
@@ -48,9 +48,9 @@ void RunServer() {
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::sql_server
+}  // namespace confidential_federated_compute::test_concat
 
 int main(int argc, char** argv) {
-  confidential_federated_compute::sql_server::RunServer();
+  confidential_federated_compute::test_concat::RunServer();
   return 0;
 }

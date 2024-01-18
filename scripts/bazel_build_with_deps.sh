@@ -32,7 +32,8 @@ bazelisk test -- ... -containers/sql_server:pipeline_transform_server_benchmarks
 
 if [ "$1" == "release" ]; then
   ${BAZEL_USER_MODIFIER} bazelisk build --build_python_zip tff_worker/server:pipeline_transform_server
-  ${BAZEL_USER_MODIFIER} bazelisk build containers/sql_server:main
+  ${BAZEL_USER_MODIFIER} bazelisk build -c opt containers/sql_server:main
+  ${BAZEL_USER_MODIFIER} bazelisk build -c opt containers/test_concat:main
 
   # Run a command to obtain the bazel-bin output directory for the current
   # configuration. This is guaranteed to be correct even in cases where the
@@ -44,39 +45,38 @@ if [ "$1" == "release" ]; then
   # build context that must be sent to the Docker daemon.
   readonly TARGET_DIR="./target/bazel"
   rm --recursive --force "${TARGET_DIR}"
-  mkdir --parents "${TARGET_DIR}"
 
-  cp "${BAZEL_BIN_DIR}/tff_worker/server/pipeline_transform_server.zip" "${TARGET_DIR}/pipeline_transform_server.zip"
-  cp "${BAZEL_BIN_DIR}/containers/sql_server/main" "${TARGET_DIR}/main"
+  # Build each released container in sequence.
+  readonly TFF_TUPLE="tff_pipeline_transform_server,tff_worker/server,pipeline_transform_server.zip"
+  readonly SQL_SERVER_TUPLE="sql_server,containers/sql_server,main"
+  readonly TEST_CONCAT_TUPLE="test_concat_server,containers/test_concat,main"
+  for i in ${TFF_TUPLE} ${SQL_SERVER_TUPLE} ${TEST_CONCAT_TUPLE}
+  do
+    # Break the tuple into its constituent parts.
+    IFS=, read -r CONTAINER_IMAGE BINARY_DIR BINARY <<< "$i"
+    # Create a different directory for each container which contains any
+    # artifacts necessary for Dockerfile to execute and produce a container, to
+    # minimize the build context that needs to be sent to the Docker daemon.
+    CONTAINER_DOCKER_CONTEXT_DIR="${TARGET_DIR}/${CONTAINER_IMAGE}"
+    echo "[INFO] Building the docker image ${CONTAINER_IMAGE} with workspace ${WORKSPACE_DIR}"
+    mkdir --parents "${CONTAINER_DOCKER_CONTEXT_DIR}"
+    echo "[INFO] Copying ${BAZEL_BIN_DIR}/${BINARY_DIR}/${BINARY} to ${CONTAINER_DOCKER_CONTEXT_DIR}/${BINARY}."
+    cp "${BAZEL_BIN_DIR}/${BINARY_DIR}/${BINARY}" "${CONTAINER_DOCKER_CONTEXT_DIR}/${BINARY}"
+    (
+      cd "${CONTAINER_DOCKER_CONTEXT_DIR}"
+      docker build -f "${WORKSPACE_DIR}/${BINARY_DIR}/Dockerfile" -t "${CONTAINER_IMAGE}" .
+    )
 
-  readonly TFF_CONTAINER_IMAGE='tff_pipeline_transform_server'
-  readonly SQL_CONTAINER_IMAGE='sql_pipeline_transform_server'
-  echo "[INFO] Building the docker images ${TFF_CONTAINER_IMAGE} and ${SQL_CONTAINER_IMAGE} with workspace ${WORKSPACE_DIR}"
-  (
-    cd "${TARGET_DIR}"
-    docker build -f "${WORKSPACE_DIR}/tff_worker/server/Dockerfile" -t "${TFF_CONTAINER_IMAGE}" .
-    docker build -f "${WORKSPACE_DIR}/containers/sql_server/Dockerfile" -t "${SQL_CONTAINER_IMAGE}" .
-  )
-
-  readonly TFF_TAR_FILE_NAME="${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar"
-  "${SCRIPTS_DIR}/export_container_bundle.sh" \
-      -c "${TFF_CONTAINER_IMAGE}" \
-      -o "${TFF_TAR_FILE_NAME}"
-
-  readonly SQL_TAR_FILE_NAME="${TARGET_DIR}/sql_pipeline_transform_server_oci_filesystem_bundle.tar"
-  "${SCRIPTS_DIR}/export_container_bundle.sh" \
-      -c "${SQL_CONTAINER_IMAGE}" \
-      -o "${SQL_TAR_FILE_NAME}"
-
-  # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
-  # always be set during CI builds.
-  if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-    mkdir --parents "${BINARY_OUTPUTS_DIR}"
-    cp -v \
-        "${TFF_TAR_FILE_NAME}" \
-        "${BINARY_OUTPUTS_DIR}/"
-    cp -v \
-        "${SQL_TAR_FILE_NAME}" \
-        "${BINARY_OUTPUTS_DIR}/"
-  fi
+    TAR_FILE_NAME="${TARGET_DIR}/${CONTAINER_IMAGE}_oci_filesystem_bundle.tar"
+    "${SCRIPTS_DIR}/export_container_bundle.sh" \
+        -c "${CONTAINER_IMAGE}" \
+        -o "${TAR_FILE_NAME}"
+    # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
+    # always be set during CI builds.
+    if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
+      mkdir --parents "${BINARY_OUTPUTS_DIR}"
+      cp -v "${TAR_FILE_NAME}" \
+          "${BINARY_OUTPUTS_DIR}/"
+    fi
+  done
 fi

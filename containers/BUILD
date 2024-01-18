@@ -48,6 +48,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "oak_orchestrator_client",
+    srcs = ["oak_orchestrator_client.cc"],
+    hdrs = ["oak_orchestrator_client.h"],
+    deps = [
+        "@oak//oak_containers/proto:interfaces_cc_grpc",
+        "@oak//oak_containers/proto:interfaces_cc_proto",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/log",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 cc_test(
     name = "crypto_test",
     size = "small",
@@ -62,6 +77,20 @@ cc_test(
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
         "@federated-compute//fcp/aggregation/testing:test_data",
         "@federated-compute//fcp/base",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "oak_orchestrator_client_test",
+    srcs = ["oak_orchestrator_client_test.cc"],
+    size = "small",
+    deps = [
+        ":oak_orchestrator_client",
+        "@oak//oak_containers/proto:interfaces_cc_grpc",
+        "@oak//oak_containers/proto:interfaces_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@googletest//:gtest_main",
     ],
 )

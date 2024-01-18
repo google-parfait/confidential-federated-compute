@@ -1,6 +1,6 @@
 --- /dev/null
 +++ oak_containers/proto/BUILD
-@@ -0,0 +1,40 @@
+@@ -0,0 +0,41 @@
 +load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
 +load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 +
@@ -37,6 +37,7 @@
 +cc_grpc_library(
 +    name = "interfaces_cc_grpc",
 +    srcs = [":interfaces_proto"],
++    generate_mocks = True,
 +    grpc_only = True,
 +    deps = [":interfaces_cc_proto"],
 +)
