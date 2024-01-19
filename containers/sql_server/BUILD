@@ -14,8 +14,11 @@
 
 package(default_visibility = ["//:__subpackages__"])
 
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_cc_test")
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 cc_binary(
     name = "main",
@@ -28,6 +31,23 @@ cc_binary(
         "@oak//oak_containers/proto:interfaces_cc_grpc",
         "@oak//oak_containers/proto:interfaces_cc_proto",
     ],
+)
+
+pkg_tar(
+    name = "tar",
+    srcs = [":main"],
+)
+
+oci_image(
+    name = "oci_image",
+    base = "@distroless_cc_debian12",
+    entrypoint = ["/main"],
+    tars = [":tar"],
+)
+
+oci_runtime_bundle(
+    name = "sql_server_oci_filesystem_bundle",
+    image = ":oci_image",
 )
 
 cc_library(
@@ -145,6 +165,7 @@ cc_test(
     name = "pipeline_transform_server_benchmarks",
     size = "small",
     srcs = ["pipeline_transform_server_benchmarks.cc"],
+    tags = ["manual"],
     deps = [
         ":pipeline_transform_server",
         ":sql_data_cc_proto",

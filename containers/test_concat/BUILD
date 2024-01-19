@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
@@ -23,6 +27,23 @@ cc_binary(
         "@oak//oak_containers/proto:interfaces_cc_grpc",
         "@oak//oak_containers/proto:interfaces_cc_proto",
     ],
+)
+
+pkg_tar(
+    name = "tar",
+    srcs = [":main"],
+)
+
+oci_image(
+    name = "oci_image",
+    base = "@distroless_cc_debian12",
+    entrypoint = ["/main"],
+    tars = [":tar"],
+)
+
+oci_runtime_bundle(
+    name = "test_concat_server_oci_filesystem_bundle",
+    image = ":oci_image",
 )
 
 cc_library(

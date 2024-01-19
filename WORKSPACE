@@ -179,6 +179,10 @@ http_archive(
     url = "https://github.com/project-oak/oak/archive/d90298ffe2eb828507dd1d71bdc13d3d7050a64f.tar.gz",
 )
 
+load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
+
+oak_toolchain_repositories()
+
 http_archive(
     name = "googletest",
     sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
@@ -208,4 +212,32 @@ http_archive(
     sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
     strip_prefix = "benchmark-1.8.3",
     urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"]
+)
+
+http_archive(
+    name = "rules_oci",
+    sha256 = "58b7a175ee90c12583afeca388523adf6a4e5a0528f330b41c302b91a4d6fc06",
+    strip_prefix = "rules_oci-1.6.0",
+    url = "https://github.com/bazel-contrib/rules_oci/releases/download/v1.6.0/rules_oci-v1.6.0.tar.gz",
+)
+
+load("@rules_oci//oci:dependencies.bzl", "rules_oci_dependencies")
+
+rules_oci_dependencies()
+
+load("@rules_oci//oci:repositories.bzl", "LATEST_CRANE_VERSION", "LATEST_ZOT_VERSION", "oci_register_toolchains")
+
+oci_register_toolchains(
+    name = "oci",
+    crane_version = LATEST_CRANE_VERSION,
+    zot_version = LATEST_ZOT_VERSION,
+)
+
+load("@rules_oci//oci:pull.bzl", "oci_pull")
+
+oci_pull(
+    name = "distroless_cc_debian12",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
 )

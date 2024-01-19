@@ -28,12 +28,27 @@ cd $(dirname "$0")/..
 readonly WORKSPACE_DIR="$PWD"
 readonly SCRIPTS_DIR="${WORKSPACE_DIR}/scripts"
 
-bazelisk test -- ... -containers/sql_server:pipeline_transform_server_benchmarks
+bazelisk test //...
 
 if [ "$1" == "release" ]; then
+  bazelisk build -c opt \
+      //containers/sql_server:sql_server_oci_filesystem_bundle.tar \
+      //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar
+
+  # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
+  # always be set during CI builds.
+  if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
+    mkdir --parents "${BINARY_OUTPUTS_DIR}"
+    readonly BAZEL_BIN="$(bazelisk info -c opt bazel-bin)"
+    cp -v \
+      "${BAZEL_BIN}/containers/sql_server/sql_server_oci_filesystem_bundle.tar" \
+      "${BAZEL_BIN}/containers/test_concat/test_concat_server_oci_filesystem_bundle.tar" \
+      "${BINARY_OUTPUTS_DIR}/"
+  fi
+
+  # The Python-based tff_worker server has a more complex Dockerfile that hasn't
+  # been ported to rules_oci. Until then, build it with Docker.
   ${BAZEL_USER_MODIFIER} bazelisk build --build_python_zip tff_worker/server:pipeline_transform_server
-  ${BAZEL_USER_MODIFIER} bazelisk build -c opt containers/sql_server:main
-  ${BAZEL_USER_MODIFIER} bazelisk build -c opt containers/test_concat:main
 
   # Run a command to obtain the bazel-bin output directory for the current
   # configuration. This is guaranteed to be correct even in cases where the
@@ -48,9 +63,7 @@ if [ "$1" == "release" ]; then
 
   # Build each released container in sequence.
   readonly TFF_TUPLE="tff_pipeline_transform_server,tff_worker/server,pipeline_transform_server.zip"
-  readonly SQL_SERVER_TUPLE="sql_server,containers/sql_server,main"
-  readonly TEST_CONCAT_TUPLE="test_concat_server,containers/test_concat,main"
-  for i in ${TFF_TUPLE} ${SQL_SERVER_TUPLE} ${TEST_CONCAT_TUPLE}
+  for i in ${TFF_TUPLE}
   do
     # Break the tuple into its constituent parts.
     IFS=, read -r CONTAINER_IMAGE BINARY_DIR BINARY <<< "$i"
