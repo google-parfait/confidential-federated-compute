@@ -168,14 +168,15 @@ git_repository(
     remote = "https://github.com/tensorflow/federated.git",
 )
 
-git_repository(
+http_archive(
     name = "oak",
-    commit = "6440d8db80570da5dfd2882ab00601a8fd0204bc",
     patches = [
         "//third_party/oak:BUILD.containers.patch",
-        "//third_party/oak:BUILD.remote_attestation.patch",
+        "//third_party/oak:BUILD.proto_session.patch",
     ],
-    remote = "https://github.com/project-oak/oak.git",
+    sha256 = "bb1b8a969111411c7b39b6e15e2b17ebd588366012f4540f90d9b812797e3f80",
+    strip_prefix = "oak-d90298ffe2eb828507dd1d71bdc13d3d7050a64f",
+    url = "https://github.com/project-oak/oak/archive/d90298ffe2eb828507dd1d71bdc13d3d7050a64f.tar.gz",
 )
 
 http_archive(

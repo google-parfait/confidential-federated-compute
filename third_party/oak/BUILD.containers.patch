@@ -1,22 +1,21 @@
---- /dev/null
+--- oak_containers/proto/BUILD
 +++ oak_containers/proto/BUILD
-@@ -0,0 +0,41 @@
+@@ -15,6 +15,7 @@
+ #
+
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 +load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
-+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-+
-+package(
-+    default_visibility = ["//visibility:public"],
-+)
-+
-+proto_library(
-+    name = "interfaces_proto",
-+    srcs = ["interfaces.proto"],
-+    deps = [
-+      "//oak_crypto/proto/v1:crypto_proto",
-+      "//oak_remote_attestation/proto/v1:messages_proto",
-+      "@com_google_protobuf//:empty_proto",
-+    ]
-+)
+ load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+@@ -43,6 +44,18 @@
+ cc_grpc_library(
+     name = "interfaces_cc_grpc",
+     srcs = [":interfaces_proto"],
++    generate_mocks = True,
+     grpc_only = True,
+     deps = [":interfaces_cc_proto"],
+ )
 +
 +py_proto_library(
 +    name = "interfaces_py_proto",
@@ -28,17 +27,4 @@
 +    srcs = [":interfaces_proto"],
 +    deps = [":interfaces_py_proto"],
 +)
-+
-+cc_proto_library(
-+    name = "interfaces_cc_proto",
-+    deps = [":interfaces_proto"],
-+)
-+
-+cc_grpc_library(
-+    name = "interfaces_cc_grpc",
-+    srcs = [":interfaces_proto"],
-+    generate_mocks = True,
-+    grpc_only = True,
-+    deps = [":interfaces_cc_proto"],
-+)
-+
+
