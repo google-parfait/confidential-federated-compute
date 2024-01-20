@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package oak.attestation.v1;
+
+message ReferenceValues {}
