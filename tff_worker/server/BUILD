@@ -33,6 +33,12 @@ py_binary(
     ],
 )
 
+filegroup(
+    name = "pipeline_transform_server_zip",
+    srcs = [":pipeline_transform_server"],
+    output_group = "python_zip_file",
+)
+
 py_test(
     name = "pipeline_transform_server_test",
     srcs = ["pipeline_transform_server_test.py"],

@@ -33,63 +33,33 @@ bazelisk test //...
 if [ "$1" == "release" ]; then
   bazelisk build -c opt \
       //containers/sql_server:sql_server_oci_filesystem_bundle.tar \
-      //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar
+      //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar \
+      //tff_worker/server:pipeline_transform_server_zip
+  readonly BAZEL_BIN="$(bazelisk info -c opt bazel-bin)"
+
+  # The Python-based tff_worker server has a more complex Dockerfile that hasn't
+  # been ported to rules_oci. Until then, build it with Docker.
+  # Copy inputs to a temporary directory to minimize the build context sent to
+  # the Docker daemon.
+  readonly DOCKER_CONTEXT_DIR="$(mktemp -d)"
+  trap 'rm -rf -- "${DOCKER_CONTEXT_DIR}"' EXIT
+  cp "${BAZEL_BIN}/tff_worker/server/pipeline_transform_server.zip" \
+      "${DOCKER_CONTEXT_DIR}/"
+  docker build -f "${WORKSPACE_DIR}/tff_worker/server/Dockerfile" \
+      -t tff_pipeline_transfer_server "${DOCKER_CONTEXT_DIR}"
+  readonly TARGET_DIR="${WORKSPACE_DIR}/target/bazel"
+  mkdir --parents "${TARGET_DIR}"
+  "${SCRIPTS_DIR}/export_container_bundle.sh" -c tff_pipeline_transfer_server \
+      -o "${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
     mkdir --parents "${BINARY_OUTPUTS_DIR}"
-    readonly BAZEL_BIN="$(bazelisk info -c opt bazel-bin)"
     cp -v \
       "${BAZEL_BIN}/containers/sql_server/sql_server_oci_filesystem_bundle.tar" \
       "${BAZEL_BIN}/containers/test_concat/test_concat_server_oci_filesystem_bundle.tar" \
+      "${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar" \
       "${BINARY_OUTPUTS_DIR}/"
   fi
-
-  # The Python-based tff_worker server has a more complex Dockerfile that hasn't
-  # been ported to rules_oci. Until then, build it with Docker.
-  ${BAZEL_USER_MODIFIER} bazelisk build --build_python_zip tff_worker/server:pipeline_transform_server
-
-  # Run a command to obtain the bazel-bin output directory for the current
-  # configuration. This is guaranteed to be correct even in cases where the
-  # bazel-bin symlink cannot be created for some reason- which may be the case
-  # when running the build as a non-root user.
-  readonly BAZEL_BIN_DIR=$(${BAZEL_USER_MODIFIER} bazelisk info bazel-bin)
-
-  # Copy the zipfile that should be run to a different directory to minimize the
-  # build context that must be sent to the Docker daemon.
-  readonly TARGET_DIR="./target/bazel"
-  rm --recursive --force "${TARGET_DIR}"
-
-  # Build each released container in sequence.
-  readonly TFF_TUPLE="tff_pipeline_transform_server,tff_worker/server,pipeline_transform_server.zip"
-  for i in ${TFF_TUPLE}
-  do
-    # Break the tuple into its constituent parts.
-    IFS=, read -r CONTAINER_IMAGE BINARY_DIR BINARY <<< "$i"
-    # Create a different directory for each container which contains any
-    # artifacts necessary for Dockerfile to execute and produce a container, to
-    # minimize the build context that needs to be sent to the Docker daemon.
-    CONTAINER_DOCKER_CONTEXT_DIR="${TARGET_DIR}/${CONTAINER_IMAGE}"
-    echo "[INFO] Building the docker image ${CONTAINER_IMAGE} with workspace ${WORKSPACE_DIR}"
-    mkdir --parents "${CONTAINER_DOCKER_CONTEXT_DIR}"
-    echo "[INFO] Copying ${BAZEL_BIN_DIR}/${BINARY_DIR}/${BINARY} to ${CONTAINER_DOCKER_CONTEXT_DIR}/${BINARY}."
-    cp "${BAZEL_BIN_DIR}/${BINARY_DIR}/${BINARY}" "${CONTAINER_DOCKER_CONTEXT_DIR}/${BINARY}"
-    (
-      cd "${CONTAINER_DOCKER_CONTEXT_DIR}"
-      docker build -f "${WORKSPACE_DIR}/${BINARY_DIR}/Dockerfile" -t "${CONTAINER_IMAGE}" .
-    )
-
-    TAR_FILE_NAME="${TARGET_DIR}/${CONTAINER_IMAGE}_oci_filesystem_bundle.tar"
-    "${SCRIPTS_DIR}/export_container_bundle.sh" \
-        -c "${CONTAINER_IMAGE}" \
-        -o "${TAR_FILE_NAME}"
-    # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
-    # always be set during CI builds.
-    if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-      mkdir --parents "${BINARY_OUTPUTS_DIR}"
-      cp -v "${TAR_FILE_NAME}" \
-          "${BINARY_OUTPUTS_DIR}/"
-    fi
-  done
 fi
