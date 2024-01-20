@@ -22,18 +22,32 @@ set -e
 
 cd $(dirname "$0")/..
 
-readonly DOCKER_IMAGE_ID='europe-west2-docker.pkg.dev/oak-ci/oak-development/oak-development@sha256:7b6e401df8e90fec2597806a8c912649b9802de83abe9f6724c3dffe7772f07d'
+readonly DOCKER_IMAGE_NAME=confidential-federated-compute-rust
+docker build --cache-from $DOCKER_IMAGE_NAME --tag $DOCKER_IMAGE_NAME -f - development <<EOF
+FROM rust@sha256:4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563
+RUN rustup default nightly-2023-11-15
+RUN rustup target add x86_64-unknown-none
+RUN curl -LSso protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
+    echo "78ab9c3288919bdaa6cfcec6127a04813cf8a0ce406afa625e48e816abee2878 protoc.zip" | sha256sum -c && \
+    unzip -q protoc.zip -d /usr/local/protobuf && \
+    rm protoc.zip
+ENV PROTOC /usr/local/protobuf/bin/protoc
+EOF
+
 declare -ar DOCKER_RUN_FLAGS=(
   '--rm'
+  '--tty'
+  '--env=CARGO_HOME=/root/.cargo'
+  '--env=TERM'
   "--volume=$PWD/.cargo-cache:/root/.cargo"
   "--volume=$PWD:/workspace"
   '--workdir=/workspace'
 )
 
-docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_ID}" sh -c 'cargo build && cargo test'
+docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" sh -c 'cargo build && cargo test'
 
 if [ "$1" == "release" ]; then
-  docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_ID}" \
+  docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
       cargo build --release \
           -p ledger_enclave_app \
           -p square_enclave_app \
