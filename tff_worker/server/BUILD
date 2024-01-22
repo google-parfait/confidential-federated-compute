@@ -37,6 +37,7 @@ filegroup(
     name = "pipeline_transform_server_zip",
     srcs = [":pipeline_transform_server"],
     output_group = "python_zip_file",
+    tags = ["manual"],
 )
 
 py_test(
