@@ -1,0 +1,10 @@
+--- BUILD
++++ BUILD
+@@ -4,6 +4,7 @@
+     name = "sqlite3",
+     srcs = ["sqlite3.c"],
+     hdrs = ["sqlite3.h"],
++    linkopts = ["-ldl", "-lpthread"],
+     visibility = ["//visibility:public"],
+     deps = [],
+ )
