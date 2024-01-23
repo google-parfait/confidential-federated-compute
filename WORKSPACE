@@ -146,13 +146,14 @@ rules_proto_dependencies()
 
 rules_proto_toolchains()
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-
-git_repository(
+http_archive(
     name = "federated-compute",
-    commit = "d0907092bfe930ac784de4e07f89aec56e7b2db7",
-    remote = "https://github.com/google/federated-compute.git",
+    sha256 = "95939a942202f893db391df1537fc64c45fe94db7ce6484f20bd436aee70054c",
+    strip_prefix = "federated-compute-8d4b013673f87ccd35c9ec95a97749a5ff83f467",
+    url = "https://github.com/google/federated-compute/archive/8d4b013673f87ccd35c9ec95a97749a5ff83f467.tar.gz",
 )
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 # We must build TFF protos from source as they are not included in the version
 # of TFF released as a python package.
@@ -174,9 +175,9 @@ http_archive(
         "//third_party/oak:BUILD.containers.patch",
         "//third_party/oak:BUILD.proto_session.patch",
     ],
-    sha256 = "bb1b8a969111411c7b39b6e15e2b17ebd588366012f4540f90d9b812797e3f80",
-    strip_prefix = "oak-d90298ffe2eb828507dd1d71bdc13d3d7050a64f",
-    url = "https://github.com/project-oak/oak/archive/d90298ffe2eb828507dd1d71bdc13d3d7050a64f.tar.gz",
+    sha256 = "771e5aa44455a295c8001d10116d7d97a94bd3f21c5ea7e3ed3b87cb488d9acd",
+    strip_prefix = "oak-a103bcad4ca2d98dbfd6af36a8794649037b0f03",
+    url = "https://github.com/project-oak/oak/archive/a103bcad4ca2d98dbfd6af36a8794649037b0f03.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")

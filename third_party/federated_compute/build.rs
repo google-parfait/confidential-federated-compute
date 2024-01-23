@@ -20,7 +20,16 @@ fn main() {
             "federated-compute/fcp/protos/confidentialcompute/ledger.proto",
             "federated-compute/fcp/protos/confidentialcompute/pipeline_transform.proto",
         ],
-        &["federated-compute/fcp/protos/confidentialcompute"],
-        Default::default(),
+        &[
+            "federated-compute/fcp/protos/confidentialcompute",
+            "rust_proto_stubs",
+        ],
+        micro_rpc_build::CompileOptions {
+            extern_paths: vec![micro_rpc_build::ExternPath::new(
+                ".oak.attestation.v1",
+                "::oak_attestation_verification::proto::oak::attestation::v1",
+            )],
+            ..Default::default()
+        },
     );
 }

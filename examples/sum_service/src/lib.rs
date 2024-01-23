@@ -122,7 +122,7 @@ mod tests {
     fn test_initialize() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
         let response = service.initialize(InitializeRequest::default())?;
-        assert_ne!(response.public_key, vec!());
+        assert!(!response.public_key.is_empty());
         Ok(())
     }
 

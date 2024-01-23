@@ -271,6 +271,7 @@ mod tests {
                     src: 0,
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -279,6 +280,7 @@ mod tests {
                     src: 1,
                     application: Some(ApplicationMatcher {
                         tag: Some("other".to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -287,6 +289,7 @@ mod tests {
                     src: 1,
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -295,6 +298,7 @@ mod tests {
                     src: 1,
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -324,6 +328,7 @@ mod tests {
                     src: 0,
                     application: Some(ApplicationMatcher {
                         tag: Some("tag1".to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -331,6 +336,7 @@ mod tests {
                     src: 1,
                     application: Some(ApplicationMatcher {
                         tag: Some("tag2".to_owned()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -662,6 +668,7 @@ mod tests {
                 src: 0,
                 access_budget: Some(AccessBudget {
                     kind: Some(AccessBudgetKind::Times(1)),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -673,9 +680,11 @@ mod tests {
                 src: 0,
                 application: Some(ApplicationMatcher {
                     tag: Some(app.tag.to_owned()),
+                    ..Default::default()
                 }),
                 access_budget: Some(AccessBudget {
                     kind: Some(AccessBudgetKind::Times(1)),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],

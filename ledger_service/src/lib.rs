@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![no_std]
-#![cfg_attr(test, feature(is_some_and))]
 
 extern crate alloc;
 
@@ -348,7 +347,7 @@ mod tests {
             .unwrap();
         let details1 = PublicKeyDetails::decode(response1.public_key_details.as_ref()).unwrap();
 
-        assert_eq!(response1.attestation, &[]);
+        assert_eq!(response1.attestation, &[0u8; 0]);
         assert_eq!(
             details1.issued,
             Some(prost_types::Timestamp {
@@ -388,14 +387,20 @@ mod tests {
     fn test_delete_key() {
         let (mut ledger, _, public_key_id) = create_ledger_service();
         assert_eq!(
-            ledger.delete_key(DeleteKeyRequest { public_key_id }),
+            ledger.delete_key(DeleteKeyRequest {
+                public_key_id,
+                ..Default::default()
+            }),
             Ok(DeleteKeyResponse::default())
         );
 
         // To verify that the key was actually deleted, we check that attempting to delete it again
         // produces an error.
         assert_err!(
-            ledger.delete_key(DeleteKeyRequest { public_key_id }),
+            ledger.delete_key(DeleteKeyRequest {
+                public_key_id,
+                ..Default::default()
+            }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
         );
@@ -406,7 +411,8 @@ mod tests {
         let (mut ledger, _, public_key_id) = create_ledger_service();
         assert_err!(
             ledger.delete_key(DeleteKeyRequest {
-                public_key_id: public_key_id.wrapping_add(1)
+                public_key_id: public_key_id.wrapping_add(1),
+                ..Default::default()
             }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
@@ -423,6 +429,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -486,6 +493,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -531,6 +539,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -646,6 +655,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -691,6 +701,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -736,6 +747,7 @@ mod tests {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
                     tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -838,6 +850,7 @@ mod tests {
             ledger.revoke_access(RevokeAccessRequest {
                 public_key_id,
                 blob_id: blob_id.to_vec(),
+                ..Default::default()
             }),
             Ok(RevokeAccessResponse::default())
         );
@@ -882,6 +895,7 @@ mod tests {
             ledger.revoke_access(RevokeAccessRequest {
                 public_key_id: public_key_id.wrapping_add(1),
                 blob_id: "blob-id".into(),
+                ..Default::default()
             }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
