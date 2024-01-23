@@ -13,30 +13,6 @@
 # limitations under the License.
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# Install a hermetic LLVM toolchain. LLVM was chosen somewhat arbitrarily; GCC
-# should work as well.
-http_archive(
-    name = "com_grail_bazel_toolchain",
-    sha256 = "d3d218287e76c0ad28bc579db711d1fa019fb0463634dfd944a1c2679ef9565b",
-    strip_prefix = "bazel-toolchain-0.8",
-    url = "https://github.com/grailbio/bazel-toolchain/archive/refs/tags/0.8.tar.gz",
-)
-
-load("@com_grail_bazel_toolchain//toolchain:deps.bzl", "bazel_toolchain_dependencies")
-
-bazel_toolchain_dependencies()
-
-load("@com_grail_bazel_toolchain//toolchain:rules.bzl", "llvm_toolchain")
-
-llvm_toolchain(
-    name = "llvm_toolchain",
-    llvm_version = "14.0.0",
-)
-
-load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
-
-llvm_register_toolchains()
-
 # Pin a newer version of gRPC than the one provided by Tensorflow.
 # 1.50.0 is used as it is the gRPC version used by FCP. It's not a requirement
 # for the versions to stay in sync if we need a feature of a later gRPC version,
@@ -195,6 +171,7 @@ SQLITE_BAZEL_COMMIT = "2a512f90dcdabfc7c3279cc324f1abd84af49911"
 
 http_archive(
     name = "sqlite_bazel",
+    patches = ["//third_party/sqlite_bazel:BUILD.patch"],
     sha256 = "079ae321db00b2a697dc8c27acc21e63e05c353b89bdb510bb6d6778d3a05866",
     strip_prefix = "sqlite-bazel-" + SQLITE_BAZEL_COMMIT,
     urls = ["https://github.com/rockwotj/sqlite-bazel/archive/%s.zip" % SQLITE_BAZEL_COMMIT],
@@ -240,4 +217,24 @@ oci_pull(
     digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
     image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
+)
+
+# Install a hermetic GCC toolchain. This must be defined after rules_oci
+# because it uses an older version of aspect_bazel_lib.
+http_archive(
+    name = "aspect_gcc_toolchain",
+    sha256 = "3341394b1376fb96a87ac3ca01c582f7f18e7dc5e16e8cf40880a31dd7ac0e1e",
+    strip_prefix = "gcc-toolchain-0.4.2",
+    url = "https://github.com/aspect-build/gcc-toolchain/archive/refs/tags/0.4.2.tar.gz",
+)
+
+load("@aspect_gcc_toolchain//toolchain:repositories.bzl", "gcc_toolchain_dependencies")
+
+gcc_toolchain_dependencies()
+
+load("@aspect_gcc_toolchain//toolchain:defs.bzl", "ARCHS", "gcc_register_toolchain")
+
+gcc_register_toolchain(
+    name = "gcc_toolchain_x86_64",
+    target_arch = ARCHS.x86_64,
 )
