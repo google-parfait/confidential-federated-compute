@@ -79,7 +79,7 @@ Execution Environment is in fact running a particular application.
 
 There are different strategies to achieve binary transparency. One strategy
 consists of the use of a trusted builder along with provenance and endorsement
-statements that are signed and published in a transparency log, as descibed in
+statements that are signed and published in a transparency log, as described in
 detail in Oak's
 [Transparent Release documentation](https://github.com/project-oak/transparent-release#release-transparency).
 Another strategy is making the build process fully reproducible, so that
@@ -95,6 +95,16 @@ on how one can verify that a particular version of the source code produces a
 particular binary.
 
 ### Prerequisites
+
+#### Bazelisk
+
+Bazelisk is the bazel-recommended way to obtain a specific bazel version.
+See https://github.com/bazelbuild/bazelisk#installation for installation
+instructions.
+
+The build scripts in this repository require either bazelisk to be in your
+`PATH` or the `BAZELISK` environment variable to be set to the location of the
+bazelisk binary.
 
 #### Rootless Docker
 
