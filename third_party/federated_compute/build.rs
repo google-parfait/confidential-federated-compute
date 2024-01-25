@@ -27,7 +27,7 @@ fn main() {
         micro_rpc_build::CompileOptions {
             extern_paths: vec![micro_rpc_build::ExternPath::new(
                 ".oak.attestation.v1",
-                "::oak_attestation_verification::proto::oak::attestation::v1",
+                "::oak_proto_rust::oak::attestation::v1",
             )],
             ..Default::default()
         },

@@ -73,22 +73,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
-name = "base64"
-version = "0.21.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
-
-[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
-
-[[package]]
-name = "bit_field"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
 name = "bitflags"
@@ -308,18 +296,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fffa369a668c8af7dbf8b5e56c9f744fbd399949ed171606040001947de40b1c"
 dependencies = [
  "const-oid",
- "pem-rfc7468",
  "zeroize",
-]
-
-[[package]]
-name = "deranged"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
-dependencies = [
- "powerfmt",
- "serde",
 ]
 
 [[package]]
@@ -367,7 +344,6 @@ dependencies = [
  "generic-array",
  "group",
  "hkdf",
- "pem-rfc7468",
  "pkcs8",
  "rand_core",
  "sec1",
@@ -411,7 +387,7 @@ version = "0.1.0"
 dependencies = [
  "micro_rpc",
  "micro_rpc_build",
- "oak_attestation_verification",
+ "oak_proto_rust",
  "prost",
  "prost-types",
 ]
@@ -600,12 +576,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itoa"
-version = "1.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -623,8 +593,6 @@ dependencies = [
  "log",
  "oak_channel",
  "oak_core",
- "oak_enclave_runtime_support",
- "oak_restricted_kernel_interface",
  "oak_restricted_kernel_sdk",
 ]
 
@@ -679,7 +647,7 @@ checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
 [[package]]
 name = "micro_rpc"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "async-trait",
  "micro_rpc_build",
@@ -689,7 +657,7 @@ dependencies = [
 [[package]]
 name = "micro_rpc_build"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "anyhow",
  "prost-build",
@@ -702,32 +670,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
-name = "oak_attestation_verification"
-version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "coset",
- "ecdsa",
- "getrandom",
- "hex",
- "oak_dice",
- "oak_sev_guest",
- "p256",
- "prost",
- "prost-build",
- "serde",
- "serde_json",
- "sha2",
- "time",
- "zerocopy",
-]
-
-[[package]]
 name = "oak_channel"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -741,7 +686,7 @@ dependencies = [
 [[package]]
 name = "oak_core"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "getrandom",
  "lock_api",
@@ -751,7 +696,7 @@ dependencies = [
 [[package]]
 name = "oak_crypto"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -770,7 +715,7 @@ dependencies = [
 [[package]]
 name = "oak_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "bitflags 2.4.1",
  "ciborium",
@@ -789,7 +734,7 @@ dependencies = [
 [[package]]
 name = "oak_enclave_runtime_support"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "libm",
  "log",
@@ -799,9 +744,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oak_proto_rust"
+version = "0.0.1"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+dependencies = [
+ "prost",
+ "prost-build",
+]
+
+[[package]]
 name = "oak_restricted_kernel_interface"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "bitflags 2.4.1",
  "strum",
@@ -810,7 +764,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -818,25 +772,21 @@ dependencies = [
  "oak_channel",
  "oak_crypto",
  "oak_dice",
+ "oak_enclave_runtime_support",
  "oak_restricted_kernel_interface",
+ "oak_restricted_kernel_sdk_proc_macro",
  "p256",
  "strum",
  "zerocopy",
 ]
 
 [[package]]
-name = "oak_sev_guest"
+name = "oak_restricted_kernel_sdk_proc_macro"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=a103bcad4ca2d98dbfd6af36a8794649037b0f03#a103bcad4ca2d98dbfd6af36a8794649037b0f03"
+source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
 dependencies = [
- "bitflags 2.4.1",
- "lock_api",
- "snafu",
- "spinning_top",
- "static_assertions",
- "strum",
- "x86_64",
- "zerocopy",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -861,15 +811,6 @@ dependencies = [
  "elliptic-curve",
  "primeorder",
  "sha2",
-]
-
-[[package]]
-name = "pem-rfc7468"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
-dependencies = [
- "base64ct",
 ]
 
 [[package]]
@@ -930,12 +871,6 @@ dependencies = [
  "opaque-debug",
  "universal-hash",
 ]
-
-[[package]]
-name = "powerfmt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "prettyplease"
@@ -1122,12 +1057,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f3208ce4d8448b3f3e7d168a73f5e0c43a61e32930de3bceeccedb388b6bf06"
 
 [[package]]
-name = "ryu"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98d2aa92eebf49b69786be48e4477826b256916e84a57ff2a4f21923b48eb4c"
-
-[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1174,17 +1103,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_json"
-version = "1.0.111"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "176e46fa42316f18edd598015a5166857fc835ec732f5215eac6b7bdbf0a84f4"
-dependencies = [
- "itoa",
- "ryu",
- "serde",
-]
-
-[[package]]
 name = "sha2"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1203,27 +1121,6 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest",
  "rand_core",
-]
-
-[[package]]
-name = "snafu"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d342c51730e54029130d7dc9fd735d28c4cd360f1368c01981d4f03ff207f096"
-dependencies = [
- "snafu-derive",
-]
-
-[[package]]
-name = "snafu-derive"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "080c44971436b1af15d6f61ddd8b543995cf63ab8e677d46b00cc06f4ef267a0"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.48",
 ]
 
 [[package]]
@@ -1258,8 +1155,6 @@ dependencies = [
  "log",
  "oak_channel",
  "oak_core",
- "oak_enclave_runtime_support",
- "oak_restricted_kernel_interface",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
  "square_service",
@@ -1316,8 +1211,6 @@ dependencies = [
  "log",
  "oak_channel",
  "oak_core",
- "oak_enclave_runtime_support",
- "oak_restricted_kernel_interface",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
  "sum_service",
@@ -1338,7 +1231,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2c04b93fc15d79b39c63218f15e3fdffaa4c227830686e3b7c5f41244eb3e50"
 dependencies = [
- "base64 0.13.1",
+ "base64",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -1382,34 +1275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "time"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f657ba42c3f86e7680e53c8cd3af8abbe56b5491790b46e22e19c0d57463583e"
-dependencies = [
- "deranged",
- "powerfmt",
- "serde",
- "time-core",
- "time-macros",
-]
-
-[[package]]
-name = "time-core"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
-
-[[package]]
-name = "time-macros"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26197e33420244aeb70c3e8c78376ca46571bc4e701e4791c2cd9f57dcb3a43f"
-dependencies = [
- "time-core",
-]
-
-[[package]]
 name = "typenum"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1442,12 +1307,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "volatile"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442887c63f2c839b346c192d047a7c87e73d0689c9157b00b53dcc27dd5ea793"
 
 [[package]]
 name = "wasi"
@@ -1540,18 +1399,6 @@ checksum = "fb66477291e7e8d2b0ff1bcb900bf29489a9692816d79874bea351e7a8b6de96"
 dependencies = [
  "curve25519-dalek",
  "rand_core",
-]
-
-[[package]]
-name = "x86_64"
-version = "0.14.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b835097a84e4457323331ec5d6eb23d096066cbfb215d54096dcb4b2e85f500"
-dependencies = [
- "bit_field",
- "bitflags 2.4.1",
- "rustversion",
- "volatile",
 ]
 
 [[package]]
