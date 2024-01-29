@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import OrderedDict
+import collections
 from concurrent import futures
-from typing import List
 import unittest
 from fcp.protos.confidentialcompute import pipeline_transform_pb2
 from fcp.protos.confidentialcompute import pipeline_transform_pb2_grpc
@@ -27,48 +26,7 @@ from tensorflow.core.framework import types_pb2
 import tensorflow_federated as tff
 from tff_worker.server import pipeline_transform_server
 from tff_worker.server.testing import checkpoint_test_utils
-
-
-# Define a simple computation that adds a broadcasted value to all floats in
-# a single input tensor.
-@tff.tf_computation(
-    OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
-    tf.float32,
-)
-def tf_comp(
-    example: OrderedDict[str, tf.Tensor], broadcasted_data: float
-) -> OrderedDict[str, tf.Tensor]:
-  result = OrderedDict()
-  for name, t in example.items():
-    result[name] = tf.add(t, broadcasted_data)
-  return result
-
-
-# Define a federated computation using tf_comp to be performed per-client.
-@tff.federated_computation(
-    tff.FederatedType(
-        OrderedDict([('float', tff.TensorType(tf.float32, shape=[None]))]),
-        tff.CLIENTS,
-    ),
-    tff.FederatedType(tf.float32, tff.CLIENTS, all_equal=True),
-)
-def client_work_comp(
-    example: OrderedDict[str, tf.Tensor], broadcasted_data: float
-) -> OrderedDict[str, tf.Tensor]:
-  return tff.federated_map(tf_comp, (example, broadcasted_data))
-
-
-@tff.federated_computation(
-    tff.FederatedType(tf.int32, tff.SERVER),
-    tff.FederatedType(tf.int32, tff.CLIENTS),
-)
-def aggregation_comp(state: int, value: List[int]) -> int:
-  state_at_clients = tff.federated_broadcast(state)
-  scaled_value = tff.federated_map(
-      tff.tf_computation(lambda x, y: x * y), (value, state_at_clients)
-  )
-  summed_value = tff.federated_sum(scaled_value)
-  return summed_value
+from tff_worker.server.testing import test_computations
 
 
 class PipelineTransformServicerTest(unittest.TestCase):
@@ -77,6 +35,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
   # grpcio_testing requires a newer grpcio version than what is required by
   # TFF.
   def setUp(self):
+    super().setUp()
     self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     pipeline_transform_pb2_grpc.add_PipelineTransformServicer_to_server(
         pipeline_transform_server.PipelineTransformServicer(), self._server
@@ -90,6 +49,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
 
   def tearDown(self):
+    super().tearDown()
     self._server.stop(grace=None)
     self._server.wait_for_termination()
 
@@ -162,7 +122,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
-            client_work_comp
+            test_computations.client_work_comp
         ).SerializeToString(),
         serialized_broadcasted_data=(
             serialized_broadcasted_data.SerializeToString()
@@ -192,12 +152,12 @@ class PipelineTransformServicerTest(unittest.TestCase):
 
     serialized_expected_output, _ = tff.framework.serialize_value(
         [
-            OrderedDict([
+            collections.OrderedDict([
                 ('float', tf.constant([11.0, 12.0, 13.0])),
             ])
         ],
         tff.FederatedType(
-            OrderedDict([
+            collections.OrderedDict([
                 ('float', tff.TensorType(tf.float32, shape=([None]))),
             ]),
             tff.CLIENTS,
@@ -217,7 +177,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
         tff.framework.serialize_computation(
-            aggregation_comp
+            test_computations.aggregation_comp
         ).SerializeToString()
     )
     config.aggregation.serialized_temporary_state = (
@@ -269,7 +229,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
-            client_work_comp
+            test_computations.client_work_comp
         ).SerializeToString(),
         serialized_broadcasted_data=(
             serialized_broadcasted_data.SerializeToString()
@@ -314,7 +274,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     config = worker_pb2.TffWorkerConfiguration()
     config.aggregation.serialized_client_to_server_aggregation_computation = (
         tff.framework.serialize_computation(
-            aggregation_comp
+            test_computations.aggregation_comp
         ).SerializeToString()
     )
     config.aggregation.serialized_temporary_state = (
@@ -359,7 +319,7 @@ class PipelineTransformServicerTest(unittest.TestCase):
     )
     client_work_config = worker_pb2.TffWorkerConfiguration.ClientWork(
         serialized_client_work_computation=tff.framework.serialize_computation(
-            client_work_comp
+            test_computations.client_work_comp
         ).SerializeToString(),
         serialized_broadcasted_data=(
             serialized_broadcasted_data.SerializeToString()

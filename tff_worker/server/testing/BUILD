@@ -15,6 +15,11 @@ load("@rules_python//python:defs.bzl", "py_binary")
 
 package(default_visibility = ["//:__subpackages__"])
 
+exports_files([
+    "aggregation_computation.pb",
+    "client_work_computation.pb",
+])
+
 py_library(
     name = "checkpoint_test_utils",
     testonly = True,
@@ -25,3 +30,24 @@ py_library(
         "@pypi_deps_tensorflow//:pkg",
     ],
 )
+
+py_library(
+    name = "test_computations",
+    testonly = True,
+    srcs = ["test_computations.py"],
+    deps = [
+        "@pypi_deps_tensorflow//:pkg",
+        "@pypi_deps_tensorflow_federated//:pkg",
+    ],
+)
+
+py_binary(
+    name = "generate_test_computations",
+    testonly = True,
+    srcs = ["generate_test_computations.py"],
+    deps = [
+        ":test_computations",
+        "@pypi_deps_tensorflow_federated//:pkg",
+    ],
+)
+

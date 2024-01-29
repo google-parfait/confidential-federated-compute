@@ -14,15 +14,16 @@
 
 """Utilities for creating Tensorflow checkpoints for testing."""
 import uuid
-from typing import List
-import tensorflow as tf
+
 from fcp.protos.confidentialcompute import tff_worker_configuration_pb2 as worker_pb2
+import tensorflow as tf
 from tensorflow.core.framework import types_pb2
 
 
 def create_checkpoint_bytes(
-    names: List[str], tensors: List[tf.Tensor]
+    names: list[str], tensors: list[tf.Tensor]
 ) -> bytes:
+  """Creates TF checkpoint bytes by writing and then reading tensors to file."""
   tmp_path = f'ram://{uuid.uuid4()}.ckpt'
   try:
     tf.raw_ops.SaveSlices(
@@ -36,6 +37,7 @@ def create_checkpoint_bytes(
       return f.read()
   finally:
     tf.io.gfile.remove(tmp_path)
+
 
 def column_config(
     name: str, data_type: types_pb2.DataType

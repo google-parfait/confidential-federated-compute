@@ -47,6 +47,7 @@ py_test(
         ":pipeline_transform_server",
         ":tff_transforms",
         "//tff_worker/server/testing:checkpoint_test_utils",
+        "//tff_worker/server/testing:test_computations",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_py_proto",
