@@ -79,3 +79,41 @@ py_test(
         "@tensorflow-federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
 )
+
+cc_library(
+    name = "cpp_pipeline_transform_server",
+    srcs = ["pipeline_transform_server.cc"],
+    hdrs = ["pipeline_transform_server.h"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/synchronization",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
+        "@federated-compute//fcp/base:status_converters",
+    ],
+)
+
+cc_test(
+    name = "cpp_pipeline_transform_server_test",
+    size = "small",
+    srcs = ["pipeline_transform_server_test.cc"],
+    data = [
+        "//tff_worker/server/testing:client_work_computation.pb",
+    ],
+    deps = [
+        ":cpp_pipeline_transform_server",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/aggregation/testing:test_data",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+    # Static registration needs always_link to avoid accidental removal by the linker.
+    linkstatic=True,
+)
+
