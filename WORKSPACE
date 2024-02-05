@@ -149,7 +149,6 @@ http_archive(
     name = "oak",
     patches = [
         "//third_party/oak:BUILD.containers.patch",
-        "//third_party/oak:BUILD.proto_session.patch",
     ],
     sha256 = "ee0337b88d6260897362a70da175a6931c4d319bbcd3b4dd7b65de20bcea336a",
     strip_prefix = "oak-704f81ed6310dfed448670b9fcdeb7ab6cfc78d1",
@@ -238,4 +237,18 @@ load("@aspect_gcc_toolchain//toolchain:defs.bzl", "ARCHS", "gcc_register_toolcha
 gcc_register_toolchain(
     name = "gcc_toolchain_x86_64",
     target_arch = ARCHS.x86_64,
+)
+
+# Stub out unneeded Java proto library rules used by various dependencies. This
+# avoids needing to depend on a Java toolchain.
+load("//:stub_repo.bzl", "stub_repo")
+
+stub_repo(
+    name = "io_grpc_grpc_java",
+    rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
+)
+
+stub_repo(
+    name = "rules_java",
+    rules = {"java:defs.bzl": ["java_lite_proto_library", "java_proto_library"]},
 )
