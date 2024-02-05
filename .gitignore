@@ -2,10 +2,5 @@
 /.sccache-cache/
 /target/
 /.vscode/
-bazel-bin
-bazel-confidential-federated-compute
-bazel-out
-bazel-testlogs
-bazel-workspace
-bazelisk-linux-amd64
+/bazel-*
 tff_worker/server/__pycache__
