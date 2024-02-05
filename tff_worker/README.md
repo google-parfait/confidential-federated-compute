@@ -17,34 +17,6 @@ application can instruct it to perform transformations on data using TFF.
 Note: The following commands should all be executed from the root of the
 confidential-federated-compute repository.
 
-### Building for fast iteration during development
-
-To build and test the code while you are actively making changes, you can start
-up a shell in a Docker container that has all the necessary build dependencies
-by running the following command:
-
-```
-./scripts/docker_run.sh bash
-```
-
-This may take a while the first time since it has to build the Docker container
-with the necessary build dependencies but should be faster on future iterations.
-
-Within this shell you can build and test the code using Bazelisk commands. For
-example, to run all Bazel tests in the repository you can try:
-
-```
-bazelisk test ...
-```
-
-We use Bazelisk rather than directly using Bazel, as use of Bazelisk is the
-recommended way to install Bazel according to the
-[installation instructions](https://bazel.build/install).
-
-The Bazel build artifacts will be cached within the `.bazel_cache` folder so
-that they last beyond the lifetime of the Docker container which improves build
-times.
-
 ### Building for use with Oak Containers
 
 Once you are ready to test your local version of the Python Pipeline
