@@ -8,9 +8,6 @@ license = "Apache-2.0"
 forced-target = "x86_64-unknown-none"
 
 [dependencies]
-log = "*"
-oak_channel = { workspace = true }
-oak_core = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true }
 pipeline_transforms = { path = "../../pipeline_transforms" }
 square_service = { path = "../square_service" }

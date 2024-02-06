@@ -590,9 +590,6 @@ version = "0.1.0"
 dependencies = [
  "federated_compute",
  "ledger_service",
- "log",
- "oak_channel",
- "oak_core",
  "oak_restricted_kernel_sdk",
 ]
 
@@ -647,7 +644,7 @@ checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
 [[package]]
 name = "micro_rpc"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "async-trait",
  "micro_rpc_build",
@@ -657,7 +654,7 @@ dependencies = [
 [[package]]
 name = "micro_rpc_build"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "anyhow",
  "prost-build",
@@ -672,13 +669,11 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 [[package]]
 name = "oak_channel"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
  "bytes",
- "log",
- "micro_rpc",
  "oak_core",
  "static_assertions",
 ]
@@ -686,7 +681,7 @@ dependencies = [
 [[package]]
 name = "oak_core"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "getrandom",
  "lock_api",
@@ -696,7 +691,7 @@ dependencies = [
 [[package]]
 name = "oak_crypto"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -715,7 +710,7 @@ dependencies = [
 [[package]]
 name = "oak_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "bitflags 2.4.1",
  "ciborium",
@@ -734,7 +729,7 @@ dependencies = [
 [[package]]
 name = "oak_enclave_runtime_support"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "libm",
  "log",
@@ -746,7 +741,7 @@ dependencies = [
 [[package]]
 name = "oak_proto_rust"
 version = "0.0.1"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "prost",
  "prost-build",
@@ -755,7 +750,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_interface"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "bitflags 2.4.1",
  "strum",
@@ -764,12 +759,14 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "anyhow",
  "lazy_static",
  "log",
+ "micro_rpc",
  "oak_channel",
+ "oak_core",
  "oak_crypto",
  "oak_dice",
  "oak_enclave_runtime_support",
@@ -783,7 +780,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk_proc_macro"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=704f81ed6310dfed448670b9fcdeb7ab6cfc78d1#704f81ed6310dfed448670b9fcdeb7ab6cfc78d1"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -1152,9 +1149,6 @@ dependencies = [
 name = "square_enclave_app"
 version = "0.1.0"
 dependencies = [
- "log",
- "oak_channel",
- "oak_core",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
  "square_service",
@@ -1208,9 +1202,6 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 name = "sum_enclave_app"
 version = "0.1.0"
 dependencies = [
- "log",
- "oak_channel",
- "oak_core",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
  "sum_service",

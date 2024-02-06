@@ -19,35 +19,21 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::panic::PanicInfo;
-use oak_core::samplestore::StaticSampleStore;
-use oak_restricted_kernel_sdk::FileDescriptorChannel;
+use oak_restricted_kernel_sdk::{
+    channel::{start_blocking_server, FileDescriptorChannel},
+    entrypoint,
+    utils::samplestore::StaticSampleStore,
+};
 
-#[no_mangle]
-fn _start() -> ! {
-    oak_restricted_kernel_sdk::init(log::LevelFilter::Debug);
-    main();
-}
-
-fn main() -> ! {
-    log::info!("In main!");
+#[entrypoint]
+fn run_server() -> ! {
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
     let service = ledger_service::LedgerService::default();
     let server = federated_compute::proto::LedgerServer::new(service);
-    oak_channel::server::start_blocking_server(
+    start_blocking_server(
         Box::<FileDescriptorChannel>::default(),
         server,
         &mut invocation_stats,
     )
     .expect("server encountered an unrecoverable error");
-}
-
-#[alloc_error_handler]
-fn out_of_memory(layout: ::core::alloc::Layout) -> ! {
-    oak_restricted_kernel_sdk::alloc_error_handler(layout);
-}
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    oak_restricted_kernel_sdk::panic_handler(info);
 }

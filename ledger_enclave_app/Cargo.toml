@@ -10,9 +10,6 @@ forced-target = "x86_64-unknown-none"
 [dependencies]
 federated_compute = { path = "../third_party/federated_compute" }
 ledger_service = { path = "../ledger_service" }
-log = "*"
-oak_channel = { workspace = true }
-oak_core = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true }
 
 [[bin]]
