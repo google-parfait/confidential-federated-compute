@@ -19,6 +19,7 @@
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -33,10 +34,25 @@ using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_BoolValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::sql_data::ColumnSchema;
-using ::sql_data::ColumnSchema_DataType;
+using ::fcp::confidentialcompute::ColumnSchema;
+using ::fcp::confidentialcompute::TableSchema;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BOOL;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::sql_data::SqlData;
-using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
@@ -139,7 +155,7 @@ namespace {
 class AddWireFormatDataToSqlDataTest : public Test {
  protected:
   void SetColumnNameAndType(ColumnSchema* col, std::string name,
-                            ColumnSchema_DataType type) {
+                            ExampleQuerySpec_OutputVectorSpec_DataType type) {
     col->set_name(name);
     col->set_type(type);
   }
@@ -158,7 +174,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, BasicUsage) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -224,17 +241,19 @@ TEST_F(AddWireFormatDataToSqlDataTest, AllDataTypes) {
 
   TableSchema schema;
   SetColumnNameAndType(schema.add_column(), int32_col_name,
-                       ColumnSchema::INT32);
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT32);
   SetColumnNameAndType(schema.add_column(), int64_col_name,
-                       ColumnSchema::INT64);
-  SetColumnNameAndType(schema.add_column(), str_col_name, ColumnSchema::STRING);
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  SetColumnNameAndType(schema.add_column(), str_col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
   SetColumnNameAndType(schema.add_column(), double_col_name,
-                       ColumnSchema::DOUBLE);
+                       ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE);
   SetColumnNameAndType(schema.add_column(), float_col_name,
-                       ColumnSchema::FLOAT);
+                       ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT);
   SetColumnNameAndType(schema.add_column(), bytes_col_name,
-                       ColumnSchema::BYTES);
-  SetColumnNameAndType(schema.add_column(), bool_col_name, ColumnSchema::BOOL);
+                       ExampleQuerySpec_OutputVectorSpec_DataType_BYTES);
+  SetColumnNameAndType(schema.add_column(), bool_col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_BOOL);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -267,7 +286,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, EmptyCheckpoint) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -299,8 +319,10 @@ TEST_F(AddWireFormatDataToSqlDataTest, DifferentLengthTensors) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), one_val_name, ColumnSchema::INT64);
-  SetColumnNameAndType(schema.add_column(), two_vals_name, ColumnSchema::FLOAT);
+  SetColumnNameAndType(schema.add_column(), one_val_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  SetColumnNameAndType(schema.add_column(), two_vals_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -326,7 +348,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, TableSchemaTypeMismatch) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::STRING);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -359,7 +382,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, MultipleRecords) {
   CHECK_OK(checkpoint1.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::INT64);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   std::string checkpoint_string1;
   std::string checkpoint_string2;
@@ -400,7 +424,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, ByteColumnConvertedCorrectly) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::BYTES);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_BYTES);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
@@ -429,7 +454,8 @@ TEST_F(AddWireFormatDataToSqlDataTest, BoolColumnConvertedCorrectly) {
   CHECK_OK(checkpoint.status());
 
   TableSchema schema;
-  SetColumnNameAndType(schema.add_column(), col_name, ColumnSchema::BOOL);
+  SetColumnNameAndType(schema.add_column(), col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_BOOL);
 
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);

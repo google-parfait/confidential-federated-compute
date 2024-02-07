@@ -40,6 +40,8 @@
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "google/protobuf/repeated_ptr_field.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -70,8 +72,8 @@ class SqlPipelineTransform final
   // ConfigureAndAttest.
   struct SqlConfiguration {
     std::string query;
-    sql_data::TableSchema input_schema;
-    sql_data::TableSchema output_schema;
+    fcp::confidentialcompute::TableSchema input_schema;
+    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema> output_columns;
   };
 
   absl::Status SqlConfigureAndAttest(

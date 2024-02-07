@@ -27,16 +27,37 @@
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "fcp/protos/plan.pb.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
 
 namespace confidential_federated_compute::sql_server {
 
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::sql_data::ColumnSchema;
+using ::fcp::confidentialcompute::ColumnSchema;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BOOL;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
+using ::google::internal::federated::plan::Plan;
+using ::google::protobuf::RepeatedPtrField;
 using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
 
 namespace {
 
@@ -78,31 +99,31 @@ class StatementFinalizer final {
 absl::Status BindSqliteParameter(
     sqlite3_stmt* stmt, int ordinal, int row_num,
     ExampleQueryResult_VectorData_Values column_values,
-    ColumnSchema::DataType column_type,
+    ExampleQuerySpec_OutputVectorSpec_DataType column_type,
     const SqliteResultHandler& status_util) {
   switch (column_type) {
-    case ColumnSchema::INT32:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
       return status_util.ToStatus(sqlite3_bind_int(
           stmt, ordinal, column_values.int32_values().value(row_num)));
-    case ColumnSchema::INT64:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
       return status_util.ToStatus(sqlite3_bind_int64(
           stmt, ordinal, column_values.int64_values().value(row_num)));
-    case ColumnSchema::BOOL:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
       return status_util.ToStatus(sqlite3_bind_int(
           stmt, ordinal, column_values.bool_values().value(row_num)));
-    case ColumnSchema::FLOAT:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
       return status_util.ToStatus(sqlite3_bind_double(
           stmt, ordinal, column_values.float_values().value(row_num)));
-    case ColumnSchema::DOUBLE:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
       return status_util.ToStatus(sqlite3_bind_double(
           stmt, ordinal, column_values.double_values().value(row_num)));
-    case ColumnSchema::BYTES: {
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES: {
       std::string bytes_value = column_values.bytes_values().value(row_num);
       return status_util.ToStatus(
           sqlite3_bind_blob(stmt, ordinal, bytes_value.data(),
                             bytes_value.size(), SQLITE_TRANSIENT));
     }
-    case ColumnSchema::STRING: {
+    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING: {
       std::string string_value = column_values.string_values().value(row_num);
       return status_util.ToStatus(
           sqlite3_bind_text(stmt, ordinal, string_value.data(),
@@ -116,27 +137,26 @@ absl::Status BindSqliteParameter(
 
 // Validate that the output columns for the prepared SQL statement match the
 // user-specified output schema.
-absl::Status ValidateQueryOutputSchema(sqlite3_stmt* stmt,
-                                       const TableSchema& schema) {
+absl::Status ValidateQueryOutputColumns(
+    sqlite3_stmt* stmt, const RepeatedPtrField<ColumnSchema>& columns) {
   int output_column_count = sqlite3_column_count(stmt);
-  bool is_valid = output_column_count == schema.column_size();
-
-  std::vector<std::string> schema_field_names;
-  for (const auto& schema_col : schema.column()) {
-    schema_field_names.push_back(schema_col.name());
-  }
+  bool is_valid = output_column_count == columns.size();
 
   std::vector<std::string> output_column_names(output_column_count);
   for (int i = 0; i < output_column_count; ++i) {
     output_column_names[i] = sqlite3_column_name(stmt, i);
-    is_valid &= schema_field_names.size() > i &&
-                output_column_names[i] == schema_field_names[i];
+    is_valid &=
+        columns.size() > i && output_column_names[i] == columns.at(i).name();
   }
 
   if (!is_valid) {
+    std::vector<std::string> schema_field_names;
+    for (const auto& schema_col : columns) {
+      schema_field_names.push_back(schema_col.name());
+    }
     return absl::InvalidArgumentError(absl::StrFormat(
-        "Query results did not match the specified output schema.\nSpecified "
-        "output schema: %s\nActual results schema: %s",
+        "Query results did not match the specified output columns.\nSpecified "
+        "output columns: %s\nActual results schema: %s",
         absl::StrJoin(schema_field_names, ", "),
         absl::StrJoin(output_column_names, ", ")));
   }
@@ -147,42 +167,41 @@ absl::Status ValidateQueryOutputSchema(sqlite3_stmt* stmt,
 //
 // The result value is appended to the `ExampleQueryResult_VectorData_Values*
 // result` column.
-absl::Status ReadSqliteColumn(sqlite3_stmt* stmt,
-                              ColumnSchema::DataType column_type,
-                              int column_index,
-                              const SqliteResultHandler& status_util,
-                              ExampleQueryResult_VectorData_Values* result) {
+absl::Status ReadSqliteColumn(
+    sqlite3_stmt* stmt, ExampleQuerySpec_OutputVectorSpec_DataType column_type,
+    int column_index, const SqliteResultHandler& status_util,
+    ExampleQueryResult_VectorData_Values* result) {
   // TODO: Switch to using an interface that abstracts away the
   // data format.
   switch (column_type) {
-    case ColumnSchema::INT32:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
       result->mutable_int32_values()->add_value(
           sqlite3_column_int(stmt, column_index));
       break;
-    case ColumnSchema::INT64:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
       result->mutable_int64_values()->add_value(
           sqlite3_column_int64(stmt, column_index));
       break;
-    case ColumnSchema::BOOL:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
       result->mutable_bool_values()->add_value(
           sqlite3_column_int(stmt, column_index) == 1);
       break;
-    case ColumnSchema::FLOAT:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
       result->mutable_float_values()->add_value(
           sqlite3_column_double(stmt, column_index));
       break;
-    case ColumnSchema::DOUBLE:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
       result->mutable_double_values()->add_value(
           sqlite3_column_double(stmt, column_index));
       break;
-    case ColumnSchema::BYTES: {
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES: {
       std::string bytes_value(
           static_cast<const char*>(sqlite3_column_blob(stmt, column_index)),
           sqlite3_column_bytes(stmt, column_index));
       result->mutable_bytes_values()->add_value(bytes_value);
       break;
     }
-    case ColumnSchema::STRING: {
+    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING: {
       std::string string_value(reinterpret_cast<const char*>(
                                    sqlite3_column_text(stmt, column_index)),
                                sqlite3_column_bytes(stmt, column_index));
@@ -197,30 +216,31 @@ absl::Status ReadSqliteColumn(sqlite3_stmt* stmt,
 }
 
 // Validate that all `Values` have the same expected number of rows.
-absl::Status ValidateNumRows(ExampleQueryResult_VectorData_Values values,
-                             ColumnSchema::DataType column_type,
-                             int expected_num_rows) {
+absl::Status ValidateNumRows(
+    ExampleQueryResult_VectorData_Values values,
+    ExampleQuerySpec_OutputVectorSpec_DataType column_type,
+    int expected_num_rows) {
   int num_values;
   switch (column_type) {
-    case ColumnSchema::INT32:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
       num_values = values.int32_values().value_size();
       break;
-    case ColumnSchema::INT64:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
       num_values = values.int64_values().value_size();
       break;
-    case ColumnSchema::BOOL:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
       num_values = values.bool_values().value_size();
       break;
-    case ColumnSchema::FLOAT:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
       num_values = values.float_values().value_size();
       break;
-    case ColumnSchema::DOUBLE:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
       num_values = values.double_values().value_size();
       break;
-    case ColumnSchema::STRING:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING:
       num_values = values.string_values().value_size();
       break;
-    case ColumnSchema::BYTES:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES:
       num_values = values.bytes_values().value_size();
       break;
     default:
@@ -342,23 +362,22 @@ absl::Status SqliteAdapter::SetTableContents(TableSchema schema,
     FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_reset(stmt)));
     FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_clear_bindings(stmt)));
   }
-
   return absl::OkStatus();
 }
 
 absl::StatusOr<SqlData> SqliteAdapter::EvaluateQuery(
-    absl::string_view query, TableSchema output_schema) const {
+    absl::string_view query,
+    const RepeatedPtrField<ColumnSchema>& output_columns) const {
   SqlData result;
   ExampleQueryResult_VectorData* result_vectors = result.mutable_vector_data();
-  for (auto& column : output_schema.column()) {
+  for (auto& column : output_columns) {
     (*result_vectors->mutable_vectors())[column.name()];
   }
-
   sqlite3_stmt* stmt;
   FCP_RETURN_IF_ERROR(result_handler_.ToStatus(
       sqlite3_prepare_v2(db_, query.data(), query.size(), &stmt, nullptr)));
   StatementFinalizer finalizer(stmt);
-  FCP_RETURN_IF_ERROR(ValidateQueryOutputSchema(stmt, output_schema));
+  FCP_RETURN_IF_ERROR(ValidateQueryOutputColumns(stmt, output_columns));
 
   // SQLite uses `sqlite3_step()` to iterate over result rows, and
   // `sqlite_column_*()` functions to extract values for each column.
@@ -370,15 +389,16 @@ absl::StatusOr<SqlData> SqliteAdapter::EvaluateQuery(
       break;
     }
     num_result_rows += 1;
-    for (int i = 0; i < output_schema.column_size(); ++i) {
+    for (int i = 0; i < output_columns.size(); ++i) {
       if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "Encountered NULL value for column `%s`in the query result. "
             "SQLite adapter does not support NULL client result values.",
-            output_schema.column(i).name()));
+            output_columns.at(i).name()));
       }
-      ColumnSchema::DataType column_type = output_schema.column(i).type();
-      std::string column_name = output_schema.column(i).name();
+      ExampleQuerySpec_OutputVectorSpec_DataType column_type =
+          output_columns.at(i).type();
+      std::string column_name = output_columns.at(i).name();
       FCP_RETURN_IF_ERROR(ReadSqliteColumn(
           stmt, column_type, i, result_handler_,
           &result_vectors->mutable_vectors()->at(column_name)));

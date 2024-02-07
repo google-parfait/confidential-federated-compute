@@ -22,6 +22,8 @@
 #include "absl/strings/string_view.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/client/example_query_result.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
 
 namespace confidential_federated_compute::sql_server {
@@ -69,13 +71,15 @@ class SqliteAdapter {
 
   // Clears contents from the given `table` and inserts the specified
   // `contents`. The table must be created first via `DefineTable`.
-  absl::Status SetTableContents(sql_data::TableSchema schema,
+  absl::Status SetTableContents(fcp::confidentialcompute::TableSchema schema,
                                 sql_data::SqlData contents);
 
-  // Evaluates the given SQL `query` statement, producing results in the
-  // provided `output_schema`.
+  // Evaluates the given SQL `query` statement, producing results matching the
+  // provided `output_columns`.
   absl::StatusOr<sql_data::SqlData> EvaluateQuery(
-      absl::string_view query, sql_data::TableSchema output_schema) const;
+      absl::string_view query,
+      const google::protobuf::RepeatedPtrField<
+          fcp::confidentialcompute::ColumnSchema>& output_columns) const;
 
  private:
   // The `db` must be non-null. This object takes ownership of the databaseß

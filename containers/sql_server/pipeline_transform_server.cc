@@ -26,6 +26,7 @@
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -39,15 +40,14 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ServerContext;
 using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
+using ::fcp::confidentialcompute::SqlQuery;
 
 absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
     ConfigureAndAttestResponse* response) {
   SqlQuery sql_query;
   request->configuration().UnpackTo(&sql_query);
-  if (sql_query.input_schema().table_size() != 1 ||
-      sql_query.output_schema().table_size() != 1) {
+  if (sql_query.database_schema().table_size() != 1) {
     return absl::InvalidArgumentError(
         "SQL query input or output schema does not contain exactly "
         "one table schema.");
@@ -62,8 +62,8 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
 
     configuration_.emplace(
         SqlConfiguration{.query = sql_query.raw_sql(),
-                         .input_schema = sql_query.input_schema().table(0),
-                         .output_schema = sql_query.output_schema().table(0)});
+                         .input_schema = sql_query.database_schema().table(0),
+                         .output_columns = sql_query.output_columns()});
     record_decryptor_.emplace(request->configuration());
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
@@ -144,7 +144,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
 
   FCP_ASSIGN_OR_RETURN(result,
                        sqlite->EvaluateQuery(configuration->query,
-                                             configuration->output_schema));
+                                             configuration->output_columns));
 
   FCP_ASSIGN_OR_RETURN(std::string output_data,
                        ConvertSqlDataToWireFormat(result));

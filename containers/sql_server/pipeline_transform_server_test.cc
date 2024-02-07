@@ -22,7 +22,9 @@
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -46,23 +48,28 @@ using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
+using ::fcp::confidentialcompute::DatabaseSchema;
 using ::fcp::confidentialcompute::GenerateNoncesRequest;
 using ::fcp::confidentialcompute::GenerateNoncesResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::sql_data::ColumnSchema;
-using ::sql_data::DatabaseSchema;
 using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::testing::Test;
@@ -77,17 +84,17 @@ TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
 }
 
 SqlQuery CreateSqlQuery(TableSchema input_table_schema, std::string raw_query,
-                        TableSchema output_table_schema) {
+                        ColumnSchema output_column) {
   SqlQuery query;
-  DatabaseSchema* input_schema = query.mutable_input_schema();
-  DatabaseSchema* output_schema = query.mutable_output_schema();
+  DatabaseSchema* input_schema = query.mutable_database_schema();
   *(input_schema->add_table()) = input_table_schema;
-  *(output_schema->add_table()) = output_table_schema;
+  *(query.add_output_columns()) = output_column;
   query.set_raw_sql(raw_query);
   return query;
 }
 
-ColumnSchema CreateColumnSchema(std::string name, ColumnSchema::DataType type) {
+ColumnSchema CreateColumnSchema(
+    std::string name, ExampleQuerySpec_OutputVectorSpec_DataType type) {
   ColumnSchema schema;
   schema.set_name(name);
   schema.set_type(type);
@@ -161,11 +168,13 @@ TEST_F(SqlPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
   SqlQuery query = CreateSqlQuery(
-      CreateTableSchema("input", "CREATE TABLE input (int_val INTEGER)",
-                        CreateColumnSchema("int_val", ColumnSchema::INT64)),
+      CreateTableSchema(
+          "input", "CREATE TABLE input (int_val INTEGER)",
+          CreateColumnSchema("int_val",
+                             ExampleQuerySpec_OutputVectorSpec_DataType_INT64)),
       "SELECT SUM(int_val) AS int_sum FROM input",
-      CreateTableSchema("output", "CREATE TABLE output (int_sum INTEGER)",
-                        CreateColumnSchema("int_sum", ColumnSchema::INT64)));
+      CreateColumnSchema("int_sum",
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
   request.mutable_configuration()->PackFrom(query);
 
   ASSERT_TRUE(stub_->ConfigureAndAttest(&context, request, &response).ok());
@@ -182,11 +191,13 @@ TEST_F(SqlPipelineTransformTest, ValidConfigureAndAttest) {
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
   SqlQuery query = CreateSqlQuery(
-      CreateTableSchema("input", "CREATE TABLE input (int_val INTEGER)",
-                        CreateColumnSchema("int_val", ColumnSchema::INT64)),
+      CreateTableSchema(
+          "input", "CREATE TABLE input (int_val INTEGER)",
+          CreateColumnSchema("int_val",
+                             ExampleQuerySpec_OutputVectorSpec_DataType_INT64)),
       "SELECT SUM(int_val) AS int_sum FROM input",
-      CreateTableSchema("output", "CREATE TABLE output (int_sum INTEGER)",
-                        CreateColumnSchema("int_sum", ColumnSchema::INT64)));
+      CreateColumnSchema("int_sum",
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
   request.mutable_configuration()->PackFrom(query);
 
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
@@ -203,16 +214,14 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
   TableSchema input_schema = CreateTableSchema(
       "input",
       absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
-      CreateColumnSchema(input_col_name, ColumnSchema::INT64));
-  TableSchema output_schema = CreateTableSchema(
-      "output",
-      absl::StrFormat("CREATE TABLE output (%s INTEGER)", output_col_name),
-      CreateColumnSchema(output_col_name, ColumnSchema::INT64));
-  SqlQuery query =
-      CreateSqlQuery(input_schema,
-                     absl::StrFormat("SELECT SUM(%s) AS %s FROM input",
-                                     input_col_name, output_col_name),
-                     output_schema);
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
   configure_request.mutable_configuration()->PackFrom(query);
 
   ASSERT_TRUE(stub_
@@ -252,16 +261,14 @@ TEST_F(SqlPipelineTransformTest, TransformDecryptsRecordAndExecutesSqlQuery) {
   TableSchema input_schema = CreateTableSchema(
       "input",
       absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
-      CreateColumnSchema(input_col_name, ColumnSchema::INT64));
-  TableSchema output_schema = CreateTableSchema(
-      "output",
-      absl::StrFormat("CREATE TABLE output (%s INTEGER)", output_col_name),
-      CreateColumnSchema(output_col_name, ColumnSchema::INT64));
-  SqlQuery query =
-      CreateSqlQuery(input_schema,
-                     absl::StrFormat("SELECT SUM(%s) AS %s FROM input",
-                                     input_col_name, output_col_name),
-                     output_schema);
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
   configure_request.mutable_configuration()->PackFrom(query);
 
   grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
@@ -327,16 +334,14 @@ TEST_F(SqlPipelineTransformTest,
   TableSchema input_schema = CreateTableSchema(
       "input",
       absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
-      CreateColumnSchema(input_col_name, ColumnSchema::INT64));
-  TableSchema output_schema = CreateTableSchema(
-      "output",
-      absl::StrFormat("CREATE TABLE output (%s INTEGER)", output_col_name),
-      CreateColumnSchema(output_col_name, ColumnSchema::INT64));
-  SqlQuery query =
-      CreateSqlQuery(input_schema,
-                     absl::StrFormat("SELECT SUM(%s) AS %s FROM input",
-                                     input_col_name, output_col_name),
-                     output_schema);
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
   configure_request.mutable_configuration()->PackFrom(query);
 
   grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(

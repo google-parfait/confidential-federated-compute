@@ -64,6 +64,8 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@sqlite_bazel//:sqlite3",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@federated-compute//fcp/protos:plan_cc_proto"
     ],
 )
 
@@ -79,6 +81,7 @@ cc_test(
         "@federated-compute//fcp/aggregation/testing:test_data",
         "@googletest//:gtest_main",
         "@sqlite_bazel//:sqlite3",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
     ],
 )
 
@@ -107,6 +110,7 @@ cc_library(
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
     ],
 )
 
@@ -129,6 +133,7 @@ cc_library(
     srcs = ["pipeline_transform_server.cc"],
     hdrs = ["pipeline_transform_server.h"],
     deps = [
+        "@com_google_protobuf//:protobuf",
         ":sql_data_cc_proto",
         ":sql_data_converter",
         ":sqlite_adapter",
@@ -138,6 +143,7 @@ cc_library(
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
     ],
 )
 
@@ -158,6 +164,7 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@googletest//:gtest_main",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
     ],
 )
 
@@ -178,5 +185,6 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@google_benchmark//:benchmark",
         "@googletest//:gtest_main",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
     ],
 )
