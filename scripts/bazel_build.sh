@@ -15,9 +15,15 @@
 # limitations under the License.
 #
 # A script that runs the portions of continuous integration that use Bazel,
-# including building and testing all targets in the workspace. If `release` is
-# passed, also builds binaries and OCI Runtime Bundles in release mode and
-# exports them to BINARY_OUTPUTS_DIR.
+# including building and testing all targets in the workspace.
+#
+# If `release` is passed, also builds binaries and OCI Runtime Bundles in
+# release mode and exports them to BINARY_OUTPUTS_DIR.
+#
+# If `continuous` is passed, runs all tests with address sanitizer.
+#
+# If `sanitizers` is passed, runs all tests with each of the configured
+# sanitizers.
 set -e
 
 readonly WORKSPACE_DIR="$(dirname "$0")/.."
@@ -26,13 +32,14 @@ readonly WORKSPACE_DIR="$(dirname "$0")/.."
 # bazel; this usage requires us to not quote ${BAZELISK} when used later.
 readonly BAZELISK="${BAZELISK:-bazelisk}"
 
-${BAZELISK} test //...
-
 if [ "$1" == "continuous" ]; then
+  ${BAZELISK} test //... --config=asan
+elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=asan
   ${BAZELISK} test //... --config=tsan
   ${BAZELISK} test //... --config=ubsan
 elif [ "$1" == "release" ]; then
+  ${BAZELISK} test //...
   ${BAZELISK} build -c opt \
       //containers/sql_server:sql_server_oci_filesystem_bundle.tar \
       //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar \
@@ -64,4 +71,6 @@ elif [ "$1" == "release" ]; then
       "${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar" \
       "${BINARY_OUTPUTS_DIR}/"
   fi
+else
+  ${BAZELISK} test //...
 fi

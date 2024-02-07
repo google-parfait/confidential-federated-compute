@@ -16,10 +16,16 @@
 #
 # A script that runs the build process for the entire repository.
 # This script can be run locally or in CI.
+#
 # If `release` is passed, this indicates that the script should build the
 # artifacts for release. In other words, it will build binaries in the form in
 # which they can be executed in an enclave and export them to
 # BINARY_OUTPUTS_DIR.
+#
+# If `continuous` is passed, runs all bazel tests with address sanitizer.
+#
+# If `sanitizers` is passed, runs all bazel tests with each of the configured
+# sanitizers.
 set -e
 
 cd $(dirname "$0")/..
