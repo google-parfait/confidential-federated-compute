@@ -502,8 +502,7 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
                             )sql",
       output_schema);
 
-  LOG(INFO) << result_status.status().message();
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_TRUE(result_status.ok()) << result_status.status().message();
 }
 
 }  // namespace

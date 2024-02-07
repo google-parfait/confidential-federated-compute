@@ -239,6 +239,32 @@ gcc_register_toolchain(
     target_arch = ARCHS.x86_64,
 )
 
+# Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
+# not easily enable sanitizers to be used with tests. The clang toolchain is not
+# registered, so that the registered gcc toolchain is used by default, but can
+# be specified on the command line with
+# --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux (as is
+# configured in the .bazelrc when asan, tsan, or ubsan are enabled.)
+http_archive(
+    name = "toolchains_llvm",
+    sha256 = "b7cd301ef7b0ece28d20d3e778697a5e3b81828393150bed04838c0c52963a01",
+    strip_prefix = "toolchains_llvm-0.10.3",
+    url = "https://github.com/grailbio/bazel-toolchain/releases/download/0.10.3/toolchains_llvm-0.10.3.tar.gz",
+)
+
+load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
+
+bazel_toolchain_dependencies()
+
+load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
+
+llvm_toolchain(
+    name = "llvm_toolchain",
+    # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
+    # https://github.com/llvm/llvm-project/issues/51620
+    llvm_version = "14.0.0",
+)
+
 # Stub out unneeded Java proto library rules used by various dependencies. This
 # avoids needing to depend on a Java toolchain.
 load("//:stub_repo.bzl", "stub_repo")

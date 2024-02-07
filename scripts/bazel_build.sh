@@ -28,7 +28,11 @@ readonly BAZELISK="${BAZELISK:-bazelisk}"
 
 ${BAZELISK} test //...
 
-if [ "$1" == "release" ]; then
+if [ "$1" == "continuous" ]; then
+  ${BAZELISK} test //... --config=asan
+  ${BAZELISK} test //... --config=tsan
+  ${BAZELISK} test //... --config=ubsan
+elif [ "$1" == "release" ]; then
   ${BAZELISK} build -c opt \
       //containers/sql_server:sql_server_oci_filesystem_bundle.tar \
       //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar \
