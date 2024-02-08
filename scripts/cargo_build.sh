@@ -20,32 +20,11 @@
 # BINARY_OUTPUTS_DIR.
 set -e
 
-cd $(dirname "$0")/..
+cd $(dirname -- "$0")/..
 
-readonly DOCKER_IMAGE_NAME=confidential-federated-compute-rust
-# At least some versions of rootless docker don't work without a context dir.
-readonly DOCKER_CONTEXT_DIR="$(mktemp -d)"
-trap 'rm -rf -- "${DOCKER_CONTEXT_DIR}"' EXIT
-docker build --cache-from $DOCKER_IMAGE_NAME --tag $DOCKER_IMAGE_NAME -f - "${DOCKER_CONTEXT_DIR}" <<EOF
-FROM rust@sha256:4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563
-RUN rustup default nightly-2023-11-15
-RUN rustup target add x86_64-unknown-none
-RUN curl -LSso protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
-    echo "78ab9c3288919bdaa6cfcec6127a04813cf8a0ce406afa625e48e816abee2878 protoc.zip" | sha256sum -c && \
-    unzip -q protoc.zip -d /usr/local/protobuf && \
-    rm protoc.zip
-ENV PROTOC /usr/local/protobuf/bin/protoc
-EOF
+source scripts/cargo_common.sh
 
-declare -ar DOCKER_RUN_FLAGS=(
-  '--rm'
-  '--tty'
-  '--env=CARGO_HOME=/root/.cargo'
-  '--env=TERM'
-  "--volume=$PWD/.cargo-cache:/root/.cargo"
-  "--volume=$PWD:/workspace"
-  '--workdir=/workspace'
-)
+build_docker_image
 
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" sh -c 'cargo build && cargo test'
 

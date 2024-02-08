@@ -22,7 +22,7 @@
 # https://github.com/project-oak/oak/issues/4283) we should use that instead.
 set -e
 
-readonly SCRIPTS_DIR="$(dirname "$0")"
+readonly SCRIPTS_DIR="$(dirname -- "$0")"
 readonly ABSOLUTE_SCRIPT_PATH="$( cd -- ${SCRIPTS_DIR} >/dev/null 2>&1 ; pwd -P )"
 
 print_usage_and_exit() {
