@@ -17,59 +17,9 @@ package sql_data;
 
 import "fcp/client/example_query_result.proto";
 
-// TODO: Move these protos to FCP.
+// TODO: Remove this proto once the data conversion is removed.
 message SqlData {
   fcp.client.ExampleQueryResult.VectorData vector_data = 1;
 
   int64 num_rows = 2;
-}
-
-// Schema information describing a column in the schema.
-message ColumnSchema {
-  // The column name.
-  string name = 1;
-
-  // Supported data types for the vector of information.
-  enum DataType {
-    UNSPECIFIED = 0;
-    INT32 = 1;
-    INT64 = 2;
-    BOOL = 3;
-    FLOAT = 4;
-    DOUBLE = 5;
-    BYTES = 6;
-    STRING = 7;
-  }
-
-  // The data type for each entry in the vector.
-  DataType type = 2;
-}
-
-// Schema information describing a SQL table.
-message TableSchema {
-  // The table name.
-  string name = 1;
-
-  // Columns associated with this table.
-  repeated ColumnSchema column = 2;
-
-  // The raw SQL statement string to create the table.
-  string create_table_sql = 3;
-}
-
-// Client database schema information.
-message DatabaseSchema {
-  // Tables registered in the database.
-  repeated TableSchema table = 1;
-}
-
-message SqlQuery {
-  // Schema information for the client database required to run this query.
-  DatabaseSchema input_schema = 2;
-
-  // The raw SQL query string.
-  string raw_sql = 3;
-
-  // Schema information for results of `raw_query`.
-  DatabaseSchema output_schema = 4;
 }

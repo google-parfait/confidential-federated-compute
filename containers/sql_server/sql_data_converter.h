@@ -22,6 +22,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 
 // These conversions are unnecessary and are implemented to get the SQL server
 // working end-to-end sooner. This is not the desired end state, and these
@@ -46,7 +47,7 @@ absl::StatusOr<fcp::aggregation::Tensor> ConvertValuesToTensor(
 // that abstracts away the data format.
 absl::Status AddWireFormatDataToSqlData(
     absl::string_view wire_format_data,
-    const sql_data::TableSchema& table_schema, sql_data::SqlData& sql_data);
+    const fcp::confidentialcompute::TableSchema& table_schema, sql_data::SqlData& sql_data);
 
 // Convert `SqlData` to the federated compute wire format.
 absl::StatusOr<std::string> ConvertSqlDataToWireFormat(sql_data::SqlData data);

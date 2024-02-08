@@ -25,6 +25,7 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/client/example_query_result.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -37,10 +38,26 @@ using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
-using ::sql_data::ColumnSchema;
 using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::ColumnSchema;
+using ::fcp::confidentialcompute::TableSchema;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BOOL;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 
 namespace sql_data_converter_internal {
 
@@ -113,24 +130,24 @@ absl::StatusOr<Tensor> ConvertValuesToTensor(
 
 }  // namespace sql_data_converter_internal
 
-bool TensorTypeMatchesColumnType(ColumnSchema::DataType column_type,
+bool TensorTypeMatchesColumnType(ExampleQuerySpec_OutputVectorSpec_DataType column_type,
                                  DataType tensor_type) {
   switch (column_type) {
-    case ColumnSchema::DOUBLE:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
       return tensor_type == DataType::DT_DOUBLE;
-    case ColumnSchema::FLOAT:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
       return tensor_type == DataType::DT_FLOAT;
-    case ColumnSchema::INT32:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
       return tensor_type == DataType::DT_INT32;
-    case ColumnSchema::INT64:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
       return tensor_type == DataType::DT_INT64;
-    case ColumnSchema::BOOL:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
       // TODO: Update this when bool values are supported by the lightweight
       // client wire format.
       return tensor_type == DataType::DT_INT32;
-    case ColumnSchema::STRING:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING:
       return tensor_type == DataType::DT_STRING;
-    case ColumnSchema::BYTES:
+    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES:
       return tensor_type == DataType::DT_STRING;
     default:
       return false;
@@ -139,7 +156,7 @@ bool TensorTypeMatchesColumnType(ColumnSchema::DataType column_type,
 
 absl::Status AddWireFormatDataToSqlData(
     absl::string_view wire_format_data,
-    const sql_data::TableSchema& table_schema, sql_data::SqlData& sql_data) {
+    const TableSchema& table_schema, sql_data::SqlData& sql_data) {
   ExampleQueryResult_VectorData* vector_data = sql_data.mutable_vector_data();
   for (auto& column : table_schema.column()) {
     (*vector_data->mutable_vectors())[column.name()];
@@ -169,7 +186,7 @@ absl::Status AddWireFormatDataToSqlData(
           "in the TableSchema.");
     }
     switch (column.type()) {
-      case ColumnSchema::INT32: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_INT32: {
         for (const auto& [unused_index, value] :
              tensor_column_values.AsAggVector<int32_t>()) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -178,7 +195,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::INT64: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_INT64: {
         auto agg_vector = tensor_column_values.AsAggVector<int64_t>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -187,7 +204,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::BOOL: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL: {
         auto agg_vector = tensor_column_values.AsAggVector<int32_t>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -196,7 +213,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::FLOAT: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT: {
         auto agg_vector = tensor_column_values.AsAggVector<float>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -205,7 +222,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::DOUBLE: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE: {
         auto agg_vector = tensor_column_values.AsAggVector<double>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -214,7 +231,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::BYTES: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES: {
         auto agg_vector = tensor_column_values.AsAggVector<absl::string_view>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]
@@ -223,7 +240,7 @@ absl::Status AddWireFormatDataToSqlData(
         }
         break;
       }
-      case ColumnSchema::STRING: {
+      case ExampleQuerySpec_OutputVectorSpec_DataType_STRING: {
         auto agg_vector = tensor_column_values.AsAggVector<absl::string_view>();
         for (const auto& [unused_index, value] : agg_vector) {
           (*vector_data->mutable_vectors())[column.name()]

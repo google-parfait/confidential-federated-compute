@@ -23,6 +23,7 @@
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
@@ -46,21 +47,26 @@ using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
+using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
+using ::fcp::confidentialcompute::DatabaseSchema;
 using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::sql_data::ColumnSchema;
-using ::sql_data::DatabaseSchema;
 using ::sql_data::SqlData;
-using ::sql_data::SqlQuery;
-using ::sql_data::TableSchema;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
@@ -131,15 +137,17 @@ SqlQuery CreateSqlQuery(TableSchema input_table_schema,
                         absl::string_view raw_query,
                         TableSchema output_table_schema) {
   SqlQuery query;
-  DatabaseSchema* input_schema = query.mutable_input_schema();
-  DatabaseSchema* output_schema = query.mutable_output_schema();
+  DatabaseSchema* input_schema = query.mutable_database_schema();
+  RepeatedPtrField<ColumnSchema>* output_columns =
+      query.mutable_output_columns();
   *(input_schema->add_table()) = input_table_schema;
-  *(output_schema->add_table()) = output_table_schema;
+  *output_columns = output_table_schema.column();
   query.set_raw_sql(std::string(raw_query));
   return query;
 }
 
-ColumnSchema CreateColumnSchema(std::string name, ColumnSchema::DataType type) {
+ColumnSchema CreateColumnSchema(
+    std::string name, ExampleQuerySpec_OutputVectorSpec_DataType type) {
   ColumnSchema schema;
   schema.set_name(name);
   schema.set_type(type);
@@ -154,17 +162,28 @@ TableSchema CreateGenericTableSchema() {
       "INTEGER, column_8 INTEGER, column_9 INTEGER, column_10 INTEGER, "
       "column_11 INTEGER)");
 
-  *(schema.add_column()) = CreateColumnSchema("column_1", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_2", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_3", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_4", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_5", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_6", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_7", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_8", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_9", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_10", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("column_11", ColumnSchema::INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_1", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_2", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_3", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_4", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_5", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_6", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_7", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_8", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_9", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_10", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) = CreateColumnSchema(
+      "column_11", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   return schema;
 }
@@ -181,16 +200,26 @@ TableSchema CreateComplexQueryOutputTableSchema() {
                                          "g INT64,"
                                          "h INT64)");
 
-  *(schema.add_column()) = CreateColumnSchema("a", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("b", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("c", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("d", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("e", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("f", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("g", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("h", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("i", ColumnSchema::INT64);
-  *(schema.add_column()) = CreateColumnSchema("j", ColumnSchema::INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("a", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("b", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("c", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("d", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("e", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("f", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("g", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("h", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("i", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  *(schema.add_column()) =
+      CreateColumnSchema("j", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   return schema;
 }
@@ -266,8 +295,8 @@ BENCHMARK_DEFINE_F(PipelineTransformBenchmark, BM_TransformInputAgnosticQuery)
   TableSchema input_schema = CreateGenericTableSchema();
   TableSchema output_schema =
       CreateTableSchema("output", "CREATE TABLE output (one INTEGER)");
-  *(output_schema.add_column()) =
-      CreateColumnSchema("one", ColumnSchema::INT64);
+  *(output_schema.add_column()) = CreateColumnSchema(
+      "one", ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
   SqlQuery query =
       CreateSqlQuery(input_schema, "SELECT 1 AS one", output_schema);

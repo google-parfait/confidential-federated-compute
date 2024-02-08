@@ -42,10 +42,17 @@ http_archive(
 # https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L6
 http_archive(
     name = "rules_python",
-    sha256 = "5868e73107a8e85d8f323806e60cad7283f34b32163ea6ff1020cf27abef6036",
-    strip_prefix = "rules_python-0.25.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.25.0/rules_python-0.25.0.tar.gz",
+    sha256 = "d71d2c67e0bce986e1c5a7731b4693226867c45bfe0b7c5e0067228a536fc580",
+    strip_prefix = "rules_python-0.29.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.29.0/rules_python-0.29.0.tar.gz",
 )
+
+# Call py_repositories() first so rules_python can setup any state
+# subsequent things might need. See
+# https://github.com/bazelbuild/rules_python/issues/1560
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
@@ -124,9 +131,9 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    sha256 = "95939a942202f893db391df1537fc64c45fe94db7ce6484f20bd436aee70054c",
-    strip_prefix = "federated-compute-8d4b013673f87ccd35c9ec95a97749a5ff83f467",
-    url = "https://github.com/google/federated-compute/archive/8d4b013673f87ccd35c9ec95a97749a5ff83f467.tar.gz",
+    sha256 = "8e90c8c51d35dc6b82078f2cc3e23c517ee780d56a16db359277862a30b228fe",
+    strip_prefix = "federated-compute-fd9bb8091181d2a2e3615cd0f237ccb2175e17a4",
+    url = "https://github.com/google/federated-compute/archive/fd9bb8091181d2a2e3615cd0f237ccb2175e17a4.tar.gz",
 )
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
@@ -188,7 +195,7 @@ http_archive(
     name = "google_benchmark",
     sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
     strip_prefix = "benchmark-1.8.3",
-    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"]
+    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"],
 )
 
 http_archive(
@@ -276,5 +283,8 @@ stub_repo(
 
 stub_repo(
     name = "rules_java",
-    rules = {"java:defs.bzl": ["java_lite_proto_library", "java_proto_library"]},
+    rules = {"java:defs.bzl": [
+        "java_lite_proto_library",
+        "java_proto_library",
+    ]},
 )
