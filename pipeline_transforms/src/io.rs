@@ -24,8 +24,10 @@ use crate::proto::{
     Record,
 };
 use alloc::{collections::BTreeSet, vec, vec::Vec};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bitmask::bitmask;
+use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
+use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
 use rand::{rngs::OsRng, RngCore};
 
 bitmask! {
@@ -49,7 +51,18 @@ pub struct RecordDecoder {
 impl RecordDecoder {
     /// Constructs a new RecordDecoder.
     pub fn new(allowed_modes: DecryptionModeSet) -> Self {
-        let (private_key, public_key) = cfc_crypto::gen_keypair();
+        let (private_key, cose_key) = cfc_crypto::gen_keypair(b"key-id");
+        let public_key = cose_key
+            .to_vec()
+            .and_then(|key| {
+                ClaimsSetBuilder::new()
+                    .private_claim(PUBLIC_KEY_CLAIM, Value::from(key))
+                    .build()
+                    .to_vec()
+            })
+            .and_then(|claims| CoseSign1Builder::new().payload(claims).build().to_vec())
+            .expect("failed to encode public key");
+
         Self {
             allowed_modes,
             private_key,
@@ -114,6 +127,7 @@ impl RecordDecoder {
                     encapsulated_public_key,
                     &self.private_key,
                 )
+                .context("Record decryption failed")
             }
 
             _ => Err(anyhow!("unsupported Record kind")),
@@ -157,8 +171,10 @@ impl RecordEncoder {
                 public_key,
                 associated_data,
             } => {
+                let cose_key = extract_key_from_cwt(public_key).context("invalid public key")?;
                 let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
-                    cfc_crypto::encrypt_message(data, public_key, associated_data)?;
+                    cfc_crypto::encrypt_message(data, &cose_key, associated_data)
+                        .context("Record encryption failed")?;
                 RecordKind::HpkePlusAeadData(HpkePlusAeadData {
                     ciphertext,
                     ciphertext_associated_data: associated_data.to_vec(),
@@ -187,16 +203,31 @@ pub fn create_rewrapped_record(
     recipient_public_key: &[u8],
     nonce: &[u8],
 ) -> anyhow::Result<(Record, cfc_crypto::PrivateKey)> {
-    let (intermediary_private_key, intermediary_public_key) = cfc_crypto::gen_keypair();
+    let (intermediary_private_key, intermediary_cose_key) = cfc_crypto::gen_keypair(b"key-id");
     let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
-        cfc_crypto::encrypt_message(plaintext, &intermediary_public_key, associated_data)?;
+        cfc_crypto::encrypt_message(plaintext, &intermediary_cose_key, associated_data)?;
+
+    let intermediary_public_key = CoseSign1Builder::new()
+        .payload(
+            ClaimsSetBuilder::new()
+                .private_claim(
+                    PUBLIC_KEY_CLAIM,
+                    Value::from(intermediary_cose_key.to_vec().map_err(anyhow::Error::msg)?),
+                )
+                .build()
+                .to_vec()
+                .map_err(anyhow::Error::msg)?,
+        )
+        .build()
+        .to_vec()
+        .map_err(anyhow::Error::msg)?;
 
     let (encapsulated_public_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
         &encrypted_symmetric_key,
         &encapsulated_public_key,
         &intermediary_private_key,
         &associated_data,
-        recipient_public_key,
+        &extract_key_from_cwt(recipient_public_key)?,
         &[intermediary_public_key.as_slice(), nonce].concat(),
     )?;
 
@@ -226,6 +257,7 @@ pub fn create_rewrapped_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use googletest::prelude::*;
 
     #[test]
     fn test_decode_unencrypted() -> anyhow::Result<()> {
@@ -247,7 +279,12 @@ mod tests {
         };
 
         let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
-        assert!(decoder.decode(&input).is_err());
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring(
+                "unencrypted_data is not supported"
+            )))
+        );
     }
 
     #[test]
@@ -270,26 +307,22 @@ mod tests {
     #[test]
     fn test_decode_hpke_plus_aead_disallowed() -> anyhow::Result<()> {
         let plaintext = b"data";
-        let ciphertext_associated_data = b"associated_data".to_vec();
+        let ciphertext_associated_data = b"associated_data";
 
         let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
-        let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(
-                plaintext,
-                decoder.public_key(),
-                &ciphertext_associated_data,
-            )?;
-        let input = Record {
-            kind: Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
-                ciphertext,
-                ciphertext_associated_data,
-                encrypted_symmetric_key,
-                encapsulated_public_key,
-                ..Default::default()
-            })),
-            ..Default::default()
-        };
-        assert!(decoder.decode(&input).is_err());
+        let nonce = &decoder.generate_nonces(1)[0];
+        let (input, _) = create_rewrapped_record(
+            plaintext,
+            ciphertext_associated_data,
+            decoder.public_key(),
+            nonce,
+        )?;
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring(
+                "hpke_plus_aead_data is not supported"
+            )))
+        );
         Ok(())
     }
 
@@ -305,33 +338,37 @@ mod tests {
             decoder.public_key(),
             b"nonce", // Use a nonce that wasn't generated by the RecordDecoder.
         )?;
-        assert!(decoder.decode(&input).is_err());
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring("invalid nonce")))
+        );
         Ok(())
     }
 
     #[test]
     fn test_decode_hpke_plus_aead_with_decryption_error() -> anyhow::Result<()> {
         let plaintext = b"data";
-        let ciphertext_associated_data = b"associated_data".to_vec();
+        let ciphertext_associated_data = b"associated_data";
 
         let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
-        let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(
-                plaintext,
-                decoder.public_key(),
-                &ciphertext_associated_data,
-            )?;
-        let input = Record {
-            kind: Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
-                ciphertext,
-                ciphertext_associated_data: b"wrong associated data".to_vec(),
-                encrypted_symmetric_key,
-                encapsulated_public_key,
-                ..Default::default()
-            })),
-            ..Default::default()
+        let nonce = &decoder.generate_nonces(1)[0];
+        let (mut input, _) = create_rewrapped_record(
+            plaintext,
+            ciphertext_associated_data,
+            decoder.public_key(),
+            nonce,
+        )?;
+        match input.kind {
+            Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
+                ref mut ciphertext_associated_data,
+                ..
+            })) => *ciphertext_associated_data = b"wrong associated data".to_vec(),
+            _ => panic!("expected hpke_plus_aead_data"),
         };
-        assert!(decoder.decode(&input).is_err());
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring("Record decryption failed")))
+        );
         Ok(())
     }
 
@@ -352,7 +389,19 @@ mod tests {
     fn test_encode_hpke_plus_aead() -> anyhow::Result<()> {
         let plaintext = b"data";
         let associated_data = b"associated data";
-        let (private_key, public_key) = cfc_crypto::gen_keypair();
+        let (private_key, cose_key) = cfc_crypto::gen_keypair(b"key-id");
+        let public_key = CoseSign1Builder::new()
+            .payload(
+                ClaimsSetBuilder::new()
+                    .private_claim(PUBLIC_KEY_CLAIM, Value::from(cose_key.to_vec().unwrap()))
+                    .build()
+                    .to_vec()
+                    .unwrap(),
+            )
+            .build()
+            .to_vec()
+            .unwrap();
+
         let output = RecordEncoder::default().encode(
             EncryptionMode::HpkePlusAead {
                 public_key: &public_key,
@@ -394,14 +443,15 @@ mod tests {
     fn test_encode_hpke_plus_aead_with_encryption_error() {
         let plaintext = b"data";
         let associated_data = b"associated data";
-        assert!(RecordEncoder::default()
-            .encode(
+        assert_that!(
+            RecordEncoder::default().encode(
                 EncryptionMode::HpkePlusAead {
                     public_key: b"invalid key",
                     associated_data,
                 },
                 plaintext,
-            )
-            .is_err());
+            ),
+            err(displays_as(contains_substring("invalid public key")))
+        );
     }
 }

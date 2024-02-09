@@ -5,12 +5,16 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-sha2 = { version = "*", default-features = false }
 anyhow = { version = "*", default-features = false }
-rand = { version = "*", default-features = false, features = ["getrandom"] }
 cfc_crypto = { path = "../cfc_crypto" }
-micro_rpc = { workspace = true }
+coset = { version = "*", default-features = false }
 federated_compute = { path = "../third_party/federated_compute" }
+micro_rpc = { workspace = true }
 oak_proto_rust = { workspace = true }
 prost = { version = "*", default-features = false, features = ["prost-derive"] }
 prost-types = { version = "*", default-features = false }
+rand = { version = "*", default-features = false, features = ["getrandom"] }
+sha2 = { version = "*", default-features = false }
+
+[dev-dependencies]
+googletest = "*"

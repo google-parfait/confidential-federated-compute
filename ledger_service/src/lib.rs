@@ -16,14 +16,17 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, format, vec::Vec};
+use alloc::{collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
+use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
 use core::time::Duration;
+use coset::{cbor::Value, cwt, cwt::ClaimsSetBuilder, CborSerializable, CoseKey, CoseSign1Builder};
 use federated_compute::proto::{
     AuthorizeAccessRequest, AuthorizeAccessResponse, BlobHeader, CreateKeyRequest,
     CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest, DeleteKeyResponse, Ledger,
-    PublicKeyDetails, RevokeAccessRequest, RevokeAccessResponse,
+    RevokeAccessRequest, RevokeAccessResponse,
 };
+use oak_proto_rust::oak::attestation::v1::Evidence;
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -41,7 +44,7 @@ struct PerKeyLedger {
 #[derive(Default)]
 pub struct LedgerService {
     current_time: Duration,
-    per_key_ledgers: BTreeMap<u32, PerKeyLedger>,
+    per_key_ledgers: BTreeMap<Vec<u8>, PerKeyLedger>,
 }
 
 impl LedgerService {
@@ -77,6 +80,27 @@ impl LedgerService {
             .clone()
             .map_or(Ok(Duration::ZERO), <Duration>::try_from)
     }
+
+    /// Builds a CWT containing a CoseKey.
+    fn build_cwt(&self, cose_key: CoseKey, expiration: Duration) -> anyhow::Result<Vec<u8>> {
+        let claims = ClaimsSetBuilder::new()
+            .expiration_time(cwt::Timestamp::WholeSeconds(
+                expiration.as_secs().try_into().unwrap(),
+            ))
+            .issued_at(cwt::Timestamp::WholeSeconds(
+                self.current_time.as_secs().try_into().unwrap(),
+            ))
+            .private_claim(
+                PUBLIC_KEY_CLAIM,
+                Value::from(cose_key.to_vec().map_err(anyhow::Error::msg)?),
+            )
+            .build();
+        CoseSign1Builder::new()
+            .payload(claims.to_vec().map_err(anyhow::Error::msg)?)
+            .build()
+            .to_vec()
+            .map_err(anyhow::Error::msg)
+    }
 }
 
 impl Ledger for LedgerService {
@@ -102,14 +126,20 @@ impl Ledger for LedgerService {
 
         // Find an available key id. The number of keys is expected to remain small, so this is
         // unlikely to require more than 1 or 2 attempts.
-        let mut key_id: u32;
+        let mut key_id = vec![0u8; 4];
         while {
-            key_id = OsRng.next_u32();
+            OsRng.fill_bytes(key_id.as_mut_slice());
             self.per_key_ledgers.contains_key(&key_id)
         } {}
 
         // Construct and save a new keypair.
-        let (private_key, public_key) = cfc_crypto::gen_keypair();
+        let (private_key, cose_public_key) = cfc_crypto::gen_keypair(&key_id);
+        let public_key = self.build_cwt(cose_public_key, expiration).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::Internal,
+                format!("failed to encode CWT: {:?}", err),
+            )
+        })?;
         self.per_key_ledgers.insert(
             key_id,
             PerKeyLedger {
@@ -121,26 +151,11 @@ impl Ledger for LedgerService {
         );
 
         // Construct the response.
-        let public_key_details = PublicKeyDetails {
-            public_key_id: key_id,
-            issued: Some(prost_types::Timestamp {
-                seconds: self.current_time.as_secs().try_into().unwrap(),
-                nanos: self.current_time.subsec_nanos().try_into().unwrap(),
-            }),
-            expiration: Some(prost_types::Timestamp {
-                seconds: expiration.as_secs().try_into().map_err(|_| {
-                    micro_rpc::Status::new_with_message(
-                        micro_rpc::StatusCode::InvalidArgument,
-                        "`now` + `ttl` overflowed",
-                    )
-                })?,
-                nanos: expiration.subsec_nanos().try_into().unwrap(),
-            }),
-        }
-        .encode_to_vec();
         Ok(CreateKeyResponse {
             public_key,
-            public_key_details,
+            // The presence of attestation evidence indicates the public key is a CWT.
+            // TODO: b/288331695 - Populate the attestation evidence.
+            attestation_evidence: Some(Evidence::default()),
             ..Default::default()
         })
     }
@@ -149,7 +164,16 @@ impl Ledger for LedgerService {
         &mut self,
         request: DeleteKeyRequest,
     ) -> Result<DeleteKeyResponse, micro_rpc::Status> {
-        match self.per_key_ledgers.remove(&request.public_key_id) {
+        // Extract the key id from the CoseKey inside the public key CWT.
+        let key_id = extract_key_from_cwt(&request.public_key)
+            .map(|key| key.key_id)
+            .map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("public_key is invalid: {:?}", err),
+                )
+            })?;
+        match self.per_key_ledgers.remove(&key_id) {
             Some(_) => Ok(DeleteKeyResponse::default()),
             None => Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::NotFound,
@@ -170,7 +194,7 @@ impl Ledger for LedgerService {
         })?;
 
         // Verify the attestation and compute the properties of the requesting application.
-        let recipient_app = attestation::verify_attestation(
+        let (recipient_app, recipient_public_key) = attestation::verify_attestation(
             &request.recipient_public_key,
             &request.recipient_attestation_evidence,
             &request.recipient_attestation_endorsements,
@@ -211,7 +235,7 @@ impl Ledger for LedgerService {
         // Find the right per-key ledger.
         let per_key_ledger = self
             .per_key_ledgers
-            .get_mut(&header.public_key_id)
+            .get_mut(&header.key_id)
             .ok_or_else(|| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::NotFound,
@@ -237,7 +261,7 @@ impl Ledger for LedgerService {
             &request.encapsulated_key,
             &per_key_ledger.private_key,
             /* unwrap_associated_data= */ &request.blob_header,
-            &request.recipient_public_key,
+            &recipient_public_key,
             &wrap_associated_data,
         )
         .map_err(|err| {
@@ -269,7 +293,7 @@ impl Ledger for LedgerService {
     ) -> Result<RevokeAccessResponse, micro_rpc::Status> {
         let per_key_ledger = self
             .per_key_ledgers
-            .get_mut(&request.public_key_id)
+            .get_mut(&request.key_id)
             .ok_or_else(|| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::NotFound,
@@ -289,6 +313,7 @@ mod tests {
     use super::*;
 
     use alloc::{borrow::ToOwned, vec};
+    use coset::{cwt::ClaimsSet, CoseSign1};
     use federated_compute::proto::{
         access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
         ApplicationMatcher,
@@ -315,7 +340,7 @@ mod tests {
     }
 
     /// Helper function to create a LedgerService with one key.
-    fn create_ledger_service() -> (LedgerService, Vec<u8>, u32) {
+    fn create_ledger_service() -> (LedgerService, Vec<u8>) {
         let mut ledger = LedgerService::default();
         let response = ledger
             .create_key(CreateKeyRequest {
@@ -326,8 +351,19 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        let details = PublicKeyDetails::decode(response.public_key_details.as_ref()).unwrap();
-        (ledger, response.public_key, details.public_key_id)
+        (ledger, response.public_key)
+    }
+
+    /// Helper function to wrap a CoseKey in a CWT as would be generated by app requesting access.
+    fn create_recipient_cwt(cose_key: CoseKey) -> Vec<u8> {
+        let claims = ClaimsSetBuilder::new()
+            .private_claim(PUBLIC_KEY_CLAIM, Value::from(cose_key.to_vec().unwrap()))
+            .build();
+        CoseSign1Builder::new()
+            .payload(claims.to_vec().unwrap())
+            .build()
+            .to_vec()
+            .unwrap()
     }
 
     #[test]
@@ -346,25 +382,19 @@ mod tests {
                 }),
             })
             .unwrap();
-        let details1 = PublicKeyDetails::decode(response1.public_key_details.as_ref()).unwrap();
+        assert!(response1.attestation_evidence.is_some());
 
+        let cwt = CoseSign1::from_slice(&response1.public_key).unwrap();
+        let claims = ClaimsSet::from_slice(&cwt.payload.unwrap()).unwrap();
+        assert_eq!(claims.issued_at, Some(cwt::Timestamp::WholeSeconds(1000)));
         assert_eq!(
-            details1.issued,
-            Some(prost_types::Timestamp {
-                seconds: 1000,
-                ..Default::default()
-            })
+            claims.expiration_time,
+            Some(cwt::Timestamp::WholeSeconds(1100))
         );
-        assert_eq!(
-            details1.expiration,
-            Some(prost_types::Timestamp {
-                seconds: 1100,
-                ..Default::default()
-            })
-        );
+        let key1 = extract_key_from_cwt(&response1.public_key).unwrap();
 
-        // Since the response contains many random fields, we can't check them directly. Instead,
-        // we create a second key and verify that those fields are different.
+        // Since the key contains random fields, we can't check them directly. Instead, we create a
+        // second key and verify that those fields are different.
         let response2 = ledger
             .create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {
@@ -377,18 +407,16 @@ mod tests {
                 }),
             })
             .unwrap();
-        let details2 = PublicKeyDetails::decode(response2.public_key_details.as_ref()).unwrap();
-
-        assert_ne!(response1.public_key, response2.public_key);
-        assert_ne!(details1.public_key_id, details2.public_key_id);
+        let key2 = extract_key_from_cwt(&response2.public_key).unwrap();
+        assert_ne!(key1, key2);
     }
 
     #[test]
     fn test_delete_key() {
-        let (mut ledger, _, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
         assert_eq!(
             ledger.delete_key(DeleteKeyRequest {
-                public_key_id,
+                public_key: public_key.clone(),
                 ..Default::default()
             }),
             Ok(DeleteKeyResponse::default())
@@ -398,7 +426,7 @@ mod tests {
         // produces an error.
         assert_err!(
             ledger.delete_key(DeleteKeyRequest {
-                public_key_id,
+                public_key,
                 ..Default::default()
             }),
             micro_rpc::StatusCode::NotFound,
@@ -407,11 +435,25 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_key_not_found() {
-        let (mut ledger, _, public_key_id) = create_ledger_service();
+    fn test_delete_key_invalid() {
+        let mut ledger = LedgerService::default();
         assert_err!(
             ledger.delete_key(DeleteKeyRequest {
-                public_key_id: public_key_id.wrapping_add(1),
+                public_key: b"invalid".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "public_key is invalid"
+        );
+    }
+
+    #[test]
+    fn test_delete_key_not_found() {
+        let (_, public_key) = create_ledger_service();
+        let mut ledger = LedgerService::default();
+        assert_err!(
+            ledger.delete_key(DeleteKeyRequest {
+                public_key,
                 ..Default::default()
             }),
             micro_rpc::StatusCode::NotFound,
@@ -421,7 +463,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -441,16 +484,16 @@ mod tests {
         let plaintext = b"plaintext";
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
         // Request access.
-        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair();
+        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
         let recipient_nonce: &[u8] = b"nonce";
         let response = ledger
             .authorize_access(AuthorizeAccessRequest {
@@ -458,7 +501,7 @@ mod tests {
                 blob_header: blob_header.clone(),
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: recipient_nonce.to_owned(),
                 ..Default::default()
@@ -484,8 +527,9 @@ mod tests {
     // TODO(b/288331695): Test authorize_access with an attestation failure.
 
     #[test]
-    fn test_authorize_access_invalid_header() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+    fn test_authorize_access_invalid_recipient_key() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -504,13 +548,60 @@ mod tests {
         // Construct a client message.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header,
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: b"invalid".into(),
+                recipient_tag: recipient_tag.to_owned(),
+                recipient_nonce: "nonce".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "attestation validation failed"
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_header() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access.
         assert_err!(
@@ -519,7 +610,7 @@ mod tests {
                 blob_header: "invalid".into(),
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -531,7 +622,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_invalid_access_policy_sha256() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -550,13 +642,13 @@ mod tests {
         // Construct a client message.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: "invalid".into(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access.
         assert_err!(
@@ -565,7 +657,7 @@ mod tests {
                 blob_header: blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -577,7 +669,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_invalid_access_policy() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that can't be decoded.
         let access_policy = b"invalid";
@@ -585,13 +678,13 @@ mod tests {
         // Construct a client message.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access.
         assert_err!(
@@ -600,7 +693,7 @@ mod tests {
                 blob_header: blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: "tag".into(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -612,7 +705,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_application_mismatch() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that does not grant access.
         let access_policy = DataAccessPolicy::default().encode_to_vec();
@@ -620,13 +714,13 @@ mod tests {
         // Construct a client message.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access.
         assert_err!(
@@ -635,7 +729,7 @@ mod tests {
                 blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: "non-matching-tag".into(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -647,7 +741,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_decryption_error() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -666,13 +761,13 @@ mod tests {
         // Construct a client message that was encrypted with different associated data.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, b"other aad").unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, b"other aad").unwrap();
 
         // Request access.
         assert_err!(
@@ -681,7 +776,7 @@ mod tests {
                 blob_header: blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -693,7 +788,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_missing_key_id() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -712,13 +808,13 @@ mod tests {
         // Construct a client message using a public key id that doesn't exist.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id: public_key_id.wrapping_add(1),
+            key_id: cose_key.key_id.iter().chain(b"x").cloned().collect(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access.
         assert_err!(
@@ -727,7 +823,7 @@ mod tests {
                 blob_header: blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -739,7 +835,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_expired_key() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
         let recipient_tag = "tag";
@@ -758,13 +855,13 @@ mod tests {
         // Construct a client message.
         let blob_header = BlobHeader {
             blob_id: "blob-id".into(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(b"plaintext", &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
         // Request access. Since `now` is after the key's expiration time, access should be denied.
         assert_err!(
@@ -777,7 +874,7 @@ mod tests {
                 blob_header: blob_header,
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: recipient_tag.to_owned(),
                 recipient_nonce: "nonce".into(),
                 ..Default::default()
@@ -789,7 +886,8 @@ mod tests {
 
     #[test]
     fn test_authorize_access_updates_budget() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
         let access_policy = DataAccessPolicy {
             transforms: vec![Transform {
                 access_budget: Some(AccessBudget {
@@ -803,13 +901,13 @@ mod tests {
         let plaintext = b"plaintext";
         let blob_header = BlobHeader {
             blob_id: b"blob-id".to_vec(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
         // The first access should succeed.
         assert!(ledger
@@ -818,7 +916,7 @@ mod tests {
                 blob_header: blob_header.clone(),
                 encapsulated_key: encapsulated_key.clone(),
                 encrypted_symmetric_key: encrypted_symmetric_key.clone(),
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: "tag".to_owned(),
                 recipient_nonce: b"nonce1".to_vec(),
                 ..Default::default()
@@ -832,7 +930,7 @@ mod tests {
                 blob_header: blob_header.clone(),
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: "tag".to_owned(),
                 recipient_nonce: b"nonce2".to_vec(),
                 ..Default::default()
@@ -844,11 +942,12 @@ mod tests {
 
     #[test]
     fn test_revoke_access() {
-        let (mut ledger, public_key, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
         let blob_id = b"blob-id";
         assert_eq!(
             ledger.revoke_access(RevokeAccessRequest {
-                public_key_id,
+                key_id: cose_key.key_id.clone(),
                 blob_id: blob_id.to_vec(),
                 ..Default::default()
             }),
@@ -864,13 +963,13 @@ mod tests {
         let plaintext = b"plaintext";
         let blob_header = BlobHeader {
             blob_id: blob_id.to_vec(),
-            public_key_id,
+            key_id: cose_key.key_id.clone(),
             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
             ..Default::default()
         }
         .encode_to_vec();
         let (_, encapsulated_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
         assert_err!(
             ledger.authorize_access(AuthorizeAccessRequest {
@@ -878,7 +977,7 @@ mod tests {
                 blob_header: blob_header.clone(),
                 encapsulated_key,
                 encrypted_symmetric_key,
-                recipient_public_key: cfc_crypto::gen_keypair().1,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
                 recipient_tag: "tag".to_owned(),
                 recipient_nonce: b"nonce".to_vec(),
                 ..Default::default()
@@ -890,10 +989,11 @@ mod tests {
 
     #[test]
     fn test_revoke_access_key_not_found() {
-        let (mut ledger, _, public_key_id) = create_ledger_service();
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
         assert_err!(
             ledger.revoke_access(RevokeAccessRequest {
-                public_key_id: public_key_id.wrapping_add(1),
+                key_id: cose_key.key_id.iter().chain(b"x").cloned().collect(),
                 blob_id: "blob-id".into(),
                 ..Default::default()
             }),

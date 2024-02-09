@@ -131,9 +131,19 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    sha256 = "8e90c8c51d35dc6b82078f2cc3e23c517ee780d56a16db359277862a30b228fe",
-    strip_prefix = "federated-compute-fd9bb8091181d2a2e3615cd0f237ccb2175e17a4",
-    url = "https://github.com/google/federated-compute/archive/fd9bb8091181d2a2e3615cd0f237ccb2175e17a4.tar.gz",
+    patches = ["//third_party/federated_compute:cose_visibility.patch"],
+    sha256 = "f70026fde21d2143c1ae1acd16717d250b0d79d45c0076f0336c6a26f1a2f26d",
+    strip_prefix = "federated-compute-de1332686012754c73b9bbe504ba467ae4cad61a",
+    url = "https://github.com/google/federated-compute/archive/de1332686012754c73b9bbe504ba467ae4cad61a.tar.gz",
+)
+
+http_archive(
+    name = "libcbor",
+    build_file = "@federated-compute//third_party:libcbor.BUILD.bzl",
+    patches = ["@federated-compute//fcp/patches:libcbor_configuration.patch"],
+    sha256 = "9fec8ce3071d5c7da8cda397fab5f0a17a60ca6cbaba6503a09a47056a53a4d7",
+    strip_prefix = "libcbor-0.10.2",
+    urls = ["https://github.com/PJK/libcbor/archive/refs/tags/v0.10.2.zip"],
 )
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")

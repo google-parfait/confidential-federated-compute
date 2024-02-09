@@ -34,7 +34,8 @@ using ::fcp::confidentialcompute::Record;
 RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration) {
   // TODO(nfallen): Generate a signature for the public key and configuration
   // once Oak libraries are available.
-  absl::StatusOr<std::string> public_key = message_decryptor_.GetPublicKey();
+  absl::StatusOr<std::string> public_key =
+      message_decryptor_.GetPublicKey([](absl::string_view) { return ""; });
   if (!public_key.ok()) {
     public_key_and_signature_ = public_key.status();
     return;

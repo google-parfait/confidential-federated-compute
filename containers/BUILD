@@ -38,6 +38,7 @@ cc_library(
     deps = [
         ":crypto",
         "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

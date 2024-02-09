@@ -19,6 +19,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "openssl/aead.h"
@@ -30,6 +31,10 @@ namespace confidential_federated_compute::crypto_test_utils {
 
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidential_compute::OkpKey;
+using ::fcp::confidential_compute::crypto_internal::CoseAlgorithm;
+using ::fcp::confidential_compute::crypto_internal::CoseEllipticCurve;
 using ::fcp::confidential_compute::crypto_internal::UnwrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKeyResult;
@@ -46,15 +51,25 @@ absl::StatusOr<Record> CreateRewrappedRecord(
   const EVP_HPKE_KDF* kdf = EVP_hpke_hkdf_sha256();
   const EVP_HPKE_AEAD* aead = EVP_hpke_aes_128_gcm();
   FCP_CHECK(EVP_HPKE_KEY_generate(intermediary_key.get(), kem) == 1);
+  OkpCwt intermediary_public_key{
+      .public_key = OkpKey{
+          .algorithm = CoseAlgorithm::kHpkeBaseX25519Sha256Aes128Gcm,
+          .curve = CoseEllipticCurve::kX25519,
+          .x = std::string(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0'),
+      },
+  };
   size_t public_key_len;
-  std::string intermediary_public_key(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0');
   FCP_CHECK(EVP_HPKE_KEY_public_key(
                 intermediary_key.get(),
-                reinterpret_cast<uint8_t*>(intermediary_public_key.data()),
-                &public_key_len, intermediary_public_key.size()) == 1);
-  intermediary_public_key.resize(public_key_len);
+                reinterpret_cast<uint8_t*>(
+                    intermediary_public_key.public_key->x.data()),
+                &public_key_len,
+                intermediary_public_key.public_key->x.size()) == 1);
+  intermediary_public_key.public_key->x.resize(public_key_len);
+  FCP_ASSIGN_OR_RETURN(std::string intermediary_public_key_bytes,
+                       intermediary_public_key.Encode());
   FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypt_result,
-                       encryptor.Encrypt(message, intermediary_public_key,
+                       encryptor.Encrypt(message, intermediary_public_key_bytes,
                                          ciphertext_associated_data));
 
   // Have the intermediary rewrap the symmetric key with the public key of the
@@ -66,9 +81,12 @@ absl::StatusOr<Record> CreateRewrappedRecord(
                          encrypt_result.encapped_key,
                          ciphertext_associated_data));
 
+  FCP_ASSIGN_OR_RETURN(OkpCwt recipient_cwt,
+                       OkpCwt::Decode(recipient_public_key));
   FCP_ASSIGN_OR_RETURN(
       WrapSymmetricKeyResult rewrapped_symmetric_key_result,
-      WrapSymmetricKey(kem, kdf, aead, symmetric_key, recipient_public_key,
+      WrapSymmetricKey(kem, kdf, aead, symmetric_key,
+                       recipient_cwt.public_key.value_or(OkpKey()).x,
                        absl::StrCat(reencryption_public_key, nonce)));
 
   Record record;

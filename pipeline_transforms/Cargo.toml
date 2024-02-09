@@ -11,8 +11,10 @@ test = []
 anyhow = { version = "*", default-features = false }
 bitmask = { version = "*", default-features = false }
 cfc_crypto = { path = "../cfc_crypto" }
+coset = { version = "*", default-features = false }
 federated_compute = { path = "../third_party/federated_compute" }
 rand = { version = "*", default-features = false, features = ["getrandom"] }
 
 [dev-dependencies]
+googletest = "*"
 pipeline_transforms = { path = ".", features = ["test"] }

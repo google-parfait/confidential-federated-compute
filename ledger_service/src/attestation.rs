@@ -14,10 +14,13 @@
 
 extern crate alloc;
 
+use anyhow::Context;
+use coset::CoseKey;
 use federated_compute::proto::ApplicationMatcher;
 use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence};
 
 /// Various properties of an application running in an enclave.
+#[derive(Debug)]
 pub struct Application<'a> {
     pub tag: &'a str,
 }
@@ -35,19 +38,25 @@ impl Application<'_> {
 
 /// Verifies enclave attestation and returns an Application describing its properties.
 pub fn verify_attestation<'a>(
-    _public_key: &[u8],
+    public_key: &[u8],
     _attestation_evidence: &Option<Evidence>,
     _attestation_endorsements: &Option<Endorsements>,
     tag: &'a str,
-) -> Result<Application<'a>, micro_rpc::Status> {
+) -> anyhow::Result<(Application<'a>, CoseKey)> {
     // TODO(b/288331695): Verify attestation.
-    Ok(Application { tag })
+    Ok((
+        Application { tag },
+        cfc_crypto::extract_key_from_cwt(public_key).context("invalid public key")?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloc::string::String;
+    use cfc_crypto::PUBLIC_KEY_CLAIM;
+    use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
+    use googletest::prelude::*;
 
     #[test]
     fn test_application_matches_empty_matcher() {
@@ -72,10 +81,34 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_attestation() -> Result<(), micro_rpc::Status> {
+    fn test_verify_attestation() -> anyhow::Result<()> {
+        let (_, cose_key) = cfc_crypto::gen_keypair(b"key-id");
+        let public_key = CoseSign1Builder::new()
+            .payload(
+                ClaimsSetBuilder::new()
+                    .private_claim(
+                        PUBLIC_KEY_CLAIM,
+                        Value::from(cose_key.clone().to_vec().unwrap()),
+                    )
+                    .build()
+                    .to_vec()
+                    .unwrap(),
+            )
+            .build()
+            .to_vec()
+            .unwrap();
         let tag = "tag";
-        let app = verify_attestation(b"", &None, &None, tag)?;
+        let (app, key) = verify_attestation(&public_key, &None, &None, tag)?;
         assert_eq!(app.tag, tag);
-        micro_rpc::Ok(())
+        assert_eq!(key, cose_key);
+        anyhow::Ok(())
+    }
+
+    #[test]
+    fn test_verify_attestation_invalid_key() {
+        assert_that!(
+            verify_attestation(b"invalid", &None, &None, "tag"),
+            err(displays_as(contains_substring("invalid public key")))
+        );
     }
 }
