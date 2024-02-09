@@ -26,7 +26,7 @@
 # sanitizers.
 set -e
 
-readonly WORKSPACE_DIR="$(dirname "$0")/.."
+readonly WORKSPACE_DIR="$(dirname -- "$0")/.."
 # If bazelisk isn't in user's path, the BAZELISK environment variable may be set
 # instead. This may also be used to pass startup options like --nosystem_rc to
 # bazel; this usage requires us to not quote ${BAZELISK} when used later.

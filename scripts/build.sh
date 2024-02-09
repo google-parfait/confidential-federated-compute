@@ -28,7 +28,7 @@
 # sanitizers.
 set -e
 
-cd $(dirname "$0")/..
+cd $(dirname -- "$0")/..
 
 ./scripts/cargo_build.sh "$@"
 ./scripts/bazel_build.sh "$@"
