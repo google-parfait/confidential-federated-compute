@@ -15,6 +15,7 @@
 extern crate alloc;
 
 use federated_compute::proto::ApplicationMatcher;
+use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence};
 
 /// Various properties of an application running in an enclave.
 pub struct Application<'a> {
@@ -35,7 +36,8 @@ impl Application<'_> {
 /// Verifies enclave attestation and returns an Application describing its properties.
 pub fn verify_attestation<'a>(
     _public_key: &[u8],
-    _attestation: &[u8],
+    _attestation_evidence: &Option<Evidence>,
+    _attestation_endorsements: &Option<Endorsements>,
     tag: &'a str,
 ) -> Result<Application<'a>, micro_rpc::Status> {
     // TODO(b/288331695): Verify attestation.
@@ -72,7 +74,7 @@ mod tests {
     #[test]
     fn test_verify_attestation() -> Result<(), micro_rpc::Status> {
         let tag = "tag";
-        let app = verify_attestation(b"", b"", tag)?;
+        let app = verify_attestation(b"", &None, &None, tag)?;
         assert_eq!(app.tag, tag);
         micro_rpc::Ok(())
     }

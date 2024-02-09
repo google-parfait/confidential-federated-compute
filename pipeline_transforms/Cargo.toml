@@ -4,8 +4,15 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+[features]
+test = []
+
 [dependencies]
 anyhow = { version = "*", default-features = false }
 bitmask = { version = "*", default-features = false }
 cfc_crypto = { path = "../cfc_crypto" }
 federated_compute = { path = "../third_party/federated_compute" }
+rand = { version = "*", default-features = false, features = ["getrandom"] }
+
+[dev-dependencies]
+pipeline_transforms = { path = ".", features = ["test"] }

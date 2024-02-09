@@ -11,3 +11,4 @@ pipeline_transforms = { path = "../../pipeline_transforms" }
 
 [dev-dependencies]
 cfc_crypto = { path = "../../cfc_crypto" }
+pipeline_transforms = { path = "../../pipeline_transforms", features = ["test"] }

@@ -14,13 +14,19 @@
 
 extern crate alloc;
 
+#[cfg(feature = "test")]
+use crate::proto::record::hpke_plus_aead_data::RewrappedAssociatedData;
 use crate::proto::{
-    record::{HpkePlusAeadData, Kind as RecordKind},
+    record::{
+        hpke_plus_aead_data::{LedgerAssociatedData, SymmetricKeyAssociatedDataComponents},
+        HpkePlusAeadData, Kind as RecordKind,
+    },
     Record,
 };
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec, vec::Vec};
 use anyhow::anyhow;
 use bitmask::bitmask;
+use rand::{rngs::OsRng, RngCore};
 
 bitmask! {
     /// The set of decryption modes supported by a RecordDecoder.
@@ -37,6 +43,7 @@ pub struct RecordDecoder {
     allowed_modes: DecryptionModeSet,
     private_key: cfc_crypto::PrivateKey,
     public_key: Vec<u8>,
+    nonces: BTreeSet<Vec<u8>>,
 }
 
 impl RecordDecoder {
@@ -47,6 +54,7 @@ impl RecordDecoder {
             allowed_modes,
             private_key,
             public_key,
+            nonces: BTreeSet::new(),
         }
     }
 
@@ -54,12 +62,25 @@ impl RecordDecoder {
         &self.public_key
     }
 
+    /// Generates new nonces that can be used when decoding messages.
+    pub fn generate_nonces(&mut self, count: usize) -> Vec<Vec<u8>> {
+        let mut nonces = Vec::with_capacity(count);
+        while nonces.len() < count {
+            let mut nonce = vec![0u8; 8];
+            OsRng.fill_bytes(nonce.as_mut_slice());
+            if self.nonces.insert(nonce.clone()) {
+                nonces.push(nonce);
+            }
+        }
+        nonces
+    }
+
     /// Decodes an `Record` message to the corresponding message bytes.
     ///
     /// # Return Value
     ///
     /// Returns the unencrypted message on success.
-    pub fn decode(&self, record: &Record) -> anyhow::Result<Vec<u8>> {
+    pub fn decode(&mut self, record: &Record) -> anyhow::Result<Vec<u8>> {
         match &record.kind {
             Some(RecordKind::UnencryptedData(d)) => {
                 if !self.allowed_modes.contains(DecryptionMode::Unencrypted) {
@@ -68,18 +89,29 @@ impl RecordDecoder {
                 Ok(d.clone())
             }
 
-            Some(RecordKind::HpkePlusAeadData(msg)) => {
+            Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
+                ref ciphertext,
+                ref ciphertext_associated_data,
+                ref encrypted_symmetric_key,
+                symmetric_key_associated_data_components:
+                    Some(SymmetricKeyAssociatedDataComponents::RewrappedSymmetricKeyAssociatedData(
+                        ref ad,
+                    )),
+                ref encapsulated_public_key,
+                ..
+            })) => {
                 if !self.allowed_modes.contains(DecryptionMode::HpkePlusAead) {
                     return Err(anyhow!("Record.hpke_plus_aead_data is not supported"));
                 }
+                if !self.nonces.remove(&ad.nonce) {
+                    return Err(anyhow!("invalid nonce"));
+                }
                 cfc_crypto::decrypt_message(
-                    &msg.ciphertext,
-                    &msg.ciphertext_associated_data,
-                    &msg.encrypted_symmetric_key,
-                    msg.encrypted_symmetric_key_associated_data
-                        .as_ref()
-                        .unwrap_or(&msg.ciphertext_associated_data),
-                    &msg.encapsulated_public_key,
+                    ciphertext,
+                    ciphertext_associated_data,
+                    encrypted_symmetric_key,
+                    &[ad.reencryption_public_key.as_slice(), ad.nonce.as_slice()].concat(),
+                    encapsulated_public_key,
                     &self.private_key,
                 )
             }
@@ -113,7 +145,7 @@ pub struct RecordEncoder;
 impl RecordEncoder {
     /// Constructs a new `RecordEncoder`.
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     /// Encodes data as a `Record` message.
@@ -132,12 +164,63 @@ impl RecordEncoder {
                     ciphertext_associated_data: associated_data.to_vec(),
                     encrypted_symmetric_key,
                     encapsulated_public_key,
+                    symmetric_key_associated_data_components: Some(
+                        SymmetricKeyAssociatedDataComponents::LedgerSymmetricKeyAssociatedData(
+                            LedgerAssociatedData {
+                                record_header: associated_data.to_vec(),
+                            },
+                        ),
+                    ),
                     ..Default::default()
                 })
             }
         };
         Ok(Record { kind: Some(kind) })
     }
+}
+
+/// Creates a Record that has been rewrapped so that it can be decrypted by a RecordDecoder.
+#[cfg(feature = "test")]
+pub fn create_rewrapped_record(
+    plaintext: &[u8],
+    associated_data: &[u8],
+    recipient_public_key: &[u8],
+    nonce: &[u8],
+) -> anyhow::Result<(Record, cfc_crypto::PrivateKey)> {
+    let (intermediary_private_key, intermediary_public_key) = cfc_crypto::gen_keypair();
+    let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
+        cfc_crypto::encrypt_message(plaintext, &intermediary_public_key, associated_data)?;
+
+    let (encapsulated_public_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
+        &encrypted_symmetric_key,
+        &encapsulated_public_key,
+        &intermediary_private_key,
+        &associated_data,
+        recipient_public_key,
+        &[intermediary_public_key.as_slice(), nonce].concat(),
+    )?;
+
+    Ok((
+        Record {
+            kind: Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
+                ciphertext,
+                ciphertext_associated_data: associated_data.to_vec(),
+                symmetric_key_associated_data_components: Some(
+                    SymmetricKeyAssociatedDataComponents::RewrappedSymmetricKeyAssociatedData(
+                        RewrappedAssociatedData {
+                            reencryption_public_key: intermediary_public_key,
+                            nonce: nonce.to_vec(),
+                        },
+                    ),
+                ),
+                encrypted_symmetric_key,
+                encapsulated_public_key,
+                ..Default::default()
+            })),
+            ..Default::default()
+        },
+        intermediary_private_key,
+    ))
 }
 
 #[cfg(test)]
@@ -151,7 +234,7 @@ mod tests {
             ..Default::default()
         };
 
-        let decoder = RecordDecoder::new(DecryptionMode::Unencrypted.into());
+        let mut decoder = RecordDecoder::new(DecryptionMode::Unencrypted.into());
         assert_eq!(decoder.decode(&input)?, b"data".to_vec());
         Ok(())
     }
@@ -163,32 +246,23 @@ mod tests {
             ..Default::default()
         };
 
-        let decoder = RecordDecoder::new(DecryptionModeSet::none());
+        let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
         assert!(decoder.decode(&input).is_err());
     }
 
     #[test]
     fn test_decode_hpke_plus_aead() -> anyhow::Result<()> {
         let plaintext = b"data";
-        let ciphertext_associated_data = b"associated data".to_vec();
+        let ciphertext_associated_data = b"associated data";
 
-        let decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
-        let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
-            cfc_crypto::encrypt_message(
-                plaintext,
-                decoder.public_key(),
-                &ciphertext_associated_data,
-            )?;
-        let input = Record {
-            kind: Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
-                ciphertext,
-                ciphertext_associated_data,
-                encrypted_symmetric_key,
-                encapsulated_public_key,
-                ..Default::default()
-            })),
-            ..Default::default()
-        };
+        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let nonce = &decoder.generate_nonces(1)[0];
+        let (input, _) = create_rewrapped_record(
+            plaintext,
+            ciphertext_associated_data,
+            decoder.public_key(),
+            nonce,
+        )?;
         assert_eq!(decoder.decode(&input)?, plaintext.to_vec());
         Ok(())
     }
@@ -198,7 +272,7 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data".to_vec();
 
-        let decoder = RecordDecoder::new(DecryptionModeSet::none());
+        let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
         let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
             cfc_crypto::encrypt_message(
                 plaintext,
@@ -220,11 +294,27 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_hpke_plus_aead_with_invalid_nonce() -> anyhow::Result<()> {
+        let plaintext = b"data";
+        let ciphertext_associated_data = b"associated data";
+
+        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let (input, _) = create_rewrapped_record(
+            plaintext,
+            ciphertext_associated_data,
+            decoder.public_key(),
+            b"nonce", // Use a nonce that wasn't generated by the RecordDecoder.
+        )?;
+        assert!(decoder.decode(&input).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn test_decode_hpke_plus_aead_with_decryption_error() -> anyhow::Result<()> {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data".to_vec();
 
-        let decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
         let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
             cfc_crypto::encrypt_message(
                 plaintext,
@@ -276,8 +366,16 @@ mod tests {
         };
 
         assert_eq!(&msg.ciphertext_associated_data, associated_data);
-        // encrypted_symmetric_key_associated_data should not be set.
-        assert_eq!(msg.encrypted_symmetric_key_associated_data, None);
+        assert_eq!(
+            msg.symmetric_key_associated_data_components,
+            Some(
+                SymmetricKeyAssociatedDataComponents::LedgerSymmetricKeyAssociatedData(
+                    LedgerAssociatedData {
+                        record_header: associated_data.to_vec(),
+                    }
+                )
+            )
+        );
         assert_eq!(
             cfc_crypto::decrypt_message(
                 &msg.ciphertext,

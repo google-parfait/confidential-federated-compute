@@ -601,6 +601,7 @@ dependencies = [
  "cfc_crypto",
  "federated_compute",
  "micro_rpc",
+ "oak_proto_rust",
  "prost",
  "prost-types",
  "rand",
@@ -828,6 +829,8 @@ dependencies = [
  "bitmask",
  "cfc_crypto",
  "federated_compute",
+ "pipeline_transforms",
+ "rand",
 ]
 
 [[package]]

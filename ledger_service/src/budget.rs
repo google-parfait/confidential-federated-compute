@@ -229,7 +229,7 @@ impl BudgetTracker {
 
         self.budgets
             .entry(policy_hash.to_vec())
-            .or_insert_with(BTreeMap::new)
+            .or_default()
             .entry(blob_id.to_vec())
             .or_insert_with(|| BlobBudget::new(policy))
             .record_access(transform_index, policy)
