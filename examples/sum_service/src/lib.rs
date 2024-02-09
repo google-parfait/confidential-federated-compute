@@ -29,7 +29,7 @@ use pipeline_transforms::{
 
 #[derive(Default)]
 pub struct SumService {
-    record_decoder: RecordDecoder,
+    record_decoder: Option<RecordDecoder>,
     record_encoder: RecordEncoder,
 }
 
@@ -38,33 +38,55 @@ impl PipelineTransform for SumService {
         &mut self,
         _request: InitializeRequest,
     ) -> Result<InitializeResponse, micro_rpc::Status> {
-        Ok(InitializeResponse {
-            public_key: self.record_decoder.public_key().to_vec(),
-            ..Default::default()
-        })
+        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
     }
 
     fn configure_and_attest(
         &mut self,
         _request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
-        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
+        self.record_decoder = Some(RecordDecoder::default());
+        Ok(ConfigureAndAttestResponse {
+            public_key: self.record_decoder.as_ref().unwrap().public_key().to_vec(),
+            ..Default::default()
+        })
     }
 
     fn generate_nonces(
         &mut self,
-        _request: GenerateNoncesRequest,
+        request: GenerateNoncesRequest,
     ) -> Result<GenerateNoncesResponse, micro_rpc::Status> {
-        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
+        let record_decoder = self.record_decoder.as_mut().ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::FailedPrecondition,
+                "service has not been configured",
+            )
+        })?;
+        let count: usize = request.nonces_count.try_into().map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("nonces_count is invalid: {:?}", err),
+            )
+        })?;
+        Ok(GenerateNoncesResponse {
+            nonces: record_decoder.generate_nonces(count),
+        })
     }
 
     fn transform(
         &mut self,
         request: TransformRequest,
     ) -> Result<TransformResponse, micro_rpc::Status> {
+        let record_decoder = self.record_decoder.as_mut().ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::FailedPrecondition,
+                "service has not been configured",
+            )
+        })?;
+
         let mut sum: u64 = 0;
         for input in &request.inputs {
-            let data = self.record_decoder.decode(input).map_err(|err| {
+            let data = record_decoder.decode(input).map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("failed to decode input: {:?}", err),
@@ -119,16 +141,63 @@ mod tests {
     }
 
     #[test]
-    fn test_initialize() -> Result<(), micro_rpc::Status> {
+    fn test_initialize() {
         let mut service = SumService::default();
-        let response = service.initialize(InitializeRequest::default())?;
+        assert!(service.initialize(InitializeRequest::default()).is_err());
+    }
+
+    #[test]
+    fn test_configure_and_attest() -> Result<(), micro_rpc::Status> {
+        let mut service = SumService::default();
+        let response = service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         assert!(!response.public_key.is_empty());
         Ok(())
     }
 
     #[test]
-    fn test_transform_requires_8_bytes() {
+    fn test_generate_nonces() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
+        service.configure_and_attest(ConfigureAndAttestRequest::default())?;
+        let response = service.generate_nonces(GenerateNoncesRequest { nonces_count: 3 })?;
+        assert_eq!(response.nonces.len(), 3);
+        assert_ne!(response.nonces[0], b"");
+        assert_ne!(response.nonces[1], b"");
+        assert_ne!(response.nonces[2], b"");
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_nonces_without_configure() {
+        let mut service = SumService::default();
+        assert!(service
+            .generate_nonces(GenerateNoncesRequest { nonces_count: 3 })
+            .is_err());
+    }
+
+    #[test]
+    fn test_generate_nonces_with_invalid_count() -> Result<(), micro_rpc::Status> {
+        let mut service = SumService::default();
+        service.configure_and_attest(ConfigureAndAttestRequest::default())?;
+        assert!(service
+            .generate_nonces(GenerateNoncesRequest { nonces_count: -1 })
+            .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_transform_without_configure() {
+        let mut service = SumService::default();
+        let request = TransformRequest {
+            inputs: vec![encode_unencrypted(&[1, 0, 0, 0, 0, 0, 0, 0]); 2],
+            ..Default::default()
+        };
+        assert!(service.transform(request).is_err());
+    }
+
+    #[test]
+    fn test_transform_requires_8_bytes() -> Result<(), micro_rpc::Status> {
+        let mut service = SumService::default();
+        service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         for length in (0..7).chain(9..16) {
             let request = TransformRequest {
                 inputs: vec![encode_unencrypted(&vec![0; length])],
@@ -136,21 +205,25 @@ mod tests {
             };
             assert!(service.transform(request).is_err());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_transform_overflow() {
+    fn test_transform_overflow() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
+        service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         let request = TransformRequest {
             inputs: vec![encode_unencrypted(&[0, 0, 0, 0, 0, 0, 0, 0xFF]); 2],
             ..Default::default()
         };
         assert!(service.transform(request).is_err());
+        Ok(())
     }
 
     #[test]
     fn test_transform_sums_inputs() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
+        service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         for count in 0..10 {
             let request = TransformRequest {
                 inputs: (1..(count + 1))
@@ -173,21 +246,29 @@ mod tests {
     #[test]
     fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
         let mut service = SumService::default();
-        let initialize_response = service.initialize(InitializeRequest::default())?;
-        let mode = EncryptionMode::HpkePlusAead {
-            public_key: &initialize_response.public_key,
-            associated_data: b"associated data",
-        };
+        let configure_response =
+            service.configure_and_attest(ConfigureAndAttestRequest::default())?;
+        let nonces_response = service.generate_nonces(GenerateNoncesRequest { nonces_count: 2 })?;
+        let associated_data = b"associated data";
 
-        let record_encoder = RecordEncoder::default();
         let request = TransformRequest {
             inputs: vec![
-                record_encoder
-                    .encode(mode, &[1, 0, 0, 0, 0, 0, 0, 0])
-                    .unwrap(),
-                record_encoder
-                    .encode(mode, &[2, 0, 0, 0, 0, 0, 0, 0])
-                    .unwrap(),
+                pipeline_transforms::io::create_rewrapped_record(
+                    &[1, 0, 0, 0, 0, 0, 0, 0],
+                    associated_data,
+                    &configure_response.public_key,
+                    &nonces_response.nonces[0],
+                )
+                .unwrap()
+                .0,
+                pipeline_transforms::io::create_rewrapped_record(
+                    &[2, 0, 0, 0, 0, 0, 0, 0],
+                    associated_data,
+                    &configure_response.public_key,
+                    &nonces_response.nonces[1],
+                )
+                .unwrap()
+                .0,
             ],
             ..Default::default()
         };

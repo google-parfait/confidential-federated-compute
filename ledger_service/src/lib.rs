@@ -172,7 +172,8 @@ impl Ledger for LedgerService {
         // Verify the attestation and compute the properties of the requesting application.
         let recipient_app = attestation::verify_attestation(
             &request.recipient_public_key,
-            &request.recipient_attestation,
+            &request.recipient_attestation_evidence,
+            &request.recipient_attestation_endorsements,
             &request.recipient_tag,
         )
         .map_err(|err| {
@@ -347,7 +348,6 @@ mod tests {
             .unwrap();
         let details1 = PublicKeyDetails::decode(response1.public_key_details.as_ref()).unwrap();
 
-        assert_eq!(response1.attestation, &[0u8; 0]);
         assert_eq!(
             details1.issued,
             Some(prost_types::Timestamp {
