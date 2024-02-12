@@ -20,13 +20,16 @@ cc_library(
     hdrs = ["crypto.h"],
     deps = [
         "@boringssl//:crypto",
-        "@federated-compute//fcp/confidentialcompute:crypto",
-        "@federated-compute//fcp/base:status_converters",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//proto/containers:orchestrator_crypto_cc_proto",
     ],
 )
 
@@ -71,14 +74,17 @@ cc_test(
     deps = [
         ":crypto",
         ":crypto_test_utils",
-        "@com_google_protobuf//:protobuf",
-        "@federated-compute//fcp/confidentialcompute:crypto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
         "@federated-compute//fcp/aggregation/testing:test_data",
         "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:crypto",
         "@googletest//:gtest_main",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//proto/containers:orchestrator_crypto_cc_proto",
     ],
 )
 

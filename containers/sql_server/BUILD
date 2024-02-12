@@ -28,8 +28,9 @@ cc_binary(
         "//containers:oak_orchestrator_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@oak//oak_containers/proto:interfaces_cc_grpc",
-        "@oak//oak_containers/proto:interfaces_cc_proto",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
 
@@ -133,17 +134,22 @@ cc_library(
     srcs = ["pipeline_transform_server.cc"],
     hdrs = ["pipeline_transform_server.h"],
     deps = [
-        "@com_google_protobuf//:protobuf",
         ":sql_data_cc_proto",
         ":sql_data_converter",
         ":sqlite_adapter",
         "//containers:crypto",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
 

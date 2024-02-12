@@ -13,24 +13,24 @@
 // limitations under the License.
 #include "containers/sql_server/pipeline_transform_server.h"
 
-#include <stdio.h>
-
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/log/log.h"
+#include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
+#include "absl/status/status.h"
 #include "containers/crypto.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "containers/sql_server/sql_data_converter.h"
+#include "containers/sql_server/sqlite_adapter.h"
+#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
-using ::confidential_federated_compute::RecordDecryptor;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -64,7 +64,7 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
         SqlConfiguration{.query = sql_query.raw_sql(),
                          .input_schema = sql_query.database_schema().table(0),
                          .output_columns = sql_query.output_columns()});
-    record_decryptor_.emplace(request->configuration());
+    record_decryptor_.emplace(request->configuration(), crypto_stub_);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a
@@ -73,11 +73,8 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
     record_decryptor = &*record_decryptor_;
   }
 
-  FCP_ASSIGN_OR_RETURN(const PublicKeyAndSignature* public_key_and_signature,
-                       record_decryptor->GetPublicKeyAndSignature());
-  response->set_public_key(public_key_and_signature->public_key);
-  // TODO(nfallen): Set the signature on the ConfigureAndAttestResponse once a
-  // signature rooted in the attestation evidence is available.
+  FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
+                       record_decryptor->GetPublicKey());
   return absl::OkStatus();
 }
 
@@ -154,8 +151,10 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   return absl::OkStatus();
 }
 
-SqlPipelineTransform::SqlPipelineTransform() {
-  FCP_CHECK_STATUS(SqliteAdapter::Initialize());
+SqlPipelineTransform::SqlPipelineTransform(
+    oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+    : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {
+  CHECK_OK(SqliteAdapter::Initialize());
 }
 
 SqlPipelineTransform::~SqlPipelineTransform() { SqliteAdapter::ShutDown(); };

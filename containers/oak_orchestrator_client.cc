@@ -34,13 +34,11 @@ namespace confidential_federated_compute {
 using ::google::protobuf::Empty;
 using ::oak::containers::Orchestrator;
 
-std::unique_ptr<Orchestrator::Stub> CreateOakOrchestratorStub() {
+std::shared_ptr<grpc::Channel> CreateOakOrchestratorChannel() {
   // The Oak Orchestrator gRPC service is listening on a UDS path. See
   // https://github.com/project-oak/oak/blob/55901b8a4c898c00ecfc14ef4bc65f30cd31d6a9/oak_containers_hello_world_trusted_app/src/orchestrator_client.rs#L45
-  grpc::ClientContext context;
-  std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+  return grpc::CreateChannel(
       "unix:/oak_utils/orchestrator_ipc", grpc::InsecureChannelCredentials());
-  return Orchestrator::NewStub(channel);
 }
 
 OakOrchestratorClient::OakOrchestratorClient(Orchestrator::StubInterface* stub)

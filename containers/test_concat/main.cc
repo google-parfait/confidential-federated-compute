@@ -12,13 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "containers/oak_orchestrator_client.h"
 #include "containers/test_concat/pipeline_transform_server.h"
 #include "oak_containers/proto/interfaces.grpc.pb.h"
-#include "oak_containers/proto/interfaces.pb.h"
+#include "proto/containers/orchestrator_crypto.grpc.pb.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
 
 namespace confidential_federated_compute::test_concat {
 
@@ -27,22 +33,24 @@ namespace {
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::Orchestrator;
+using ::oak::containers::v1::OrchestratorCrypto;
 
 void RunServer() {
   std::string server_address("[::]:8080");
+  std::shared_ptr<grpc::Channel> orchestrator_channel =
+      CreateOakOrchestratorChannel();
 
-  TestConcatPipelineTransform service;
+  OrchestratorCrypto::Stub orchestrator_crypto_stub(orchestrator_channel);
+  TestConcatPipelineTransform service(&orchestrator_crypto_stub);
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server = builder.BuildAndStart();
   LOG(INFO) << "Test Concat Server listening on " << server_address << "\n";
 
-  std::unique_ptr<Orchestrator::Stub> orchestrator_stub =
-      CreateOakOrchestratorStub();
-  OakOrchestratorClient oak_orchestrator_client(orchestrator_stub.get());
-  absl::Status oak_notify_status = oak_orchestrator_client.NotifyAppReady();
-  FCP_CHECK(oak_notify_status.ok()) << oak_notify_status;
+  Orchestrator::Stub orchestrator_stub(orchestrator_channel);
+  OakOrchestratorClient oak_orchestrator_client(&orchestrator_stub);
+  CHECK_OK(oak_orchestrator_client.NotifyAppReady());
   server->Wait();
 }
 

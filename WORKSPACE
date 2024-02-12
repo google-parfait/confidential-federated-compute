@@ -131,10 +131,9 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    patches = ["//third_party/federated_compute:cose_visibility.patch"],
-    sha256 = "f70026fde21d2143c1ae1acd16717d250b0d79d45c0076f0336c6a26f1a2f26d",
-    strip_prefix = "federated-compute-de1332686012754c73b9bbe504ba467ae4cad61a",
-    url = "https://github.com/google/federated-compute/archive/de1332686012754c73b9bbe504ba467ae4cad61a.tar.gz",
+    sha256 = "a18ea8184bdfde4de16c80c94bf3bd78f00a93bd4c180f2728a7705c428d3df9",
+    strip_prefix = "federated-compute-7cd40dd675a90d71dac6756327aad53046a792b3",
+    url = "https://github.com/google/federated-compute/archive/7cd40dd675a90d71dac6756327aad53046a792b3.tar.gz",
 )
 
 http_archive(

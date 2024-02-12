@@ -13,7 +13,10 @@
 // limitations under the License.
 #include "containers/test_concat/pipeline_transform_server.h"
 
-#include "absl/log/check.h"
+#include <memory>
+#include <string>
+
+#include "absl/log/log.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
@@ -26,6 +29,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 
 namespace confidential_federated_compute::test_concat {
 
@@ -45,6 +49,7 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
+using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
@@ -52,15 +57,14 @@ using ::testing::SizeIs;
 using ::testing::Test;
 
 class TestConcatPipelineTransformTest : public Test {
- public:
-  void SetUp() override {
+ protected:
+  TestConcatPipelineTransformTest() {
     int port;
     const std::string server_address = "[::1]:";
     ServerBuilder builder;
-    service_ = std::make_unique<TestConcatPipelineTransform>();
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(service_.get());
+    builder.RegisterService(&service_);
     server_ = builder.BuildAndStart();
     LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
               << std::endl;
@@ -69,17 +73,12 @@ class TestConcatPipelineTransformTest : public Test {
                             grpc::InsecureChannelCredentials()));
   }
 
-  void TearDown() override {
-    stub_.reset();
-    server_->Shutdown();
-    server_.reset();
-    service_.reset();
-  }
+  ~TestConcatPipelineTransformTest() override { server_->Shutdown(); }
 
- protected:
-  std::unique_ptr<TestConcatPipelineTransform> service_ = nullptr;
-  std::unique_ptr<Server> server_ = nullptr;
-  std::unique_ptr<PipelineTransform::Stub> stub_ = nullptr;
+  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
+  TestConcatPipelineTransform service_{&mock_crypto_stub_};
+  std::unique_ptr<Server> server_;
+  std::unique_ptr<PipelineTransform::Stub> stub_;
 };
 
 TEST_F(TestConcatPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {

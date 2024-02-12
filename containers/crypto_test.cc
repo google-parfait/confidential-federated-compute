@@ -13,22 +13,32 @@
 // limitations under the License.
 #include "containers/crypto.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <string>
 
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
+#include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
+#include "proto/containers/orchestrator_crypto.pb.h"
+#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 
 namespace confidential_federated_compute {
 namespace {
 
+using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::Record;
+using ::oak::containers::v1::MockOrchestratorCryptoStub;
+using ::testing::_;
+using ::testing::DoAll;
 using ::testing::HasSubstr;
+using ::testing::NiceMock;
+using ::testing::Return;
+using ::testing::SaveArg;
+using ::testing::SetArgPointee;
 
 TEST(CryptoTest, EncryptAndDecrypt) {
   std::string message = "some plaintext message";
@@ -36,22 +46,19 @@ TEST(CryptoTest, EncryptAndDecrypt) {
   std::string ciphertext_associated_data = "ciphertext associated data";
 
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
 
-  absl::StatusOr<const PublicKeyAndSignature*> public_key_and_signature =
-      record_decryptor.GetPublicKeyAndSignature();
-  ASSERT_TRUE(public_key_and_signature.ok())
-      << public_key_and_signature.status();
-
-  const std::string& recipient_public_key =
-      public_key_and_signature.value()->public_key;
+  absl::StatusOr<absl::string_view> recipient_public_key =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
 
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
   absl::StatusOr<Record> rewrapped_record =
       crypto_test_utils::CreateRewrappedRecord(
-          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          message, ciphertext_associated_data, *recipient_public_key, *nonce,
           reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
@@ -67,25 +74,22 @@ TEST(CryptoTest, EncryptAndDecryptWrongRecipient) {
   std::string ciphertext_associated_data = "ciphertext associated data";
 
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
-  RecordDecryptor record_decryptor_other(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+  RecordDecryptor record_decryptor_other(config, mock_crypto_stub);
 
   // Use the public key from record_decryptor_other to rewrap the message.
   // record_decryptor will not be able to decrypt the record.
-  absl::StatusOr<const PublicKeyAndSignature*> public_key_and_signature =
-      record_decryptor_other.GetPublicKeyAndSignature();
-  ASSERT_TRUE(public_key_and_signature.ok())
-      << public_key_and_signature.status();
-
-  const std::string& recipient_public_key =
-      public_key_and_signature.value()->public_key;
+  absl::StatusOr<absl::string_view> recipient_public_key =
+      record_decryptor_other.GetPublicKey();
+  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
 
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
   absl::StatusOr<Record> rewrapped_record =
       crypto_test_utils::CreateRewrappedRecord(
-          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          message, ciphertext_associated_data, *recipient_public_key, *nonce,
           reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
@@ -106,7 +110,8 @@ TEST(CryptoTest, EncryptAndDecryptWrongRecipient) {
 TEST(CryptoTest, DecryptUnencryptedData) {
   std::string message = "some plaintext message";
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
 
   Record record;
   record.set_unencrypted_data(message);
@@ -118,7 +123,8 @@ TEST(CryptoTest, DecryptUnencryptedData) {
 
 TEST(CryptoTest, DecryptRecordWithInvalidKind) {
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
   Record record;
   absl::StatusOr<std::string> decrypt_result =
       record_decryptor.DecryptRecord(record);
@@ -129,7 +135,8 @@ TEST(CryptoTest, DecryptRecordWithInvalidKind) {
 
 TEST(CryptoTest, DecryptRecordWithInvalidAssociatedData) {
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
   Record record;
   record.mutable_hpke_plus_aead_data()->set_ciphertext("unused ciphertext");
   record.mutable_hpke_plus_aead_data()->set_encrypted_symmetric_key(
@@ -156,22 +163,19 @@ TEST(CryptoTest, DecryptTwiceFails) {
   std::string ciphertext_associated_data = "ciphertext_associated_data";
 
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
 
-  absl::StatusOr<const PublicKeyAndSignature*> public_key_and_signature =
-      record_decryptor.GetPublicKeyAndSignature();
-  ASSERT_TRUE(public_key_and_signature.ok())
-      << public_key_and_signature.status();
-
-  const std::string& recipient_public_key =
-      public_key_and_signature.value()->public_key;
+  absl::StatusOr<absl::string_view> recipient_public_key =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
 
   absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
   ASSERT_TRUE(nonce.ok()) << nonce.status();
 
   absl::StatusOr<Record> rewrapped_record =
       crypto_test_utils::CreateRewrappedRecord(
-          message, ciphertext_associated_data, recipient_public_key, *nonce,
+          message, ciphertext_associated_data, *recipient_public_key, *nonce,
           reencryption_public_key);
   ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
 
@@ -189,23 +193,58 @@ TEST(CryptoTest, DecryptTwiceFails) {
       << decrypt_result_2.status();
 }
 
-TEST(CryptoTest, GetSignedPublicKeyAndConfigTwice) {
+TEST(CryptoTest, GetPublicKey) {
+  MockOrchestratorCryptoStub mock_crypto_stub;
+  oak::containers::v1::SignRequest sign_request;
+  oak::containers::v1::SignResponse sign_response;
+  sign_response.mutable_signature()->set_signature("signature");
+  EXPECT_CALL(mock_crypto_stub, Sign(_, _, _))
+      .WillOnce(DoAll(SaveArg<1>(&sign_request),
+                      SetArgPointee<2>(sign_response),
+                      Return(grpc::Status::OK)));
+
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config);
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
 
-  absl::StatusOr<const PublicKeyAndSignature*> public_key_and_signature =
-      record_decryptor.GetPublicKeyAndSignature();
-  ASSERT_TRUE(public_key_and_signature.ok())
-      << public_key_and_signature.status();
+  absl::StatusOr<absl::string_view> public_key =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(public_key.ok()) << public_key.status();
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(*public_key);
+  ASSERT_TRUE(cwt.ok()) << cwt.status();
 
-  // Now call GetPublicKeyAndSignature again.
+  absl::StatusOr<std::string> sig_structure =
+      cwt->BuildSigStructure(/*aad=*/"");
+  ASSERT_TRUE(sig_structure.ok()) << sig_structure.status();
+  EXPECT_EQ(sign_request.message(), *sig_structure);
+  EXPECT_EQ(cwt->signature, "signature");
+}
+
+TEST(CryptoTest, GetPublicKeySigningFails) {
+  MockOrchestratorCryptoStub mock_crypto_stub;
+  EXPECT_CALL(mock_crypto_stub, Sign(_, _, _))
+      .WillOnce(Return(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "")));
+  google::protobuf::Any config;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  EXPECT_EQ(record_decryptor.GetPublicKey().status().code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST(CryptoTest, GetPublicKeyTwice) {
+  google::protobuf::Any config;
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  absl::StatusOr<absl::string_view> public_key =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(public_key.ok()) << public_key.status();
+
+  // Now call GetPublicKey again.
   // This will succeed and return the same public key.
-  absl::StatusOr<const PublicKeyAndSignature*> public_key_and_signature_2 =
-      record_decryptor.GetPublicKeyAndSignature();
-  ASSERT_TRUE(public_key_and_signature_2.ok())
-      << public_key_and_signature_2.status();
-  ASSERT_EQ((*public_key_and_signature)->public_key,
-            (*public_key_and_signature_2)->public_key);
+  absl::StatusOr<absl::string_view> public_key_2 =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(public_key_2.ok()) << public_key_2.status();
+  ASSERT_EQ(*public_key, *public_key_2);
 }
 
 }  // namespace

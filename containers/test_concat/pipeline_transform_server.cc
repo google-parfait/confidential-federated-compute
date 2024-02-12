@@ -13,22 +13,21 @@
 // limitations under the License.
 #include "containers/test_concat/pipeline_transform_server.h"
 
-#include <stdio.h>
-
-#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "containers/crypto.h"
+#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "grpcpp/server_context.h"
 
 namespace confidential_federated_compute::test_concat {
 
-using ::confidential_federated_compute::RecordDecryptor;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -48,7 +47,7 @@ absl::Status TestConcatPipelineTransform::ConfigureAndAttest(
       return absl::FailedPreconditionError(
           "ConfigureAndAttest can only be called once.");
     }
-    record_decryptor_.emplace(request->configuration());
+    record_decryptor_.emplace(request->configuration(), crypto_stub_);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a
@@ -57,11 +56,8 @@ absl::Status TestConcatPipelineTransform::ConfigureAndAttest(
     record_decryptor = &*record_decryptor_;
   }
 
-  FCP_ASSIGN_OR_RETURN(const PublicKeyAndSignature* public_key_and_signature,
-                       record_decryptor->GetPublicKeyAndSignature());
-  response->set_public_key(public_key_and_signature->public_key);
-  // TODO(nfallen): Set the signature on the ConfigureAndAttestResponse once a
-  // signature rooted in the attestation evidence is available.
+  FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
+                       record_decryptor->GetPublicKey());
   return absl::OkStatus();
 }
 

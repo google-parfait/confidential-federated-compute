@@ -14,32 +14,29 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_TEST_CONCAT_PIPELINE_TRANSFORM_SERVER_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_TEST_CONCAT_PIPELINE_TRANSFORM_SERVER_H_
 
-#include <stdio.h>
-
 #include <optional>
-#include <string>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/log/die_if_null.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "containers/crypto.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
-#include "grpcpp/channel.h"
-#include "grpcpp/client_context.h"
-#include "grpcpp/create_channel.h"
-#include "grpcpp/security/credentials.h"
-#include "grpcpp/security/server_credentials.h"
-#include "grpcpp/server.h"
-#include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
+#include "grpcpp/support/status.h"
+#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::test_concat {
 
 class TestConcatPipelineTransform final
     : public fcp::confidentialcompute::PipelineTransform::Service {
  public:
+  // The OrchestratorCrypto stub must not be NULL and must outlive this object.
+  explicit TestConcatPipelineTransform(
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
+
   grpc::Status ConfigureAndAttest(
       grpc::ServerContext* context,
       const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
@@ -68,6 +65,7 @@ class TestConcatPipelineTransform final
       const fcp::confidentialcompute::TransformRequest* request,
       fcp::confidentialcompute::TransformResponse* response);
 
+  oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   absl::Mutex mutex_;
   // The mutex is used to protect the optional wrapping the RecordDecryptor to
   // ensure the RecordDecryptor is initialized, but the RecordDecryptor itself

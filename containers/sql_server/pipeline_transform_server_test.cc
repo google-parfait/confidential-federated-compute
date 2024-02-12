@@ -13,11 +13,17 @@
 // limitations under the License.
 #include "containers/sql_server/pipeline_transform_server.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/log/log.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
@@ -32,6 +38,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -69,6 +76,7 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
+using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::sql_data::SqlData;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
@@ -122,35 +130,28 @@ std::string BuildSingleInt64TensorCheckpoint(
 
 class SqlPipelineTransformTest : public Test {
  public:
-  void SetUp() override {
+  SqlPipelineTransformTest() {
     int port;
     const std::string server_address = "[::1]:";
     ServerBuilder builder;
-    service_ = std::make_unique<SqlPipelineTransform>();
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(service_.get());
+    builder.RegisterService(&service_);
     server_ = builder.BuildAndStart();
     LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
               << std::endl;
-    channel_ = grpc::CreateChannel(server_address + std::to_string(port),
-                                   grpc::InsecureChannelCredentials());
-    stub_ = PipelineTransform::NewStub(channel_);
+    stub_ = PipelineTransform::NewStub(
+        grpc::CreateChannel(server_address + std::to_string(port),
+                            grpc::InsecureChannelCredentials()));
   }
 
-  void TearDown() override {
-    stub_.reset();
-    channel_.reset();
-    server_->Shutdown();
-    server_.reset();
-    service_.reset();
-  }
+  ~SqlPipelineTransformTest() override { server_->Shutdown(); }
 
  protected:
-  std::unique_ptr<SqlPipelineTransform> service_ = nullptr;
-  std::unique_ptr<Server> server_ = nullptr;
-  std::shared_ptr<grpc::Channel> channel_ = nullptr;
-  std::unique_ptr<PipelineTransform::Stub> stub_ = nullptr;
+  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
+  SqlPipelineTransform service_{&mock_crypto_stub_};
+  std::unique_ptr<Server> server_;
+  std::unique_ptr<PipelineTransform::Stub> stub_;
 };
 
 TEST_F(SqlPipelineTransformTest, InvalidConfigureAndAttestRequest) {

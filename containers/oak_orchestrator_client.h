@@ -15,18 +15,16 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_OAK_ORCHESTRATOR_CLIENT_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_OAK_ORCHESTRATOR_CLIENT_H_
 
-#include <iostream>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "grpcpp/channel.h"
 #include "oak_containers/proto/interfaces.grpc.pb.h"
-#include "oak_containers/proto/interfaces.pb.h"
 
 namespace confidential_federated_compute {
 
-// Creates a stub for interacting with the Oak Orchestrator Service.
-std::unique_ptr<oak::containers::Orchestrator::Stub>
-CreateOakOrchestratorStub();
+// Creates a channel for interacting with the Oak Orchestrator.
+std::shared_ptr<grpc::Channel> CreateOakOrchestratorChannel();
 
 // Client for interacting with the Oak Containers Orchestrator service.
 // See https://github.com/project-oak/oak/tree/main/oak_containers_orchestrator

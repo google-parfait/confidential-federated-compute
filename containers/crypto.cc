@@ -13,7 +13,7 @@
 // limitations under the License.
 #include "containers/crypto.h"
 
-#include <memory>
+#include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
@@ -23,33 +23,46 @@
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "grpcpp/client_context.h"
 #include "openssl/rand.h"
+#include "proto/containers/orchestrator_crypto.pb.h"
+#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
+namespace {
+
+using ::fcp::confidentialcompute::Record;
+using ::oak::containers::v1::OrchestratorCrypto;
 
 constexpr size_t kNonceSize = 16;
 
-using ::fcp::confidentialcompute::Record;
-
-RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration) {
-  // TODO(nfallen): Generate a signature for the public key and configuration
-  // once Oak libraries are available.
-  absl::StatusOr<std::string> public_key =
-      message_decryptor_.GetPublicKey([](absl::string_view) { return ""; });
-  if (!public_key.ok()) {
-    public_key_and_signature_ = public_key.status();
-    return;
+absl::StatusOr<std::string> SignWithOrchestrator(
+    OrchestratorCrypto::StubInterface& stub, absl::string_view message) {
+  grpc::ClientContext context;
+  oak::containers::v1::SignRequest request;
+  request.set_key_origin(oak::containers::v1::KeyOrigin::INSTANCE);
+  request.set_message(std::string(message));
+  oak::containers::v1::SignResponse response;
+  if (auto status = stub.Sign(&context, request, &response); !status.ok()) {
+    return fcp::base::FromGrpcStatus(std::move(status));
   }
-  public_key_and_signature_ = PublicKeyAndSignature{
-      .public_key = std::move(*public_key), .signature = ""};
+  return std::move(*response.mutable_signature()->mutable_signature());
 }
 
-absl::StatusOr<const PublicKeyAndSignature*>
-RecordDecryptor::GetPublicKeyAndSignature() const {
-  if (!public_key_and_signature_.ok()) {
-    return public_key_and_signature_.status();
+}  // namespace
+
+RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration,
+                                 OrchestratorCrypto::StubInterface& stub)
+    : signed_public_key_(
+          message_decryptor_.GetPublicKey([&stub](absl::string_view message) {
+            return SignWithOrchestrator(stub, message);
+          })) {}
+
+absl::StatusOr<absl::string_view> RecordDecryptor::GetPublicKey() const {
+  if (!signed_public_key_.ok()) {
+    return signed_public_key_.status();
   }
-  return &(public_key_and_signature_.value());
+  return *signed_public_key_;
 }
 
 absl::StatusOr<std::string> RecordDecryptor::GenerateNonce() {

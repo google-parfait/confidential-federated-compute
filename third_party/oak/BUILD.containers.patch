@@ -28,3 +28,13 @@
 +    deps = [":interfaces_py_proto"],
 +)
 
+--- proto/containers/BUILD
++++ proto/containers/BUILD
+@@ -40,6 +40,7 @@
+ cc_grpc_library(
+     name = "orchestrator_crypto_cc_grpc",
+     srcs = [":orchestrator_crypto_proto"],
++    generate_mocks = True,
+     grpc_only = True,
+     deps = [":orchestrator_crypto_cc_proto"],
+ )

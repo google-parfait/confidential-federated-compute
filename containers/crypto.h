@@ -24,17 +24,9 @@
 #include "absl/strings/string_view.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
-
-struct PublicKeyAndSignature {
-  // A public key that can be used to encrypt messages so they can be decrypted
-  // by this container.
-  std::string public_key;
-  // A signature of the public key and the configuration of the container
-  // application.
-  std::string signature;
-};
 
 // Class used to decrypt Record protos that have been rewrapped for access by
 // this container by the Ledger.
@@ -42,24 +34,25 @@ struct PublicKeyAndSignature {
 // This class is threadsafe.
 class RecordDecryptor {
  public:
-  explicit RecordDecryptor(const google::protobuf::Any& configuration);
+  RecordDecryptor(const google::protobuf::Any& configuration,
+                  oak::containers::v1::OrchestratorCrypto::StubInterface& stub);
 
   // RecordDecryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
   RecordDecryptor(const RecordDecryptor& other) = delete;
   RecordDecryptor& operator=(const RecordDecryptor& other) = delete;
 
-  // Returns a pointer to a PublicKeyAndSignature which
-  // demonstrates that this container received the configuration provided in the
-  // constructor and generated the returned public key that can be used for
-  // encrypting messages it can then decrypt.
+  // Returns a string_view encoding a public key and signature (represented as a
+  // signed CWT). This key can be used for encrypting messages that can be
+  // decrypted by this object.
+  // TODO: b/288331695 - document configuration-based claims.
   //
-  // This class must outlive the pointer that is returned.
+  // This class must outlive the string_view that is returned.
   //
   // If this method is called multiple times, the same public key and signature
   // will be returned. A caller wanting to update the configuration and generate
   // a new public key should create a new instance of this class.
-  absl::StatusOr<const PublicKeyAndSignature*> GetPublicKeyAndSignature() const;
+  absl::StatusOr<absl::string_view> GetPublicKey() const;
 
   // Generates and signs a nonce that can be used for identifying that a
   // certain record should be decrypted exactly once.
@@ -73,7 +66,7 @@ class RecordDecryptor {
   absl::Mutex mutex_;
   absl::flat_hash_set<std::string> nonces_ ABSL_GUARDED_BY(mutex_);
   fcp::confidential_compute::MessageDecryptor message_decryptor_;
-  absl::StatusOr<PublicKeyAndSignature> public_key_and_signature_;
+  absl::StatusOr<std::string> signed_public_key_;
 };
 
 }  // namespace confidential_federated_compute
