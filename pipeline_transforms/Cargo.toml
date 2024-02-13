@@ -18,3 +18,4 @@ rand = { version = "*", default-features = false, features = ["getrandom"] }
 [dev-dependencies]
 googletest = "*"
 pipeline_transforms = { path = ".", features = ["test"] }
+sha2 = { version = "*", default-features = false }

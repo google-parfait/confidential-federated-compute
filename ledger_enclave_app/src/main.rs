@@ -22,13 +22,18 @@ use alloc::boxed::Box;
 use oak_restricted_kernel_sdk::{
     channel::{start_blocking_server, FileDescriptorChannel},
     entrypoint,
+    instance_attestation::{InstanceEvidenceProvider, InstanceSigner},
     utils::samplestore::StaticSampleStore,
 };
 
 #[entrypoint]
 fn run_server() -> ! {
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
-    let service = ledger_service::LedgerService::default();
+    let service = ledger_service::LedgerService::create(
+        Box::new(InstanceEvidenceProvider::create().unwrap()),
+        Box::new(InstanceSigner::create().unwrap()),
+    )
+    .expect("failed to create LedgerService");
     let server = federated_compute::proto::LedgerServer::new(service);
     start_blocking_server(
         Box::<FileDescriptorChannel>::default(),

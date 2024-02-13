@@ -49,26 +49,42 @@ pub struct RecordDecoder {
 }
 
 impl RecordDecoder {
-    /// Constructs a new RecordDecoder.
-    pub fn new(allowed_modes: DecryptionModeSet) -> Self {
+    /// Creates an `RecordDecoder` that supports all decryption modes.
+    pub fn create<F>(signer: F) -> anyhow::Result<Self>
+    where
+        F: FnOnce(&[u8]) -> anyhow::Result<Vec<u8>>,
+    {
+        Self::create_with_modes(signer, DecryptionModeSet::all())
+    }
+
+    /// Constructs a new RecordDecoder that only supports the specified modes.
+    pub fn create_with_modes<F>(signer: F, allowed_modes: DecryptionModeSet) -> anyhow::Result<Self>
+    where
+        F: FnOnce(&[u8]) -> anyhow::Result<Vec<u8>>,
+    {
         let (private_key, cose_key) = cfc_crypto::gen_keypair(b"key-id");
-        let public_key = cose_key
-            .to_vec()
-            .and_then(|key| {
+        let public_key = CoseSign1Builder::new()
+            .payload(
                 ClaimsSetBuilder::new()
-                    .private_claim(PUBLIC_KEY_CLAIM, Value::from(key))
+                    .private_claim(
+                        PUBLIC_KEY_CLAIM,
+                        Value::from(cose_key.to_vec().map_err(anyhow::Error::msg)?),
+                    )
                     .build()
                     .to_vec()
-            })
-            .and_then(|claims| CoseSign1Builder::new().payload(claims).build().to_vec())
-            .expect("failed to encode public key");
+                    .map_err(anyhow::Error::msg)?,
+            )
+            .try_create_signature(b"", signer)?
+            .build()
+            .to_vec()
+            .map_err(anyhow::Error::msg)?;
 
-        Self {
+        Ok(Self {
             allowed_modes,
             private_key,
             public_key,
             nonces: BTreeSet::new(),
-        }
+        })
     }
 
     pub fn public_key(&self) -> &[u8] {
@@ -132,13 +148,6 @@ impl RecordDecoder {
 
             _ => Err(anyhow!("unsupported Record kind")),
         }
-    }
-}
-
-impl Default for RecordDecoder {
-    /// Creates an `RecordDecoder` that supports all decryption modes.
-    fn default() -> Self {
-        Self::new(DecryptionModeSet::all())
     }
 }
 
@@ -257,7 +266,32 @@ pub fn create_rewrapped_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coset::{CborSerializable, CoseSign1};
     use googletest::prelude::*;
+    use sha2::{Digest, Sha256};
+
+    /// Fake "signing" function that generates a hash instead.
+    fn sha256_sign(message: &[u8]) -> anyhow::Result<Vec<u8>> {
+        Ok(Sha256::digest(message).to_vec())
+    }
+
+    #[test]
+    fn test_decoder_public_key() {
+        let decoder = RecordDecoder::create(sha256_sign).unwrap();
+
+        CoseSign1::from_slice(decoder.public_key())
+            .unwrap()
+            .verify_signature(b"", |signature, message| {
+                anyhow::ensure!(signature == sha256_sign(message).unwrap());
+                Ok(())
+            })
+            .expect("signature mismatch");
+    }
+
+    #[test]
+    fn test_decoder_public_key_sign_failure() {
+        assert!(RecordDecoder::create(|_message| anyhow::bail!("error")).is_err());
+    }
 
     #[test]
     fn test_decode_unencrypted() -> anyhow::Result<()> {
@@ -266,7 +300,9 @@ mod tests {
             ..Default::default()
         };
 
-        let mut decoder = RecordDecoder::new(DecryptionMode::Unencrypted.into());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::Unencrypted.into())
+                .unwrap();
         assert_eq!(decoder.decode(&input)?, b"data".to_vec());
         Ok(())
     }
@@ -278,7 +314,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionModeSet::none()).unwrap();
         assert_that!(
             decoder.decode(&input),
             err(displays_as(contains_substring(
@@ -292,7 +329,9 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated data";
 
-        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
+                .unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (input, _) = create_rewrapped_record(
             plaintext,
@@ -309,7 +348,8 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data";
 
-        let mut decoder = RecordDecoder::new(DecryptionModeSet::none());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionModeSet::none()).unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (input, _) = create_rewrapped_record(
             plaintext,
@@ -331,7 +371,9 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated data";
 
-        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
+                .unwrap();
         let (input, _) = create_rewrapped_record(
             plaintext,
             ciphertext_associated_data,
@@ -350,7 +392,9 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data";
 
-        let mut decoder = RecordDecoder::new(DecryptionMode::HpkePlusAead.into());
+        let mut decoder =
+            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
+                .unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (mut input, _) = create_rewrapped_record(
             plaintext,

@@ -636,7 +636,9 @@ dependencies = [
  "federated_compute",
  "googletest",
  "micro_rpc",
+ "oak_attestation",
  "oak_proto_rust",
+ "oak_restricted_kernel_sdk",
  "prost",
  "prost-types",
  "rand",
@@ -715,6 +717,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "oak_attestation"
+version = "0.1.0"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
+dependencies = [
+ "anyhow",
+ "ciborium",
+ "coset",
+ "log",
+ "micro_rpc_build",
+ "oak_crypto",
+ "oak_dice",
+ "oak_proto_rust",
+ "p256",
+ "prost",
+ "rand_core",
+ "sha2",
+ "zeroize",
 ]
 
 [[package]]
@@ -799,6 +821,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oak_restricted_kernel_dice"
+version = "0.1.0"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
+dependencies = [
+ "coset",
+ "hkdf",
+ "oak_crypto",
+ "oak_dice",
+ "p256",
+ "sha2",
+]
+
+[[package]]
 name = "oak_restricted_kernel_interface"
 version = "0.1.0"
 source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
@@ -821,8 +856,10 @@ dependencies = [
  "oak_crypto",
  "oak_dice",
  "oak_enclave_runtime_support",
+ "oak_restricted_kernel_dice",
  "oak_restricted_kernel_interface",
  "oak_restricted_kernel_sdk_proc_macro",
+ "oak_stage0_dice",
  "p256",
  "strum",
  "zerocopy",
@@ -835,6 +872,33 @@ source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57
 dependencies = [
  "quote",
  "syn 2.0.48",
+]
+
+[[package]]
+name = "oak_sev_snp_attestation_report"
+version = "0.0.0"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
+dependencies = [
+ "bitflags 2.4.1",
+ "static_assertions",
+ "strum",
+ "zerocopy",
+]
+
+[[package]]
+name = "oak_stage0_dice"
+version = "0.1.0"
+source = "git+https://github.com/project-oak/oak?rev=bf694d851b0472398276c7e0f57da9c2d004e7ad#bf694d851b0472398276c7e0f57da9c2d004e7ad"
+dependencies = [
+ "coset",
+ "hex",
+ "hkdf",
+ "oak_dice",
+ "oak_sev_snp_attestation_report",
+ "p256",
+ "rand_core",
+ "sha2",
+ "zerocopy",
 ]
 
 [[package]]
@@ -883,6 +947,7 @@ dependencies = [
  "googletest",
  "pipeline_transforms",
  "rand",
+ "sha2",
 ]
 
 [[package]]
@@ -1215,10 +1280,15 @@ dependencies = [
 name = "square_service"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "cfc_crypto",
+ "coset",
  "micro_rpc",
+ "oak_attestation",
+ "oak_restricted_kernel_sdk",
  "pipeline_transforms",
+ "sha2",
 ]
 
 [[package]]
@@ -1268,9 +1338,14 @@ dependencies = [
 name = "sum_service"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
+ "coset",
  "micro_rpc",
+ "oak_attestation",
+ "oak_restricted_kernel_sdk",
  "pipeline_transforms",
+ "sha2",
 ]
 
 [[package]]

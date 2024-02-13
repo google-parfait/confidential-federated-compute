@@ -16,7 +16,7 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, format, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
 use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
 use core::time::Duration;
@@ -26,7 +26,9 @@ use federated_compute::proto::{
     CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest, DeleteKeyResponse, Ledger,
     RevokeAccessRequest, RevokeAccessResponse,
 };
+use oak_attestation::dice::evidence_to_proto;
 use oak_proto_rust::oak::attestation::v1::Evidence;
+use oak_restricted_kernel_sdk::{EvidenceProvider, Signer};
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -41,15 +43,27 @@ struct PerKeyLedger {
     budget_tracker: budget::BudgetTracker,
 }
 
-#[derive(Default)]
 pub struct LedgerService {
+    evidence: Evidence,
+    signer: Box<dyn Signer>,
     current_time: Duration,
     per_key_ledgers: BTreeMap<Vec<u8>, PerKeyLedger>,
 }
 
 impl LedgerService {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn create(
+        evidence_provider: Box<dyn EvidenceProvider>,
+        signer: Box<dyn Signer>,
+    ) -> anyhow::Result<Self> {
+        // Pre-generate and convert the evidence so that we don't have to do it every time a key is
+        // created.
+        let evidence = evidence_to_proto(evidence_provider.get_evidence().clone())?;
+        Ok(Self {
+            evidence,
+            signer,
+            current_time: Duration::default(),
+            per_key_ledgers: BTreeMap::default(),
+        })
     }
 
     /// Updates `self.current_time` and removes expired keys.
@@ -97,6 +111,7 @@ impl LedgerService {
             .build();
         CoseSign1Builder::new()
             .payload(claims.to_vec().map_err(anyhow::Error::msg)?)
+            .try_create_signature(b"", |msg| Ok(self.signer.sign(msg)?.signature))?
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
@@ -153,9 +168,7 @@ impl Ledger for LedgerService {
         // Construct the response.
         Ok(CreateKeyResponse {
             public_key,
-            // The presence of attestation evidence indicates the public key is a CWT.
-            // TODO: b/288331695 - Populate the attestation evidence.
-            attestation_evidence: Some(Evidence::default()),
+            attestation_evidence: Some(self.evidence.clone()),
             ..Default::default()
         })
     }
@@ -318,6 +331,8 @@ mod tests {
         access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
         ApplicationMatcher,
     };
+    use oak_attestation::proto::oak::crypto::v1::Signature;
+    use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
 
     /// Macro asserting that a result is failed with a particular code and message.
     macro_rules! assert_err {
@@ -341,7 +356,11 @@ mod tests {
 
     /// Helper function to create a LedgerService with one key.
     fn create_ledger_service() -> (LedgerService, Vec<u8>) {
-        let mut ledger = LedgerService::default();
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
         let response = ledger
             .create_key(CreateKeyRequest {
                 ttl: Some(prost_types::Duration {
@@ -368,7 +387,19 @@ mod tests {
 
     #[test]
     fn test_create_key() {
-        let mut ledger = LedgerService::default();
+        struct FakeSigner;
+        impl Signer for FakeSigner {
+            fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
+                return Ok(Signature {
+                    signature: Sha256::digest(message).to_vec(),
+                });
+            }
+        }
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(FakeSigner),
+        )
+        .unwrap();
 
         let response1 = ledger
             .create_key(CreateKeyRequest {
@@ -385,6 +416,11 @@ mod tests {
         assert!(response1.attestation_evidence.is_some());
 
         let cwt = CoseSign1::from_slice(&response1.public_key).unwrap();
+        cwt.verify_signature(b"", |signature, message| {
+            anyhow::ensure!(signature == Sha256::digest(message).as_slice());
+            Ok(())
+        })
+        .expect("signature mismatch");
         let claims = ClaimsSet::from_slice(&cwt.payload.unwrap()).unwrap();
         assert_eq!(claims.issued_at, Some(cwt::Timestamp::WholeSeconds(1000)));
         assert_eq!(
@@ -436,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_delete_key_invalid() {
-        let mut ledger = LedgerService::default();
+        let (mut ledger, _) = create_ledger_service();
         assert_err!(
             ledger.delete_key(DeleteKeyRequest {
                 public_key: b"invalid".into(),
@@ -450,7 +486,7 @@ mod tests {
     #[test]
     fn test_delete_key_not_found() {
         let (_, public_key) = create_ledger_service();
-        let mut ledger = LedgerService::default();
+        let (mut ledger, _) = create_ledger_service();
         assert_err!(
             ledger.delete_key(DeleteKeyRequest {
                 public_key,
@@ -1004,7 +1040,7 @@ mod tests {
 
     #[test]
     fn test_monotonic_time() {
-        let mut ledger = LedgerService::default();
+        let (mut ledger, _) = create_ledger_service();
         ledger
             .create_key(CreateKeyRequest {
                 now: Some(prost_types::Timestamp {

@@ -16,8 +16,10 @@
 
 extern crate alloc;
 
-use alloc::{format, vec};
+use alloc::{boxed::Box, format, vec};
 use byteorder::{ByteOrder, LittleEndian};
+use oak_attestation::dice::evidence_to_proto;
+use oak_restricted_kernel_sdk::{EvidenceProvider, Signer};
 use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
@@ -31,10 +33,22 @@ use pipeline_transforms::{
     },
 };
 
-#[derive(Default)]
 pub struct SquareService {
+    evidence_provider: Box<dyn EvidenceProvider>,
+    signer: Box<dyn Signer>,
     record_decoder: Option<RecordDecoder>,
     record_encoder: RecordEncoder,
+}
+
+impl SquareService {
+    pub fn new(evidence_provider: Box<dyn EvidenceProvider>, signer: Box<dyn Signer>) -> Self {
+        Self {
+            evidence_provider,
+            signer,
+            record_decoder: None,
+            record_encoder: RecordEncoder,
+        }
+    }
 }
 
 impl PipelineTransform for SquareService {
@@ -49,9 +63,24 @@ impl PipelineTransform for SquareService {
         &mut self,
         _request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
-        self.record_decoder = Some(RecordDecoder::default());
+        let evidence =
+            evidence_to_proto(self.evidence_provider.get_evidence().clone()).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::Internal,
+                    format!("failed to generate evidence: {:?}", err),
+                )
+            })?;
+        self.record_decoder = Some(
+            RecordDecoder::create(|msg| Ok(self.signer.sign(msg)?.signature)).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::Internal,
+                    format!("failed to create RecordDecoder: {:?}", err),
+                )
+            })?,
+        );
         Ok(ConfigureAndAttestResponse {
             public_key: self.record_decoder.as_ref().unwrap().public_key().to_vec(),
+            attestation_evidence: Some(evidence),
             ..Default::default()
         })
     }
@@ -157,7 +186,19 @@ impl PipelineTransform for SquareService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coset::{CborSerializable, CoseSign1};
+    use oak_attestation::proto::oak::crypto::v1::Signature;
+    use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
     use pipeline_transforms::proto::Record;
+    use sha2::{Digest, Sha256};
+
+    /// Helper function to create a SquareService.
+    fn create_square_service() -> SquareService {
+        SquareService::new(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+    }
 
     /// Helper function to convert data to an unencrypted Record.
     fn encode_unencrypted(data: &[u8]) -> Record {
@@ -168,21 +209,41 @@ mod tests {
 
     #[test]
     fn test_initialize() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         assert!(service.initialize(InitializeRequest::default()).is_err());
     }
 
     #[test]
     fn test_configure_and_attest() -> Result<(), micro_rpc::Status> {
-        let mut service = SquareService::default();
+        struct FakeSigner;
+        impl Signer for FakeSigner {
+            fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
+                return Ok(Signature {
+                    signature: Sha256::digest(message).to_vec(),
+                });
+            }
+        }
+
+        let mut service = SquareService::new(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(FakeSigner),
+        );
         let response = service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         assert!(!response.public_key.is_empty());
+        assert!(response.attestation_evidence.is_some());
+        CoseSign1::from_slice(&response.public_key)
+            .unwrap()
+            .verify_signature(b"", |signature, message| {
+                anyhow::ensure!(signature == Sha256::digest(message).as_slice());
+                Ok(())
+            })
+            .expect("signature mismatch");
         Ok(())
     }
 
     #[test]
     fn test_generate_nonces() -> Result<(), micro_rpc::Status> {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         let response = service.generate_nonces(GenerateNoncesRequest { nonces_count: 3 })?;
         assert_eq!(response.nonces.len(), 3);
@@ -194,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_generate_nonces_without_configure() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         assert!(service
             .generate_nonces(GenerateNoncesRequest { nonces_count: 3 })
             .is_err());
@@ -202,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_generate_nonces_with_invalid_count() -> Result<(), micro_rpc::Status> {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         assert!(service
             .generate_nonces(GenerateNoncesRequest { nonces_count: -1 })
@@ -212,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_transform_without_configure() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         let request = TransformRequest {
             inputs: vec![encode_unencrypted(&[1, 0, 0, 0, 0, 0, 0, 0]); 2],
             ..Default::default()
@@ -222,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_transform_requires_one_input() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         let input = encode_unencrypted(&[0; 8]);
         for count in [0, 2, 3] {
             let request = TransformRequest {
@@ -235,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_transform_requires_8_bytes() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         for length in (0..7).chain(9..16) {
             let request = TransformRequest {
                 inputs: vec![encode_unencrypted(&vec![0; length])],
@@ -247,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_transform_overflow() {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         let request = TransformRequest {
             inputs: vec![encode_unencrypted(&[0, 0, 0, 0, 0, 0, 0, 1])],
             ..Default::default()
@@ -257,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_transform_squares_input() -> Result<(), micro_rpc::Status> {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         let request = TransformRequest {
             inputs: vec![encode_unencrypted(&[2, 1, 0, 0, 0, 0, 0, 0])],
@@ -275,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
-        let mut service = SquareService::default();
+        let mut service = create_square_service();
         let configure_response =
             service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         let nonces_response = service.generate_nonces(GenerateNoncesRequest { nonces_count: 1 })?;

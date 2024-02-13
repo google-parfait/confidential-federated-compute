@@ -22,13 +22,17 @@ use alloc::boxed::Box;
 use oak_restricted_kernel_sdk::{
     channel::{start_blocking_server, FileDescriptorChannel},
     entrypoint,
+    instance_attestation::{InstanceEvidenceProvider, InstanceSigner},
     utils::samplestore::StaticSampleStore,
 };
 
 #[entrypoint]
 fn run_server() -> ! {
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
-    let service = sum_service::SumService::default();
+    let service = sum_service::SumService::new(
+        Box::new(InstanceEvidenceProvider::create().unwrap()),
+        Box::new(InstanceSigner::create().unwrap()),
+    );
     let server = pipeline_transforms::proto::PipelineTransformServer::new(service);
     start_blocking_server(
         Box::<FileDescriptorChannel>::default(),
