@@ -131,9 +131,9 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    sha256 = "a18ea8184bdfde4de16c80c94bf3bd78f00a93bd4c180f2728a7705c428d3df9",
-    strip_prefix = "federated-compute-7cd40dd675a90d71dac6756327aad53046a792b3",
-    url = "https://github.com/google/federated-compute/archive/7cd40dd675a90d71dac6756327aad53046a792b3.tar.gz",
+    sha256 = "eed20aa70294cec196b52c165d8234ce3dd1931c5698fedd3030a850134be915",
+    strip_prefix = "federated-compute-6319673b4948166001798d92c9e1dee9ceec8f5d",
+    url = "https://github.com/google/federated-compute/archive/6319673b4948166001798d92c9e1dee9ceec8f5d.tar.gz",
 )
 
 http_archive(
