@@ -59,14 +59,6 @@ class PipelineTransformServicer(
     self._configuration = None
     super().__init__()
 
-  def Initialize(
-      self,
-      request: pipeline_transform_pb2.InitializeRequest,
-      context: grpc.ServicerContext,
-  ) -> pipeline_transform_pb2.InitializeResponse:
-    """Implementation of Initialize RPC."""
-    context.abort(grpc.StatusCode.UNIMPLEMENTED, 'Initialize not implemented!')
-
   def ConfigureAndAttest(
       self,
       request: pipeline_transform_pb2.ConfigureAndAttestRequest,
