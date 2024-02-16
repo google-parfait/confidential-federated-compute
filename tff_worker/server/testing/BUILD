@@ -16,8 +16,8 @@ load("@rules_python//python:defs.bzl", "py_binary")
 package(default_visibility = ["//:__subpackages__"])
 
 exports_files([
-    "aggregation_computation.pb",
-    "client_work_computation.pb",
+    "aggregation_computation.pbtxt",
+    "client_work_computation.pbtxt",
 ])
 
 py_library(

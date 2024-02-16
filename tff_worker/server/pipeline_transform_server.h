@@ -18,6 +18,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_TFF_WORKER_SERVER_PIPELINE_TRANSFORM_SERVER_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
@@ -35,13 +36,24 @@ class TffPipelineTransform final
       const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
       fcp::confidentialcompute::ConfigureAndAttestResponse* response) override;
 
+  grpc::Status Transform(
+      grpc::ServerContext* context,
+      const fcp::confidentialcompute::TransformRequest* request,
+      fcp::confidentialcompute::TransformResponse* response) override;
+
  private:
   absl::Status TffConfigureAndAttest(
       const fcp::confidentialcompute::ConfigureAndAttestRequest* request,
-      fcp::confidentialcompute::ConfigureAndAttestResponse* response);
+      fcp::confidentialcompute::ConfigureAndAttestResponse* response)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  absl::Status TffTransform(
+      const fcp::confidentialcompute::TransformRequest* request,
+      fcp::confidentialcompute::TransformResponse* response)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Mutex mutex_;
-  fcp::confidentialcompute::TffWorkerConfiguration
+  std::optional<fcp::confidentialcompute::TffWorkerConfiguration>
       tff_worker_configuration_ ABSL_GUARDED_BY(mutex_);
 };
 

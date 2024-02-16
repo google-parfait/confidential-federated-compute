@@ -91,6 +91,23 @@ load("@pypi_deps//:requirements.bzl", "install_deps")
 # Call it to define repos for requirements.
 install_deps()
 
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+# We must build TFF protos from source as they are not included in the version
+# of TFF released as a python package.
+git_repository(
+    name = "tensorflow-federated",
+    # Note that we also depend on TFF from a pypi dependency in requirements.txt
+    # If the version used here for protos is incompatible with the version used
+    # for the rest of TFF, it could cause issues.
+    tag = "v0.63.0",
+    patches = [
+        "//third_party/tensorflow_federated:BUILD.patch",
+        "//third_party/tensorflow_federated:executors.patch",
+    ],
+    remote = "https://github.com/tensorflow/federated.git",
+)
+
 # Use pre-release version of Tensorflow because it is compatible with hermetic
 # Python.
 # Tensorflow v2.14.0-rc0
@@ -98,6 +115,7 @@ http_archive(
     name = "org_tensorflow",
     sha256 = "b54cb7ac94a74bbab4ffc40e362d684e9b08b4a10a307022f24cb80706765367",
     strip_prefix = "tensorflow-2.14.0-rc0",
+    patches = ["//third_party/tensorflow:internal_visibility.patch"],
     urls = [
         "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.0-rc0.tar.gz",
     ],
@@ -144,20 +162,6 @@ git_repository(
     build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
     remote = "https://android.googlesource.com/platform/external/libcppbor",
-)
-
-# We must build TFF protos from source as they are not included in the version
-# of TFF released as a python package.
-git_repository(
-    name = "tensorflow-federated",
-    # Note that we also depend on TFF from a pypi dependency in requirements.txt
-    # If the version used here for protos is incompatible with the version used
-    # for the rest of TFF, it could cause issues.
-    commit = "4a52f23c5974fdcc8e295c9553dcdf36f33d26a7",
-    patches = [
-        "//third_party/tensorflow_federated:BUILD.patch",
-    ],
-    remote = "https://github.com/tensorflow/federated.git",
 )
 
 http_archive(

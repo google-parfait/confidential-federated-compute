@@ -1,0 +1,866 @@
+type {
+  function {
+    parameter {
+      struct {
+        element {
+          name: "example"
+          value {
+            federated {
+              placement {
+                value {
+                  uri: "clients"
+                }
+              }
+              member {
+                struct {
+                  element {
+                    name: "float"
+                    value {
+                      tensor {
+                        dtype: DT_FLOAT
+                        dims: -1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        element {
+          name: "broadcasted_data"
+          value {
+            federated {
+              placement {
+                value {
+                  uri: "clients"
+                }
+              }
+              all_equal: true
+              member {
+                tensor {
+                  dtype: DT_FLOAT
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    result {
+      federated {
+        placement {
+          value {
+            uri: "clients"
+          }
+        }
+        member {
+          struct {
+            element {
+              name: "float"
+              value {
+                tensor {
+                  dtype: DT_FLOAT
+                  dims: -1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+lambda {
+  parameter_name: "client_work_comp_arg"
+  result {
+    type {
+      federated {
+        placement {
+          value {
+            uri: "clients"
+          }
+        }
+        member {
+          struct {
+            element {
+              name: "float"
+              value {
+                tensor {
+                  dtype: DT_FLOAT
+                  dims: -1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    block {
+      local {
+        name: "fc_client_work_comp_symbol_0"
+        value {
+          type {
+            federated {
+              placement {
+                value {
+                  uri: "clients"
+                }
+              }
+              member {
+                struct {
+                  element {
+                    name: "float"
+                    value {
+                      tensor {
+                        dtype: DT_FLOAT
+                        dims: -1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          call {
+            function {
+              type {
+                function {
+                  parameter {
+                    struct {
+                      element {
+                        value {
+                          function {
+                            parameter {
+                              struct {
+                                element {
+                                  name: "example"
+                                  value {
+                                    struct {
+                                      element {
+                                        name: "float"
+                                        value {
+                                          tensor {
+                                            dtype: DT_FLOAT
+                                            dims: -1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                element {
+                                  name: "broadcasted_data"
+                                  value {
+                                    tensor {
+                                      dtype: DT_FLOAT
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            result {
+                              struct {
+                                element {
+                                  name: "float"
+                                  value {
+                                    tensor {
+                                      dtype: DT_FLOAT
+                                      dims: -1
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      element {
+                        value {
+                          federated {
+                            placement {
+                              value {
+                                uri: "clients"
+                              }
+                            }
+                            member {
+                              struct {
+                                element {
+                                  value {
+                                    struct {
+                                      element {
+                                        name: "float"
+                                        value {
+                                          tensor {
+                                            dtype: DT_FLOAT
+                                            dims: -1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                element {
+                                  value {
+                                    tensor {
+                                      dtype: DT_FLOAT
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  result {
+                    federated {
+                      placement {
+                        value {
+                          uri: "clients"
+                        }
+                      }
+                      member {
+                        struct {
+                          element {
+                            name: "float"
+                            value {
+                              tensor {
+                                dtype: DT_FLOAT
+                                dims: -1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              intrinsic {
+                uri: "federated_map"
+              }
+            }
+            argument {
+              type {
+                struct {
+                  element {
+                    value {
+                      function {
+                        parameter {
+                          struct {
+                            element {
+                              name: "example"
+                              value {
+                                struct {
+                                  element {
+                                    name: "float"
+                                    value {
+                                      tensor {
+                                        dtype: DT_FLOAT
+                                        dims: -1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            element {
+                              name: "broadcasted_data"
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                }
+                              }
+                            }
+                          }
+                        }
+                        result {
+                          struct {
+                            element {
+                              name: "float"
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                  dims: -1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  element {
+                    value {
+                      federated {
+                        placement {
+                          value {
+                            uri: "clients"
+                          }
+                        }
+                        member {
+                          struct {
+                            element {
+                              value {
+                                struct {
+                                  element {
+                                    name: "float"
+                                    value {
+                                      tensor {
+                                        dtype: DT_FLOAT
+                                        dims: -1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            element {
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              struct {
+                element {
+                  value {
+                    type {
+                      function {
+                        parameter {
+                          struct {
+                            element {
+                              name: "example"
+                              value {
+                                struct {
+                                  element {
+                                    name: "float"
+                                    value {
+                                      tensor {
+                                        dtype: DT_FLOAT
+                                        dims: -1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            element {
+                              name: "broadcasted_data"
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                }
+                              }
+                            }
+                          }
+                        }
+                        result {
+                          struct {
+                            element {
+                              name: "float"
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                  dims: -1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    tensorflow {
+                      graph_def {
+                        [type.googleapis.com/tensorflow.GraphDef] {
+                          node {
+                            name: "session_token_tensor"
+                            op: "Placeholder"
+                            attr {
+                              key: "dtype"
+                              value {
+                                type: DT_STRING
+                              }
+                            }
+                            attr {
+                              key: "shape"
+                              value {
+                                shape {
+                                }
+                              }
+                            }
+                          }
+                          node {
+                            name: "arg_example_float"
+                            op: "Placeholder"
+                            attr {
+                              key: "dtype"
+                              value {
+                                type: DT_FLOAT
+                              }
+                            }
+                            attr {
+                              key: "shape"
+                              value {
+                                shape {
+                                  dim {
+                                    size: -1
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          node {
+                            name: "arg_broadcasted_data"
+                            op: "Placeholder"
+                            attr {
+                              key: "dtype"
+                              value {
+                                type: DT_FLOAT
+                              }
+                            }
+                            attr {
+                              key: "shape"
+                              value {
+                                shape {
+                                }
+                              }
+                            }
+                          }
+                          node {
+                            name: "Add"
+                            op: "AddV2"
+                            input: "arg_example_float"
+                            input: "arg_broadcasted_data"
+                            attr {
+                              key: "T"
+                              value {
+                                type: DT_FLOAT
+                              }
+                            }
+                          }
+                          node {
+                            name: "Identity"
+                            op: "Identity"
+                            input: "Add"
+                            attr {
+                              key: "T"
+                              value {
+                                type: DT_FLOAT
+                              }
+                            }
+                          }
+                          versions {
+                            producer: 1395
+                          }
+                        }
+                      }
+                      parameter {
+                        struct {
+                          element {
+                            struct {
+                              element {
+                                tensor {
+                                  tensor_name: "arg_example_float:0"
+                                }
+                              }
+                            }
+                          }
+                          element {
+                            tensor {
+                              tensor_name: "arg_broadcasted_data:0"
+                            }
+                          }
+                        }
+                      }
+                      result {
+                        struct {
+                          element {
+                            tensor {
+                              tensor_name: "Identity:0"
+                            }
+                          }
+                        }
+                      }
+                      session_token_tensor_name: "session_token_tensor:0"
+                      layout_map {
+                      }
+                    }
+                  }
+                }
+                element {
+                  value {
+                    type {
+                      federated {
+                        placement {
+                          value {
+                            uri: "clients"
+                          }
+                        }
+                        member {
+                          struct {
+                            element {
+                              value {
+                                struct {
+                                  element {
+                                    name: "float"
+                                    value {
+                                      tensor {
+                                        dtype: DT_FLOAT
+                                        dims: -1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            element {
+                              value {
+                                tensor {
+                                  dtype: DT_FLOAT
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    call {
+                      function {
+                        type {
+                          function {
+                            parameter {
+                              struct {
+                                element {
+                                  value {
+                                    federated {
+                                      placement {
+                                        value {
+                                          uri: "clients"
+                                        }
+                                      }
+                                      member {
+                                        struct {
+                                          element {
+                                            name: "float"
+                                            value {
+                                              tensor {
+                                                dtype: DT_FLOAT
+                                                dims: -1
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                element {
+                                  value {
+                                    federated {
+                                      placement {
+                                        value {
+                                          uri: "clients"
+                                        }
+                                      }
+                                      member {
+                                        tensor {
+                                          dtype: DT_FLOAT
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            result {
+                              federated {
+                                placement {
+                                  value {
+                                    uri: "clients"
+                                  }
+                                }
+                                member {
+                                  struct {
+                                    element {
+                                      value {
+                                        struct {
+                                          element {
+                                            name: "float"
+                                            value {
+                                              tensor {
+                                                dtype: DT_FLOAT
+                                                dims: -1
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                    element {
+                                      value {
+                                        tensor {
+                                          dtype: DT_FLOAT
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        intrinsic {
+                          uri: "federated_zip_at_clients"
+                        }
+                      }
+                      argument {
+                        type {
+                          struct {
+                            element {
+                              value {
+                                federated {
+                                  placement {
+                                    value {
+                                      uri: "clients"
+                                    }
+                                  }
+                                  member {
+                                    struct {
+                                      element {
+                                        name: "float"
+                                        value {
+                                          tensor {
+                                            dtype: DT_FLOAT
+                                            dims: -1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            element {
+                              value {
+                                federated {
+                                  placement {
+                                    value {
+                                      uri: "clients"
+                                    }
+                                  }
+                                  all_equal: true
+                                  member {
+                                    tensor {
+                                      dtype: DT_FLOAT
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        struct {
+                          element {
+                            value {
+                              type {
+                                federated {
+                                  placement {
+                                    value {
+                                      uri: "clients"
+                                    }
+                                  }
+                                  member {
+                                    struct {
+                                      element {
+                                        name: "float"
+                                        value {
+                                          tensor {
+                                            dtype: DT_FLOAT
+                                            dims: -1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              selection {
+                                source {
+                                  type {
+                                    struct {
+                                      element {
+                                        name: "example"
+                                        value {
+                                          federated {
+                                            placement {
+                                              value {
+                                                uri: "clients"
+                                              }
+                                            }
+                                            member {
+                                              struct {
+                                                element {
+                                                  name: "float"
+                                                  value {
+                                                    tensor {
+                                                      dtype: DT_FLOAT
+                                                      dims: -1
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                      element {
+                                        name: "broadcasted_data"
+                                        value {
+                                          federated {
+                                            placement {
+                                              value {
+                                                uri: "clients"
+                                              }
+                                            }
+                                            all_equal: true
+                                            member {
+                                              tensor {
+                                                dtype: DT_FLOAT
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                  reference {
+                                    name: "client_work_comp_arg"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          element {
+                            value {
+                              type {
+                                federated {
+                                  placement {
+                                    value {
+                                      uri: "clients"
+                                    }
+                                  }
+                                  all_equal: true
+                                  member {
+                                    tensor {
+                                      dtype: DT_FLOAT
+                                    }
+                                  }
+                                }
+                              }
+                              selection {
+                                source {
+                                  type {
+                                    struct {
+                                      element {
+                                        name: "example"
+                                        value {
+                                          federated {
+                                            placement {
+                                              value {
+                                                uri: "clients"
+                                              }
+                                            }
+                                            member {
+                                              struct {
+                                                element {
+                                                  name: "float"
+                                                  value {
+                                                    tensor {
+                                                      dtype: DT_FLOAT
+                                                      dims: -1
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                      element {
+                                        name: "broadcasted_data"
+                                        value {
+                                          federated {
+                                            placement {
+                                              value {
+                                                uri: "clients"
+                                              }
+                                            }
+                                            all_equal: true
+                                            member {
+                                              tensor {
+                                                dtype: DT_FLOAT
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                  reference {
+                                    name: "client_work_comp_arg"
+                                  }
+                                }
+                                index: 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      result {
+        type {
+          federated {
+            placement {
+              value {
+                uri: "clients"
+              }
+            }
+            member {
+              struct {
+                element {
+                  name: "float"
+                  value {
+                    tensor {
+                      dtype: DT_FLOAT
+                      dims: -1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        reference {
+          name: "fc_client_work_comp_symbol_0"
+        }
+      }
+    }
+  }
+}

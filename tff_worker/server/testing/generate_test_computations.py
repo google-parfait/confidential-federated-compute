@@ -19,33 +19,37 @@ import os
 from absl import app
 from absl import flags
 
+from google.protobuf import text_format
 import tensorflow_federated as tff
+
 from tff_worker.server.testing import test_computations
 
 OUTPUT_DIR = flags.DEFINE_string('output_dir', None, 'Output directory',
                                  required=True)
 
-CLIENT_WORK_COMPUTATION = 'client_work_computation.pb'
-AGGREGATION_COMPUTATION = 'aggregation_computation.pb'
+CLIENT_WORK_COMPUTATION = 'client_work_computation.pbtxt'
+AGGREGATION_COMPUTATION = 'aggregation_computation.pbtxt'
 
 
 def generate_test_computations() -> None:
   """Generates serialized test computations and writes them out to files."""
-  serialized_client_work_computation = tff.framework.serialize_computation(
-      test_computations.client_work_comp).SerializeToString()
+  client_work_computation_text_proto = text_format.MessageToString(
+      tff.framework.serialize_computation(
+          test_computations.client_work_comp))
   client_work_computation_filepath = os.path.join(
       OUTPUT_DIR.value, CLIENT_WORK_COMPUTATION)
 
-  with open(client_work_computation_filepath, 'wb') as f:
-    f.write(serialized_client_work_computation)
+  with open(client_work_computation_filepath, 'w') as f:
+    f.write(client_work_computation_text_proto)
 
-  serialized_aggregation_computation = tff.framework.serialize_computation(
-      test_computations.aggregation_comp).SerializeToString()
+  aggregation_computation_text_proto = text_format.MessageToString(
+      tff.framework.serialize_computation(
+          test_computations.aggregation_comp))
   aggregation_computation_filepath = os.path.join(
       OUTPUT_DIR.value, AGGREGATION_COMPUTATION)
 
-  with open(aggregation_computation_filepath, 'wb') as f:
-    f.write(serialized_aggregation_computation)
+  with open(aggregation_computation_filepath, 'w') as f:
+    f.write(aggregation_computation_text_proto)
 
 
 def main(argv: collections.abc.Sequence[str]) -> None:

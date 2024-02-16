@@ -19,5 +19,5 @@ compile_pip_requirements(
     extra_args = ["--allow-unsafe"],
     requirements_in = "requirements.in",
     requirements_txt = "requirements.txt",
-    timeout = "moderate",
+    timeout = "long",
 )

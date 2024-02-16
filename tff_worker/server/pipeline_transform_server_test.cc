@@ -19,14 +19,21 @@
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "fcp/aggregation/core/datatype.h"
+#include "fcp/aggregation/core/tensor.h"
+#include "fcp/aggregation/core/tensor_shape.h"
+#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "fcp/aggregation/testing/test_data.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/text_format.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -35,37 +42,109 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
+#include "tensorflow_federated/proto/v0/computation.pb.h"
+#include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::tff_worker {
 
 namespace {
 
+namespace tff_proto = ::tensorflow_federated::v0;
+
+using ::fcp::aggregation::CreateTestData;
+using ::fcp::aggregation::DataType;
+using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
+using ::fcp::aggregation::Tensor;
+using ::fcp::aggregation::TensorShape;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::TffWorkerConfiguration;
+using ::fcp::confidentialcompute::TffWorkerConfiguration_Aggregation;
 using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork;
+using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
+using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint_FedSqlColumn;
+using ::fcp::confidentialcompute::TransformRequest;
+using ::fcp::confidentialcompute::TransformResponse;
+using ::grpc::ClientContext;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::StatusCode;
+using ::tensorflow_federated::kClientsUri;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
 
+constexpr absl::string_view kAggregationComputationPath =
+    "tff_worker/server/testing/aggregation_computation.pbtxt";
 constexpr absl::string_view kClientWorkComputationPath =
-    "tff_worker/server/testing/client_work_computation.pb";
+    "tff_worker/server/testing/client_work_computation.pbtxt";
 
 
-absl::StatusOr<std::string> LoadFileAsString(absl::string_view path) {
-  std::string path_str(path);  // Convert absl::string_view to std::string.
+absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
+    absl::string_view path) {
+  // Before creating the std::ifstream, convert the absl::string_view to
+  // std::string.
+  std::string path_str(path);
   std::ifstream file_istream(path_str);
   if (!file_istream) {
     return absl::FailedPreconditionError(
-        "Error loading file: " + std::string(path));
+        "Error loading file: " + path_str);
   }
   std::stringstream file_stream;
   file_stream << file_istream.rdbuf();
-  return file_stream.str();
+  tff_proto::Computation computation;
+  if (!google::protobuf::TextFormat::ParseFromString(
+      std::move(file_stream.str()), &computation)) {
+    return absl::InvalidArgumentError(
+        "Error parsing TFF Computation from file.");
+  }
+  return std::move(computation);
+}
+
+
+tff_proto::Value BuildFederatedIntClientValue(float int_value) {
+  tff_proto::Value value;
+  tff_proto::Value_Federated* federated = value.mutable_federated();
+  tensorflow_federated::v0::FederatedType* type_proto =
+      federated->mutable_type();
+  type_proto->set_all_equal(true);
+  *type_proto->mutable_placement()->mutable_value()->mutable_uri() =
+      kClientsUri;
+  tensorflow::TensorShape shape({static_cast<int64_t>(1)});
+  tensorflow::Tensor tensor(tensorflow::DT_FLOAT, shape);
+  auto flat = tensor.flat<float>();
+  flat(0) = int_value;
+  tensorflow::TensorProto tensor_proto;
+  tensor.AsProtoTensorContent(&tensor_proto);
+  tensorflow_federated::v0::Value* federated_value = federated->add_value();
+  federated_value->mutable_tensor()->PackFrom(tensor_proto);
+  return value;
+}
+
+
+std::string BuildSingleInt64TensorCheckpoint(
+    std::string column_name, std::initializer_list<float> input_values) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  auto ckpt_builder = builder_factory.Create();
+
+  absl::StatusOr<Tensor> t1 =
+      Tensor::Create(DataType::DT_FLOAT,
+                     TensorShape({static_cast<int64_t>(input_values.size())}),
+                     CreateTestData<float>(input_values));
+  CHECK_OK(t1);
+  CHECK_OK(ckpt_builder->Add(column_name, *t1));
+  auto checkpoint = ckpt_builder->Build();
+  CHECK_OK(checkpoint.status());
+
+  std::string checkpoint_string;
+  absl::CopyCordToString(*checkpoint, &checkpoint_string);
+  return checkpoint_string;
 }
 
 
@@ -97,7 +176,7 @@ class TffPipelineTransformTest : public Test {
 };
 
 TEST_F(TffPipelineTransformTest, InvalidConfigureAndAttestRequest) {
-  grpc::ClientContext context;
+  ClientContext context;
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
@@ -108,7 +187,7 @@ TEST_F(TffPipelineTransformTest, InvalidConfigureAndAttestRequest) {
 
 TEST_F(TffPipelineTransformTest,
        MissingTffWorkerConfigurationConfigureAndAttestRequest) {
-  grpc::ClientContext context;
+  ClientContext context;
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
   TffWorkerConfiguration_ClientWork wrong_proto;
@@ -122,7 +201,7 @@ TEST_F(TffPipelineTransformTest,
 }
 
 TEST_F(TffPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
-  grpc::ClientContext context;
+  ClientContext context;
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
 
@@ -131,16 +210,18 @@ TEST_F(TffPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
   TffWorkerConfiguration tff_worker_configuration;
   TffWorkerConfiguration_ClientWork* client_work =
       tff_worker_configuration.mutable_client_work();
-  absl::StatusOr<std::string> serialized_proto_data = LoadFileAsString(
-      kClientWorkComputationPath);
-  ASSERT_TRUE(serialized_proto_data.ok()) << serialized_proto_data.status();
-  client_work->set_serialized_client_work_computation(*serialized_proto_data);
+  absl::StatusOr<tff_proto::Computation> computation_proto =
+      LoadFileAsTffComputation(kClientWorkComputationPath);
+  ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
+  std::string serialized_computation;
+  (*computation_proto).SerializeToString(&serialized_computation);
+  client_work->set_serialized_client_work_computation(serialized_computation);
   request.mutable_configuration()->PackFrom(tff_worker_configuration);
 
   auto first_status = stub_->ConfigureAndAttest(&context, request, &response);
   ASSERT_TRUE(first_status.ok()) << first_status.error_message();
 
-  grpc::ClientContext second_context;
+  ClientContext second_context;
   auto second_status = stub_->ConfigureAndAttest(
       &second_context, request, &response);
   EXPECT_EQ(second_status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
@@ -149,7 +230,7 @@ TEST_F(TffPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
 }
 
 TEST_F(TffPipelineTransformTest, ValidConfigureAndAttest) {
-  grpc::ClientContext context;
+  ClientContext context;
   ConfigureAndAttestRequest request;
   ConfigureAndAttestResponse response;
 
@@ -158,14 +239,129 @@ TEST_F(TffPipelineTransformTest, ValidConfigureAndAttest) {
   TffWorkerConfiguration tff_worker_configuration;
   TffWorkerConfiguration_ClientWork* client_work =
       tff_worker_configuration.mutable_client_work();
-  absl::StatusOr<std::string> serialized_proto_data = LoadFileAsString(
-      kClientWorkComputationPath);
-  ASSERT_TRUE(serialized_proto_data.ok()) << serialized_proto_data.status();
-  client_work->set_serialized_client_work_computation(*serialized_proto_data);
+  absl::StatusOr<tff_proto::Computation> computation_proto =
+      LoadFileAsTffComputation(kClientWorkComputationPath);
+  ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
+  std::string serialized_computation;
+  (*computation_proto).SerializeToString(&serialized_computation);
+  client_work->set_serialized_client_work_computation(serialized_computation);
   request.mutable_configuration()->PackFrom(tff_worker_configuration);
 
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
   EXPECT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(TffPipelineTransformTest, TransformBeforeConfigureAndAttest) {
+  ClientContext context;
+  TransformRequest request;
+  TransformResponse response;
+  auto status = stub_->Transform(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("ConfigureAndAttest must be called before Transform"));
+}
+
+TEST_F(TffPipelineTransformTest, TransformCannotExecuteAggregation) {
+  ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+
+  TffWorkerConfiguration tff_worker_configuration;
+
+  // Populate test TffWorkerConfiguration with a computation that has
+  // aggregation work.
+  TffWorkerConfiguration_Aggregation* aggregation =
+      tff_worker_configuration.mutable_aggregation();
+  absl::StatusOr<tff_proto::Computation> computation_proto =
+      LoadFileAsTffComputation(kAggregationComputationPath);
+  ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
+  std::string serialized_computation;
+  (*computation_proto).SerializeToString(&serialized_computation);
+  aggregation->set_serialized_client_to_server_aggregation_computation(
+      serialized_computation);
+  configure_request.mutable_configuration()->PackFrom(tff_worker_configuration);
+
+  auto configure_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_status.ok()) << configure_status.error_message();
+
+  ClientContext transform_context;
+  TransformRequest transform_request;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+  ASSERT_EQ(transform_status.error_code(), grpc::UNIMPLEMENTED);
+  ASSERT_THAT(transform_status.error_message(),
+              HasSubstr("has not yet implemented"));
+}
+
+TEST_F(TffPipelineTransformTest, TransformExecutesClientWork) {
+  ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+
+  TffWorkerConfiguration tff_worker_configuration;
+
+  // Populate test TffWorkerConfiguration with a computation that has client
+  // work.
+  TffWorkerConfiguration_ClientWork* client_work =
+      tff_worker_configuration.mutable_client_work();
+  absl::StatusOr<tff_proto::Computation> computation_proto =
+      LoadFileAsTffComputation(kClientWorkComputationPath);
+  ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
+  std::string serialized_computation;
+  (*computation_proto).SerializeToString(&serialized_computation);
+  client_work->set_serialized_client_work_computation(serialized_computation);
+
+  // Populate test TffWorkerConfiguration with a serialized broadcasted TFF
+  // Value.
+  std::string serialized_value;
+  BuildFederatedIntClientValue(10).SerializeToString(&serialized_value);
+  client_work->set_serialized_broadcasted_data(serialized_value);
+  TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint_FedSqlColumn*
+      column = client_work->mutable_fed_sql_tensorflow_checkpoint(
+          )->add_fed_sql_columns();
+  column->set_name("whimsy");
+  column->set_data_type(tensorflow::DT_INT32);
+  configure_request.mutable_configuration()->PackFrom(tff_worker_configuration);
+
+  auto configure_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_status.ok()) << configure_status.error_message();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(
+      BuildSingleInt64TensorCheckpoint("whimsy", {1, 2, 3}));
+  ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+  ASSERT_TRUE(transform_status.ok()) << transform_status.error_message();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  tff_proto::Value value;
+  value.ParseFromString(transform_response.outputs(0).unencrypted_data());
+  EXPECT_TRUE(value.has_federated());
+  EXPECT_EQ(value.federated().type().placement().value().uri(), kClientsUri);
+  EXPECT_EQ(value.federated().value_size(), 1);
+  EXPECT_TRUE(value.federated().value(0).has_struct_());
+  EXPECT_EQ(value.federated().value(0).struct_().element_size(), 1);
+  EXPECT_TRUE(
+      value.federated().value(0).struct_().element(0).value().has_tensor());
+  tensorflow::TensorProto output_tensor_proto;
+  value.federated().value(0).struct_().element(0).value().tensor().UnpackTo(
+      &output_tensor_proto);
+  tensorflow::Tensor output_tensor;
+  CHECK(output_tensor.FromProto(output_tensor_proto));
+  EXPECT_EQ(output_tensor.NumElements(), 3);
+
+  // Test client work computation adds the broadcasted value to each of the
+  // values in the input tensor.
+  auto flat = output_tensor.unaligned_flat<float>();
+  EXPECT_EQ(flat(0), 11);
+  EXPECT_EQ(flat(1), 12);
+  EXPECT_EQ(flat(2), 13);
 }
 
 }  // namespace
