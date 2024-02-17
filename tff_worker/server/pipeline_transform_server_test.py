@@ -53,12 +53,6 @@ class PipelineTransformServicerTest(unittest.TestCase):
     self._server.stop(grace=None)
     self._server.wait_for_termination()
 
-  def test_initialize_unimplemented(self):
-    request = pipeline_transform_pb2.InitializeRequest()
-    with self.assertRaises(grpc.RpcError) as e:
-      self._stub.Initialize(request)
-    self.assertIs(e.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
-
   def test_generate_nonces_unimplemented(self):
     request = pipeline_transform_pb2.GenerateNoncesRequest()
     with self.assertRaises(grpc.RpcError) as e:
