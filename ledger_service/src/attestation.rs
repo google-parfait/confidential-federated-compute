@@ -100,6 +100,76 @@ pub fn verify_attestation<'a>(
     ))
 }
 
+/// Helper function that returns a test Evidence message.
+#[cfg(test)]
+pub fn get_test_evidence() -> Evidence {
+    use oak_restricted_kernel_sdk::{mock_attestation::MockEvidenceProvider, EvidenceProvider};
+
+    oak_attestation::dice::evidence_to_proto(
+        MockEvidenceProvider::create()
+            .unwrap()
+            .get_evidence()
+            .clone(),
+    )
+    .unwrap()
+}
+
+/// Helper function that returns a test Endorsements message.
+#[cfg(test)]
+pub fn get_test_endorsements() -> Endorsements {
+    use oak_proto_rust::oak::attestation::v1::{
+        endorsements, OakRestrictedKernelEndorsements, RootLayerEndorsements,
+    };
+
+    Endorsements {
+        r#type: Some(endorsements::Type::OakRestrictedKernel(
+            OakRestrictedKernelEndorsements {
+                root_layer: Some(RootLayerEndorsements::default()),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+/// Helper function that returns ReferenceValues that match the test Evidence.
+#[cfg(test)]
+pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::ReferenceValues {
+    use oak_proto_rust::oak::attestation::v1::{
+        binary_reference_value, reference_values, ApplicationLayerReferenceValues,
+        BinaryReferenceValue, InsecureReferenceValues, KernelLayerReferenceValues,
+        OakRestrictedKernelReferenceValues, ReferenceValues, RootLayerReferenceValues,
+        SkipVerification,
+    };
+
+    let skip = BinaryReferenceValue {
+        r#type: Some(binary_reference_value::Type::Skip(
+            SkipVerification::default(),
+        )),
+    };
+    ReferenceValues {
+        r#type: Some(reference_values::Type::OakRestrictedKernel(
+            OakRestrictedKernelReferenceValues {
+                root_layer: Some(RootLayerReferenceValues {
+                    insecure: Some(InsecureReferenceValues::default()),
+                    ..Default::default()
+                }),
+                kernel_layer: Some(KernelLayerReferenceValues {
+                    kernel_image: Some(skip.clone()),
+                    kernel_cmd_line: Some(skip.clone()),
+                    kernel_setup_data: Some(skip.clone()),
+                    init_ram_fs: Some(skip.clone()),
+                    memory_map: Some(skip.clone()),
+                    acpi: Some(skip.clone()),
+                }),
+                application_layer: Some(ApplicationLayerReferenceValues {
+                    binary: Some(skip.clone()),
+                    configuration: Some(skip.clone()),
+                }),
+            },
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,16 +177,10 @@ mod tests {
     use cfc_crypto::PUBLIC_KEY_CLAIM;
     use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
     use googletest::prelude::*;
-    use oak_attestation::dice::evidence_to_proto;
     use oak_proto_rust::oak::attestation::v1::{
-        binary_reference_value, endorsements, reference_values, AmdSevReferenceValues,
-        BinaryReferenceValue, OakRestrictedKernelEndorsements, OakRestrictedKernelReferenceValues,
-        ReferenceValues, RootLayerEndorsements, RootLayerReferenceValues, SkipVerification,
+        endorsements, OakRestrictedKernelEndorsements, ReferenceValues,
     };
-    use oak_restricted_kernel_sdk::{
-        mock_attestation::{MockEvidenceProvider, MockSigner},
-        EvidenceProvider, Signer,
-    };
+    use oak_restricted_kernel_sdk::{mock_attestation::MockSigner, Signer};
 
     /// Helper function to create a valid public key.
     fn create_public_key() -> (Vec<u8>, CoseKey) {
@@ -143,51 +207,6 @@ mod tests {
             .to_vec()
             .unwrap();
         (cwt, cose_key)
-    }
-
-    /// Helper function that returns a test Evidence message.
-    fn get_test_evidence() -> Evidence {
-        evidence_to_proto(
-            MockEvidenceProvider::create()
-                .unwrap()
-                .get_evidence()
-                .clone(),
-        )
-        .unwrap()
-    }
-
-    fn get_test_endorsements() -> Endorsements {
-        Endorsements {
-            r#type: Some(endorsements::Type::OakRestrictedKernel(
-                OakRestrictedKernelEndorsements {
-                    root_layer: Some(RootLayerEndorsements::default()),
-                    ..Default::default()
-                },
-            )),
-        }
-    }
-
-    /// Helper function that returns ReferenceValues that match the test Evidence.
-    fn get_test_reference_values() -> ReferenceValues {
-        // TODO: b/288331695 - Switch to reference values that pass verification.
-        ReferenceValues {
-            r#type: Some(reference_values::Type::OakRestrictedKernel(
-                OakRestrictedKernelReferenceValues {
-                    root_layer: Some(RootLayerReferenceValues {
-                        amd_sev: Some(AmdSevReferenceValues {
-                            stage0: Some(BinaryReferenceValue {
-                                r#type: Some(binary_reference_value::Type::Skip(
-                                    SkipVerification::default(),
-                                )),
-                            }),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )),
-        }
     }
 
     #[test]
@@ -241,9 +260,8 @@ mod tests {
             Duration::default()
         ));
 
-        // TODO: b/288331695 - Switch this test to true once we can construct test Evidence,
-        // Endorsements, and ReferenceValues that pass validation.
-        assert!(!app.matches(
+        // Valid reference values should match.
+        assert!(app.matches(
             &Some(ApplicationMatcher {
                 reference_values: Some(get_test_reference_values()),
                 ..Default::default()
