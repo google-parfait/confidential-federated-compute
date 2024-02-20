@@ -47,7 +47,7 @@ oci_image(
 )
 
 oci_runtime_bundle(
-    name = "sql_server_oci_filesystem_bundle",
+    name = "oci_runtime_bundle",
     image = ":oci_image",
 )
 

@@ -32,6 +32,13 @@ readonly WORKSPACE_DIR="$(dirname -- "$0")/.."
 # bazel; this usage requires us to not quote ${BAZELISK} when used later.
 readonly BAZELISK="${BAZELISK:-bazelisk}"
 
+# List of targets that will be built in release mode, along with the name of the
+# resulting artifacts in BINARY_OUTPUTS_DIR.
+declare -Ar RELEASE_TARGETS=(
+  [//containers/sql_server:oci_runtime_bundle.tar]=sql_server/container.tar
+  [//containers/test_concat:oci_runtime_bundle.tar]=test_concat/container.tar
+)
+
 if [ "$1" == "continuous" ]; then
   ${BAZELISK} test //... --config=asan
 elif [ "$1" == "sanitizers" ]; then
@@ -40,9 +47,7 @@ elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=ubsan
 elif [ "$1" == "release" ]; then
   ${BAZELISK} test //...
-  ${BAZELISK} build -c opt \
-      //containers/sql_server:sql_server_oci_filesystem_bundle.tar \
-      //containers/test_concat:test_concat_server_oci_filesystem_bundle.tar \
+  ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}" \
       //tff_worker/server:pipeline_transform_server_zip
   readonly BAZEL_BIN="$(${BAZELISK} info -c opt bazel-bin)"
 
@@ -59,17 +64,20 @@ elif [ "$1" == "release" ]; then
   readonly TARGET_DIR="${WORKSPACE_DIR}/target/bazel"
   mkdir --parents "${TARGET_DIR}"
   "${WORKSPACE_DIR}/scripts/export_container_bundle.sh" -c tff_pipeline_transfer_server \
-      -o "${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar"
+      -o "${TARGET_DIR}/tff_worker_container.tar"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-    mkdir --parents "${BINARY_OUTPUTS_DIR}"
-    cp -v \
-      "${BAZEL_BIN}/containers/sql_server/sql_server_oci_filesystem_bundle.tar" \
-      "${BAZEL_BIN}/containers/test_concat/test_concat_server_oci_filesystem_bundle.tar" \
-      "${TARGET_DIR}/tff_pipeline_transform_server_oci_filesystem_bundle.tar" \
-      "${BINARY_OUTPUTS_DIR}/"
+    for target in "${!RELEASE_TARGETS[@]}"; do
+      src="${BAZEL_BIN}${target/:/\//}"
+      dst="${BINARY_OUTPUTS_DIR}/${RELEASE_TARGETS[$target]}"
+      mkdir --parents "$(dirname "$dst")"
+      cp -f "$src" "$dst"
+    done
+
+    mkdir --parents "${BINARY_OUTPUTS_DIR}/tff_worker"
+    cp "${TARGET_DIR}/tff_worker_container.tar" "${BINARY_OUTPUTS_DIR}/tff_worker/container.tar"
   fi
 else
   ${BAZELISK} test //...

@@ -201,10 +201,10 @@ binaries:
 ls "${BINARY_OUTPUTS_DIR}"
 ```
 
-You should see several binaries in the folder, including the following:
+You should see a subdirectory for each server, including the following:
 
 ```
-ledger_enclave_app  pipeline_transform_server_oci_filesystem_bundle.tar  square_enclave_app  sum_enclave_app
+ledger  sql_server  square_example  sum_example
 ```
 
 These correspond to the components described in

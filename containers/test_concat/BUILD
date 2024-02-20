@@ -43,7 +43,7 @@ oci_image(
 )
 
 oci_runtime_bundle(
-    name = "test_concat_server_oci_filesystem_bundle",
+    name = "oci_runtime_bundle",
     image = ":oci_image",
 )
 

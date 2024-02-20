@@ -24,25 +24,32 @@ cd $(dirname -- "$0")/..
 
 source scripts/cargo_common.sh
 
+# List of packages that will be built in release mode, along with the name of
+# the resulting artifacts in BINARY_OUTPUTS_DIR.
+declare -Ar RELEASE_PACKAGES=(
+  [ledger_enclave_app]=ledger/binary
+  [square_enclave_app]=square_example/binary
+  [sum_enclave_app]=sum_example/binary
+)
+
 build_docker_image
 
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" sh -c 'cargo build && cargo test'
 
 if [ "$1" == "release" ]; then
+  args=()
+  for pkg in "${!RELEASE_PACKAGES[@]}"; do args+=(-p "${pkg}"); done
   docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
-      cargo build --release \
-          -p ledger_enclave_app \
-          -p square_enclave_app \
-          -p sum_enclave_app
+      cargo build --release "${args[@]}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-    mkdir -p "${BINARY_OUTPUTS_DIR}"
-    cp -v \
-        target/x86_64-unknown-none/release/ledger_enclave_app \
-        target/x86_64-unknown-none/release/square_enclave_app \
-        target/x86_64-unknown-none/release/sum_enclave_app \
-        "${BINARY_OUTPUTS_DIR}/"
+    for pkg in "${!RELEASE_PACKAGES[@]}"; do
+      src="target/x86_64-unknown-none/release/${pkg}"
+      dst="${BINARY_OUTPUTS_DIR}/${RELEASE_PACKAGES[$pkg]}"
+      mkdir --parents "$(dirname "${dst}")"
+      cp "${src}" "${dst}"
+    done
   fi
 fi
