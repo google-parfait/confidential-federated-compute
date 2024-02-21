@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # Pin a newer version of gRPC than the one provided by Tensorflow.
@@ -131,21 +133,18 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    sha256 = "044d59fee8b0e3a6852bf809532d9b48770d0aa74ad9a6658ae6db2e10287954",
-    strip_prefix = "federated-compute-6878e36c828a9a230c14054614fb446f7c3b2aa8",
-    url = "https://github.com/google/federated-compute/archive/6878e36c828a9a230c14054614fb446f7c3b2aa8.tar.gz",
+    patches = ["//third_party/federated_compute:libcppbor.patch"],
+    sha256 = "eb934fa17c903e3cc1881c0602eda0937a877a4305ac60a11cfb8837ea06f9a5",
+    strip_prefix = "federated-compute-2356a92d5891ba7da4fd3552a8c18c63db49bf28",
+    url = "https://github.com/google/federated-compute/archive/2356a92d5891ba7da4fd3552a8c18c63db49bf28.tar.gz",
 )
 
-http_archive(
-    name = "libcbor",
-    build_file = "@federated-compute//third_party:libcbor.BUILD.bzl",
-    patches = ["@federated-compute//fcp/patches:libcbor_configuration.patch"],
-    sha256 = "9fec8ce3071d5c7da8cda397fab5f0a17a60ca6cbaba6503a09a47056a53a4d7",
-    strip_prefix = "libcbor-0.10.2",
-    urls = ["https://github.com/PJK/libcbor/archive/refs/tags/v0.10.2.zip"],
+git_repository(
+    name = "libcppbor",
+    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
+    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
+    remote = "https://android.googlesource.com/platform/external/libcppbor",
 )
-
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 # We must build TFF protos from source as they are not included in the version
 # of TFF released as a python package.

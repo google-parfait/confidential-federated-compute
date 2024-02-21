@@ -1,0 +1,31 @@
+# Various fixes for libcppbor not being compatible with gcc.
+--- third_party/libcppbor.BUILD.bzl
++++ third_party/libcppbor.BUILD.bzl
+@@ -28,3 +28,3 @@
+     include_prefix = "libcppbor",
+-    local_defines = ["__TRUSTY__"],
++    local_defines = ["__TRUSTY__", "__has_feature(x)=false"],
+     visibility = ["//visibility:public"],
+
+--- fcp/confidentialcompute/cose.cc
++++ fcp/confidentialcompute/cose.cc
+@@ -269,3 +269,6 @@
+-  return Array("Signature1", std::move(protected_header),
+-               Bstr(aad.begin(), aad.end()), std::move(payload))
+-      .toString();
++  Array result;
++  result.add("Signature1");
++  result.add(std::move(protected_header));
++  result.add(Bstr(aad.begin(), aad.end()));
++  result.add(std::move(payload));
++  return result.toString();
+@@ -363,3 +366,6 @@
+-  return Array(std::move(protected_header), std::move(unprotected_header),
+-               std::move(payload), Bstr(signature))
+-      .toString();
++  Array result;
++  result.add(std::move(protected_header));
++  result.add(std::move(unprotected_header));
++  result.add(std::move(payload));
++  result.add(Bstr(signature));
++  return result.toString();

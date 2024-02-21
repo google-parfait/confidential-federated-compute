@@ -169,7 +169,6 @@ impl Ledger for LedgerService {
         Ok(CreateKeyResponse {
             public_key,
             attestation_evidence: Some(self.evidence.clone()),
-            ..Default::default()
         })
     }
 

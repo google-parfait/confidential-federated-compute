@@ -196,7 +196,6 @@ impl RecordEncoder {
                             },
                         ),
                     ),
-                    ..Default::default()
                 })
             }
         };

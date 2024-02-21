@@ -24,8 +24,7 @@ use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
         ConfigureAndAttestRequest, ConfigureAndAttestResponse, GenerateNoncesRequest,
-        GenerateNoncesResponse, InitializeRequest, InitializeResponse, PipelineTransform,
-        TransformRequest, TransformResponse,
+        GenerateNoncesResponse, PipelineTransform, TransformRequest, TransformResponse,
     },
 };
 
@@ -48,13 +47,6 @@ impl SumService {
 }
 
 impl PipelineTransform for SumService {
-    fn initialize(
-        &mut self,
-        _request: InitializeRequest,
-    ) -> Result<InitializeResponse, micro_rpc::Status> {
-        Err(micro_rpc::Status::new(micro_rpc::StatusCode::Unimplemented))
-    }
-
     fn configure_and_attest(
         &mut self,
         _request: ConfigureAndAttestRequest,
@@ -77,7 +69,6 @@ impl PipelineTransform for SumService {
         Ok(ConfigureAndAttestResponse {
             public_key: self.record_decoder.as_ref().unwrap().public_key().to_vec(),
             attestation_evidence: Some(evidence),
-            ..Default::default()
         })
     }
 
@@ -179,12 +170,6 @@ mod tests {
         RecordEncoder::default()
             .encode(EncryptionMode::Unencrypted, data)
             .unwrap()
-    }
-
-    #[test]
-    fn test_initialize() {
-        let mut service = create_sum_service();
-        assert!(service.initialize(InitializeRequest::default()).is_err());
     }
 
     #[test]
