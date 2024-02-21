@@ -325,6 +325,7 @@ impl Ledger for LedgerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
     use alloc::{borrow::ToOwned, vec};
     use coset::{cwt::ClaimsSet, CoseSign1};
@@ -332,13 +333,8 @@ mod tests {
         access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
         ApplicationMatcher,
     };
-    use oak_attestation::{dice::evidence_to_proto, proto::oak::crypto::v1::Signature};
-    use oak_proto_rust::oak::attestation::v1::{
-        binary_reference_value, endorsements, reference_values, ApplicationLayerReferenceValues,
-        BinaryReferenceValue, Endorsements, InsecureReferenceValues, KernelLayerReferenceValues,
-        OakRestrictedKernelEndorsements, OakRestrictedKernelReferenceValues, ReferenceValues,
-        RootLayerEndorsements, RootLayerReferenceValues, SkipVerification,
-    };
+    use googletest::prelude::*;
+    use oak_attestation::proto::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
 
     /// Macro asserting that a result is failed with a particular code and message.
@@ -573,36 +569,10 @@ mod tests {
         let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
         // Define an access policy that grants access.
-        let skip = BinaryReferenceValue {
-            r#type: Some(binary_reference_value::Type::Skip(
-                SkipVerification::default(),
-            )),
-        };
         let access_policy = DataAccessPolicy {
             transforms: vec![Transform {
                 application: Some(ApplicationMatcher {
-                    reference_values: Some(ReferenceValues {
-                        r#type: Some(reference_values::Type::OakRestrictedKernel(
-                            OakRestrictedKernelReferenceValues {
-                                root_layer: Some(RootLayerReferenceValues {
-                                    insecure: Some(InsecureReferenceValues::default()),
-                                    ..Default::default()
-                                }),
-                                kernel_layer: Some(KernelLayerReferenceValues {
-                                    kernel_image: Some(skip.clone()),
-                                    kernel_cmd_line: Some(skip.clone()),
-                                    kernel_setup_data: Some(skip.clone()),
-                                    init_ram_fs: Some(skip.clone()),
-                                    memory_map: Some(skip.clone()),
-                                    acpi: Some(skip.clone()),
-                                }),
-                                application_layer: Some(ApplicationLayerReferenceValues {
-                                    binary: Some(skip.clone()),
-                                    configuration: Some(skip.clone()),
-                                }),
-                            },
-                        )),
-                    }),
+                    reference_values: Some(get_test_reference_values()),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -611,23 +581,91 @@ mod tests {
         }
         .encode_to_vec();
 
-        // Construct Evidence and Endorsements that should satisfy the requirements in the access
-        // policy.
-        let evidence = evidence_to_proto(
-            MockEvidenceProvider::create()
-                .unwrap()
-                .get_evidence()
-                .clone(),
-        )
-        .unwrap();
-        let endorsements = Endorsements {
-            r#type: Some(endorsements::Type::OakRestrictedKernel(
-                OakRestrictedKernelEndorsements {
-                    root_layer: Some(RootLayerEndorsements::default()),
+        // Construct a client message.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let recipient_cwt = CoseSign1Builder::new()
+            .payload(
+                ClaimsSetBuilder::new()
+                    .private_claim(
+                        PUBLIC_KEY_CLAIM,
+                        Value::from(recipient_public_key.to_vec().unwrap()),
+                    )
+                    .build()
+                    .to_vec()
+                    .unwrap(),
+            )
+            .create_signature(b"", |message| {
+                // The MockSigner signs the key with application signing key provided by the
+                // MockEvidenceProvider.
+                MockSigner::create()
+                    .unwrap()
+                    .sign(message)
+                    .unwrap()
+                    .signature
+            })
+            .build()
+            .to_vec()
+            .unwrap();
+        let recipient_nonce: &[u8] = b"nonce";
+        let response = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: recipient_cwt,
+                recipient_attestation_evidence: Some(get_test_evidence()),
+                recipient_attestation_endorsements: Some(get_test_endorsements()),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Verify that the response contains the right public key and allows the message to be read.
+        assert_eq!(response.reencryption_public_key, public_key);
+        assert_eq!(
+            cfc_crypto::decrypt_message(
+                &ciphertext,
+                &blob_header,
+                &response.encrypted_symmetric_key,
+                &[&response.reencryption_public_key, recipient_nonce].concat(),
+                &response.encapsulated_key,
+                &recipient_private_key
+            )
+            .unwrap(),
+            plaintext
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_evidence() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    reference_values: Some(get_test_reference_values()),
                     ..Default::default()
-                },
-            )),
-        };
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
 
         // Construct a client message.
         let plaintext = b"plaintext";
@@ -641,7 +679,7 @@ mod tests {
         let (_, encapsulated_key, encrypted_symmetric_key) =
             cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
-        // Request access.
+        // Request access. Empty evidence will cause attestation validation to fail.
         let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
         let recipient_cwt = CoseSign1Builder::new()
             .payload(
@@ -667,24 +705,23 @@ mod tests {
             .to_vec()
             .unwrap();
         let recipient_nonce: &[u8] = b"nonce";
-        // This should succeed but doesn't because the ReferenceValues don't match the Evidence.
-        // TODO: b/288331695 - Fix this test.
-        assert!(ledger
-            .authorize_access(AuthorizeAccessRequest {
+        assert_that!(
+            ledger.authorize_access(AuthorizeAccessRequest {
                 access_policy,
                 blob_header: blob_header.clone(),
                 encapsulated_key,
                 encrypted_symmetric_key,
                 recipient_public_key: recipient_cwt,
-                recipient_attestation_evidence: Some(evidence),
-                recipient_attestation_endorsements: Some(endorsements),
+                recipient_attestation_evidence: Some(Evidence::default()),
+                recipient_attestation_endorsements: Some(get_test_endorsements()),
                 recipient_nonce: recipient_nonce.to_owned(),
                 ..Default::default()
-            })
-            .is_err());
+            }),
+            err(displays_as(contains_substring(
+                "attestation validation failed"
+            )))
+        );
     }
-
-    // TODO(b/288331695): Test authorize_access with an attestation failure.
 
     #[test]
     fn test_authorize_access_invalid_recipient_key() {
