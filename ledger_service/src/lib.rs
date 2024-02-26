@@ -20,7 +20,10 @@ use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
 use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
 use core::time::Duration;
-use coset::{cbor::Value, cwt, cwt::ClaimsSetBuilder, CborSerializable, CoseKey, CoseSign1Builder};
+use coset::{
+    cbor::Value, cwt, cwt::ClaimsSetBuilder, iana, Algorithm, CborSerializable, CoseKey,
+    CoseSign1Builder, Header,
+};
 use federated_compute::proto::{
     AuthorizeAccessRequest, AuthorizeAccessResponse, BlobHeader, CreateKeyRequest,
     CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest, DeleteKeyResponse, Ledger,
@@ -110,6 +113,10 @@ impl LedgerService {
             )
             .build();
         CoseSign1Builder::new()
+            .protected(Header {
+                alg: Some(Algorithm::Assigned(iana::Algorithm::ES256)),
+                ..Default::default()
+            })
             .payload(claims.to_vec().map_err(anyhow::Error::msg)?)
             .try_create_signature(b"", |msg| Ok(self.signer.sign(msg)?.signature))?
             .build()
@@ -423,6 +430,10 @@ mod tests {
             Ok(())
         })
         .expect("signature mismatch");
+        assert_eq!(
+            cwt.protected.header.alg,
+            Some(Algorithm::Assigned(iana::Algorithm::ES256))
+        );
         let claims = ClaimsSet::from_slice(&cwt.payload.unwrap()).unwrap();
         assert_eq!(claims.issued_at, Some(cwt::Timestamp::WholeSeconds(1000)));
         assert_eq!(
