@@ -13,9 +13,9 @@ members = [
 ]
 
 [workspace.dependencies]
-micro_rpc = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
-micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
-oak_attestation = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
-oak_attestation_verification = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
-oak_proto_rust = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
-oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev = "6a8fdcfaada3b4e68c15f80e5e41827515338fcc" }
+micro_rpc = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
+micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
+oak_attestation = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
+oak_attestation_verification = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
+oak_proto_rust = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
+oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev = "046bf491a4508d6bb4db8793275e70e35c8e15eb" }
