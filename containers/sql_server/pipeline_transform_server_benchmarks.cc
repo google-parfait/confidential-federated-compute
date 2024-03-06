@@ -17,7 +17,6 @@
 #include "absl/log/check.h"
 #include "benchmark/benchmark.h"
 #include "containers/sql_server/pipeline_transform_server.h"
-#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
@@ -32,6 +31,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -41,7 +41,6 @@ using ::fcp::aggregation::CheckpointBuilder;
 using ::fcp::aggregation::CreateTestData;
 using ::fcp::aggregation::DataType;
 using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
 using ::fcp::aggregation::MutableVectorData;
 using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
@@ -66,7 +65,7 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::sql_data::SqlData;
+using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
@@ -260,7 +259,7 @@ class PipelineTransformBenchmark : public benchmark::Fixture {
  public:
   void SetUp(::benchmark::State& state) override {
     int port;
-    service_ = std::make_unique<SqlPipelineTransform>();
+    service_ = std::make_unique<SqlPipelineTransform>(&mock_crypto_stub_);
     const std::string server_address = "[::1]:";
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
@@ -281,6 +280,7 @@ class PipelineTransformBenchmark : public benchmark::Fixture {
   }
 
  protected:
+  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
   std::unique_ptr<SqlPipelineTransform> service_ = nullptr;
   std::unique_ptr<Server> server_ = nullptr;
   std::shared_ptr<grpc::Channel> channel_ = nullptr;
@@ -501,7 +501,9 @@ static std::unique_ptr<PipelineTransform::Stub> multi_thread_stub_ = nullptr;
 
 static void DoSetup(const benchmark::State& state) {
   int port;
-  multi_thread_service_ = std::make_unique<SqlPipelineTransform>();
+  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  multi_thread_service_ =
+      std::make_unique<SqlPipelineTransform>(&mock_crypto_stub);
   const std::string server_address = "[::1]:";
   ServerBuilder builder;
   builder.AddListeningPort(server_address + "0",

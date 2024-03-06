@@ -20,13 +20,33 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "containers/sql_server/sql_data.pb.h"
+#include "fcp/aggregation/core/tensor.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
 
 namespace confidential_federated_compute::sql_server {
+
+class TensorColumn final {
+ public:
+  static absl::StatusOr<TensorColumn> Create(
+      fcp::confidentialcompute::ColumnSchema column_schema,
+      fcp::aggregation::Tensor tensor);
+
+  // Define a default constructor to enable creation of a vector of
+  // TensorColumns. A tensor created with the default constructor is not valid
+  // and thus should not actually be used.
+  TensorColumn() : column_schema_(), tensor_() {}
+
+  fcp::confidentialcompute::ColumnSchema column_schema_;
+  fcp::aggregation::Tensor tensor_;
+
+ private:
+  explicit TensorColumn(fcp::confidentialcompute::ColumnSchema column_schema,
+                        fcp::aggregation::Tensor tensor)
+      : column_schema_(column_schema), tensor_(std::move(tensor)) {}
+};
 
 // Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
@@ -65,18 +85,19 @@ class SqliteAdapter {
   // Closes the database connection.
   ~SqliteAdapter();
 
-  // Adds a table to the SQLite database context. `create_table_stmt` must be
-  // a valid `CREATE TABLE` SQLite statement.
-  absl::Status DefineTable(absl::string_view create_table_stmt);
+  // Adds a table to the SQLite database context.
+  absl::Status DefineTable(fcp::confidentialcompute::TableSchema schema);
 
-  // Clears contents from the given `table` and inserts the specified
-  // `contents`. The table must be created first via `DefineTable`.
-  absl::Status SetTableContents(fcp::confidentialcompute::TableSchema schema,
-                                sql_data::SqlData contents);
+  // Inserts the specified `contents` into the table specified by `table_name`.
+  // The table must be created first via the most recent call to `DefineTable`,
+  // and the column order of `contents` must match the schema specified for
+  // `DefineTable`.
+  absl::Status AddTableContents(std::vector<TensorColumn> contents,
+                                int num_rows);
 
   // Evaluates the given SQL `query` statement, producing results matching the
   // provided `output_columns`.
-  absl::StatusOr<sql_data::SqlData> EvaluateQuery(
+  absl::StatusOr<std::vector<TensorColumn>> EvaluateQuery(
       absl::string_view query,
       const google::protobuf::RepeatedPtrField<
           fcp::confidentialcompute::ColumnSchema>& output_columns) const;
@@ -89,6 +110,7 @@ class SqliteAdapter {
 
   SqliteResultHandler result_handler_;
   sqlite3* db_;
+  std::optional<std::string> insert_stmt_;
 };
 
 }  // namespace confidential_federated_compute::sql_server

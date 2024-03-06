@@ -19,6 +19,7 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "fcp/aggregation/testing/test_data.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
@@ -28,6 +29,11 @@ namespace confidential_federated_compute::sql_server {
 
 namespace {
 
+using ::fcp::aggregation::CreateTestData;
+using ::fcp::aggregation::DataType;
+using ::fcp::aggregation::Tensor;
+using ::fcp::aggregation::TensorData;
+using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Int64Values;
 using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
@@ -50,7 +56,6 @@ using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
-using ::sql_data::SqlData;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
@@ -72,6 +77,25 @@ class SqliteAdapterTest : public Test {
   }
 };
 
+TableSchema CreateInputTableSchema(absl::string_view table_name = "t",
+                                   absl::string_view col1_name = "int_vals",
+                                   absl::string_view col2_name = "str_vals") {
+  TableSchema schema;
+  schema.set_name(std::string(table_name));
+  ColumnSchema* col1 = schema.add_column();
+  col1->set_name(std::string(col1_name));
+  col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  ColumnSchema* col2 = schema.add_column();
+  col2->set_name(std::string(col2_name));
+  col2->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+  const std::string create_table_stmt =
+      absl::StrFormat(R"sql(CREATE TABLE %s (%s INTEGER, %s TEXT))sql",
+                      table_name, col1_name, col2_name);
+  schema.set_create_table_sql(std::string(create_table_stmt));
+
+  return schema;
+}
+
 TEST(MultipleThreadsTest, ConcurrentDefineTable) {
   CHECK_OK(SqliteAdapter::Initialize());
   std::thread thread1([]() {
@@ -79,15 +103,14 @@ TEST(MultipleThreadsTest, ConcurrentDefineTable) {
         SqliteAdapter::Create();
     CHECK_OK(create_status);
     std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
-    CHECK_OK(adapter->DefineTable(R"sql(CREATE TABLE t (str_vals TEXT);)sql"));
+    CHECK_OK(adapter->DefineTable(CreateInputTableSchema("table_1")));
   });
   std::thread thread2([]() {
     absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
         SqliteAdapter::Create();
     CHECK_OK(create_status);
     std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
-    CHECK_OK(
-        adapter->DefineTable(R"sql(CREATE TABLE t (int_vals INTEGER);)sql"));
+    CHECK_OK(adapter->DefineTable(CreateInputTableSchema("table_2")));
   });
   thread1.join();
   thread2.join();
@@ -97,167 +120,120 @@ TEST(MultipleThreadsTest, ConcurrentDefineTable) {
 class DefineTableTest : public SqliteAdapterTest {};
 
 TEST_F(DefineTableTest, ValidCreateTableStatement) {
-  const std::string create_table_stmt = R"sql(
-    CREATE TABLE foo (col1 TEXT)
-  )sql";
-
-  ASSERT_TRUE(sqlite_->DefineTable(create_table_stmt).ok());
+  ASSERT_TRUE(sqlite_->DefineTable(CreateInputTableSchema()).ok());
 }
 
 TEST_F(DefineTableTest, InvalidCreateTableStatement) {
-  const std::string bad_create_table_stmt = R"sql(
-    BAD STATEMENT blah blah blah
-  )sql";
-
-  absl::Status result_status = sqlite_->DefineTable(bad_create_table_stmt);
+  TableSchema schema;
+  schema.set_create_table_sql("BAD STATEMENT blah blah");
+  absl::Status result_status = sqlite_->DefineTable(schema);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(), HasSubstr("syntax error"));
 }
 
 class SetTableContentsTest : public SqliteAdapterTest {
  protected:
-  static constexpr absl::string_view kTableName = "t";
+  absl::StatusOr<std::vector<TensorColumn>> CreateTableContents(
+      std::initializer_list<uint64_t> int_vals,
+      std::initializer_list<absl::string_view> str_vals,
+      absl::string_view int_col_name = "int_vals",
+      absl::string_view str_col_name = "str_vals") {
+    std::vector<TensorColumn> contents;
 
-  void SetUp() override {
-    SqliteAdapterTest::SetUp();
-    CHECK_OK(sqlite_->DefineTable(absl::StrFormat(
-        R"sql(
-          CREATE TABLE %s (int_vals INTEGER, str_vals TEXT);
-        )sql",
-        kTableName)));
-  }
+    FCP_ASSIGN_OR_RETURN(
+        Tensor int_tensor,
+        Tensor::Create(DataType::DT_INT64,
+                       {static_cast<int64_t>(int_vals.size())},
+                       std::move(CreateTestData<uint64_t>(int_vals))));
+    ColumnSchema int_col_schema;
+    int_col_schema.set_name(std::string(int_col_name));
+    int_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
 
-  ExampleQueryResult_VectorData_Values CreateInt64Values(
-      std::initializer_list<int> input_values) {
-    ExampleQueryResult_VectorData_Values values;
-    ExampleQueryResult_VectorData_Int64Values* int_values =
-        values.mutable_int64_values();
-    for (int i : input_values) {
-      int_values->add_value(i);
-    }
-    return values;
-  }
+    FCP_ASSIGN_OR_RETURN(
+        Tensor str_tensor,
+        Tensor::Create(DataType::DT_STRING,
+                       {static_cast<int64_t>(str_vals.size())},
+                       std::move(CreateTestData<absl::string_view>(str_vals))));
+    ColumnSchema str_col_schema;
+    str_col_schema.set_name(std::string(str_col_name));
+    str_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
 
-  ExampleQueryResult_VectorData_Values CreateStringValues(
-      std::initializer_list<std::string> input_values) {
-    ExampleQueryResult_VectorData_Values values;
-    ExampleQueryResult_VectorData_StringValues* string_values =
-        values.mutable_string_values();
-    for (std::string i : input_values) {
-      string_values->add_value(i);
-    }
-    return values;
-  }
-
-  SqlData CreateTableContents(std::initializer_list<int> int_vals,
-                              std::initializer_list<std::string> str_vals) {
-    SqlData contents;
-    ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
-    (*vector_data->mutable_vectors())["int_vals"] = CreateInt64Values(int_vals);
-    (*vector_data->mutable_vectors())["str_vals"] =
-        CreateStringValues(str_vals);
-    contents.set_num_rows(int_vals.size());
+    FCP_ASSIGN_OR_RETURN(
+        TensorColumn int_column,
+        TensorColumn::Create(int_col_schema, std::move(int_tensor)));
+    FCP_ASSIGN_OR_RETURN(
+        TensorColumn str_column,
+        TensorColumn::Create(str_col_schema, std::move(str_tensor)));
+    contents.push_back(std::move(int_column));
+    contents.push_back(std::move(str_column));
     return contents;
-  }
-
-  TableSchema CreateInputTableSchema(absl::string_view table_name = kTableName,
-                                     absl::string_view col1_name = "int_vals",
-                                     absl::string_view col2_name = "str_vals") {
-    TableSchema schema;
-    schema.set_name(std::string(table_name));
-    ColumnSchema* col1 = schema.add_column();
-    col1->set_name(std::string(col1_name));
-    col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
-    ColumnSchema* col2 = schema.add_column();
-    col2->set_name(std::string(col2_name));
-    col2->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-    return schema;
   }
 };
 
 TEST_F(SetTableContentsTest, BasicUsage) {
-  SqlData contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
-  TableSchema schema = CreateInputTableSchema();
+  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+  CHECK_OK(contents);
 
-  CHECK_OK(sqlite_->SetTableContents(schema, contents));
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 3));
 }
 
-TEST_F(SetTableContentsTest, TableDoesNotExist) {
-  SqlData contents = CreateTableContents({1}, {"a"});
-  TableSchema schema = CreateInputTableSchema("nonexistent");
+TEST_F(SetTableContentsTest, CalledBeforeDefineTable) {
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1}, {"a"});
+  CHECK_OK(contents);
 
-  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
-  ASSERT_TRUE(absl::IsInvalidArgument(result_status));
-  ASSERT_THAT(result_status.message(), HasSubstr("no such table"));
-}
-
-TEST_F(SetTableContentsTest, ExtraColumn) {
-  SqlData contents = CreateTableContents({1}, {"a"});
-  TableSchema schema = CreateInputTableSchema(kTableName, "extra_col");
-
-  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
+  absl::Status result_status =
+      sqlite_->AddTableContents(std::move(contents.value()), 5);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
-              HasSubstr("Column `extra_col` is missing from `contents`"));
-}
-
-TEST_F(SetTableContentsTest, MissingColumn) {
-  SqlData contents;
-  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
-  (*vector_data->mutable_vectors())["int_vals"] = CreateInt64Values({1, 2, 3});
-  contents.set_num_rows(3);
-  TableSchema schema = CreateInputTableSchema();
-
-  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
-  ASSERT_TRUE(absl::IsInvalidArgument(result_status));
-  ASSERT_THAT(result_status.message(),
-              HasSubstr("don't have the same number of columns"));
+              HasSubstr("`DefineTable` must be called before"));
 }
 
 TEST_F(SetTableContentsTest, NumRowsTooLarge) {
-  std::string col_name = "int_vals";
-  SqlData contents;
-  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
-  (*vector_data->mutable_vectors())[col_name] = CreateInt64Values({1, 2, 3});
-  contents.set_num_rows(4);
-  TableSchema schema;
-  schema.set_name(std::string("t"));
-  ColumnSchema* col1 = schema.add_column();
-  col1->set_name(col_name);
-  col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+  CHECK_OK(contents);
 
-  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
+  absl::Status result_status =
+      sqlite_->AddTableContents(std::move(contents.value()), 5);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
               HasSubstr("Column has the wrong number of rows"));
 }
 
 TEST_F(SetTableContentsTest, NumRowsTooSmall) {
-  std::string col_name = "int_vals";
-  SqlData contents;
-  ExampleQueryResult_VectorData* vector_data = contents.mutable_vector_data();
-  (*vector_data->mutable_vectors())[col_name] = CreateInt64Values({1, 2, 3});
-  contents.set_num_rows(1);
-  TableSchema schema;
-  schema.set_name(std::string("t"));
-  ColumnSchema* col1 = schema.add_column();
-  col1->set_name(col_name);
-  col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+  CHECK_OK(contents);
 
-  absl::Status result_status = sqlite_->SetTableContents(schema, contents);
+  absl::Status result_status =
+      sqlite_->AddTableContents(std::move(contents.value()), 1);
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
               HasSubstr("Column has the wrong number of rows"));
 }
 
 TEST_F(SetTableContentsTest, ZeroRows) {
-  SqlData contents = CreateTableContents({}, {});
+  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({}, {});
+  TableSchema schema = CreateInputTableSchema();
+  CHECK_OK(contents);
 
-  CHECK_OK(sqlite_->SetTableContents(CreateInputTableSchema(), contents));
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 0));
 }
 
 class EvaluateQueryTest : public SetTableContentsTest {
  protected:
+  void SetUp() override {
+    SetTableContentsTest::SetUp();
+    CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  }
+
   void SetColumnNameAndType(ColumnSchema* col, std::string name,
                             ExampleQuerySpec_OutputVectorSpec_DataType type) {
     col->set_name(name);
@@ -276,10 +252,29 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 2);
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0), 2);
+}
+
+TEST_F(EvaluateQueryTest, ValidQueryBasicStringExpression) {
+  const std::string query = R"sql(
+    SELECT "foo" AS str_val
+  )sql";
+  std::string output_col_name = "str_val";
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), output_col_name,
+                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+
+  auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
+  ASSERT_TRUE(result_status.ok());
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_STRING);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<absl::string_view>().at(0), "foo");
 }
 
 TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
@@ -293,10 +288,11 @@ TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 2);
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0), 2);
 }
 
 TEST_F(EvaluateQueryTest, InvalidQueryParseError) {
@@ -360,15 +356,18 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
       output_schema.column());
 
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(!result.at(output_col_name).has_int64_values());
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 0);
 }
 
 TEST_F(EvaluateQueryTest, ResultsFromTable) {
-  SqlData contents = CreateTableContents({42}, {"a"});
-  TableSchema schema = CreateInputTableSchema();
-  CHECK_OK(sqlite_->SetTableContents(schema, contents));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({42}, {"a"});
+  CHECK_OK(contents);
+
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 1));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -378,19 +377,21 @@ TEST_F(EvaluateQueryTest, ResultsFromTable) {
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals FROM t;)sql", output_schema.column());
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 42);
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0), 42);
 }
 
-TEST_F(EvaluateQueryTest, SetTableContentsClearsPreviousContents) {
-  SqlData contents = CreateTableContents({1, 2, 3}, {"a", "b", "c"});
-  TableSchema schema = CreateInputTableSchema();
+TEST_F(EvaluateQueryTest, MultipleSetTableContents) {
   int num_rows = 3;
   int kNumSetContents = 5;
   for (int i = 0; i < kNumSetContents; ++i) {
-    CHECK_OK(sqlite_->SetTableContents(schema, contents));
+    absl::StatusOr<std::vector<TensorColumn>> contents =
+        CreateTableContents({1, 2, 3}, {"a", "b", "c"});
+    CHECK_OK(contents);
+    CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), num_rows));
   }
 
   std::string output_col_name = "n";
@@ -401,16 +402,19 @@ TEST_F(EvaluateQueryTest, SetTableContentsClearsPreviousContents) {
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT COUNT(*) AS n FROM t;)sql", output_schema.column());
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), num_rows);
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0),
+            num_rows * kNumSetContents);
 }
 
 TEST_F(EvaluateQueryTest, MultipleResultRows) {
-  SqlData contents = CreateTableContents({1, 2}, {"a", "b"});
-  TableSchema schema = CreateInputTableSchema();
-  CHECK_OK(sqlite_->SetTableContents(schema, contents));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({3, 2}, {"a", "b"});
+  CHECK_OK(contents);
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 2));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -422,17 +426,19 @@ TEST_F(EvaluateQueryTest, MultipleResultRows) {
       output_schema.column());
 
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(output_col_name));
-  ASSERT_TRUE(result.at(output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(0), 1);
-  ASSERT_EQ(result.at(output_col_name).int64_values().value(1), 2);
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 2);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0), 2);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(1), 3);
 }
 
 TEST_F(EvaluateQueryTest, MultipleColumns) {
-  SqlData contents = CreateTableContents({1}, {"a"});
-  TableSchema schema = CreateInputTableSchema();
-  CHECK_OK(sqlite_->SetTableContents(schema, contents));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1}, {"a"});
+  CHECK_OK(contents);
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 1));
 
   std::string int_output_col_name = "int_vals";
   std::string str_output_col_name = "str_vals";
@@ -446,13 +452,14 @@ TEST_F(EvaluateQueryTest, MultipleColumns) {
       R"sql(SELECT int_vals, str_vals FROM t;)sql", output_schema.column());
 
   ASSERT_TRUE(result_status.ok());
-  auto result = result_status->vector_data().vectors();
-  ASSERT_TRUE(result.contains(int_output_col_name));
-  ASSERT_TRUE(result.at(int_output_col_name).has_int64_values());
-  ASSERT_EQ(result.at(int_output_col_name).int64_values().value(0), 1);
-  ASSERT_TRUE(result.contains(str_output_col_name));
-  ASSERT_TRUE(result.at(str_output_col_name).has_string_values());
-  ASSERT_EQ(result.at(str_output_col_name).string_values().value(0), "a");
+  std::vector<TensorColumn> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 2);
+  ASSERT_EQ(result.at(0).tensor_.dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(0).tensor_.AsSpan<int64_t>().at(0), 1);
+  ASSERT_EQ(result.at(1).tensor_.dtype(), DataType::DT_STRING);
+  ASSERT_EQ(result.at(1).tensor_.num_elements(), 1);
+  ASSERT_EQ(result.at(1).tensor_.AsSpan<absl::string_view>().at(0), "a");
 }
 
 TEST_F(EvaluateQueryTest, IncorrectSchemaNumColumns) {

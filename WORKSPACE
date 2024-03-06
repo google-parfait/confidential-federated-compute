@@ -103,7 +103,7 @@ http_archive(
     # for the rest of TFF, it could cause issues.
     sha256 = "03928b8e702b81a5f2c4b1a50dd6500e4819236e23ab06a705f83108499c772c",
     strip_prefix = "federated-0.63.0",
-    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.63.0.tar.gz"
+    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.63.0.tar.gz",
 )
 
 # Use pre-release version of Tensorflow because it is compatible with hermetic
@@ -111,9 +111,9 @@ http_archive(
 # Tensorflow v2.14.0-rc0
 http_archive(
     name = "org_tensorflow",
+    patches = ["//third_party/tensorflow:internal_visibility.patch"],
     sha256 = "b54cb7ac94a74bbab4ffc40e362d684e9b08b4a10a307022f24cb80706765367",
     strip_prefix = "tensorflow-2.14.0-rc0",
-    patches = ["//third_party/tensorflow:internal_visibility.patch"],
     urls = [
         "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.0-rc0.tar.gz",
     ],
