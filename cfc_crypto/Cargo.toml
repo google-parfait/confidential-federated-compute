@@ -5,7 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-aes-gcm = "*"
+aes-gcm-siv = "*"
 anyhow = { version = "*", default-features = false }
 coset = { version = "*", default-features = false }
 hpke = { version = "*" }

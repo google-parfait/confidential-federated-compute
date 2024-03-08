@@ -38,6 +38,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes-gcm-siv"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae0784134ba9375416d469ec31e7c5f9fa94405049cf08c5ce5b4698be673e0d"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "polyval",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,7 +157,7 @@ checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 name = "cfc_crypto"
 version = "0.1.0"
 dependencies = [
- "aes-gcm",
+ "aes-gcm-siv",
  "anyhow",
  "coset",
  "googletest",
@@ -987,7 +1002,7 @@ version = "0.1.0"
 source = "git+https://github.com/project-oak/oak?rev=046bf491a4508d6bb4db8793275e70e35c8e15eb#046bf491a4508d6bb4db8793275e70e35c8e15eb"
 dependencies = [
  "quote",
- "syn 1.0.109",
+ "syn 2.0.48",
 ]
 
 [[package]]

@@ -16,9 +16,9 @@
 
 extern crate alloc;
 
-use aes_gcm::{
+use aes_gcm_siv::{
     aead::{Aead, OsRng, Payload},
-    Aes128Gcm, KeyInit,
+    Aes128GcmSiv, KeyInit,
 };
 use alloc::{vec, vec::Vec};
 use anyhow::anyhow;
@@ -160,8 +160,8 @@ pub fn encrypt_message(
     associated_data: &[u8],
 ) -> anyhow::Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
     // Encrypt the plaintext using AEAD.
-    let symmetric_key = Aes128Gcm::generate_key(OsRng);
-    let cipher = Aes128Gcm::new(&symmetric_key);
+    let symmetric_key = Aes128GcmSiv::generate_key(OsRng);
+    let cipher = Aes128GcmSiv::new(&symmetric_key);
     let ciphertext = cipher
         .encrypt(
             (&NONCE).into(),
@@ -276,7 +276,7 @@ pub fn decrypt_message(
         .and_then(|(_, value)| value.as_bytes())
         .ok_or_else(|| anyhow!("CoseKey missing K parameter"))?;
 
-    let cipher = Aes128Gcm::new_from_slice(raw_symmetric_key)
+    let cipher = Aes128GcmSiv::new_from_slice(raw_symmetric_key)
         .map_err(|err| anyhow!("failed to load symmetric key: {:?}", err))?;
     cipher
         .decrypt(
