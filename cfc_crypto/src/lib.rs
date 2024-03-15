@@ -45,6 +45,7 @@ static INFO: [u8; 0] = [];
 // Private CWT claims; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
 pub const PUBLIC_KEY_CLAIM: i64 = -65537;
+pub const CONFIG_PROPERTIES_CLAIM: i64 = -65538;
 
 // Private CoseKey algorithms; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
