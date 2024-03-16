@@ -169,6 +169,15 @@ pub fn verify_attestation<'a>(
         let cwt = CoseSign1::from_slice(public_key)
             .map_err(anyhow::Error::msg)
             .context("invalid public key")?;
+        if cwt.protected.header.alg.is_some()
+            && cwt.protected.header.alg
+                != Some(coset::Algorithm::Assigned(coset::iana::Algorithm::ES256))
+        {
+            return Err(anyhow::anyhow!(
+                "unsupported public key algorithm: {:?}",
+                cwt.protected.header.alg.unwrap()
+            ));
+        }
         let extracted_evidence = verify_dice_chain(evidence).context("invalid DICE chain")?;
         let verifying_key =
             VerifyingKey::from_sec1_bytes(&extracted_evidence.signing_public_key)
@@ -284,7 +293,9 @@ mod tests {
     use super::*;
     use alloc::{collections::BTreeMap, vec, vec::Vec};
     use cfc_crypto::PUBLIC_KEY_CLAIM;
-    use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
+    use coset::{
+        cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder, HeaderBuilder,
+    };
     use federated_compute::proto::{
         struct_matcher::FieldMatcher, value_matcher::number_matcher::Kind as NumberMatcherKind,
     };
@@ -296,6 +307,18 @@ mod tests {
 
     /// Helper function to create a valid public key.
     fn create_public_key(config_properties: Option<&prost_types::Struct>) -> (Vec<u8>, CoseKey) {
+        create_public_key_with_algorithm(config_properties, Some(coset::iana::Algorithm::ES256))
+    }
+
+    /// Helper function to create a public key with a specific algorithm.
+    fn create_public_key_with_algorithm(
+        config_properties: Option<&prost_types::Struct>,
+        algorithm: Option<coset::iana::Algorithm>,
+    ) -> (Vec<u8>, CoseKey) {
+        let mut header = HeaderBuilder::new();
+        if let Some(alg) = algorithm {
+            header = header.algorithm(alg);
+        }
         let (_, cose_key) = cfc_crypto::gen_keypair(b"key-id");
         let mut claims = ClaimsSetBuilder::new().private_claim(
             PUBLIC_KEY_CLAIM,
@@ -305,6 +328,7 @@ mod tests {
             claims = claims.private_claim(CONFIG_PROPERTIES_CLAIM, Value::from(cp.encode_to_vec()));
         }
         let cwt = CoseSign1Builder::new()
+            .protected(header.build())
             .payload(claims.build().to_vec().unwrap())
             .create_signature(b"", |message| {
                 MockSigner::create()
@@ -503,6 +527,12 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_attestation_without_public_key_alg() {
+        let (cwt, _) = create_public_key_with_algorithm(None, None);
+        verify_attestation(&cwt, None, None, "tag").unwrap();
+    }
+
+    #[test]
     fn test_verify_attestation_without_config_properties() -> anyhow::Result<()> {
         let (cwt, _) = create_public_key(None);
         let (app, _) = verify_attestation(&cwt, None, None, "tag")?;
@@ -525,6 +555,17 @@ mod tests {
         assert_that!(
             verify_attestation(&cwt, Some(&evidence), None, ""),
             err(displays_as(contains_substring("invalid DICE chain")))
+        );
+    }
+
+    #[test]
+    fn test_verify_attestation_invalid_public_key_alg() {
+        let (cwt, _) = create_public_key_with_algorithm(None, Some(coset::iana::Algorithm::ES256K));
+        assert_that!(
+            verify_attestation(&cwt, Some(&get_test_evidence()), None, "tag"),
+            err(displays_as(contains_substring(
+                "unsupported public key algorithm"
+            )))
         );
     }
 
