@@ -43,6 +43,7 @@ filegroup(
 py_test(
     name = "pipeline_transform_server_test",
     srcs = ["pipeline_transform_server_test.py"],
+    tags = ["no-remote-exec"],  # https://github.com/bazelbuild/rules_python/issues/571
     deps = [
         ":pipeline_transform_server",
         ":tff_transforms",
@@ -69,6 +70,7 @@ py_library(
 py_test(
     name = "tff_transforms_test",
     srcs = ["tff_transforms_test.py"],
+    tags = ["no-remote-exec"],  # https://github.com/bazelbuild/rules_python/issues/571
     deps = [
         ":tff_transforms",
         "//tff_worker/server/testing:checkpoint_test_utils",
