@@ -39,7 +39,6 @@ oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12",
     entrypoint = ["/main"],
-    tags = ["no-remote-exec"],  # https://github.com/bazel-contrib/rules_oci/issues/477
     tars = [":tar"],
 )
 
