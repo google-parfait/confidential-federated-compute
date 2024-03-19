@@ -24,6 +24,7 @@
 #include "absl/strings/string_view.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "google/protobuf/struct.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
@@ -34,8 +35,15 @@ namespace confidential_federated_compute {
 // This class is threadsafe.
 class RecordDecryptor {
  public:
+  // Constructs a new RecordDecryptor.
+  //
+  // Optional configuration properties may be supplied in a Struct to document
+  // any important configuration that should be verifiable during attestation;
+  // see ApplicationMatcher.config_properties in
+  // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/access_policy.proto.
   RecordDecryptor(const google::protobuf::Any& configuration,
-                  oak::containers::v1::OrchestratorCrypto::StubInterface& stub);
+                  oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
+                  google::protobuf::Struct config_properties = {});
 
   // RecordDecryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
@@ -44,8 +52,8 @@ class RecordDecryptor {
 
   // Returns a string_view encoding a public key and signature (represented as a
   // signed CWT). This key can be used for encrypting messages that can be
-  // decrypted by this object.
-  // TODO: b/288331695 - document configuration-based claims.
+  // decrypted by this object. The CWT also contains claims for any
+  // configuration properties supplied when the RecordDecryptor was constructed.
   //
   // This class must outlive the string_view that is returned.
   //
