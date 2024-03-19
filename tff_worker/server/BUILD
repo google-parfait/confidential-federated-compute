@@ -86,7 +86,6 @@ cc_library(
     name = "cpp_pipeline_transform_server",
     srcs = ["pipeline_transform_server.cc"],
     hdrs = ["pipeline_transform_server.h"],
-    tags = ["manual"],  # TF compilation is causing CI timeouts
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
@@ -118,7 +117,7 @@ cc_test(
         "//tff_worker/server/testing:aggregation_computation.pbtxt",
         "//tff_worker/server/testing:client_work_computation.pbtxt",
     ],
-    tags = ["manual"],  # TF compilation is causing CI timeouts.
+    tags = ["no-remote-exec"],  # Linking is very slow and fails remotely.
     deps = [
         ":cpp_pipeline_transform_server",
         "@com_github_grpc_grpc//:grpc++",
