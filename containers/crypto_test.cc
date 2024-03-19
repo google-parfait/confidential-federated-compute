@@ -213,7 +213,7 @@ TEST(CryptoTest, GetPublicKey) {
   ASSERT_TRUE(cwt.ok()) << cwt.status();
 
   absl::StatusOr<std::string> sig_structure =
-      cwt->BuildSigStructure(/*aad=*/"");
+      cwt->BuildSigStructureForSigning(/*aad=*/"");
   ASSERT_TRUE(sig_structure.ok()) << sig_structure.status();
   EXPECT_EQ(sign_request.message(), *sig_structure);
   EXPECT_EQ(cwt->signature, "signature");

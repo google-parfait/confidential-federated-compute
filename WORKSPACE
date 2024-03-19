@@ -152,9 +152,9 @@ rules_proto_toolchains()
 http_archive(
     name = "federated-compute",
     patches = ["//third_party/federated_compute:libcppbor.patch"],
-    sha256 = "12dd56568211d6f17798d9cee7443a05e76dcfd96a6e5f4032a0b65472f263cf",
-    strip_prefix = "federated-compute-44120b3989d6b53bd61ce190bb22baccb063602a",
-    url = "https://github.com/google/federated-compute/archive/44120b3989d6b53bd61ce190bb22baccb063602a.tar.gz",
+    sha256 = "462288a845f22a6e543c9a83afdbcbcc76177166cdf443fcb2e43be1894431da",
+    strip_prefix = "federated-compute-2c02e31913257cd454d19cb0d5f4f9d7876f68fa",
+    url = "https://github.com/google/federated-compute/archive/2c02e31913257cd454d19cb0d5f4f9d7876f68fa.tar.gz",
 )
 
 git_repository(

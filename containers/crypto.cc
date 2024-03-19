@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/crypto.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/base/attributes.h"
@@ -36,6 +37,9 @@ using ::oak::containers::v1::OrchestratorCrypto;
 
 constexpr size_t kNonceSize = 16;
 
+// See https://www.iana.org/assignments/cose/cose.xhtml.
+constexpr int64_t kAlgorithmES256 = -7;
+
 absl::StatusOr<std::string> SignWithOrchestrator(
     OrchestratorCrypto::StubInterface& stub, absl::string_view message) {
   grpc::ClientContext context;
@@ -53,10 +57,11 @@ absl::StatusOr<std::string> SignWithOrchestrator(
 
 RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration,
                                  OrchestratorCrypto::StubInterface& stub)
-    : signed_public_key_(
-          message_decryptor_.GetPublicKey([&stub](absl::string_view message) {
+    : signed_public_key_(message_decryptor_.GetPublicKey(
+          [&stub](absl::string_view message) {
             return SignWithOrchestrator(stub, message);
-          })) {}
+          },
+          kAlgorithmES256)) {}
 
 absl::StatusOr<absl::string_view> RecordDecryptor::GetPublicKey() const {
   if (!signed_public_key_.ok()) {
