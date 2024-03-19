@@ -11,3 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+platform(
+    name = "remote_platform",
+    parents = ["@local_config_platform//:host"],
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    exec_properties = {
+        "container-image": "docker://gcr.io/fcp-infra/fcp-build@sha256:4a33c4b91e3d146ed654a731ee4827629d8f2ebbcad21998082d7555c79a3f42",
+        "OSFamily": "Linux",
+    },
+)

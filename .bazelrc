@@ -42,3 +42,15 @@ build:ubsan --linkopt=-fsanitize=undefined
 # work around linker errors.
 build:ubsan --linkopt=-fsanitize-link-c++-runtime
 build:ubsan --action_env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+
+# Settings for remote build execution.
+build:cfc-remote --experimental_allow_tags_propagation
+build:cfc-remote --define=EXECUTOR=remote
+build:cfc-remote --remote_executor=grpcs://us-west1-remotebuildexecution.googleapis.com
+build:cfc-remote --remote_instance_name=projects/560162532548/instances/rbe_instance
+build:cfc-remote --noremote_upload_local_results
+build:cfc-remote --google_default_credentials
+build:cfc-remote --extra_execution_platforms=//:remote_platform
+build:cfc-remote --host_platform=//:remote_platform
+build:cfc-remote --platforms=//:remote_platform
+build:cfc-remote --jobs=50
