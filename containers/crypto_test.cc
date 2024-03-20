@@ -21,6 +21,8 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/struct.pb.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
 #include "proto/containers/orchestrator_crypto.pb.h"
@@ -204,13 +206,18 @@ TEST(CryptoTest, GetPublicKey) {
                       Return(grpc::Status::OK)));
 
   google::protobuf::Any config;
-  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+  google::protobuf::Struct config_properties;
+  (*config_properties.mutable_fields())["test"].set_bool_value(true);
+  RecordDecryptor record_decryptor(config, mock_crypto_stub, config_properties);
 
   absl::StatusOr<absl::string_view> public_key =
       record_decryptor.GetPublicKey();
   ASSERT_TRUE(public_key.ok()) << public_key.status();
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(*public_key);
   ASSERT_TRUE(cwt.ok()) << cwt.status();
+  EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(
+      cwt->config_properties, config_properties))
+      << "Actual: " << cwt->config_properties.DebugString();
 
   absl::StatusOr<std::string> sig_structure =
       cwt->BuildSigStructureForSigning(/*aad=*/"");

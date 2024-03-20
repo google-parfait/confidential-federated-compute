@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
@@ -25,6 +26,7 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "grpcpp/client_context.h"
+#include "google/protobuf/struct.pb.h"
 #include "openssl/rand.h"
 #include "proto/containers/orchestrator_crypto.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
@@ -56,8 +58,10 @@ absl::StatusOr<std::string> SignWithOrchestrator(
 }  // namespace
 
 RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration,
-                                 OrchestratorCrypto::StubInterface& stub)
-    : signed_public_key_(message_decryptor_.GetPublicKey(
+                                 OrchestratorCrypto::StubInterface& stub,
+                                 google::protobuf::Struct config_properties)
+    : message_decryptor_(std::move(config_properties)),
+      signed_public_key_(message_decryptor_.GetPublicKey(
           [&stub](absl::string_view message) {
             return SignWithOrchestrator(stub, message);
           },
