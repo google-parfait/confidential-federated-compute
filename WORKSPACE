@@ -91,21 +91,19 @@ load("@pypi_deps//:requirements.bzl", "install_deps")
 # Call it to define repos for requirements.
 install_deps()
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-
-# We must build TFF protos from source as they are not included in the version
-# of TFF released as a python package.
-git_repository(
+http_archive(
     name = "tensorflow-federated",
+    patches = [
+        "//third_party/tensorflow_federated:BUILD.patch",
+        "//third_party/tensorflow_federated:executor.patch",
+        "//third_party/tensorflow_federated:executors.patch",
+    ],
     # Note that we also depend on TFF from a pypi dependency in requirements.txt
     # If the version used here for protos is incompatible with the version used
     # for the rest of TFF, it could cause issues.
-    tag = "v0.63.0",
-    patches = [
-        "//third_party/tensorflow_federated:BUILD.patch",
-        "//third_party/tensorflow_federated:executors.patch",
-    ],
-    remote = "https://github.com/tensorflow/federated.git",
+    sha256 = "03928b8e702b81a5f2c4b1a50dd6500e4819236e23ab06a705f83108499c772c",
+    strip_prefix = "federated-0.63.0",
+    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.63.0.tar.gz"
 )
 
 # Use pre-release version of Tensorflow because it is compatible with hermetic
