@@ -16,12 +16,11 @@
 #include <memory>
 #include <string>
 
-#include "absl/log/log.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
-#include "containers/sql_server/sql_data.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/aggregation/testing/test_data.h"
@@ -77,7 +76,6 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
-using ::sql_data::SqlData;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::testing::Test;
@@ -187,6 +185,21 @@ TEST_F(SqlPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
               HasSubstr("ConfigureAndAttest can only be called once"));
 }
 
+TEST_F(SqlPipelineTransformTest, ConfigureAndAttestInvalidTableSchema) {
+  grpc::ClientContext context;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  SqlQuery query;
+  DatabaseSchema* input_schema = query.mutable_database_schema();
+  input_schema->add_table();
+  request.mutable_configuration()->PackFrom(query);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("SQL query input schema has no columns"));
+}
+
 TEST_F(SqlPipelineTransformTest, ValidConfigureAndAttest) {
   grpc::ClientContext context;
   ConfigureAndAttestRequest request;
@@ -250,6 +263,48 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
+}
+
+TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQueryWithNoInputRows) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "no_rows";
+  std::string output_col_name = "output_col";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema, "SELECT no_rows AS output_col FROM input",
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  ASSERT_TRUE(stub_
+                  ->ConfigureAndAttest(&configure_context, configure_request,
+                                       &configure_response)
+                  .ok());
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(
+      BuildSingleInt64TensorCheckpoint(input_col_name, {}));
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+  ASSERT_TRUE(transform_status.ok());
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
+  ASSERT_EQ(col_values->num_elements(), 0);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
 }
 
 TEST_F(SqlPipelineTransformTest, TransformDecryptsRecordAndExecutesSqlQuery) {

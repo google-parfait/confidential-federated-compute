@@ -21,26 +21,75 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "containers/crypto.h"
-#include "containers/sql_server/sql_data.pb.h"
-#include "containers/sql_server/sql_data_converter.h"
 #include "containers/sql_server/sqlite_adapter.h"
+#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "google/protobuf/repeated_ptr_field.h"
 
 namespace confidential_federated_compute::sql_server {
 
+using ::fcp::aggregation::CheckpointBuilder;
+using ::fcp::aggregation::CheckpointParser;
+using ::fcp::aggregation::DataType;
+using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
+using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
+using ::fcp::aggregation::Tensor;
 using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
+using ::google::protobuf::RepeatedPtrField;
 using ::grpc::ServerContext;
-using ::sql_data::SqlData;
-using ::fcp::confidentialcompute::SqlQuery;
+
+namespace {
+
+absl::StatusOr<std::vector<TensorColumn>> Deserialize(
+    absl::Cord serialized_data, const TableSchema& table_schema) {
+  std::vector<TensorColumn> columns(table_schema.column_size());
+  FederatedComputeCheckpointParserFactory parser_factory;
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
+                       parser_factory.Create(serialized_data));
+  std::optional<int> num_rows;
+  for (int i = 0; i < table_schema.column_size(); i++) {
+    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
+                         parser->GetTensor(table_schema.column(i).name()));
+    if (!num_rows.has_value()) {
+      num_rows.emplace(tensor_column_values.num_elements());
+    } else if (num_rows.value() != tensor_column_values.num_elements()) {
+      return absl::InvalidArgumentError(
+          "Record has columns with differing numbers of rows.");
+    }
+    FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
+                         TensorColumn::Create(table_schema.column(i),
+                                              std::move(tensor_column_values)));
+    columns[i] = std::move(tensor_column);
+  }
+  return columns;
+}
+
+absl::StatusOr<absl::Cord> Serialize(std::vector<TensorColumn> columns) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  for (auto& column : columns) {
+    FCP_RETURN_IF_ERROR(
+        ckpt_builder->Add(column.column_schema_.name(), column.tensor_));
+  }
+
+  return ckpt_builder->Build();
+}
+
+}  // namespace
 
 absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
@@ -51,6 +100,9 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
     return absl::InvalidArgumentError(
         "SQL query input or output schema does not contain exactly "
         "one table schema.");
+  }
+  if (sql_query.database_schema().table(0).column_size() == 0) {
+    return absl::InvalidArgumentError("SQL query input schema has no columns.");
   }
   const RecordDecryptor* record_decryptor;
   {
@@ -121,32 +173,33 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
     configuration = &*configuration_;
   }
 
-  sql_data::SqlData sql_input_data;
-  for (const fcp::confidentialcompute::Record& record : request->inputs()) {
-    FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
-                         record_decryptor->DecryptRecord(record));
-    FCP_RETURN_IF_ERROR(AddWireFormatDataToSqlData(
-        unencrypted_data, configuration->input_schema, sql_input_data));
-  }
-
-  SqlData result;
-
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
-  FCP_RETURN_IF_ERROR(
-      sqlite->DefineTable(configuration->input_schema.create_table_sql()));
+  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration->input_schema));
+  for (const Record& record : request->inputs()) {
+    FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
+                         record_decryptor->DecryptRecord(record));
+    FCP_ASSIGN_OR_RETURN(
+        std::vector<TensorColumn> contents,
+        Deserialize(absl::Cord(unencrypted_data), configuration->input_schema));
+    if (contents.size() > 0) {
+      int num_rows = contents.at(0).tensor_.num_elements();
+      FCP_RETURN_IF_ERROR(
+          sqlite->AddTableContents(std::move(contents), num_rows));
+    }
+  }
 
-  FCP_RETURN_IF_ERROR(
-      sqlite->SetTableContents(configuration->input_schema, sql_input_data));
-
-  FCP_ASSIGN_OR_RETURN(result,
+  FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> result,
                        sqlite->EvaluateQuery(configuration->query,
                                              configuration->output_columns));
 
-  FCP_ASSIGN_OR_RETURN(std::string output_data,
-                       ConvertSqlDataToWireFormat(result));
+  FCP_ASSIGN_OR_RETURN(absl::Cord output_data, Serialize(std::move(result)));
+  // Protobuf version 23.0 is required to use [ctype = CORD], however, we can't
+  // use this since it isn't currently compatible with TensorFlow.
+  std::string ckpt_string;
+  absl::CopyCordToString(output_data, &ckpt_string);
   Record* output = response->add_outputs();
-  output->set_unencrypted_data(std::move(output_data));
+  output->set_unencrypted_data(std::move(ckpt_string));
 
   return absl::OkStatus();
 }
