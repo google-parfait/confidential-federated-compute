@@ -6,8 +6,8 @@ common --experimental_repo_remote_exec
 build:asan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan --compilation_mode=dbg
 build:asan --strip=never
-# Using -g gives file names and line numbers in the warning messages.
-build:asan --copt=-g
+# Using -gmlt gives file names and line numbers in the warning messages.
+build:asan --copt=-gmlt
 # To get reasonable performance, docs recommend adding -O1. See
 # https://clang.llvm.org/docs/AddressSanitizer.html
 build:asan --copt=-O1
@@ -20,8 +20,8 @@ build:tsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:tsan --compilation_mode=dbg
 build:tsan --strip=never
 build:tsan --copt=-fsanitize=thread
-# Using -g gives file names and line numbers in the warning messages.
-build:tsan --copt=-g
+# Using -gmlt gives file names and line numbers in the warning messages.
+build:tsan --copt=-gmlt
 # To get reasonable performance, docs recommend adding -O1. See
 # https://clang.llvm.org/docs/ThreadSanitizer.html
 build:tsan --copt=-O1
@@ -32,8 +32,8 @@ build:tsan --action_env TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
 build:ubsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:ubsan --compilation_mode=dbg
 build:ubsan --strip never
-# Using -g gives file names and line numbers in the warning messages.
-build:ubsan --copt=-g
+# Using -gmlt gives file names and line numbers in the warning messages.
+build:ubsan --copt=-gmlt
 build:ubsan --copt=-fsanitize=undefined
 build:ubsan --copt=-fno-omit-frame-pointer
 build:ubsan --linkopt=-fsanitize=undefined

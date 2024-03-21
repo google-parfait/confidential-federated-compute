@@ -117,7 +117,6 @@ cc_test(
         "//tff_worker/server/testing:aggregation_computation.pbtxt",
         "//tff_worker/server/testing:client_work_computation.pbtxt",
     ],
-    tags = ["no-remote-exec"],  # Linking is very slow and fails remotely.
     deps = [
         ":cpp_pipeline_transform_server",
         "@com_github_grpc_grpc//:grpc++",
@@ -137,7 +136,4 @@ cc_test(
         "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
         "@tensorflow-federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
-    # Static registration needs always_link to avoid accidental removal by the linker.
-    linkstatic=True,
 )
-
