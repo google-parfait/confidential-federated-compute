@@ -59,6 +59,38 @@ using ::google::internal::federated::plan::
 using ::testing::HasSubstr;
 using ::testing::Test;
 
+TEST(TensorColumnTest, ValidCreate) {
+  absl::StatusOr<Tensor> int_tensor = Tensor::Create(
+      DataType::DT_INT64, {1}, std::move(CreateTestData<uint64_t>({1})));
+  CHECK_OK(int_tensor);
+
+  ColumnSchema int_col_schema;
+  int_col_schema.set_name("col");
+  int_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+
+  absl::StatusOr<TensorColumn> int_column =
+      TensorColumn::Create(int_col_schema, std::move(int_tensor.value()));
+  CHECK_OK(int_column);
+}
+
+TEST(TensorColumnTest, InvalidCreate) {
+  absl::StatusOr<Tensor> int_tensor = Tensor::Create(
+      DataType::DT_INT64, {1}, std::move(CreateTestData<uint64_t>({1})));
+  CHECK_OK(int_tensor);
+
+  ColumnSchema str_col_schema;
+  str_col_schema.set_name("col");
+  str_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+
+  absl::StatusOr<TensorColumn> int_column =
+      TensorColumn::Create(str_col_schema, std::move(int_tensor.value()));
+
+  ASSERT_TRUE(absl::IsInvalidArgument(int_column.status()));
+  ASSERT_THAT(int_column.status().message(),
+              HasSubstr("Column `col` type (DT_INT64) does not match the "
+                        "ColumnSchema type (STRING)"));
+}
+
 class SqliteAdapterTest : public Test {
  protected:
   std::unique_ptr<SqliteAdapter> sqlite_;

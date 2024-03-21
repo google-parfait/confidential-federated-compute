@@ -44,6 +44,7 @@ using ::fcp::aggregation::TensorData;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::TableSchema;
+using ::google::internal::federated::plan::ExampleQuerySpec;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::internal::federated::plan::
@@ -263,7 +264,9 @@ absl::StatusOr<TensorColumn> TensorColumn::Create(ColumnSchema column_schema,
   if (tensor.dtype() != schema_dtype) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Column `%s` type (%s) does not match the ColumnSchema type (%s).",
-        column_schema.name(), tensor.dtype(), column_schema.type()));
+        column_schema.name(), DataType_Name(tensor.dtype()),
+        ExampleQuerySpec::OutputVectorSpec::DataType_Name(
+            column_schema.type())));
   }
   return TensorColumn(column_schema, std::move(tensor));
 }
