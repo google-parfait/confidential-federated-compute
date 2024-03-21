@@ -19,6 +19,5 @@ compile_pip_requirements(
     extra_args = ["--allow-unsafe"],
     requirements_in = "requirements.in",
     requirements_txt = "requirements.txt",
-    tags = ["no-remote-exec"],  # Runs very slowly remotely.
     timeout = "long",
 )
