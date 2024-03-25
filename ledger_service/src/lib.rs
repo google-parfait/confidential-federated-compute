@@ -31,7 +31,7 @@ use federated_compute::proto::{
 };
 use oak_attestation::dice::evidence_to_proto;
 use oak_proto_rust::oak::attestation::v1::Evidence;
-use oak_restricted_kernel_sdk::{EvidenceProvider, Signer};
+use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -341,7 +341,7 @@ mod tests {
     };
     use googletest::prelude::*;
     use oak_attestation::proto::oak::crypto::v1::Signature;
-    use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
+    use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
 
     /// Macro asserting that a result is failed with a particular code and message.
     macro_rules! assert_err {

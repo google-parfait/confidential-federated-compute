@@ -222,7 +222,7 @@ pub fn verify_attestation<'a>(
 /// Helper function that returns a test Evidence message.
 #[cfg(test)]
 pub fn get_test_evidence() -> Evidence {
-    use oak_restricted_kernel_sdk::{mock_attestation::MockEvidenceProvider, EvidenceProvider};
+    use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, testing::MockEvidenceProvider};
 
     oak_attestation::dice::evidence_to_proto(
         MockEvidenceProvider::create()
@@ -254,9 +254,10 @@ pub fn get_test_endorsements() -> Endorsements {
 #[cfg(test)]
 pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::ReferenceValues {
     use oak_proto_rust::oak::attestation::v1::{
-        binary_reference_value, reference_values, ApplicationLayerReferenceValues,
-        BinaryReferenceValue, InsecureReferenceValues, KernelLayerReferenceValues,
-        OakRestrictedKernelReferenceValues, RootLayerReferenceValues, SkipVerification,
+        binary_reference_value, kernel_binary_reference_value, reference_values,
+        ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
+        KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
+        RootLayerReferenceValues, SkipVerification,
     };
 
     let skip = BinaryReferenceValue {
@@ -272,12 +273,15 @@ pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::Refe
                     ..Default::default()
                 }),
                 kernel_layer: Some(KernelLayerReferenceValues {
-                    kernel_image: Some(skip.clone()),
-                    kernel_cmd_line: Some(skip.clone()),
-                    kernel_setup_data: Some(skip.clone()),
+                    kernel: Some(KernelBinaryReferenceValue {
+                        r#type: Some(kernel_binary_reference_value::Type::Skip(
+                            SkipVerification::default(),
+                        )),
+                    }),
                     init_ram_fs: Some(skip.clone()),
                     memory_map: Some(skip.clone()),
                     acpi: Some(skip.clone()),
+                    ..Default::default()
                 }),
                 application_layer: Some(ApplicationLayerReferenceValues {
                     binary: Some(skip.clone()),
@@ -303,7 +307,7 @@ mod tests {
     use oak_proto_rust::oak::attestation::v1::{
         endorsements, OakRestrictedKernelEndorsements, ReferenceValues,
     };
-    use oak_restricted_kernel_sdk::{mock_attestation::MockSigner, Signer};
+    use oak_restricted_kernel_sdk::{crypto::Signer, testing::MockSigner};
 
     /// Helper function to create a valid public key.
     fn create_public_key(config_properties: Option<&prost_types::Struct>) -> (Vec<u8>, CoseKey) {

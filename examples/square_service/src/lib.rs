@@ -19,7 +19,7 @@ extern crate alloc;
 use alloc::{boxed::Box, format, vec};
 use byteorder::{ByteOrder, LittleEndian};
 use oak_attestation::dice::evidence_to_proto;
-use oak_restricted_kernel_sdk::{EvidenceProvider, Signer};
+use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
 use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
@@ -179,7 +179,7 @@ mod tests {
     use super::*;
     use coset::{CborSerializable, CoseSign1};
     use oak_attestation::proto::oak::crypto::v1::Signature;
-    use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
+    use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
     use pipeline_transforms::proto::Record;
     use sha2::{Digest, Sha256};
 

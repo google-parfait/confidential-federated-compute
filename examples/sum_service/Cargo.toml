@@ -14,6 +14,6 @@ pipeline_transforms = { path = "../../pipeline_transforms" }
 [dev-dependencies]
 anyhow = { version = "*", default-features = false }
 coset = { version = "*", default-features = false }
-oak_restricted_kernel_sdk = { workspace = true, features = ["mock_attestation"] }
+oak_restricted_kernel_sdk = { workspace = true, features = ["testing"] }
 pipeline_transforms = { path = "../../pipeline_transforms", features = ["test"] }
 sha2 = { version = "*", default-features = false }
