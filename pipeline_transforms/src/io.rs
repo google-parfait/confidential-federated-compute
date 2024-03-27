@@ -26,8 +26,10 @@ use crate::proto::{
 use alloc::{collections::BTreeSet, vec, vec::Vec};
 use anyhow::{anyhow, Context};
 use bitmask::bitmask;
-use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
+use cfc_crypto::{extract_key_from_cwt, CONFIG_PROPERTIES_CLAIM, PUBLIC_KEY_CLAIM};
 use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
+use prost::Message;
+use prost_types::Struct;
 use rand::{rngs::OsRng, RngCore};
 
 bitmask! {
@@ -49,31 +51,37 @@ pub struct RecordDecoder {
 }
 
 impl RecordDecoder {
-    /// Creates an `RecordDecoder` that supports all decryption modes.
+    /// Creates an `RecordDecoder` that supports all decryption modes and makes no claims about its
+    /// config properties.
     pub fn create<F>(signer: F) -> anyhow::Result<Self>
     where
         F: FnOnce(&[u8]) -> anyhow::Result<Vec<u8>>,
     {
-        Self::create_with_modes(signer, DecryptionModeSet::all())
+        Self::create_with_config_and_modes(signer, &Struct::default(), DecryptionModeSet::all())
     }
 
-    /// Constructs a new RecordDecoder that only supports the specified modes.
-    pub fn create_with_modes<F>(signer: F, allowed_modes: DecryptionModeSet) -> anyhow::Result<Self>
+    /// Constructs a new RecordDecoder that claims the specified config properties and only
+    /// supports the specified modes.
+    pub fn create_with_config_and_modes<F>(
+        signer: F,
+        config: &Struct,
+        allowed_modes: DecryptionModeSet,
+    ) -> anyhow::Result<Self>
     where
         F: FnOnce(&[u8]) -> anyhow::Result<Vec<u8>>,
     {
         let (private_key, cose_key) = cfc_crypto::gen_keypair(b"key-id");
+        let mut claims = ClaimsSetBuilder::new().private_claim(
+            PUBLIC_KEY_CLAIM,
+            Value::from(cose_key.to_vec().map_err(anyhow::Error::msg)?),
+        );
+        if !config.fields.is_empty() {
+            claims =
+                claims.private_claim(CONFIG_PROPERTIES_CLAIM, Value::from(config.encode_to_vec()))
+        }
+
         let public_key = CoseSign1Builder::new()
-            .payload(
-                ClaimsSetBuilder::new()
-                    .private_claim(
-                        PUBLIC_KEY_CLAIM,
-                        Value::from(cose_key.to_vec().map_err(anyhow::Error::msg)?),
-                    )
-                    .build()
-                    .to_vec()
-                    .map_err(anyhow::Error::msg)?,
-            )
+            .payload(claims.build().to_vec().map_err(anyhow::Error::msg)?)
             .try_create_signature(b"", signer)?
             .build()
             .to_vec()
@@ -265,7 +273,11 @@ pub fn create_rewrapped_record(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coset::{CborSerializable, CoseSign1};
+    use alloc::collections::BTreeMap;
+    use coset::{
+        cwt::{ClaimName, ClaimsSet},
+        CborSerializable, CoseSign1,
+    };
     use googletest::prelude::*;
     use sha2::{Digest, Sha256};
 
@@ -299,9 +311,12 @@ mod tests {
             ..Default::default()
         };
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::Unencrypted.into())
-                .unwrap();
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionMode::Unencrypted.into(),
+        )
+        .unwrap();
         assert_eq!(decoder.decode(&input)?, b"data".to_vec());
         Ok(())
     }
@@ -313,8 +328,12 @@ mod tests {
             ..Default::default()
         };
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionModeSet::none()).unwrap();
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionModeSet::none(),
+        )
+        .unwrap();
         assert_that!(
             decoder.decode(&input),
             err(displays_as(contains_substring(
@@ -328,9 +347,20 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated data";
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
-                .unwrap();
+        let config = Struct {
+            fields: BTreeMap::from([(
+                "key".into(),
+                prost_types::Value {
+                    kind: Some(prost_types::value::Kind::NumberValue(3.0)),
+                },
+            )]),
+        };
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &config,
+            DecryptionMode::HpkePlusAead.into(),
+        )
+        .unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (input, _) = create_rewrapped_record(
             plaintext,
@@ -339,6 +369,22 @@ mod tests {
             nonce,
         )?;
         assert_eq!(decoder.decode(&input)?, plaintext.to_vec());
+
+        // Check the config properties claim.
+        let config_properties_claim = CoseSign1::from_slice(decoder.public_key())
+            .and_then(|cwt| ClaimsSet::from_slice(cwt.payload.as_deref().unwrap_or_default()))
+            .map(|claims| {
+                claims.rest.into_iter().find_map(|entry| match entry {
+                    (ClaimName::PrivateUse(CONFIG_PROPERTIES_CLAIM), Value::Bytes(v)) => Some(v),
+                    _ => None,
+                })
+            })
+            .expect("failed to decode CWT claims")
+            .expect("CONFIG_PROPERTIES_CLAIM not found");
+        assert_that!(
+            Struct::decode(config_properties_claim.as_slice()),
+            ok(eq(config))
+        );
         Ok(())
     }
 
@@ -347,8 +393,12 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data";
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionModeSet::none()).unwrap();
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionModeSet::none(),
+        )
+        .unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (input, _) = create_rewrapped_record(
             plaintext,
@@ -370,9 +420,12 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated data";
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
-                .unwrap();
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionMode::HpkePlusAead.into(),
+        )
+        .unwrap();
         let (input, _) = create_rewrapped_record(
             plaintext,
             ciphertext_associated_data,
@@ -391,9 +444,12 @@ mod tests {
         let plaintext = b"data";
         let ciphertext_associated_data = b"associated_data";
 
-        let mut decoder =
-            RecordDecoder::create_with_modes(sha256_sign, DecryptionMode::HpkePlusAead.into())
-                .unwrap();
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionMode::HpkePlusAead.into(),
+        )
+        .unwrap();
         let nonce = &decoder.generate_nonces(1)[0];
         let (mut input, _) = create_rewrapped_record(
             plaintext,
