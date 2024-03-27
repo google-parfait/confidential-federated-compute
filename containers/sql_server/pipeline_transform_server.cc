@@ -155,6 +155,10 @@ absl::Status SqlPipelineTransform::SqlGenerateNonces(
 
 absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
                                                 TransformResponse* response) {
+  if (request->inputs_size() != 1) {
+    return absl::InvalidArgumentError(
+        "Transform requires exactly one `Record` per request.");
+  }
   RecordDecryptor* record_decryptor;
   const SqlConfiguration* configuration;
   {
@@ -176,17 +180,16 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration->input_schema));
-  for (const Record& record : request->inputs()) {
-    FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
-                         record_decryptor->DecryptRecord(record));
-    FCP_ASSIGN_OR_RETURN(
-        std::vector<TensorColumn> contents,
-        Deserialize(absl::Cord(unencrypted_data), configuration->input_schema));
-    if (contents.size() > 0) {
-      int num_rows = contents.at(0).tensor_.num_elements();
-      FCP_RETURN_IF_ERROR(
-          sqlite->AddTableContents(std::move(contents), num_rows));
-    }
+  const Record& record = request->inputs(0);
+  FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
+                       record_decryptor->DecryptRecord(record));
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<TensorColumn> contents,
+      Deserialize(absl::Cord(unencrypted_data), configuration->input_schema));
+  if (contents.size() > 0) {
+    int num_rows = contents.at(0).tensor_.num_elements();
+    FCP_RETURN_IF_ERROR(
+        sqlite->AddTableContents(std::move(contents), num_rows));
   }
 
   FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> result,

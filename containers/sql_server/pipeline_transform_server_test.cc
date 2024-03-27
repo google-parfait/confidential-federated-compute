@@ -379,8 +379,7 @@ TEST_F(SqlPipelineTransformTest, TransformDecryptsRecordAndExecutesSqlQuery) {
   ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
 }
 
-TEST_F(SqlPipelineTransformTest,
-       TransformDecryptsMultipleRecordsAndExecutesSqlQuery) {
+TEST_F(SqlPipelineTransformTest, TransformFailsForMultipleRecords) {
   FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
   ConfigureAndAttestRequest configure_request;
@@ -406,74 +405,29 @@ TEST_F(SqlPipelineTransformTest,
       << "ConfigureAndAttest status code was: "
       << configure_and_attest_status.error_code();
 
-  std::string recipient_public_key = configure_response.public_key();
-
-  grpc::ClientContext nonces_context;
-  GenerateNoncesRequest nonces_request;
-  GenerateNoncesResponse nonces_response;
-  nonces_request.set_nonces_count(3);
-  grpc::Status generate_nonces_status =
-      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
-  ASSERT_TRUE(generate_nonces_status.ok())
-      << "GenerateNonces status code was: "
-      << generate_nonces_status.error_code();
-  ASSERT_THAT(nonces_response.nonces(), SizeIs(3));
-
-  std::string reencryption_public_key = "";
-  std::string ciphertext_associated_data = "ciphertext associated data";
-
   std::string message_1 =
       BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2});
-  absl::StatusOr<Record> rewrapped_record_1 =
-      crypto_test_utils::CreateRewrappedRecord(
-          message_1, ciphertext_associated_data, recipient_public_key,
-          nonces_response.nonces(0), reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
-
   std::string message_2 =
       BuildSingleInt64TensorCheckpoint(input_col_name, {3, 4, 5});
-  absl::StatusOr<Record> rewrapped_record_2 =
-      crypto_test_utils::CreateRewrappedRecord(
-          message_2, ciphertext_associated_data, recipient_public_key,
-          nonces_response.nonces(1), reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_2.ok()) << rewrapped_record_2.status();
-
-  std::string message_3 =
-      BuildSingleInt64TensorCheckpoint(input_col_name, {6, 7, 8, 9});
-  absl::StatusOr<Record> rewrapped_record_3 =
-      crypto_test_utils::CreateRewrappedRecord(
-          message_3, ciphertext_associated_data, recipient_public_key,
-          nonces_response.nonces(2), reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_3.ok()) << rewrapped_record_3.status();
 
   TransformRequest transform_request;
-  transform_request.add_inputs()->CopyFrom(*rewrapped_record_1);
-  transform_request.add_inputs()->CopyFrom(*rewrapped_record_2);
-  transform_request.add_inputs()->CopyFrom(*rewrapped_record_3);
+  transform_request.add_inputs()->set_unencrypted_data(message_1);
+  transform_request.add_inputs()->set_unencrypted_data(message_2);
 
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   grpc::Status transform_status = stub_->Transform(
       &transform_context, transform_request, &transform_response);
 
-  ASSERT_TRUE(transform_status.ok())
-      << "Transform status code was: " << transform_status.error_code();
-  ASSERT_EQ(transform_response.outputs_size(), 1);
-  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
-
-  absl::Cord wire_format_result(
-      transform_response.outputs(0).unencrypted_data());
-  auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor(output_col_name);
-  // The query sums the input column
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 45);
+  ASSERT_EQ(transform_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(transform_status.error_message(),
+              HasSubstr("Transform requires exactly one `Record` per request"));
 }
 
 TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {
   grpc::ClientContext context;
   TransformRequest request;
+  request.add_inputs();
   TransformResponse response;
   auto status = stub_->Transform(&context, request, &response);
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
