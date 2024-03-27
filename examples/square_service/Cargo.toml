@@ -6,10 +6,13 @@ license = "Apache-2.0"
 
 [dependencies]
 byteorder = { version = "*", default-features = false }
+federated_compute = { path = "../../third_party/federated_compute" }
 micro_rpc = { workspace = true }
 oak_attestation = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true }
 pipeline_transforms = { path = "../../pipeline_transforms" }
+prost = { version = "*", default-features = false }
+prost-types = { version = "*", default-features = false }
 
 [dev-dependencies]
 anyhow = { version = "*", default-features = false }

@@ -16,12 +16,13 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, format, vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use byteorder::{ByteOrder, LittleEndian};
+use federated_compute::proto::BlobHeader;
 use oak_attestation::dice::evidence_to_proto;
 use oak_restricted_kernel_sdk::{EvidenceProvider, Signer};
 use pipeline_transforms::{
-    io::{EncryptionMode, RecordDecoder, RecordEncoder},
+    io::{DecryptionModeSet, EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
         record::{
             hpke_plus_aead_data::{RewrappedAssociatedData, SymmetricKeyAssociatedDataComponents},
@@ -31,12 +32,15 @@ use pipeline_transforms::{
         GenerateNoncesResponse, PipelineTransform, TransformRequest, TransformResponse,
     },
 };
+use prost::Message;
+use prost_types::{value, Any, NullValue, Struct, Value};
 
 pub struct SquareService {
     evidence_provider: Box<dyn EvidenceProvider>,
     signer: Box<dyn Signer>,
     record_decoder: Option<RecordDecoder>,
     record_encoder: RecordEncoder,
+    dest_node_id: Option<u32>,
 }
 
 impl SquareService {
@@ -46,15 +50,68 @@ impl SquareService {
             signer,
             record_decoder: None,
             record_encoder: RecordEncoder,
+            dest_node_id: None,
         }
+    }
+
+    /// Updates access_policy_node_id in a serialized BlobHeader.
+    fn update_header(&self, header: &[u8]) -> Result<Vec<u8>, micro_rpc::Status> {
+        let mut decoded = BlobHeader::decode(header).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to decode BlobHeader: {:?}", err),
+            )
+        })?;
+        if let Some(id) = self.dest_node_id {
+            decoded.access_policy_node_id = id;
+        }
+        Ok(decoded.encode_to_vec())
     }
 }
 
 impl PipelineTransform for SquareService {
     fn configure_and_attest(
         &mut self,
-        _request: ConfigureAndAttestRequest,
+        request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
+        // Read the destination node id from the configuration.
+        self.dest_node_id = match request.configuration {
+            Some(Any { type_url, value })
+                if type_url == "type.googleapis.com/google.protobuf.UInt32Value" =>
+            {
+                Some(u32::decode(value.as_slice()).map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!(
+                            "failed to unpack configuration as an UInt32Value: {:?}",
+                            err
+                        ),
+                    )
+                })?)
+            }
+            Some(Any { type_url, .. }) if type_url.is_empty() => None,
+            Some(Any { type_url, .. }) => {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("unexpected type for configuration: {}", type_url),
+                ))
+            }
+            None => None,
+        };
+
+        // Generate the configuration included in the public key claims.
+        let config = Struct {
+            fields: BTreeMap::from([(
+                "dest".into(),
+                Value {
+                    kind: Some(match self.dest_node_id {
+                        Some(id) => value::Kind::NumberValue(id as f64),
+                        None => value::Kind::NullValue(NullValue::NullValue.into()),
+                    }),
+                },
+            )]),
+        };
+
         let evidence =
             evidence_to_proto(self.evidence_provider.get_evidence().clone()).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -63,7 +120,12 @@ impl PipelineTransform for SquareService {
                 )
             })?;
         self.record_decoder = Some(
-            RecordDecoder::create(|msg| Ok(self.signer.sign(msg)?.signature)).map_err(|err| {
+            RecordDecoder::create_with_config_and_modes(
+                |msg| Ok(self.signer.sign(msg)?.signature),
+                &config,
+                DecryptionModeSet::all(),
+            )
+            .map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::Internal,
                     format!("failed to create RecordDecoder: {:?}", err),
@@ -138,6 +200,7 @@ impl PipelineTransform for SquareService {
         LittleEndian::write_u64(&mut buffer, product);
 
         // SquareService maintains the encryption of its input.
+        let updated_header: Option<Vec<u8>>;
         let mode = match request.inputs[0].kind {
             Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
                 ciphertext_associated_data: ref header,
@@ -149,10 +212,13 @@ impl PipelineTransform for SquareService {
                         },
                     )),
                 ..
-            })) => EncryptionMode::HpkePlusAead {
-                public_key,
-                associated_data: header, // TODO(b/287284320): Update the header.
-            },
+            })) => {
+                updated_header = Some(self.update_header(header)?);
+                EncryptionMode::HpkePlusAead {
+                    public_key,
+                    associated_data: updated_header.as_ref().unwrap(),
+                }
+            }
             Some(RecordKind::HpkePlusAeadData(_)) => {
                 return Err(micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
@@ -177,7 +243,11 @@ impl PipelineTransform for SquareService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coset::{CborSerializable, CoseSign1};
+    use cfc_crypto::CONFIG_PROPERTIES_CLAIM;
+    use coset::{
+        cwt::{ClaimName, ClaimsSet},
+        CborSerializable, CoseSign1,
+    };
     use oak_attestation::proto::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::mock_attestation::{MockEvidenceProvider, MockSigner};
     use pipeline_transforms::proto::Record;
@@ -213,17 +283,66 @@ mod tests {
             Box::new(MockEvidenceProvider::create().unwrap()),
             Box::new(FakeSigner),
         );
-        let response = service.configure_and_attest(ConfigureAndAttestRequest::default())?;
+        let response = service.configure_and_attest(ConfigureAndAttestRequest {
+            configuration: Some(Any {
+                type_url: "type.googleapis.com/google.protobuf.UInt32Value".into(),
+                value: 3u32.encode_to_vec(),
+            }),
+        })?;
         assert!(!response.public_key.is_empty());
         assert!(response.attestation_evidence.is_some());
-        CoseSign1::from_slice(&response.public_key)
-            .unwrap()
-            .verify_signature(b"", |signature, message| {
-                anyhow::ensure!(signature == Sha256::digest(message).as_slice());
-                Ok(())
-            })
-            .expect("signature mismatch");
+        let cwt = CoseSign1::from_slice(&response.public_key).unwrap();
+        cwt.verify_signature(b"", |signature, message| {
+            anyhow::ensure!(signature == Sha256::digest(message).as_slice());
+            Ok(())
+        })
+        .expect("signature mismatch");
+        assert_eq!(
+            ClaimsSet::from_slice(&cwt.payload.unwrap_or_default())
+                .unwrap()
+                .rest
+                .iter()
+                .find(|(name, _)| name == &ClaimName::PrivateUse(CONFIG_PROPERTIES_CLAIM))
+                .map(|(_, value)| Struct::decode(value.as_bytes().unwrap().as_slice())),
+            Some(Ok(Struct {
+                fields: BTreeMap::from([(
+                    "dest".into(),
+                    Value {
+                        kind: Some(value::Kind::NumberValue(3.0)),
+                    }
+                ),]),
+            }))
+        );
         Ok(())
+    }
+
+    #[test]
+    fn test_configure_and_attest_with_empty_config() -> Result<(), micro_rpc::Status> {
+        let mut service = create_square_service();
+
+        // For backwards compatibility, configure_and_attest should succeed if the configuration is
+        // empty (either unset or set to the default Any).
+        service.configure_and_attest(ConfigureAndAttestRequest {
+            configuration: None,
+        })?;
+        service.configure_and_attest(ConfigureAndAttestRequest {
+            configuration: Some(Any::default()),
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_configure_and_attest_with_invalid_config() {
+        let mut service = create_square_service();
+
+        assert!(service
+            .configure_and_attest(ConfigureAndAttestRequest {
+                configuration: Some(Any {
+                    type_url: "type.googleapis.com/google.protobuf.DoubleValue".into(),
+                    value: 3.0.encode_to_vec(),
+                }),
+            })
+            .is_err());
     }
 
     #[test]
@@ -322,13 +441,24 @@ mod tests {
     #[test]
     fn test_transform_encrypted() -> Result<(), micro_rpc::Status> {
         let mut service = create_square_service();
-        let configure_response =
-            service.configure_and_attest(ConfigureAndAttestRequest::default())?;
+        let configure_response = service.configure_and_attest(ConfigureAndAttestRequest {
+            configuration: Some(Any {
+                type_url: "type.googleapis.com/google.protobuf.UInt32Value".into(),
+                value: 7u32.encode_to_vec(),
+            }),
+        })?;
         let nonces_response = service.generate_nonces(GenerateNoncesRequest { nonces_count: 1 })?;
+
+        let header = BlobHeader {
+            blob_id: b"blob-id".into(),
+            key_id: b"key-id".into(),
+            access_policy_node_id: 3,
+            ..Default::default()
+        };
 
         let (input, intermediary_private_key) = pipeline_transforms::io::create_rewrapped_record(
             &[4, 0, 0, 0, 0, 0, 0, 0],
-            b"associated data",
+            &header.encode_to_vec(),
             &configure_response.public_key,
             &nonces_response.nonces[0],
         )
@@ -361,6 +491,13 @@ mod tests {
                     .as_ref()
                     .expect("failed to decrypt output record"),
                     &[16, 0, 0, 0, 0, 0, 0, 0]
+                );
+                assert_eq!(
+                    BlobHeader::decode(ciphertext_associated_data.as_slice()).unwrap(),
+                    BlobHeader {
+                        access_policy_node_id: 7,
+                        ..header
+                    }
                 );
             }
             _ => panic!("output is not encrypted"),

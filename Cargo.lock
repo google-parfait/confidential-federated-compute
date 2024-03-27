@@ -1098,6 +1098,8 @@ dependencies = [
  "federated_compute",
  "googletest",
  "pipeline_transforms",
+ "prost",
+ "prost-types",
  "rand",
  "sha2",
 ]
@@ -1513,10 +1515,13 @@ dependencies = [
  "byteorder",
  "cfc_crypto",
  "coset",
+ "federated_compute",
  "micro_rpc",
  "oak_attestation",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
+ "prost",
+ "prost-types",
  "sha2",
 ]
 
