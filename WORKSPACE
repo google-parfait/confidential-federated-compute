@@ -52,11 +52,9 @@ http_archive(
 # Call py_repositories() first so rules_python can setup any state
 # subsequent things might need. See
 # https://github.com/bazelbuild/rules_python/issues/1560
-load("@rules_python//python:repositories.bzl", "py_repositories")
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
 
 py_repositories()
-
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python",
@@ -160,9 +158,9 @@ rules_proto_toolchains()
 http_archive(
     name = "federated-compute",
     patches = ["//third_party/federated_compute:libcppbor.patch"],
-    # sha256 = "462288a845f22a6e543c9a83afdbcbcc76177166cdf443fcb2e43be1894431da",
-    strip_prefix = "federated-compute-75a9cb20358497aa60e1caa616e02fa3d5e0e4f3",
-    url = "https://github.com/google/federated-compute/archive/75a9cb20358497aa60e1caa616e02fa3d5e0e4f3.tar.gz",
+    sha256 = "f967413afe17022a6811522debc1c4da95342e8b7ef16cb4b1b36cd15b9be61e",
+    strip_prefix = "federated-compute-0c1e57718ad94a536ecf32a3772fd50ff3560975",
+    url = "https://github.com/google/federated-compute/archive/0c1e57718ad94a536ecf32a3772fd50ff3560975.tar.gz",
 )
 
 git_repository(

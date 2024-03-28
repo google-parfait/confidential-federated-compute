@@ -70,8 +70,6 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::testing::Test;
 
-// TODO: Add a test that uses FedSqlGroupBy once the alignment issue with
-// GroupByAggregator is resolved.
 std::string BuildSingleInt32TensorCheckpoint(
     std::string column_name, std::initializer_list<int32_t> input_values) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
@@ -214,6 +212,103 @@ TEST_F(AggCoreTransformTest, TransformExecutesFederatedSum) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
+}
+
+std::string BuildFedSqlGroupByCheckpoint(
+    std::initializer_list<uint64_t> key_col_values,
+    std::initializer_list<uint64_t> val_col_values) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  absl::StatusOr<Tensor> key =
+      Tensor::Create(DataType::DT_INT64,
+                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
+                     CreateTestData<uint64_t>(key_col_values));
+  absl::StatusOr<Tensor> val =
+      Tensor::Create(DataType::DT_INT64,
+                     TensorShape({static_cast<int64_t>(val_col_values.size())}),
+                     CreateTestData<uint64_t>(val_col_values));
+  CHECK_OK(key);
+  CHECK_OK(val);
+  CHECK_OK(ckpt_builder->Add("key", *key));
+  CHECK_OK(ckpt_builder->Add("val", *val));
+  auto checkpoint = ckpt_builder->Build();
+  CHECK_OK(checkpoint.status());
+
+  std::string checkpoint_string;
+  absl::CopyCordToString(*checkpoint, &checkpoint_string);
+  return checkpoint_string;
+}
+
+TEST_F(AggCoreTransformTest, TransformExecutesFedSqlGroupBy) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  Configuration config = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_configs: {
+      intrinsic_uri: "fedsql_group_by"
+      intrinsic_args {
+        input_tensor {
+          name: "key"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+      }
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+      inner_intrinsics {
+        intrinsic_uri: "GoogleSQL:sum"
+        intrinsic_args {
+          input_tensor {
+            name: "val"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+        output_tensors {
+          name: "val_out"
+          dtype: DT_INT64
+          shape {}
+        }
+      }
+    }
+  )pb");
+  configure_request.mutable_configuration()->PackFrom(config);
+
+  ASSERT_TRUE(stub_
+                  ->ConfigureAndAttest(&configure_context, configure_request,
+                                       &configure_response)
+                  .ok());
+
+  std::string checkpoint_1 = BuildFedSqlGroupByCheckpoint({1, 1, 2}, {1, 2, 5});
+  std::string checkpoint_2 = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(checkpoint_1);
+  transform_request.add_inputs()->set_unencrypted_data(checkpoint_2);
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok()) << transform_status.error_message();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The query sums the val column, grouping by key
+  ASSERT_EQ(col_values->num_elements(), 3);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 7);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(1), 5);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(2), 0);
 }
 
 TEST_F(AggCoreTransformTest, MultipleTransformExecutionsSucceed) {
