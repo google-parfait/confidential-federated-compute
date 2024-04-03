@@ -29,14 +29,3 @@
 +  result.add(std::move(payload));
 +  result.add(Bstr(signature));
 +  return result.toString();
-@@ -407,4 +413,6 @@
--  return Array("Signature1", std::move(*item->asArray()->get(0)->asBstr()),
--               Bstr(aad.begin(), aad.end()),
--               std::move(*item->asArray()->get(2)->asBstr()))
--      .toString();
-+  Array result;
-+  result.add("Signature1");
-+  result.add(std::move(*item->asArray()->get(0)->asBstr()));
-+  result.add(Bstr(aad.begin(), aad.end()));
-+  result.add(std::move(*item->asArray()->get(2)->asBstr()));
-+  return result.toString();

@@ -73,7 +73,7 @@ http_archive(
 )
 
 load("@python//:defs.bzl", "interpreter")
-load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
+load("@rules_python//python:pip.bzl", "pip_parse")
 
 # Create a central repo that knows about the dependencies needed from
 # requirements.txt.
@@ -158,9 +158,9 @@ rules_proto_toolchains()
 http_archive(
     name = "federated-compute",
     patches = ["//third_party/federated_compute:libcppbor.patch"],
-    sha256 = "f967413afe17022a6811522debc1c4da95342e8b7ef16cb4b1b36cd15b9be61e",
-    strip_prefix = "federated-compute-0c1e57718ad94a536ecf32a3772fd50ff3560975",
-    url = "https://github.com/google/federated-compute/archive/0c1e57718ad94a536ecf32a3772fd50ff3560975.tar.gz",
+    sha256 = "cfa6d7e2007a1d0a78f52a5cefc395b39b1e46c41740e504c481e907d4baefc0",
+    strip_prefix = "federated-compute-909f8d8b7b2bf8777714ea46ab2e58fea9bbd52e",
+    url = "https://github.com/google/federated-compute/archive/909f8d8b7b2bf8777714ea46ab2e58fea9bbd52e.tar.gz",
 )
 
 git_repository(
