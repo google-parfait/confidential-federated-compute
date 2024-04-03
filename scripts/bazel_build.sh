@@ -41,11 +41,11 @@ declare -Ar RELEASE_TARGETS=(
 )
 
 if [ "$1" == "continuous" ]; then
-  ${BAZELISK} test //... --config=asan
+  ${BAZELISK} test //... --config=asan --build_tag_filters=-asan --test_tag_filters=-asan
 elif [ "$1" == "sanitizers" ]; then
-  ${BAZELISK} test //... --config=asan
-  ${BAZELISK} test //... --config=tsan
-  ${BAZELISK} test //... --config=ubsan
+  ${BAZELISK} test //... --config=asan --build_tag_filters=-asan --test_tag_filters=-asan
+  ${BAZELISK} test //... --config=tsan --build_tag_filters=-tsan --test_tag_filters=-tsan
+  ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
 elif [ "$1" == "release" ]; then
   ${BAZELISK} test //...
   ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}" \
