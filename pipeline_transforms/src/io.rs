@@ -19,7 +19,7 @@ use crate::proto::record::hpke_plus_aead_data::RewrappedAssociatedData;
 use crate::proto::{
     record::{
         hpke_plus_aead_data::{LedgerAssociatedData, SymmetricKeyAssociatedDataComponents},
-        HpkePlusAeadData, Kind as RecordKind,
+        CompressionType, HpkePlusAeadData, Kind as RecordKind,
     },
     Record,
 };
@@ -207,7 +207,10 @@ impl RecordEncoder {
                 })
             }
         };
-        Ok(Record { kind: Some(kind) })
+        Ok(Record {
+            kind: Some(kind),
+            compression_type: CompressionType::None.into(),
+        })
     }
 }
 
@@ -478,6 +481,7 @@ mod tests {
             RecordEncoder::default().encode(EncryptionMode::Unencrypted, data)?,
             Record {
                 kind: Some(RecordKind::UnencryptedData(data.to_vec())),
+                compression_type: CompressionType::None.into(),
                 ..Default::default()
             }
         );
