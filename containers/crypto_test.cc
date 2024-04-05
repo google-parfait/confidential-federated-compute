@@ -15,11 +15,13 @@
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/struct.pb.h"
@@ -32,7 +34,9 @@
 namespace confidential_federated_compute {
 namespace {
 
+using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::Record;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::_;
@@ -329,6 +333,43 @@ TEST(CryptoTest, GetPublicKeyTwice) {
       record_decryptor.GetPublicKey();
   ASSERT_TRUE(public_key_2.ok()) << public_key_2.status();
   ASSERT_EQ(*public_key, *public_key_2);
+}
+
+TEST(CryptoTest, EncryptRecordSuccess) {
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> recipient_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(recipient_public_key.ok());
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(*recipient_public_key);
+  ASSERT_TRUE(cwt.ok());
+  cwt->public_key->key_id = "key_id";
+
+  absl::StatusOr<std::string> public_key_with_key_id = cwt->Encode();
+  ASSERT_TRUE(public_key_with_key_id.ok());
+
+  RecordEncryptor encryptor;
+  absl::StatusOr<Record> encrypt_result =
+      encryptor.EncryptRecord("plaintext", *public_key_with_key_id,
+                              "policy_sha256", /*access_policy_node_id=*/1);
+
+  ASSERT_TRUE(encrypt_result.ok());
+  ASSERT_TRUE(encrypt_result->has_hpke_plus_aead_data());
+  BlobHeader updated_header;
+  updated_header.ParseFromString(
+      encrypt_result->hpke_plus_aead_data().ciphertext_associated_data());
+  ASSERT_EQ(updated_header.access_policy_node_id(), 1);
+  ASSERT_NE(updated_header.blob_id(), "");
+  ASSERT_EQ(updated_header.access_policy_sha256(), "policy_sha256");
+  ASSERT_EQ(updated_header.key_id(), "key_id");
+
+  absl::StatusOr<std::string> decrypted_result = decryptor.Decrypt(
+      encrypt_result->hpke_plus_aead_data().ciphertext(),
+      encrypt_result->hpke_plus_aead_data().ciphertext_associated_data(),
+      encrypt_result->hpke_plus_aead_data().encrypted_symmetric_key(),
+      encrypt_result->hpke_plus_aead_data().ciphertext_associated_data(),
+      encrypt_result->hpke_plus_aead_data().encapsulated_public_key());
+  ASSERT_TRUE(decrypted_result.ok()) << decrypted_result.status();
+  ASSERT_EQ(*decrypted_result, "plaintext");
 }
 
 }  // namespace

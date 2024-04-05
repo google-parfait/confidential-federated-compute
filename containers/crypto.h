@@ -23,11 +23,26 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
+
+// Class used to create an encrypted Record with a symmetric key that can be
+// decrypted by the Ledger.
+//
+// This class is threadsafe.
+class RecordEncryptor {
+ public:
+  absl::StatusOr<fcp::confidentialcompute::Record> EncryptRecord(
+      absl::string_view plaintext, absl::string_view public_key,
+      absl::string_view access_policy_sha256, uint32_t access_policy_node_id);
+
+ private:
+  const fcp::confidential_compute::MessageEncryptor message_encryptor_;
+};
 
 // Class used to decrypt Record protos that have been rewrapped for access by
 // this container by the Ledger.

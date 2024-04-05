@@ -26,7 +26,9 @@
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "grpcpp/client_context.h"
@@ -37,10 +39,16 @@
 namespace confidential_federated_compute {
 namespace {
 
+using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::
+    Record_HpkePlusAeadData_RewrappedAssociatedData;
 using ::oak::containers::v1::OrchestratorCrypto;
 
 constexpr size_t kNonceSize = 16;
+constexpr size_t kBlobIdSize = 16;
 
 // See https://www.iana.org/assignments/cose/cose.xhtml.
 constexpr int64_t kAlgorithmES256 = -7;
@@ -77,6 +85,44 @@ absl::StatusOr<std::string> Decompress(
 }
 
 }  // namespace
+
+absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
+    absl::string_view plaintext, absl::string_view public_key,
+    absl::string_view access_policy_sha256, uint32_t access_policy_node_id) {
+  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(public_key));
+  if (!cwt.public_key.has_value()) {
+    return absl::InvalidArgumentError("public key is invalid");
+  }
+  BlobHeader header;
+
+  std::string blob_id(kBlobIdSize, '\0');
+  // BoringSSL documentation says that it always returns 1 so we don't check
+  // the return value.
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  header.set_blob_id(blob_id);
+  header.set_key_id(cwt.public_key->key_id);
+  header.set_access_policy_node_id(access_policy_node_id);
+  header.set_access_policy_sha256(std::string(access_policy_sha256));
+  std::string serialized_header = header.SerializeAsString();
+
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor_.Encrypt(plaintext, public_key, serialized_header));
+
+  Record result;
+  Record::HpkePlusAeadData* hpke_plus_aead_data =
+      result.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_ciphertext(encrypted_message.ciphertext);
+  hpke_plus_aead_data->set_ciphertext_associated_data(serialized_header);
+  hpke_plus_aead_data->set_encrypted_symmetric_key(
+      encrypted_message.encrypted_symmetric_key);
+  hpke_plus_aead_data->set_encapsulated_public_key(
+      encrypted_message.encapped_key);
+  hpke_plus_aead_data->mutable_ledger_symmetric_key_associated_data()
+      ->set_record_header(serialized_header);
+  return result;
+}
 
 RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration,
                                  OrchestratorCrypto::StubInterface& stub,
