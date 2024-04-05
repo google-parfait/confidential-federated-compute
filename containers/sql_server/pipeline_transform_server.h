@@ -18,8 +18,8 @@
 #include <string>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "containers/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
@@ -61,7 +61,8 @@ class SqlPipelineTransform final
   struct SqlConfiguration {
     std::string query;
     fcp::confidentialcompute::TableSchema input_schema;
-    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema> output_columns;
+    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
+        output_columns;
   };
 
   absl::Status SqlConfigureAndAttest(

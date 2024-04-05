@@ -19,12 +19,12 @@
 #include "absl/log/log.h"
 #include "containers/oak_orchestrator_client.h"
 #include "containers/sql_server/pipeline_transform_server.h"
-#include "oak_containers/proto/interfaces.grpc.pb.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "oak_containers/proto/interfaces.grpc.pb.h"
+#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::sql_server {
 
