@@ -25,6 +25,7 @@
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -53,7 +54,9 @@ using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -216,6 +219,29 @@ TEST_F(SqlPipelineTransformTest, ValidConfigureAndAttest) {
 
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(SqlPipelineTransformTest, ConfigureAndAttestPublicKeyHasDestBlobId) {
+  grpc::ClientContext context;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  SqlQuery query = CreateSqlQuery(
+      CreateTableSchema(
+          "input", "CREATE TABLE input (int_val INTEGER)",
+          CreateColumnSchema("int_val",
+                             ExampleQuerySpec_OutputVectorSpec_DataType_INT64)),
+      "SELECT SUM(int_val) AS int_sum FROM input",
+      CreateColumnSchema("int_sum",
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  query.set_output_blob_id(42);
+  request.mutable_configuration()->PackFrom(query);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
+  ASSERT_TRUE(cwt.ok());
+  ASSERT_EQ(cwt->config_properties.fields().at("dest").number_value(), 42);
 }
 
 TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
@@ -381,6 +407,132 @@ TEST_F(SqlPipelineTransformTest, TransformDecryptsRecordAndExecutesSqlQuery) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
+}
+
+TEST_F(SqlPipelineTransformTest,
+       BlobIdSetEncryptedInputsTransformEncryptsResult) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  query.set_output_blob_id(1);
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+  std::string recipient_public_key = configure_response.public_key();
+
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(1);
+  grpc::Status generate_nonces_status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_TRUE(generate_nonces_status.ok())
+      << "GenerateNonces status code was: "
+      << generate_nonces_status.error_code();
+  ASSERT_THAT(nonces_response.nonces(), SizeIs(1));
+  std::string nonce = nonces_response.nonces(0);
+
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
+  std::string ciphertext_associated_data = "ciphertext associated data";
+  std::string message =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2});
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, nonce,
+          *reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  Record result = transform_response.outputs(0);
+  ASSERT_TRUE(result.has_hpke_plus_aead_data());
+
+  absl::StatusOr<std::string> decrypted_result = decryptor.Decrypt(
+      result.hpke_plus_aead_data().ciphertext(),
+      result.hpke_plus_aead_data().ciphertext_associated_data(),
+      result.hpke_plus_aead_data().encrypted_symmetric_key(),
+      result.hpke_plus_aead_data().ciphertext_associated_data(),
+      result.hpke_plus_aead_data().encapsulated_public_key());
+  ASSERT_TRUE(decrypted_result.ok()) << decrypted_result.status();
+
+  absl::Cord wire_format_result(*decrypted_result);
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
+  // The query sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(*static_cast<const int64_t*>(col_values->data().data()), 3);
+}
+
+TEST_F(SqlPipelineTransformTest,
+       BlobIdSetUnencryptedInputsTransformDoesNotEncryptOutputs) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+  query.set_output_blob_id(2);
+  ASSERT_TRUE(stub_
+                  ->ConfigureAndAttest(&configure_context, configure_request,
+                                       &configure_response)
+                  .ok());
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(
+      BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2}));
+  transform_request.mutable_inputs(0)->set_compression_type(
+      Record::COMPRESSION_TYPE_NONE);
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok());
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
 }
 
 TEST_F(SqlPipelineTransformTest, TransformFailsForMultipleRecords) {

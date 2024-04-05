@@ -63,6 +63,7 @@ class SqlPipelineTransform final
     fcp::confidentialcompute::TableSchema input_schema;
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
+    std::optional<uint32_t> output_access_policy_node_id;
   };
 
   absl::Status SqlConfigureAndAttest(

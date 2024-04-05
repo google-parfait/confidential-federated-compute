@@ -39,6 +39,7 @@ using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
 using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
 using ::fcp::aggregation::Tensor;
 using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -112,11 +113,18 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
           "ConfigureAndAttest can only be called once.");
     }
 
-    configuration_.emplace(
-        SqlConfiguration{.query = sql_query.raw_sql(),
-                         .input_schema = sql_query.database_schema().table(0),
-                         .output_columns = sql_query.output_columns()});
-    record_decryptor_.emplace(crypto_stub_);
+    google::protobuf::Struct config_properties;
+    SqlConfiguration config = {
+        .query = sql_query.raw_sql(),
+        .input_schema = sql_query.database_schema().table(0),
+        .output_columns = sql_query.output_columns()};
+    if (sql_query.has_output_blob_id()) {
+      config.output_access_policy_node_id.emplace(sql_query.output_blob_id());
+      (*config_properties.mutable_fields())["dest"].set_number_value(
+          sql_query.output_blob_id());
+    }
+    configuration_.emplace(config);
+    record_decryptor_.emplace(crypto_stub_, config_properties);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a
@@ -202,8 +210,43 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   std::string ckpt_string;
   absl::CopyCordToString(output_data, &ckpt_string);
   Record* output = response->add_outputs();
-  output->set_unencrypted_data(std::move(ckpt_string));
   output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
+
+  // Don't encrypt the results if the access policy node ID is unset, since this
+  // indicates that this is a terminal transformation.
+  // TODO: Get the access policy node ID from the ledger instead of
+  // configuration.
+  if (configuration->output_access_policy_node_id == std::nullopt) {
+    output->set_unencrypted_data(std::move(ckpt_string));
+    return absl::OkStatus();
+  }
+  RecordEncryptor encryptor;
+  // SQLPipelineTransform maintains the encryption of its input for non-terminal
+  // transformations.
+  switch (record.kind_case()) {
+    case Record::kUnencryptedData: {
+      output->set_unencrypted_data(std::move(ckpt_string));
+      break;
+    }
+    case Record::kHpkePlusAeadData: {
+      BlobHeader previous_header;
+      previous_header.ParseFromString(
+          record.hpke_plus_aead_data().ciphertext_associated_data());
+      FCP_ASSIGN_OR_RETURN(*output,
+                           encryptor.EncryptRecord(
+                               ckpt_string,
+                               record.hpke_plus_aead_data()
+                                   .rewrapped_symmetric_key_associated_data()
+                                   .reencryption_public_key(),
+                               previous_header.access_policy_sha256(),
+                               *configuration_->output_access_policy_node_id));
+      break;
+    }
+    default:
+      return absl::InvalidArgumentError(
+          "Record to decrypt must contain unencrypted_data or "
+          "rewrapped_symmetric_key_associated_data");
+  }
 
   return absl::OkStatus();
 }
