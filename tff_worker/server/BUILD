@@ -90,15 +90,15 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/synchronization",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_parser",
         "@federated-compute//fcp/aggregation/tensorflow:converters",
+        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
-        "@federated-compute//fcp/base:status_converters",
         "@org_tensorflow//tensorflow/core:tensorflow",
         "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
         "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:executor",
@@ -117,12 +117,19 @@ cc_test(
         "//tff_worker/server/testing:aggregation_computation.pbtxt",
         "//tff_worker/server/testing:client_work_computation.pbtxt",
     ],
+    tags = [
+        # There is an incompatibility between the TensorFlow dependencies for
+        # this target and our ubsan configuration that causes the linker step
+        # in the build to fail. When upgrading the project's TensorFlow or Bazel
+        # versions, this need for this tag should be re-evaluated.
+        "noubsan",
+    ],
     deps = [
         ":cpp_pipeline_transform_server",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/aggregation/core:tensor",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
@@ -131,8 +138,8 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
         "@googletest//:gtest_main",
-        "@org_tensorflow//tensorflow/core:tensorflow",
         "@org_tensorflow//tensorflow/core:protos_all_cc",
+        "@org_tensorflow//tensorflow/core:tensorflow",
         "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
         "@tensorflow-federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
