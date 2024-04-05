@@ -50,4 +50,3 @@ py_binary(
         "@pypi_deps_tensorflow_federated//:pkg",
     ],
 )
-

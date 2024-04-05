@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-package(default_visibility = ["//:__subpackages__"])
-
-load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_cc_test")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+
+package(default_visibility = ["//:__subpackages__"])
 
 cc_binary(
     name = "main",

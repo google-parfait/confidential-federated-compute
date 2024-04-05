@@ -22,12 +22,12 @@ def _stub_repo_impl(rctx):
             package += "/"
         packages[package] = True
         content = "\n\n".join([
-            "def {}(*args, **kwargs): pass\n".format(r) for r in rules
+            "def {}(*args, **kwargs): pass\n".format(r)
+            for r in rules
         ])
-        rctx.file(package + file, content=content, executable=False)
+        rctx.file(package + file, content = content, executable = False)
     for p in packages.keys():
-        rctx.file(p + "BUILD", executable=False)
-
+        rctx.file(p + "BUILD", executable = False)
 
 stub_repo = repository_rule(
     _stub_repo_impl,

@@ -16,7 +16,6 @@ load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe
 
 platform(
     name = "remote_platform",
-    parents = ["@local_config_platform//:host"],
     constraint_values = [
         "@platforms//os:linux",
         "@platforms//cpu:x86_64",
@@ -25,4 +24,5 @@ platform(
         container_image = "docker://gcr.io/fcp-infra/fcp-build@sha256:4a33c4b91e3d146ed654a731ee4827629d8f2ebbcad21998082d7555c79a3f42",
         os_family = "Linux",
     ),
+    parents = ["@local_config_platform//:host"],
 )
