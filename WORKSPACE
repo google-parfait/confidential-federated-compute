@@ -157,7 +157,10 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    patches = ["//third_party/federated_compute:libcppbor.patch"],
+    patches = [
+        "//third_party/federated_compute:libcppbor.patch",
+        "//third_party/federated_compute:visibility.patch",
+    ],
     sha256 = "cfa6d7e2007a1d0a78f52a5cefc395b39b1e46c41740e504c481e907d4baefc0",
     strip_prefix = "federated-compute-909f8d8b7b2bf8777714ea46ab2e58fea9bbd52e",
     url = "https://github.com/google/federated-compute/archive/909f8d8b7b2bf8777714ea46ab2e58fea9bbd52e.tar.gz",

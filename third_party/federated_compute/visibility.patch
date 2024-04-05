@@ -1,0 +1,8 @@
+# Various changes to federated-compute visibility that should eventually be
+# upstreamed.
+--- fcp/base/BUILD
++++ fcp/base/BUILD
+@@ -551,2 +551,3 @@
+ cc_library(
+     name = "compression",
++    visibility = ["@//:__subpackages__"],

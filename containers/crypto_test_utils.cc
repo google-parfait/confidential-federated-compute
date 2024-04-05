@@ -52,11 +52,12 @@ absl::StatusOr<Record> CreateRewrappedRecord(
   const EVP_HPKE_AEAD* aead = EVP_hpke_aes_128_gcm();
   FCP_CHECK(EVP_HPKE_KEY_generate(intermediary_key.get(), kem) == 1);
   OkpCwt intermediary_public_key{
-      .public_key = OkpKey{
-          .algorithm = CoseAlgorithm::kHpkeBaseX25519Sha256Aes128Gcm,
-          .curve = CoseEllipticCurve::kX25519,
-          .x = std::string(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0'),
-      },
+      .public_key =
+          OkpKey{
+              .algorithm = CoseAlgorithm::kHpkeBaseX25519Sha256Aes128Gcm,
+              .curve = CoseEllipticCurve::kX25519,
+              .x = std::string(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0'),
+          },
   };
   size_t public_key_len;
   FCP_CHECK(EVP_HPKE_KEY_public_key(
@@ -104,6 +105,7 @@ absl::StatusOr<Record> CreateRewrappedRecord(
   record.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(std::string(reencryption_public_key));
+  record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
   return record;
 }
 

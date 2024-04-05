@@ -20,16 +20,19 @@
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "fcp/base/compression.h"
+#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
-#include "grpcpp/client_context.h"
 #include "google/protobuf/struct.pb.h"
+#include "grpcpp/client_context.h"
 #include "openssl/rand.h"
-#include "proto/containers/orchestrator_crypto.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
+#include "proto/containers/orchestrator_crypto.pb.h"
 
 namespace confidential_federated_compute {
 namespace {
@@ -53,6 +56,26 @@ absl::StatusOr<std::string> SignWithOrchestrator(
     return fcp::base::FromGrpcStatus(std::move(status));
   }
   return std::move(*response.mutable_signature()->mutable_signature());
+}
+
+absl::StatusOr<std::string> Decompress(
+    absl::string_view input, Record::CompressionType compression_type) {
+  switch (compression_type) {
+    // TODO: b/332406749 - treat COMPRESSION_TYPE_UNSPECIFIED as an error.
+    case Record::COMPRESSION_TYPE_UNSPECIFIED:
+    case Record::COMPRESSION_TYPE_NONE:
+      return std::string(input);
+
+    case Record::COMPRESSION_TYPE_GZIP: {
+      FCP_ASSIGN_OR_RETURN(absl::Cord decompressed,
+                           fcp::UncompressWithGzip(input));
+      return std::string(decompressed);
+    }
+
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("unsupported compression type ", compression_type));
+  }
 }
 
 }  // namespace
@@ -95,7 +118,7 @@ absl::StatusOr<std::string> RecordDecryptor::DecryptRecord(
     const Record& record) {
   switch (record.kind_case()) {
     case Record::kUnencryptedData:
-      return record.unencrypted_data();
+      return Decompress(record.unencrypted_data(), record.compression_type());
     case Record::kHpkePlusAeadData:
       break;
     default:
@@ -127,11 +150,15 @@ absl::StatusOr<std::string> RecordDecryptor::DecryptRecord(
                        .rewrapped_symmetric_key_associated_data()
                        .reencryption_public_key(),
                    nonce);
-  return message_decryptor_.Decrypt(
-      record.hpke_plus_aead_data().ciphertext(),
-      record.hpke_plus_aead_data().ciphertext_associated_data(),
-      record.hpke_plus_aead_data().encrypted_symmetric_key(), associated_data,
-      record.hpke_plus_aead_data().encapsulated_public_key());
+  FCP_ASSIGN_OR_RETURN(
+      std::string decrypted,
+      message_decryptor_.Decrypt(
+          record.hpke_plus_aead_data().ciphertext(),
+          record.hpke_plus_aead_data().ciphertext_associated_data(),
+          record.hpke_plus_aead_data().encrypted_symmetric_key(),
+          associated_data,
+          record.hpke_plus_aead_data().encapsulated_public_key()));
+  return Decompress(decrypted, record.compression_type());
 }
 
 }  // namespace confidential_federated_compute
