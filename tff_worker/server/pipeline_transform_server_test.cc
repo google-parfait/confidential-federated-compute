@@ -37,9 +37,9 @@
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "grpcpp/security/credentials.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
 #include "tensorflow/core/framework/op.h"
@@ -67,8 +67,10 @@ using ::fcp::confidentialcompute::PipelineTransform;
 using ::fcp::confidentialcompute::TffWorkerConfiguration;
 using ::fcp::confidentialcompute::TffWorkerConfiguration_Aggregation;
 using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork;
-using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
-using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint_FedSqlColumn;
+using ::fcp::confidentialcompute::
+    TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
+using ::fcp::confidentialcompute::
+    TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint_FedSqlColumn;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ClientContext;
@@ -79,12 +81,10 @@ using ::tensorflow_federated::kClientsUri;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
-
 constexpr absl::string_view kAggregationComputationPath =
     "tff_worker/server/testing/aggregation_computation.pbtxt";
 constexpr absl::string_view kClientWorkComputationPath =
     "tff_worker/server/testing/client_work_computation.pbtxt";
-
 
 absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
     absl::string_view path) {
@@ -93,20 +93,18 @@ absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
   std::string path_str(path);
   std::ifstream file_istream(path_str);
   if (!file_istream) {
-    return absl::FailedPreconditionError(
-        "Error loading file: " + path_str);
+    return absl::FailedPreconditionError("Error loading file: " + path_str);
   }
   std::stringstream file_stream;
   file_stream << file_istream.rdbuf();
   tff_proto::Computation computation;
   if (!google::protobuf::TextFormat::ParseFromString(
-      std::move(file_stream.str()), &computation)) {
+          std::move(file_stream.str()), &computation)) {
     return absl::InvalidArgumentError(
         "Error parsing TFF Computation from file.");
   }
   return std::move(computation);
 }
-
 
 tff_proto::Value BuildFederatedIntClientValue(float int_value) {
   tff_proto::Value value;
@@ -127,7 +125,6 @@ tff_proto::Value BuildFederatedIntClientValue(float int_value) {
   return value;
 }
 
-
 std::string BuildSingleInt64TensorCheckpoint(
     std::string column_name, std::initializer_list<float> input_values) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
@@ -147,7 +144,6 @@ std::string BuildSingleInt64TensorCheckpoint(
   return checkpoint_string;
 }
 
-
 class TffPipelineTransformTest : public Test {
  public:
   void SetUp() override {
@@ -158,11 +154,11 @@ class TffPipelineTransformTest : public Test {
                              grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service_);
     server_ = builder.BuildAndStart();
-    LOG(INFO) << "Server listening on " << server_address +
-              std::to_string(port);
-    channel_ = grpc::CreateChannel(
-        server_address + std::to_string(port),
-        grpc::experimental::LocalCredentials(LOCAL_TCP));
+    LOG(INFO) << "Server listening on "
+              << server_address + std::to_string(port);
+    channel_ =
+        grpc::CreateChannel(server_address + std::to_string(port),
+                            grpc::experimental::LocalCredentials(LOCAL_TCP));
     stub_ = PipelineTransform::NewStub(channel_);
   }
 
@@ -181,8 +177,7 @@ TEST_F(TffPipelineTransformTest, InvalidConfigureAndAttestRequest) {
   ConfigureAndAttestResponse response;
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("must contain configuration"));
+  EXPECT_THAT(status.error_message(), HasSubstr("must contain configuration"));
 }
 
 TEST_F(TffPipelineTransformTest,
@@ -222,8 +217,8 @@ TEST_F(TffPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
   ASSERT_TRUE(first_status.ok()) << first_status.error_message();
 
   ClientContext second_context;
-  auto second_status = stub_->ConfigureAndAttest(
-      &second_context, request, &response);
+  auto second_status =
+      stub_->ConfigureAndAttest(&second_context, request, &response);
   EXPECT_EQ(second_status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(second_status.error_message(),
               HasSubstr("ConfigureAndAttest can only be called once"));
@@ -319,8 +314,8 @@ TEST_F(TffPipelineTransformTest, TransformExecutesClientWork) {
   BuildFederatedIntClientValue(10).SerializeToString(&serialized_value);
   client_work->set_serialized_broadcasted_data(serialized_value);
   TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint_FedSqlColumn*
-      column = client_work->mutable_fed_sql_tensorflow_checkpoint(
-          )->add_fed_sql_columns();
+      column = client_work->mutable_fed_sql_tensorflow_checkpoint()
+                   ->add_fed_sql_columns();
   column->set_name("whimsy");
   column->set_data_type(tensorflow::DT_INT32);
   configure_request.mutable_configuration()->PackFrom(tff_worker_configuration);

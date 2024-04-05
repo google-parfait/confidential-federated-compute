@@ -22,8 +22,8 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "fcp/aggregation/tensorflow/converters.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "fcp/aggregation/tensorflow/converters.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
@@ -63,10 +63,10 @@ using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
 using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::tensorflow::ToTfTensor;
 using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork;
 using ::fcp::confidentialcompute::TffWorkerConfiguration;
-using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
-
+using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork;
+using ::fcp::confidentialcompute::
+    TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
 
 // Returns the unencrypted_data field from a specified Record object.
 //
@@ -80,8 +80,8 @@ absl::StatusOr<absl::string_view> GetInputDataFromRecord(const Record& record) {
   return record.unencrypted_data();
 }
 
-absl::Status MergeCardinalityMaps(
-    const tff::CardinalityMap& map_to_add_from, tff::CardinalityMap& map_to_mutate) {
+absl::Status MergeCardinalityMaps(const tff::CardinalityMap& map_to_add_from,
+                                  tff::CardinalityMap& map_to_mutate) {
   for (const auto& [key, value] : map_to_add_from) {
     auto [it, inserted] = map_to_mutate.insert({key, value});
     if (!inserted && it->second != value) {
@@ -109,8 +109,8 @@ absl::StatusOr<tff::CardinalityMap> CreateCardinalityMap(
       }
       cardinality_map[tff::kServerUri] = num_constituents;
       cardinality_map[tff::kClientsUri] = 0;
-    } else if (
-        value.federated().type().placement().value().uri() == tff::kClientsUri) {
+    } else if (value.federated().type().placement().value().uri() ==
+               tff::kClientsUri) {
       cardinality_map[tff::kServerUri] = 0;
       cardinality_map[tff::kClientsUri] = num_constituents;
     } else {
@@ -121,8 +121,8 @@ absl::StatusOr<tff::CardinalityMap> CreateCardinalityMap(
     for (const auto element : value.struct_().element()) {
       FCP_ASSIGN_OR_RETURN(tff::CardinalityMap element_cardinality_map,
                            CreateCardinalityMap(element.value()));
-      FCP_RETURN_IF_ERROR(MergeCardinalityMaps(
-          element_cardinality_map, cardinality_map));
+      FCP_RETURN_IF_ERROR(
+          MergeCardinalityMaps(element_cardinality_map, cardinality_map));
     }
   }
   return cardinality_map;
@@ -138,7 +138,7 @@ absl::StatusOr<tff::CardinalityMap> CreateCardinalityMap(
 absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
     absl::string_view input,
     TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint
-      fed_sql_tf_checkpoint_spec) {
+        fed_sql_tf_checkpoint_spec) {
   tff::v0::Value restored_value;
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord client_stacked_tensor_result(input);
@@ -159,8 +159,8 @@ absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
   for (auto& column : fed_sql_tf_checkpoint_spec.fed_sql_columns()) {
     FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
                          parser->GetTensor(column.name()));
-    absl::StatusOr<tf::Tensor> tensor = ToTfTensor(
-        std::move(tensor_column_values));
+    absl::StatusOr<tf::Tensor> tensor =
+        ToTfTensor(std::move(tensor_column_values));
     tf::TensorProto tensor_proto;
     tensor->AsProtoTensorContent(&tensor_proto);
     tff::v0::Value_Struct_Element* element = value_struct->add_element();
@@ -189,11 +189,11 @@ absl::StatusOr<std::shared_ptr<tff::Executor>> CreateExecutorStack(
   std::shared_ptr<tff::Executor> tf_executor = tff::CreateTensorFlowExecutor();
   std::shared_ptr<tff::Executor> reference_resolving_executor =
       tff::CreateReferenceResolvingExecutor(tf_executor);
-  FCP_ASSIGN_OR_RETURN(std::shared_ptr<tff::Executor> federating_executor,
-                       tff::CreateFederatingExecutor(
-                           /*server_child=*/reference_resolving_executor,
-                           /*client_child=*/reference_resolving_executor,
-                           cardinality_map));
+  FCP_ASSIGN_OR_RETURN(
+      std::shared_ptr<tff::Executor> federating_executor,
+      tff::CreateFederatingExecutor(
+          /*server_child=*/reference_resolving_executor,
+          /*client_child=*/reference_resolving_executor, cardinality_map));
   return tff::CreateReferenceResolvingExecutor(federating_executor);
 }
 
@@ -205,7 +205,7 @@ absl::StatusOr<ComputationAndInput> GetClientComputationAndInput(
   // Read in TFF computation from the TffWorkerConfiguration.
   tff::v0::Computation client_work_computation;
   if (!computation_and_input.computation.ParseFromString(
-      client_work.serialized_client_work_computation())) {
+          client_work.serialized_client_work_computation())) {
     return absl::InvalidArgumentError(
         "Cannot parse serialized client work computation.");
   }
@@ -213,7 +213,7 @@ absl::StatusOr<ComputationAndInput> GetClientComputationAndInput(
   // Read in the broadcasted TFF value from the TffWorkerConfiguration.
   tff::v0::Value broadcasted_value;
   if (!broadcasted_value.ParseFromString(
-      client_work.serialized_broadcasted_data())) {
+          client_work.serialized_broadcasted_data())) {
     return absl::InvalidArgumentError(
         "Cannot parse serialized broadcasted TFF Value for client work.");
   }
@@ -221,20 +221,20 @@ absl::StatusOr<ComputationAndInput> GetClientComputationAndInput(
   // Read in FCP checkpoint and transform into the bytes of a TF checkpoint.
   // This conversion is necessary to execute the TF-based TFF computation.
   FCP_ASSIGN_OR_RETURN(absl::string_view input, GetInputDataFromRecord(record));
-  FCP_ASSIGN_OR_RETURN(
-      tff::v0::Value input_value, RestoreClientCheckpointToDict(
-          input, client_work.fed_sql_tensorflow_checkpoint()));
+  FCP_ASSIGN_OR_RETURN(tff::v0::Value input_value,
+                       RestoreClientCheckpointToDict(
+                           input, client_work.fed_sql_tensorflow_checkpoint()));
 
   // Create a Struct-type TFF value of the shape
   // (input TF value from checkpoint, broadcasted value).
   // The TFF execution stack expects a single argument for the computation to
   // be invoked on.
   *(computation_and_input.input.mutable_struct_()
-    ->add_element()->mutable_value()) =
-      std::move(input_value);
+        ->add_element()
+        ->mutable_value()) = std::move(input_value);
   *(computation_and_input.input.mutable_struct_()
-    ->add_element()->mutable_value()) =
-      std::move(broadcasted_value);
+        ->add_element()
+        ->mutable_value()) = std::move(broadcasted_value);
 
   return computation_and_input;
 }
@@ -243,40 +243,41 @@ absl::StatusOr<ComputationAndInput> GetClientComputationAndInput(
 
 absl::Status TffPipelineTransform::TffTransform(const TransformRequest* request,
                                                 TransformResponse* response) {
-
   ComputationAndInput computation_and_input;
-{
-  absl::MutexLock l(&mutex_);
-  if (!tff_worker_configuration_.has_value()) {
-    return absl::FailedPreconditionError(
-        "ConfigureAndAttest must be called before Transform.");
-  }
-
-  // Extract the computation and input value from the TffWorkerConfiguration.
-  if (tff_worker_configuration_->has_client_work()) {
-    if (request->inputs_size() != 1) {
-      return absl::InvalidArgumentError(
-          "Exactly one input must be provided to a `client_work` transform "
-          "but got " + std::to_string(request->inputs_size()));
+  {
+    absl::MutexLock l(&mutex_);
+    if (!tff_worker_configuration_.has_value()) {
+      return absl::FailedPreconditionError(
+          "ConfigureAndAttest must be called before Transform.");
     }
 
-    Record record = request->inputs(0);
-    FCP_ASSIGN_OR_RETURN(computation_and_input,
-                         GetClientComputationAndInput(
-                             tff_worker_configuration_->client_work(), record));
-  } else if (tff_worker_configuration_->has_aggregation()) {
-    return absl::UnimplementedError(
-        "Transform has not yet implemented aggregation transformations.");
-  } else {
-    return absl::InvalidArgumentError(
-        "TffWorkerConfiguration must contain client work or an aggregation.");
+    // Extract the computation and input value from the TffWorkerConfiguration.
+    if (tff_worker_configuration_->has_client_work()) {
+      if (request->inputs_size() != 1) {
+        return absl::InvalidArgumentError(
+            "Exactly one input must be provided to a `client_work` transform "
+            "but got " +
+            std::to_string(request->inputs_size()));
+      }
+
+      Record record = request->inputs(0);
+      FCP_ASSIGN_OR_RETURN(
+          computation_and_input,
+          GetClientComputationAndInput(tff_worker_configuration_->client_work(),
+                                       record));
+    } else if (tff_worker_configuration_->has_aggregation()) {
+      return absl::UnimplementedError(
+          "Transform has not yet implemented aggregation transformations.");
+    } else {
+      return absl::InvalidArgumentError(
+          "TffWorkerConfiguration must contain client work or an aggregation.");
+    }
   }
-}
 
   // Create a TFF tff::CardinalityMap. This object stores the cardinality of the
   // different placements in a TFF Value.
-  FCP_ASSIGN_OR_RETURN(tff::CardinalityMap cardinality_map, CreateCardinalityMap(
-      computation_and_input.input));
+  FCP_ASSIGN_OR_RETURN(tff::CardinalityMap cardinality_map,
+                       CreateCardinalityMap(computation_and_input.input));
 
   // Create the TFF Executor stack that will execute the computation. This
   // stack is currently created per computation call.
@@ -285,8 +286,8 @@ absl::Status TffPipelineTransform::TffTransform(const TransformRequest* request,
                        CreateExecutorStack(cardinality_map));
 
   // Create a value in the Executor stack for the full input argument Value.
-  FCP_ASSIGN_OR_RETURN(tff::OwnedValueId owned_value_id, executor->CreateValue(
-      computation_and_input.input));
+  FCP_ASSIGN_OR_RETURN(tff::OwnedValueId owned_value_id,
+                       executor->CreateValue(computation_and_input.input));
 
   // Create a value in the Executor stack for the computation.
   tff::v0::Value computation_value_pb;
@@ -297,16 +298,15 @@ absl::Status TffPipelineTransform::TffTransform(const TransformRequest* request,
 
   // Create a call in the Executor stack for the invocation of the TFF
   // computation on the input Value.
-  FCP_ASSIGN_OR_RETURN(tff::OwnedValueId all_value_id,
-                       executor->CreateCall(computation_value_id,
-                                            owned_value_id));
+  FCP_ASSIGN_OR_RETURN(
+      tff::OwnedValueId all_value_id,
+      executor->CreateCall(computation_value_id, owned_value_id));
 
   // Materialize the output of the computation invocation and pass to the
   // output.
   // TODO: Handle the case of encrypted data.
   tff::v0::Value output_value_pb;
-  FCP_RETURN_IF_ERROR(
-      executor->Materialize(all_value_id, &output_value_pb));
+  FCP_RETURN_IF_ERROR(executor->Materialize(all_value_id, &output_value_pb));
   std::string serialized_output;
   output_value_pb.SerializeToString(&serialized_output);
   Record* output = response->add_outputs();
@@ -339,8 +339,8 @@ absl::Status TffPipelineTransform::TffConfigureAndAttest(
         "ConfigureAndAttestRequest configuration must be a "
         "tff_worker_configuration_pb2.TffWorkerConfiguration.");
   }
-  tff_worker_configuration_ = std::make_optional<TffWorkerConfiguration>(
-      tff_worker_configuration);
+  tff_worker_configuration_ =
+      std::make_optional<TffWorkerConfiguration>(tff_worker_configuration);
 
   // TODO: When encryption is implemented, this should cause generation of a new
   // keypair.

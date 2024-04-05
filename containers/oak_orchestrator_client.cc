@@ -37,8 +37,8 @@ using ::oak::containers::Orchestrator;
 std::shared_ptr<grpc::Channel> CreateOakOrchestratorChannel() {
   // The Oak Orchestrator gRPC service is listening on a UDS path. See
   // https://github.com/project-oak/oak/blob/55901b8a4c898c00ecfc14ef4bc65f30cd31d6a9/oak_containers_hello_world_trusted_app/src/orchestrator_client.rs#L45
-  return grpc::CreateChannel(
-      "unix:/oak_utils/orchestrator_ipc", grpc::InsecureChannelCredentials());
+  return grpc::CreateChannel("unix:/oak_utils/orchestrator_ipc",
+                             grpc::InsecureChannelCredentials());
 }
 
 OakOrchestratorClient::OakOrchestratorClient(Orchestrator::StubInterface* stub)
