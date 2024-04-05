@@ -203,6 +203,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   absl::CopyCordToString(output_data, &ckpt_string);
   Record* output = response->add_outputs();
   output->set_unencrypted_data(std::move(ckpt_string));
+  output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
 
   return absl::OkStatus();
 }

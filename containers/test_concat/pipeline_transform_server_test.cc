@@ -119,6 +119,9 @@ TEST_F(TestConcatPipelineTransformTest, TransformConcatenates) {
   transform_request.add_inputs()->set_unencrypted_data("1");
   transform_request.add_inputs()->set_unencrypted_data("2");
   transform_request.add_inputs()->set_unencrypted_data("3");
+  for (auto& input : *transform_request.mutable_inputs()) {
+    input.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  }
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   auto transform_status = stub_->Transform(

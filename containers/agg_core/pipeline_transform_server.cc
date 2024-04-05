@@ -165,6 +165,7 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
 
   Record* output = response->add_outputs();
   output->set_unencrypted_data(std::move(checkpoint_string));
+  output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
   return absl::OkStatus();
 }
 

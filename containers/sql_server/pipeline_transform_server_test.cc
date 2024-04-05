@@ -246,6 +246,8 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQuery) {
   TransformRequest transform_request;
   transform_request.add_inputs()->set_unencrypted_data(
       BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2}));
+  transform_request.mutable_inputs(0)->set_compression_type(
+      Record::COMPRESSION_TYPE_NONE);
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   auto transform_status = stub_->Transform(
@@ -291,6 +293,8 @@ TEST_F(SqlPipelineTransformTest, TransformExecutesSqlQueryWithNoInputRows) {
   TransformRequest transform_request;
   transform_request.add_inputs()->set_unencrypted_data(
       BuildSingleInt64TensorCheckpoint(input_col_name, {}));
+  transform_request.mutable_inputs(0)->set_compression_type(
+      Record::COMPRESSION_TYPE_NONE);
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   auto transform_status = stub_->Transform(

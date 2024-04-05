@@ -185,6 +185,20 @@ TEST(CryptoTest, DecryptRecordWithInvalidKind) {
       << decrypt_result.status();
 }
 
+TEST(CryptoTest, DecryptRecordWithoutCompressionType) {
+  google::protobuf::Any config;
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  Record record;
+  record.set_unencrypted_data("some message");
+  absl::StatusOr<std::string> decrypt_result =
+      record_decryptor.DecryptRecord(record);
+  ASSERT_FALSE(decrypt_result.ok());
+  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()))
+      << decrypt_result.status();
+}
+
 TEST(CryptoTest, DecryptRecordWithInvalidGzipCompression) {
   google::protobuf::Any config;
   NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;

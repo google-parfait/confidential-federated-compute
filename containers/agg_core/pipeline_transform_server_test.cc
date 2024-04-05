@@ -195,6 +195,9 @@ TEST_F(AggCoreTransformTest, TransformExecutesFederatedSum) {
       BuildSingleInt32TensorCheckpoint("foo", {1}));
   transform_request.add_inputs()->set_unencrypted_data(
       BuildSingleInt32TensorCheckpoint("foo", {2}));
+  for (auto& input : *transform_request.mutable_inputs()) {
+    input.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  }
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   auto transform_status = stub_->Transform(
@@ -290,6 +293,9 @@ TEST_F(AggCoreTransformTest, TransformExecutesFedSqlGroupBy) {
   TransformRequest transform_request;
   transform_request.add_inputs()->set_unencrypted_data(checkpoint_1);
   transform_request.add_inputs()->set_unencrypted_data(checkpoint_2);
+  for (auto& input : *transform_request.mutable_inputs()) {
+    input.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  }
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
   auto transform_status = stub_->Transform(
@@ -328,6 +334,9 @@ TEST_F(AggCoreTransformTest, MultipleTransformExecutionsSucceed) {
       BuildSingleInt32TensorCheckpoint("foo", {1}));
   transform_request.add_inputs()->set_unencrypted_data(
       BuildSingleInt32TensorCheckpoint("foo", {2}));
+  for (auto& input : *transform_request.mutable_inputs()) {
+    input.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  }
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
 

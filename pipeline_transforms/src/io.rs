@@ -162,8 +162,7 @@ impl RecordDecoder {
 
     fn decompress(msg: &[u8], compression_type: i32) -> anyhow::Result<Vec<u8>> {
         match CompressionType::from_i32(compression_type) {
-            // TODO: b/332406749 - Fail on unspecified.
-            Some(CompressionType::None) | Some(CompressionType::Unspecified) => Ok(msg.to_vec()),
+            Some(CompressionType::None) => Ok(msg.to_vec()),
             Some(CompressionType::Gzip) => {
                 let mut result = Vec::new();
                 libflate::gzip::Decoder::new(msg)
@@ -543,6 +542,22 @@ mod tests {
             err(displays_as(contains_substring("Record decryption failed")))
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_decode_without_compression_type() {
+        let input = Record {
+            kind: Some(RecordKind::UnencryptedData(b"data".to_vec())),
+            ..Default::default()
+        };
+
+        let mut decoder = RecordDecoder::create(sha256_sign).unwrap();
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring(
+                "unsupported compression type"
+            )))
+        );
     }
 
     #[test]

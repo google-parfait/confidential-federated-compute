@@ -110,6 +110,7 @@ absl::Status TestConcatPipelineTransform::Transform(
 
   Record* output = response->add_outputs();
   output->set_unencrypted_data(std::move(result));
+  output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
 
   return absl::OkStatus();
 }

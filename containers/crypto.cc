@@ -61,8 +61,6 @@ absl::StatusOr<std::string> SignWithOrchestrator(
 absl::StatusOr<std::string> Decompress(
     absl::string_view input, Record::CompressionType compression_type) {
   switch (compression_type) {
-    // TODO: b/332406749 - treat COMPRESSION_TYPE_UNSPECIFIED as an error.
-    case Record::COMPRESSION_TYPE_UNSPECIFIED:
     case Record::COMPRESSION_TYPE_NONE:
       return std::string(input);
 
