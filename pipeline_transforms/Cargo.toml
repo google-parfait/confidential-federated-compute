@@ -11,8 +11,10 @@ test = []
 anyhow = { version = "*", default-features = false }
 bitmask = { version = "*", default-features = false }
 cfc_crypto = { path = "../cfc_crypto" }
+core2 = { version = "*", default-features = false }
 coset = { version = "*", default-features = false }
 federated_compute = { path = "../third_party/federated_compute" }
+libflate = { version = "2", default-features = false }
 rand = { version = "*", default-features = false, features = ["getrandom"] }
 prost = { version = "*", default-features = false }
 prost-types = { version = "*", default-features = false }

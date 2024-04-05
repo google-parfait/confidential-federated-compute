@@ -16,6 +16,7 @@
 #include <string>
 
 #include "containers/crypto_test_utils.h"
+#include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -70,6 +71,37 @@ TEST(CryptoTest, EncryptAndDecrypt) {
   ASSERT_EQ(*decrypt_result, message);
 }
 
+TEST(CryptoTest, EncryptAndDecryptWithGzipCompression) {
+  std::string message = "some plaintext message";
+  absl::StatusOr<std::string> compressed = fcp::CompressWithGzip(message);
+  ASSERT_TRUE(compressed.ok()) << compressed.status();
+  std::string reencryption_public_key = "reencryption_public_key";
+  std::string ciphertext_associated_data = "ciphertext associated data";
+
+  google::protobuf::Any config;
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  absl::StatusOr<absl::string_view> recipient_public_key =
+      record_decryptor.GetPublicKey();
+  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
+
+  absl::StatusOr<std::string> nonce = record_decryptor.GenerateNonce();
+  ASSERT_TRUE(nonce.ok()) << nonce.status();
+
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          *compressed, ciphertext_associated_data, *recipient_public_key,
+          *nonce, reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
+  rewrapped_record->set_compression_type(Record::COMPRESSION_TYPE_GZIP);
+
+  absl::StatusOr<std::string> decrypt_result =
+      record_decryptor.DecryptRecord(*rewrapped_record);
+  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
+  ASSERT_EQ(*decrypt_result, message);
+}
+
 TEST(CryptoTest, EncryptAndDecryptWrongRecipient) {
   std::string message = "some plaintext message";
   std::string reencryption_public_key = "reencryption_public_key";
@@ -117,6 +149,24 @@ TEST(CryptoTest, DecryptUnencryptedData) {
 
   Record record;
   record.set_unencrypted_data(message);
+  record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  absl::StatusOr<std::string> decrypt_result =
+      record_decryptor.DecryptRecord(record);
+  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
+  ASSERT_EQ(*decrypt_result, message);
+}
+
+TEST(CryptoTest, DecryptUnencryptedDataWithGzipCompression) {
+  std::string message = "some plaintext message";
+  absl::StatusOr<std::string> compressed = fcp::CompressWithGzip(message);
+  ASSERT_TRUE(compressed.ok()) << compressed.status();
+  google::protobuf::Any config;
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  Record record;
+  record.set_unencrypted_data(*compressed);
+  record.set_compression_type(Record::COMPRESSION_TYPE_GZIP);
   absl::StatusOr<std::string> decrypt_result =
       record_decryptor.DecryptRecord(record);
   ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
@@ -133,6 +183,19 @@ TEST(CryptoTest, DecryptRecordWithInvalidKind) {
   ASSERT_FALSE(decrypt_result.ok());
   ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()))
       << decrypt_result.status();
+}
+
+TEST(CryptoTest, DecryptRecordWithInvalidGzipCompression) {
+  google::protobuf::Any config;
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  RecordDecryptor record_decryptor(config, mock_crypto_stub);
+
+  Record record;
+  record.set_unencrypted_data("invalid");
+  record.set_compression_type(Record::COMPRESSION_TYPE_GZIP);
+  absl::StatusOr<std::string> decrypt_result =
+      record_decryptor.DecryptRecord(record);
+  ASSERT_FALSE(decrypt_result.ok());
 }
 
 TEST(CryptoTest, DecryptRecordWithInvalidAssociatedData) {

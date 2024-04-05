@@ -27,6 +27,7 @@ use alloc::{collections::BTreeSet, vec, vec::Vec};
 use anyhow::{anyhow, Context};
 use bitmask::bitmask;
 use cfc_crypto::{extract_key_from_cwt, CONFIG_PROPERTIES_CLAIM, PUBLIC_KEY_CLAIM};
+use core2::io::Read;
 use coset::{cbor::Value, cwt::ClaimsSetBuilder, CborSerializable, CoseSign1Builder};
 use prost::Message;
 use prost_types::Struct;
@@ -123,7 +124,7 @@ impl RecordDecoder {
                 if !self.allowed_modes.contains(DecryptionMode::Unencrypted) {
                     return Err(anyhow!("Record.unencrypted_data is not supported"));
                 }
-                Ok(d.clone())
+                Self::decompress(d, record.compression_type)
             }
 
             Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
@@ -143,7 +144,7 @@ impl RecordDecoder {
                 if !self.nonces.remove(&ad.nonce) {
                     return Err(anyhow!("invalid nonce"));
                 }
-                cfc_crypto::decrypt_message(
+                let decrypted = cfc_crypto::decrypt_message(
                     ciphertext,
                     ciphertext_associated_data,
                     encrypted_symmetric_key,
@@ -151,10 +152,29 @@ impl RecordDecoder {
                     encapsulated_public_key,
                     &self.private_key,
                 )
-                .context("Record decryption failed")
+                .context("Record decryption failed")?;
+                Self::decompress(&decrypted, record.compression_type)
             }
 
             _ => Err(anyhow!("unsupported Record kind")),
+        }
+    }
+
+    fn decompress(msg: &[u8], compression_type: i32) -> anyhow::Result<Vec<u8>> {
+        match CompressionType::from_i32(compression_type) {
+            // TODO: b/332406749 - Fail on unspecified.
+            Some(CompressionType::None) | Some(CompressionType::Unspecified) => Ok(msg.to_vec()),
+            Some(CompressionType::Gzip) => {
+                let mut result = Vec::new();
+                libflate::gzip::Decoder::new(msg)
+                    .and_then(|mut decoder| decoder.read_to_end(&mut result))
+                    .map_err(|err| anyhow!("decompression failed: {:?}", err))?;
+                Ok(result)
+            }
+            _ => Err(anyhow!(
+                "unsupported compression type {:?}",
+                compression_type
+            )),
         }
     }
 }
@@ -267,6 +287,7 @@ pub fn create_rewrapped_record(
                 encapsulated_public_key,
                 ..Default::default()
             })),
+            compression_type: CompressionType::None.into(),
             ..Default::default()
         },
         intermediary_private_key,
@@ -277,6 +298,7 @@ pub fn create_rewrapped_record(
 mod tests {
     use super::*;
     use alloc::collections::BTreeMap;
+    use core2::io::Write;
     use coset::{
         cwt::{ClaimName, ClaimsSet},
         CborSerializable, CoseSign1,
@@ -311,6 +333,32 @@ mod tests {
     fn test_decode_unencrypted() -> anyhow::Result<()> {
         let input = Record {
             kind: Some(RecordKind::UnencryptedData(b"data".to_vec())),
+            compression_type: CompressionType::None.into(),
+            ..Default::default()
+        };
+
+        let mut decoder = RecordDecoder::create_with_config_and_modes(
+            sha256_sign,
+            &Struct::default(),
+            DecryptionMode::Unencrypted.into(),
+        )
+        .unwrap();
+        assert_eq!(decoder.decode(&input)?, b"data".to_vec());
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_unencrypted_gzip() -> anyhow::Result<()> {
+        let compressed = libflate::gzip::Encoder::new(Vec::new())
+            .and_then(|mut encoder| {
+                encoder.write_all(b"data")?;
+                encoder.finish().into_result()
+            })
+            .unwrap();
+
+        let input = Record {
+            kind: Some(RecordKind::UnencryptedData(compressed)),
+            compression_type: CompressionType::Gzip.into(),
             ..Default::default()
         };
 
@@ -388,6 +436,29 @@ mod tests {
             Struct::decode(config_properties_claim.as_slice()),
             ok(eq(config))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_hpke_plus_aead_gzip() -> anyhow::Result<()> {
+        let compressed = libflate::gzip::Encoder::new(Vec::new())
+            .and_then(|mut encoder| {
+                encoder.write_all(b"data")?;
+                encoder.finish().into_result()
+            })
+            .unwrap();
+        let ciphertext_associated_data = b"associated data";
+
+        let mut decoder = RecordDecoder::create(sha256_sign).unwrap();
+        let nonce = &decoder.generate_nonces(1)[0];
+        let (mut input, _) = create_rewrapped_record(
+            &compressed,
+            ciphertext_associated_data,
+            decoder.public_key(),
+            nonce,
+        )?;
+        input.compression_type = CompressionType::Gzip.into();
+        assert_eq!(decoder.decode(&input)?, b"data".to_vec());
         Ok(())
     }
 
@@ -472,6 +543,21 @@ mod tests {
             err(displays_as(contains_substring("Record decryption failed")))
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_decode_invalid_gzip() {
+        let input = Record {
+            kind: Some(RecordKind::UnencryptedData(b"invalid".to_vec())),
+            compression_type: CompressionType::Gzip.into(),
+            ..Default::default()
+        };
+
+        let mut decoder = RecordDecoder::create(sha256_sign).unwrap();
+        assert_that!(
+            decoder.decode(&input),
+            err(displays_as(contains_substring("decompression failed")))
+        );
     }
 
     #[test]
