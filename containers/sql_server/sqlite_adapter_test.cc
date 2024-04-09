@@ -211,6 +211,24 @@ TEST_F(SetTableContentsTest, BasicUsage) {
   CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 3));
 }
 
+TEST_F(SetTableContentsTest, ColumnNameEscaping) {
+  TableSchema schema = CreateInputTableSchema(
+      /*table_name=*/"t", /*col1_name=*/"![]^'\";/int_vals",
+      /*col2_name=*/"![]^'\";/str_vals");
+  // CreateInputTableSchema doesn't properly escape create_table_sql.
+  schema.set_create_table_sql(
+      "CREATE TABLE t ('![]^''\";/int_vals' INTEGER, '![]^''\";/str_vals' "
+      "TEXT)");
+
+  CHECK_OK(sqlite_->DefineTable(schema));
+  absl::StatusOr<std::vector<TensorColumn>> contents =
+      CreateTableContents({1, 2, 3}, {"a", "b", "c"}, schema.column(0).name(),
+                          schema.column(1).name());
+  CHECK_OK(contents);
+
+  CHECK_OK(sqlite_->AddTableContents(std::move(contents.value()), 3));
+}
+
 TEST_F(SetTableContentsTest, CalledBeforeDefineTable) {
   absl::StatusOr<std::vector<TensorColumn>> contents =
       CreateTableContents({1}, {"a"});

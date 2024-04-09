@@ -23,6 +23,7 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "fcp/aggregation/core/mutable_string_data.h"
 #include "fcp/aggregation/core/mutable_vector_data.h"
@@ -255,6 +256,17 @@ absl::Status ValidateInputColumns(const std::vector<TensorColumn>& columns,
   return absl::OkStatus();
 }
 
+// Escapes a SQL column name for use in an INSERT statement. This function can
+// be used to work around the fact that column names cannot be dynamically bound
+// to a prepared statement.
+void EscapeSqlColumnName(std::string* out, absl::string_view column) {
+  // From https://www.sqlite.org/lang_expr.html#literal_values_constants_, a
+  // string constant (which includes column names) can be formed by enclosing a
+  // string in single quotes, with single quotes within the string encoded as
+  // "''".
+  absl::StrAppend(out, "'", absl::StrReplaceAll(column, {{"'", "''"}}), "'");
+}
+
 }  // namespace
 
 absl::StatusOr<TensorColumn> TensorColumn::Create(ColumnSchema column_schema,
@@ -330,7 +342,7 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
 
   insert_stmt_ = absl::StrFormat(
       "INSERT INTO %s (%s) VALUES (%s);", schema.name(),
-      absl::StrJoin(column_names, ", "),
+      absl::StrJoin(column_names, ", ", &EscapeSqlColumnName),
       absl::StrJoin(std::vector<std::string>(schema.column_size(), "?"), ", "));
 
   LOG(INFO) << "Insert SQL statement: " << insert_stmt_.value();
