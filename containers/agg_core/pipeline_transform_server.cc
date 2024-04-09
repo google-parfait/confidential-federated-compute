@@ -67,8 +67,8 @@ absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
     configuration_.emplace(config);
     // TODO: Once the DP intrinsic is implemented, we'll need to pull out the
     // attestable properties from the configuration and send them to the
-    // RecordDecryptor via the third `config_properties` argument.
-    record_decryptor_.emplace(request->configuration(), crypto_stub_);
+    // RecordDecryptor via the `config_properties` argument.
+    record_decryptor_.emplace(crypto_stub_);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a

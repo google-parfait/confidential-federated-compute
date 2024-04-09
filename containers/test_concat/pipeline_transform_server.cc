@@ -47,7 +47,7 @@ absl::Status TestConcatPipelineTransform::ConfigureAndAttest(
       return absl::FailedPreconditionError(
           "ConfigureAndAttest can only be called once.");
     }
-    record_decryptor_.emplace(request->configuration(), crypto_stub_);
+    record_decryptor_.emplace(crypto_stub_);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a

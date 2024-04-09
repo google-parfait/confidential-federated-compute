@@ -116,7 +116,7 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
         SqlConfiguration{.query = sql_query.raw_sql(),
                          .input_schema = sql_query.database_schema().table(0),
                          .output_columns = sql_query.output_columns()});
-    record_decryptor_.emplace(request->configuration(), crypto_stub_);
+    record_decryptor_.emplace(crypto_stub_);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a

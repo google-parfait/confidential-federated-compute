@@ -124,8 +124,7 @@ absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
   return result;
 }
 
-RecordDecryptor::RecordDecryptor(const google::protobuf::Any& configuration,
-                                 OrchestratorCrypto::StubInterface& stub,
+RecordDecryptor::RecordDecryptor(OrchestratorCrypto::StubInterface& stub,
                                  google::protobuf::Struct config_properties)
     : message_decryptor_(std::move(config_properties)),
       signed_public_key_(message_decryptor_.GetPublicKey(

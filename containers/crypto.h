@@ -56,8 +56,7 @@ class RecordDecryptor {
   // any important configuration that should be verifiable during attestation;
   // see ApplicationMatcher.config_properties in
   // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/access_policy.proto.
-  RecordDecryptor(const google::protobuf::Any& configuration,
-                  oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
+  RecordDecryptor(oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
                   google::protobuf::Struct config_properties = {});
 
   // RecordDecryptor is not copyable or moveable due to the use of
