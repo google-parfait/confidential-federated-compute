@@ -64,7 +64,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
-        "@sqlite_bazel//:sqlite3",
+        "@sqlite",
     ],
 )
 
@@ -81,7 +81,7 @@ cc_test(
         "@federated-compute//fcp/aggregation/testing:test_data",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@googletest//:gtest_main",
-        "@sqlite_bazel//:sqlite3",
+        "@sqlite",
     ],
 )
 

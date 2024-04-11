@@ -194,15 +194,12 @@ http_archive(
     urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
 )
 
-# TODO: Switch to using the official SQLite repo. This is used for convenience during prototyping since it's bazel-friendly.
-SQLITE_BAZEL_COMMIT = "2a512f90dcdabfc7c3279cc324f1abd84af49911"
-
 http_archive(
-    name = "sqlite_bazel",
-    patches = ["//third_party/sqlite_bazel:BUILD.patch"],
-    sha256 = "079ae321db00b2a697dc8c27acc21e63e05c353b89bdb510bb6d6778d3a05866",
-    strip_prefix = "sqlite-bazel-" + SQLITE_BAZEL_COMMIT,
-    urls = ["https://github.com/rockwotj/sqlite-bazel/archive/%s.zip" % SQLITE_BAZEL_COMMIT],
+    name = "sqlite",
+    build_file = "//third_party/sqlite:BUILD.sqlite",
+    sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
+    strip_prefix = "sqlite-amalgamation-3450200",
+    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
 )
 
 http_archive(

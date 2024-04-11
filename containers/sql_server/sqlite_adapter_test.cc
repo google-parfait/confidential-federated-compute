@@ -311,7 +311,7 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
 
 TEST_F(EvaluateQueryTest, ValidQueryBasicStringExpression) {
   const std::string query = R"sql(
-    SELECT "foo" AS str_val
+    SELECT 'foo' AS str_val
   )sql";
   std::string output_col_name = "str_val";
   TableSchema output_schema;
@@ -572,8 +572,8 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
                               1.0 AS float_val,
                               1.0 AS double_val,
                               TRUE AS bool_val,
-                              "foobar" AS str_val,
-                              "arbitrary bytes" AS binary_val;
+                              'foobar' AS str_val,
+                              'arbitrary bytes' AS binary_val;
                             )sql",
       output_schema.column());
 
