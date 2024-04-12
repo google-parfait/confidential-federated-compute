@@ -24,6 +24,7 @@
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/aggregation/testing/test_data.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "gmock/gmock.h"
@@ -52,6 +53,7 @@ using ::fcp::aggregation::Tensor;
 using ::fcp::aggregation::TensorShape;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
 using ::fcp::confidentialcompute::GenerateNoncesRequest;
@@ -69,6 +71,7 @@ using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::testing::Test;
+using testing::UnorderedElementsAre;
 
 std::string BuildSingleInt32TensorCheckpoint(
     std::string column_name, std::initializer_list<int32_t> input_values) {
@@ -153,6 +156,91 @@ TEST_F(AggCoreTransformTest, InvalidConfigureAndAttestRequest) {
               HasSubstr("is not a supported intrinsic_uri"));
 }
 
+TEST_F(AggCoreTransformTest, ConfigureAndAttestRequestNoIntrinsicConfigs) {
+  grpc::ClientContext context;
+  Configuration invalid_config;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  request.mutable_configuration()->PackFrom(invalid_config);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Configuration must have exactly one IntrinsicConfig"));
+}
+
+TEST_F(AggCoreTransformTest,
+       FedSqlDpGroupByInvalidParametersConfigureAndAttest) {
+  grpc::ClientContext context;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_configs: {
+      intrinsic_uri: "fedsql_dp_group_by"
+      intrinsic_args { parameter { dtype: DT_INT64 int64_val: 42 } }
+      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+      inner_intrinsics {
+        intrinsic_uri: "GoogleSQL:sum"
+        intrinsic_args {
+          input_tensor {
+            name: "val"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+        output_tensors {
+          name: "val_out"
+          dtype: DT_INT64
+          shape {}
+        }
+      }
+    }
+  )pb");
+  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "`fedsql_dp_group_by` parameters must both be have type DT_DOUBLE"));
+}
+TEST_F(AggCoreTransformTest, MultipleTopLevelIntrinsicsConfigureAndAttest) {
+  grpc::ClientContext context;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_configs: {
+      intrinsic_uri: "federated_sum"
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+    }
+    intrinsic_configs: {
+      intrinsic_uri: "federated_sum"
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+    }
+  )pb");
+  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Configuration must have exactly one IntrinsicConfig"));
+}
+
 TEST_F(AggCoreTransformTest, ConfigureAndAttestMoreThanOnce) {
   grpc::ClientContext context;
   ConfigureAndAttestRequest request;
@@ -176,6 +264,51 @@ TEST_F(AggCoreTransformTest, ValidConfigureAndAttest) {
   request.mutable_configuration()->PackFrom(DefaultConfiguration());
 
   ASSERT_TRUE(stub_->ConfigureAndAttest(&context, request, &response).ok());
+}
+
+TEST_F(AggCoreTransformTest,
+       FedSqlDpGroupByConfigureAndAttestGeneratesConfigProperties) {
+  grpc::ClientContext context;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_configs: {
+      intrinsic_uri: "fedsql_dp_group_by"
+      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+      inner_intrinsics {
+        intrinsic_uri: "GoogleSQL:sum"
+        intrinsic_args {
+          input_tensor {
+            name: "val"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+        output_tensors {
+          name: "val_out"
+          dtype: DT_INT64
+          shape {}
+        }
+      }
+    }
+  )pb");
+  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
+  ASSERT_TRUE(cwt.ok());
+  ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
+            "fedsql_dp_group_by");
+  ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
+  ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
 }
 
 TEST_F(AggCoreTransformTest, TransformExecutesFederatedSum) {
@@ -312,9 +445,7 @@ TEST_F(AggCoreTransformTest, TransformExecutesFedSqlGroupBy) {
   // The query sums the val column, grouping by key
   ASSERT_EQ(col_values->num_elements(), 3);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 7);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(1), 5);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(2), 0);
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(7, 5, 0));
 }
 
 TEST_F(AggCoreTransformTest, MultipleTransformExecutionsSucceed) {

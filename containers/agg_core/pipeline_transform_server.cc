@@ -24,7 +24,9 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "containers/crypto.h"
+#include "fcp/aggregation/core/intrinsic.h"
 #include "fcp/aggregation/protocol/checkpoint_aggregator.h"
+#include "fcp/aggregation/protocol/config_converter.h"
 #include "fcp/aggregation/protocol/configuration.pb.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -39,8 +41,10 @@ using ::fcp::aggregation::CheckpointAggregator;
 using ::fcp::aggregation::CheckpointBuilder;
 using ::fcp::aggregation::CheckpointParser;
 using ::fcp::aggregation::Configuration;
+using ::fcp::aggregation::DT_DOUBLE;
 using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
 using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
+using ::fcp::aggregation::Intrinsic;
 using ::fcp::aggregation::Tensor;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
@@ -51,6 +55,36 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ServerContext;
 
+constexpr char kFedSqlDPGroupByUri[] = "fedsql_dp_group_by";
+
+absl::Status ValidateFedSqlDpGroupByParameters(const Intrinsic& intrinsic) {
+  if (intrinsic.parameters.size() < 2) {
+    return absl::InvalidArgumentError(
+        "`fedsql_dp_group_by` IntrinsicConfig must have at least two "
+        "parameters.");
+  }
+  if (intrinsic.parameters.at(0).dtype() != DT_DOUBLE ||
+      intrinsic.parameters.at(1).dtype() != DT_DOUBLE) {
+    return absl::InvalidArgumentError(
+        "`fedsql_dp_group_by` parameters must both be have type DT_DOUBLE.");
+  }
+  if (intrinsic.parameters.at(0).num_elements() != 1 ||
+      intrinsic.parameters.at(1).num_elements() != 1) {
+    return absl::InvalidArgumentError(
+        "`fedsql_dp_group_by` parameters must each have exactly one value.");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ValidateTopLevelIntrinsics(
+    const std::vector<Intrinsic>& intrinsics) {
+  if (intrinsics.size() != 1) {
+    return absl::InvalidArgumentError(
+        "Configuration must have exactly one IntrinsicConfig.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
     ConfigureAndAttestResponse* response) {
@@ -60,16 +94,32 @@ absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
   const RecordDecryptor* record_decryptor;
   {
     absl::MutexLock l(&mutex_);
-    if (configuration_ != std::nullopt) {
+    if (intrinsics_ != std::nullopt) {
       return absl::FailedPreconditionError(
           "ConfigureAndAttest can only be called once.");
     }
 
-    configuration_.emplace(config);
-    // TODO: Once the DP intrinsic is implemented, we'll need to pull out the
-    // attestable properties from the configuration and send them to the
-    // RecordDecryptor via the `config_properties` argument.
-    record_decryptor_.emplace(crypto_stub_);
+    FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
+                         fcp::aggregation::ParseFromConfig(config));
+    FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
+    google::protobuf::Struct config_properties;
+    (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
+        intrinsics.at(0).uri);
+    if (intrinsics.at(0).uri == kFedSqlDPGroupByUri) {
+      const Intrinsic& fedsql_dp_intrinsic = intrinsics.at(0);
+      FCP_RETURN_IF_ERROR(
+          ValidateFedSqlDpGroupByParameters(fedsql_dp_intrinsic));
+      double epsilon =
+          fedsql_dp_intrinsic.parameters.at(0).CastToScalar<double>();
+      double delta =
+          fedsql_dp_intrinsic.parameters.at(1).CastToScalar<double>();
+      (*config_properties.mutable_fields())["epsilon"].set_number_value(
+          epsilon);
+      (*config_properties.mutable_fields())["delta"].set_number_value(delta);
+    }
+
+    intrinsics_.emplace(std::move(intrinsics));
+    record_decryptor_.emplace(crypto_stub_, config_properties);
 
     // Since record_decryptor_ is set once in ConfigureAndAttest and never
     // modified, and the underlying object is threadsafe, it is safe to store a
@@ -121,24 +171,23 @@ static absl::Status AccumulateRecord(const Record& record,
 absl::Status AggCorePipelineTransform::AggCoreTransform(
     const TransformRequest* request, TransformResponse* response) {
   RecordDecryptor* record_decryptor;
-  const Configuration* configuration;
+  std::unique_ptr<CheckpointAggregator> aggregator;
   {
     absl::MutexLock l(&mutex_);
-    if (configuration_ == std::nullopt || record_decryptor_ == std::nullopt) {
+    if (intrinsics_ == std::nullopt || record_decryptor_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "ConfigureAndAttest must be called before Transform.");
     }
 
-    // Since record_decryptor_ and configuration_ are set once in
-    // ConfigureAndAttest and never modified, and both underlying objects are
-    // threadsafe, it is safe to store a local pointer to them and access the
-    // objects without a lock after we check under the mutex that values have
-    // been set for the std::optional wrappers.
+    // Since record_decryptor_ is set once in ConfigureAndAttest and never
+    // modified, and the underlying object is threadsafe, it is safe to store a
+    // local pointer to it and access the object without a lock after we check
+    // under the mutex that values have been set for the std::optional wrappers.
     record_decryptor = &*record_decryptor_;
-    configuration = &*configuration_;
+
+    FCP_ASSIGN_OR_RETURN(aggregator,
+                         CheckpointAggregator::Create(&*intrinsics_));
   }
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointAggregator> aggregator,
-                       CheckpointAggregator::Create(*configuration));
   std::vector<std::future<absl::Status>> futures;
   for (const Record& record : request->inputs()) {
     futures.push_back(std::async(std::launch::async, AccumulateRecord, record,

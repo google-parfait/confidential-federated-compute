@@ -22,6 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/crypto.h"
+#include "fcp/aggregation/core/intrinsic.h"
 #include "fcp/aggregation/protocol/checkpoint_aggregator.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
@@ -70,10 +71,7 @@ class AggCorePipelineTransform final
 
   oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping the Configuration to
-  // ensure the Configuration is initialized, but the Configuration itself is
-  // threadsafe.
-  std::optional<const fcp::aggregation::Configuration> configuration_
+  std::optional<const std::vector<fcp::aggregation::Intrinsic>> intrinsics_
       ABSL_GUARDED_BY(mutex_);
   // The mutex is used to protect the optional wrapping the RecordDecryptor to
   // ensure the RecordDecryptor is initialized, but the RecordDecryptor itself

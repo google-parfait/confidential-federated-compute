@@ -125,9 +125,9 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "b926c2b5a1ac1db3207ba4dc123261861b4f1dc706bd9e4d3590263d512c8297",
-    strip_prefix = "federated-compute-4398c5dcb301841ebec87c3f3f76dc42de66aeaf",
-    url = "https://github.com/google/federated-compute/archive/4398c5dcb301841ebec87c3f3f76dc42de66aeaf.tar.gz",
+    sha256 = "f5ddbce964173580f274cb206043dcf403c88916248b58add2e716d8250bd6f5",
+    strip_prefix = "federated-compute-de4cd90a81b661d025db7cb1710ca6771814567c",
+    url = "https://github.com/google/federated-compute/archive/de4cd90a81b661d025db7cb1710ca6771814567c.tar.gz",
 )
 
 git_repository(
@@ -275,4 +275,20 @@ stub_repo(
 stub_repo(
     name = "rules_rust",
     rules = {"proto/prost:defs.bzl": ["rust_prost_library"]},
+)
+
+# The following enables the use of the library functions in the differential-
+# privacy github repo
+http_archive(
+    name = "com_google_cc_differential_privacy",
+    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
+    strip_prefix = "differential-privacy-3.0.0/cc",
+    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
+)
+
+http_archive(
+    name = "com_google_differential_privacy",
+    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
+    strip_prefix = "differential-privacy-3.0.0",
+    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
 )
