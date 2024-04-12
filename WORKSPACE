@@ -80,7 +80,7 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 pip_parse(
     name = "pypi_deps",
     python_interpreter_target = interpreter,
-    requirements_lock = "//tff_worker:requirements.txt",
+    requirements_lock = "//:requirements.txt",
 )
 
 # Load the starlark macro, which will define pypi dependencies.
@@ -144,10 +144,6 @@ tf_workspace1(with_rules_cc = False)
 load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
-
-load("@com_github_grpc_grpc//bazel:grpc_python_deps.bzl", "grpc_python_deps")
-
-grpc_python_deps()
 
 load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
 

@@ -49,21 +49,22 @@ The code for the Ledger is located in the `ledger_service` and
 
 This repository also contains code for components that will run transformations
 over data within TEEs, if those transformations are allowed by the
-Ledger-enforced policy.
-
-The `examples` folder contains code that can be built to produce
-`sum_enclave_app` and `square_enclave_app`, transformations that sum and square
-their inputs, which are run on TEEs using the
-[Oak Restricted Kernel](https://github.com/project-oak/oak/tree/main/oak_restricted_kernel).
-These example applications are useful for demo purposes.
-
-The `tff_worker` folder contains code for building a container which runs a
-server that can transform data using the
-[TensorFlow Federated](https://www.tensorflow.org/federated) framework. Building
-the code in this folder produces a tarball,
-`pipeline_transform_server_oci_filesystem_bundle.tar` which can be run on a TEE
-using
+Ledger-enforced policy. There are transform implementations using both the Oak
+Restricted Kernel and
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
+
+*   [**`containers/agg_core`**] Oak Containers transform that aggregates
+    multiple inputs using the Federated Compute Platform's aggregation cores.
+*   [**`containers/sql_server`**] Oak Containers transform that uses SQL to
+    query its inputs.
+*   [**`containers/test_concat`**] Example Oak Containers transform that
+    concatenates its inputs.
+*   [**`examples/square_enclave_app`**] Example Oak Restricted Kernel transform
+    that squares its input.
+*   [**`examples/sum_enclave_app`**] Example Oak Restricted Kernel transform
+    that sums its inputs.
+
+See each transform's README for more details.
 
 ## Building
 

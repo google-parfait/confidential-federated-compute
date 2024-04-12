@@ -11,14 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+load("@rules_python//python:defs.bzl", "py_binary")
+
 package(default_visibility = ["//:__subpackages__"])
 
-cc_binary(
-    name = "pipeline_transform_cpp_client",
-    srcs = ["pipeline_transform_client.cc"],
+exports_files([
+    "aggregation_computation.txtpb",
+    "client_work_computation.txtpb",
+])
+
+py_library(
+    name = "test_computations",
+    testonly = True,
+    srcs = ["test_computations.py"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@pypi_deps_tensorflow//:pkg",
+        "@pypi_deps_tensorflow_federated//:pkg",
+    ],
+)
+
+py_binary(
+    name = "generate_test_computations",
+    testonly = True,
+    srcs = ["generate_test_computations.py"],
+    deps = [
+        ":test_computations",
+        "@pypi_deps_tensorflow_federated//:pkg",
     ],
 )
