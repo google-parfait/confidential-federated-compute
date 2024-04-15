@@ -48,37 +48,17 @@ elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
 elif [ "$1" == "release" ]; then
   ${BAZELISK} test //...
-  ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}" \
-      //tff_worker/server:pipeline_transform_server_zip
-  readonly BAZEL_BIN="$(${BAZELISK} info -c opt bazel-bin)"
-
-  # The Python-based tff_worker server has a more complex Dockerfile that hasn't
-  # been ported to rules_oci. Until then, build it with Docker.
-  # Copy inputs to a temporary directory to minimize the build context sent to
-  # the Docker daemon.
-  readonly DOCKER_CONTEXT_DIR="$(mktemp -d)"
-  trap 'rm -rf -- "${DOCKER_CONTEXT_DIR}"' EXIT
-  cp "${BAZEL_BIN}/tff_worker/server/pipeline_transform_server.zip" \
-      "${DOCKER_CONTEXT_DIR}/"
-  docker build -f "${WORKSPACE_DIR}/tff_worker/server/Dockerfile" \
-      -t tff_pipeline_transfer_server "${DOCKER_CONTEXT_DIR}"
-  readonly TARGET_DIR="${WORKSPACE_DIR}/target/bazel"
-  mkdir --parents "${TARGET_DIR}"
-  "${WORKSPACE_DIR}/scripts/export_container_bundle.sh" -c tff_pipeline_transfer_server \
-      -o "${TARGET_DIR}/tff_worker_container.tar"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
+    readonly BAZEL_BIN="$(${BAZELISK} info -c opt bazel-bin)"
     for target in "${!RELEASE_TARGETS[@]}"; do
       src="${BAZEL_BIN}${target/:/\//}"
       dst="${BINARY_OUTPUTS_DIR}/${RELEASE_TARGETS[$target]}"
       mkdir --parents "$(dirname "$dst")"
       cp -f "$src" "$dst"
     done
-
-    mkdir --parents "${BINARY_OUTPUTS_DIR}/tff_worker"
-    cp "${TARGET_DIR}/tff_worker_container.tar" "${BINARY_OUTPUTS_DIR}/tff_worker/container.tar"
   fi
 else
   ${BAZELISK} test //...

@@ -22,13 +22,13 @@ from absl import flags
 from google.protobuf import text_format
 import tensorflow_federated as tff
 
-from tff_worker.server.testing import test_computations
+from containers.tff_worker.testing import test_computations
 
 OUTPUT_DIR = flags.DEFINE_string('output_dir', None, 'Output directory',
                                  required=True)
 
-CLIENT_WORK_COMPUTATION = 'client_work_computation.pbtxt'
-AGGREGATION_COMPUTATION = 'aggregation_computation.pbtxt'
+CLIENT_WORK_COMPUTATION = 'client_work_computation.txtpb'
+AGGREGATION_COMPUTATION = 'aggregation_computation.txtpb'
 
 
 def generate_test_computations() -> None:

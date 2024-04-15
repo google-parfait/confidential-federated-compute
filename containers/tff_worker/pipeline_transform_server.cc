@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "tff_worker/server/pipeline_transform_server.h"
+#include "containers/tff_worker/pipeline_transform_server.h"
 
 #include <string>
 

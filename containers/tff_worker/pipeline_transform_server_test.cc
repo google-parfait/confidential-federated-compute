@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "tff_worker/server/pipeline_transform_server.h"
+#include "containers/tff_worker/pipeline_transform_server.h"
 
 #include <fstream>
 #include <memory>
@@ -82,9 +82,9 @@ using ::testing::HasSubstr;
 using ::testing::Test;
 
 constexpr absl::string_view kAggregationComputationPath =
-    "tff_worker/server/testing/aggregation_computation.pbtxt";
+    "containers/tff_worker/testing/aggregation_computation.txtpb";
 constexpr absl::string_view kClientWorkComputationPath =
-    "tff_worker/server/testing/client_work_computation.pbtxt";
+    "containers/tff_worker/testing/client_work_computation.txtpb";
 
 absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
     absl::string_view path) {
