@@ -97,7 +97,7 @@ NOTE: Support for replication is in development.
     uploads $HDR_C$, $Enc(EK_C, PK_L, HDR_C)$ (symmetric encryption key
     encrypted with ledger's public key), and $Enc(M_C, EK_C, HDR_C)$ (message
     encrypted with symmetric encryption key) to untrusted storage. (See
-    [Encryption: HPKE + AEAD](#encryption-hpke-aead) for details on this double
+    [Encryption: HPKE + AEAD](#encryption-hpke--aead) for details on this double
     encryption scheme.)
 
 3.  Later, a component in a data processing pipeline, Transform 1, reads
@@ -300,7 +300,7 @@ For example:
 ```mermaid
 graph TD
   0 -->|3 times by App A| 1;
-  0 -->|1 times by App B| 2;
+  0 -->|1 time by App B| 2;
   2 -->|2 times by App C| 3;
 ```
 
