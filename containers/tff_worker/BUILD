@@ -30,12 +30,12 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
         "@org_tensorflow//tensorflow/core:tensorflow",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:executor",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
-        "@tensorflow-federated//tensorflow_federated/proto/v0:executor_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
@@ -70,7 +70,7 @@ cc_test(
         "@googletest//:gtest_main",
         "@org_tensorflow//tensorflow/core:protos_all_cc",
         "@org_tensorflow//tensorflow/core:tensorflow",
-        "@tensorflow-federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
-        "@tensorflow-federated//tensorflow_federated/proto/v0:executor_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )

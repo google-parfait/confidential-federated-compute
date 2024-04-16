@@ -460,7 +460,7 @@ lambda {
                             }
                           }
                           versions {
-                            producer: 1395
+                            producer: 1575
                           }
                         }
                       }

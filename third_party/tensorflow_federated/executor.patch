@@ -1,8 +1,0 @@
-# Fix undefined symbol in executor.h. This is fixed in TFF 0.70.0.
-# https://github.com/tensorflow/federated/commit/2377fd35f1a165ce166002e2bafd68c10b1fbad1
---- tensorflow_federated/cc/core/impl/executors/executor.h
-+++ tensorflow_federated/cc/core/impl/executors/executor.h
-@@ -212,2 +212,2 @@
-   // Use ValueId max to indicate "no value."
--  static const ValueId INVALID_ID = std::numeric_limits<ValueId>::max();
-+  static constexpr ValueId INVALID_ID = std::numeric_limits<ValueId>::max();

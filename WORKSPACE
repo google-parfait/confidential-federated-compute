@@ -90,18 +90,16 @@ load("@pypi_deps//:requirements.bzl", "install_deps")
 install_deps()
 
 http_archive(
-    name = "tensorflow-federated",
+    name = "org_tensorflow_federated",
     patches = [
-        "//third_party/tensorflow_federated:BUILD.patch",
-        "//third_party/tensorflow_federated:executor.patch",
-        "//third_party/tensorflow_federated:executors.patch",
+        "//third_party/org_tensorflow_federated:BUILD.patch",
     ],
     # Note that we also depend on TFF from a pypi dependency in requirements.txt
     # If the version used here for protos is incompatible with the version used
     # for the rest of TFF, it could cause issues.
-    sha256 = "03928b8e702b81a5f2c4b1a50dd6500e4819236e23ab06a705f83108499c772c",
-    strip_prefix = "federated-0.63.0",
-    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.63.0.tar.gz",
+    sha256 = "f997054fe365dbc0dd5cc0ace7c0adb8c083d9d294308e0d2788cb3a162d438b",
+    strip_prefix = "federated-0.75.0",
+    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.75.0.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
@@ -114,16 +112,13 @@ http_archive(
     urls = ["https://github.com/google/boringssl/archive/47e850c41f43350699e1325a134ec88269cabe6b.tar.gz"],
 )
 
-# Use pre-release version of Tensorflow because it is compatible with hermetic
-# Python.
-# Tensorflow v2.14.0-rc0
 http_archive(
     name = "org_tensorflow",
-    patches = ["//third_party/tensorflow:internal_visibility.patch"],
-    sha256 = "b54cb7ac94a74bbab4ffc40e362d684e9b08b4a10a307022f24cb80706765367",
-    strip_prefix = "tensorflow-2.14.0-rc0",
+    patches = ["//third_party/org_tensorflow:internal_visibility.patch"],
+    sha256 = "6b31ed347ed7a03c45b906aa41628ac91c3db7c84cb816971400d470e58ba494",
+    strip_prefix = "tensorflow-2.14.1",
     urls = [
-        "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.0-rc0.tar.gz",
+        "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.1.tar.gz",
     ],
 )
 

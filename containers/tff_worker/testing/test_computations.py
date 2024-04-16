@@ -19,7 +19,7 @@ import tensorflow as tf
 import tensorflow_federated as tff
 
 
-@tff.tf_computation(
+@tff.tensorflow.computation(
     collections.OrderedDict(
         [('float', tff.TensorType(tf.float32.as_numpy_dtype, shape=[None]))]),
     tf.float32.as_numpy_dtype,
@@ -36,12 +36,13 @@ def tf_comp(
 
 # Define a federated computation using tf_comp to be performed per-client.
 @tff.federated_computation(
-    tff.type_at_clients(
+    tff.FederatedType(
         collections.OrderedDict([
             ('float',
-             tff.TensorType(tf.float32.as_numpy_dtype, shape=[None]))])
+             tff.TensorType(tf.float32.as_numpy_dtype, shape=[None]))]),
+        tff.CLIENTS,
     ),
-    tff.type_at_clients(tf.float32.as_numpy_dtype, all_equal=True),
+    tff.FederatedType(tf.float32.as_numpy_dtype, tff.CLIENTS, all_equal=True),
 )
 def client_work_comp(
     example: collections.OrderedDict[str, tf.Tensor], broadcasted_data: float
@@ -51,14 +52,14 @@ def client_work_comp(
 
 
 @tff.federated_computation(
-    tff.type_at_server(tf.int32.as_numpy_dtype),
-    tff.type_at_clients(tf.int32.as_numpy_dtype)
+    tff.FederatedType(tf.int32.as_numpy_dtype, tff.SERVER),
+    tff.FederatedType(tf.int32.as_numpy_dtype, tff.CLIENTS)
 )
 def aggregation_comp(state: int, value: list[int]) -> int:
   """Scales then sums the outputs from applying client work at clients."""
   state_at_clients = tff.federated_broadcast(state)
   scaled_value = tff.federated_map(
-      tff.tf_computation(lambda x, y: x * y), (value, state_at_clients)
+      tff.tensorflow.computation(lambda x, y: x * y), (value, state_at_clients)
   )
   summed_value = tff.federated_sum(scaled_value)
   return summed_value
