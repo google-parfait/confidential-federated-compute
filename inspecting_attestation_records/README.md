@@ -13,7 +13,7 @@ which are built from this repository.
 After a successful verification, these devices will log an
 [attestation verification record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
 which can then be inspected. Please see
-[fcp/client/attestation/README.md](https://github.com/google-parfait/federated-compute/fcp/client/attestation/README.md)
+[fcp/client/attestation/README.md](https://github.com/google-parfait/federated-compute/blob/main/fcp/client/attestation/README.md)
 in the Federated Compute repository for instructions on how to gather
 attestation verification records from a device that is using the Federated
 Compute client library.
