@@ -210,7 +210,6 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   std::string ckpt_string;
   absl::CopyCordToString(output_data, &ckpt_string);
   Record* output = response->add_outputs();
-  output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
 
   // Don't encrypt the results if the access policy node ID is unset, since this
   // indicates that this is a terminal transformation.
@@ -218,6 +217,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   // configuration.
   if (configuration->output_access_policy_node_id == std::nullopt) {
     output->set_unencrypted_data(std::move(ckpt_string));
+    output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
     return absl::OkStatus();
   }
   RecordEncryptor encryptor;
@@ -248,6 +248,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
           "rewrapped_symmetric_key_associated_data");
   }
 
+  output->set_compression_type(Record::COMPRESSION_TYPE_NONE);
   return absl::OkStatus();
 }
 
