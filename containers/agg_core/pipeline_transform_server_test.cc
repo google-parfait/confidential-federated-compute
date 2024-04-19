@@ -431,6 +431,34 @@ TEST_F(AggCoreTransformTest,
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 6);
 }
 
+TEST_F(AggCoreTransformTest, TransformFailsForInvalidInput) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  configure_request.mutable_configuration()->PackFrom(DefaultConfiguration());
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  std::string message = BuildSingleInt32TensorCheckpoint("bad_col_name", {1});
+  Record record;
+  record.set_unencrypted_data(message);
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(record);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_EQ(transform_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
 TEST_F(AggCoreTransformTest, TransformBeforeConfigureAndAttest) {
   grpc::ClientContext context;
   TransformRequest request;
