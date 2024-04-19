@@ -62,33 +62,6 @@ python_register_toolchains(
     python_version = "3.10",
 )
 
-# Bazel Skylib is needed to load @python//:defs.bzl below.
-http_archive(
-    name = "bazel_skylib",
-    sha256 = "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
-    urls = [
-        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
-        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
-    ],
-)
-
-load("@python//:defs.bzl", "interpreter")
-load("@rules_python//python:pip.bzl", "pip_parse")
-
-# Create a central repo that knows about the dependencies needed from
-# requirements.txt.
-pip_parse(
-    name = "pypi_deps",
-    python_interpreter_target = interpreter,
-    requirements_lock = "//:requirements.txt",
-)
-
-# Load the starlark macro, which will define pypi dependencies.
-load("@pypi_deps//:requirements.bzl", "install_deps")
-
-# Call it to define repos for requirements.
-install_deps()
-
 http_archive(
     name = "org_tensorflow_federated",
     patches = [

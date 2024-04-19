@@ -44,8 +44,8 @@ cc_test(
     size = "small",
     srcs = ["pipeline_transform_server_test.cc"],
     data = [
-        "//containers/tff_worker/testing:aggregation_computation.txtpb",
-        "//containers/tff_worker/testing:client_work_computation.txtpb",
+        "//containers/tff_worker:testing/aggregation_computation.txtpb",
+        "//containers/tff_worker:testing/client_work_computation.txtpb",
     ],
     tags = [
         # There is an incompatibility between the TensorFlow dependencies for

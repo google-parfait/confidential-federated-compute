@@ -13,7 +13,6 @@
 # limitations under the License.
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 platform(
     name = "remote_platform",
@@ -26,13 +25,4 @@ platform(
         os_family = "Linux",
     ),
     parents = ["@local_config_platform//:host"],
-)
-
-# This rule adds a convenient way to update the requirements file.
-compile_pip_requirements(
-    name = "requirements",
-    timeout = "long",
-    extra_args = ["--allow-unsafe"],
-    requirements_in = "requirements.in",
-    requirements_txt = "requirements.txt",
 )
