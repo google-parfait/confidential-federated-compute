@@ -255,9 +255,10 @@ pub fn get_test_endorsements() -> Endorsements {
 pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::ReferenceValues {
     use oak_proto_rust::oak::attestation::v1::{
         binary_reference_value, kernel_binary_reference_value, reference_values,
-        ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
-        KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
-        RootLayerReferenceValues, SkipVerification,
+        text_reference_value, ApplicationLayerReferenceValues, BinaryReferenceValue,
+        InsecureReferenceValues, KernelBinaryReferenceValue, KernelLayerReferenceValues,
+        OakRestrictedKernelReferenceValues, RootLayerReferenceValues, SkipVerification,
+        TextReferenceValue,
     };
 
     let skip = BinaryReferenceValue {
@@ -277,6 +278,9 @@ pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::Refe
                         r#type: Some(kernel_binary_reference_value::Type::Skip(
                             SkipVerification::default(),
                         )),
+                    }),
+                    kernel_cmd_line_text: Some(TextReferenceValue {
+                        r#type: Some(text_reference_value::Type::Skip(SkipVerification::default())),
                     }),
                     init_ram_fs: Some(skip.clone()),
                     memory_map: Some(skip.clone()),

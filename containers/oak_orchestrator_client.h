@@ -19,7 +19,7 @@
 
 #include "absl/status/status.h"
 #include "grpcpp/channel.h"
-#include "oak_containers/proto/interfaces.grpc.pb.h"
+#include "proto/containers/interfaces.grpc.pb.h"
 
 namespace confidential_federated_compute {
 

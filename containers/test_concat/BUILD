@@ -25,7 +25,7 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@oak//oak_containers/proto:interfaces_cc_grpc",
+        "@oak//proto/containers:interfaces_cc_grpc",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )

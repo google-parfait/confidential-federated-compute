@@ -23,7 +23,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "oak_containers/proto/interfaces.grpc.pb.h"
+#include "proto/containers/interfaces.grpc.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::sql_server {

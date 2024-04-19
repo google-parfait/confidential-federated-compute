@@ -1,40 +1,18 @@
---- oak_containers/proto/BUILD
-+++ oak_containers/proto/BUILD
-@@ -15,6 +15,7 @@
- #
-
- load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
- load("@rules_cc//cc:defs.bzl", "cc_proto_library")
- load("@rules_proto//proto:defs.bzl", "proto_library")
-
-@@ -43,6 +44,18 @@
- cc_grpc_library(
-     name = "interfaces_cc_grpc",
-     srcs = [":interfaces_proto"],
-+    generate_mocks = True,
-     grpc_only = True,
-     deps = [":interfaces_cc_proto"],
- )
-+
-+py_proto_library(
-+    name = "interfaces_py_proto",
-+    deps = [":interfaces_proto"],
-+)
-+
-+py_grpc_library(
-+    name = "interfaces_py_grpc",
-+    srcs = [":interfaces_proto"],
-+    deps = [":interfaces_py_proto"],
-+)
-
 --- proto/containers/BUILD
 +++ proto/containers/BUILD
-@@ -40,6 +40,7 @@
+@@ -39,6 +39,7 @@
  cc_grpc_library(
      name = "orchestrator_crypto_cc_grpc",
      srcs = [":orchestrator_crypto_proto"],
 +    generate_mocks = True,
      grpc_only = True,
      deps = [":orchestrator_crypto_cc_proto"],
+ )
+@@ -69,6 +70,7 @@
+ cc_grpc_library(
+     name = "interfaces_cc_grpc",
+     srcs = [":interfaces_proto"],
++    generate_mocks = True,
+     grpc_only = True,
+     deps = [":interfaces_cc_proto"],
  )

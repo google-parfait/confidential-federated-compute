@@ -161,9 +161,9 @@ impl RecordDecoder {
     }
 
     fn decompress(msg: &[u8], compression_type: i32) -> anyhow::Result<Vec<u8>> {
-        match CompressionType::from_i32(compression_type) {
-            Some(CompressionType::None) => Ok(msg.to_vec()),
-            Some(CompressionType::Gzip) => {
+        match CompressionType::try_from(compression_type) {
+            Ok(CompressionType::None) => Ok(msg.to_vec()),
+            Ok(CompressionType::Gzip) => {
                 let mut result = Vec::new();
                 libflate::gzip::Decoder::new(msg)
                     .and_then(|mut decoder| decoder.read_to_end(&mut result))

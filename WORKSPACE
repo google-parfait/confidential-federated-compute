@@ -142,9 +142,9 @@ http_archive(
     patches = [
         "//third_party/oak:BUILD.containers.patch",
     ],
-    sha256 = "b840c70b4accb3631c9ac785554e33dbf96714f7597b9259720e8d1a6bff47d3",
-    strip_prefix = "oak-319f9f97249c142abd7ad5038bdca24f90aeb515",
-    url = "https://github.com/project-oak/oak/archive/319f9f97249c142abd7ad5038bdca24f90aeb515.tar.gz",
+    sha256 = "d421089e0509fc1324c6f6d650bcea3d1a57c50af59d095fae9dd5a5497a6b86",
+    strip_prefix = "oak-35fee53c9cd2ced302864cd8c4ab0c01f2b7963d",
+    url = "https://github.com/project-oak/oak/archive/35fee53c9cd2ced302864cd8c4ab0c01f2b7963d.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
@@ -270,4 +270,9 @@ stub_repo(
         "java_lite_proto_library",
         "java_proto_library",
     ]},
+)
+
+stub_repo(
+    name = "rules_rust",
+    rules = {"proto/prost:defs.bzl": ["rust_prost_library"]},
 )

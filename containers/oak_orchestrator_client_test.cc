@@ -22,7 +22,7 @@
 #include "gmock/gmock.h"
 #include "google/protobuf/empty.pb.h"
 #include "gtest/gtest.h"
-#include "oak_containers/proto/interfaces_mock.grpc.pb.h"
+#include "proto/containers/interfaces_mock.grpc.pb.h"
 
 namespace confidential_federated_compute {
 
