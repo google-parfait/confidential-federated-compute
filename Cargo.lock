@@ -823,7 +823,7 @@ checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 [[package]]
 name = "micro_rpc"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "async-trait",
  "micro_rpc_build",
@@ -833,7 +833,7 @@ dependencies = [
 [[package]]
 name = "micro_rpc_build"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "anyhow",
  "prost-build",
@@ -901,7 +901,7 @@ dependencies = [
 [[package]]
 name = "oak_attestation"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -921,7 +921,7 @@ dependencies = [
 [[package]]
 name = "oak_attestation_verification"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -947,7 +947,7 @@ dependencies = [
 [[package]]
 name = "oak_channel"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -959,7 +959,7 @@ dependencies = [
 [[package]]
 name = "oak_core"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "getrandom",
  "lock_api",
@@ -969,7 +969,7 @@ dependencies = [
 [[package]]
 name = "oak_crypto"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -993,7 +993,7 @@ dependencies = [
 [[package]]
 name = "oak_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "bitflags 2.4.1",
  "ciborium",
@@ -1012,7 +1012,7 @@ dependencies = [
 [[package]]
 name = "oak_enclave_runtime_support"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "libm",
  "log",
@@ -1024,7 +1024,7 @@ dependencies = [
 [[package]]
 name = "oak_proto_rust"
 version = "0.0.1"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "micro_rpc",
  "micro_rpc_build",
@@ -1035,7 +1035,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "coset",
  "hkdf",
@@ -1048,7 +1048,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_interface"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "bitflags 2.4.1",
  "strum",
@@ -1057,7 +1057,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -1081,7 +1081,7 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk_proc_macro"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "quote",
  "syn 2.0.48",
@@ -1090,7 +1090,7 @@ dependencies = [
 [[package]]
 name = "oak_sev_snp_attestation_report"
 version = "0.0.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "bitflags 2.4.1",
  "static_assertions",
@@ -1101,7 +1101,7 @@ dependencies = [
 [[package]]
 name = "oak_stage0_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=35fee53c9cd2ced302864cd8c4ab0c01f2b7963d#35fee53c9cd2ced302864cd8c4ab0c01f2b7963d"
+source = "git+https://github.com/project-oak/oak?rev=1727a77e16b815ca01e7de2a54cb4482a4b5cfaa#1727a77e16b815ca01e7de2a54cb4482a4b5cfaa"
 dependencies = [
  "coset",
  "hex",
