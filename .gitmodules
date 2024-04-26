@@ -1,3 +1,3 @@
 [submodule "third_party/federated_compute/federated-compute"]
 	path = third_party/federated_compute/federated-compute
-	url = ../external/federated-compute
+	url = ../federated-compute
