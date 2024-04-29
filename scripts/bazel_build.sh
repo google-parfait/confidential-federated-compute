@@ -47,7 +47,11 @@ elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=tsan --build_tag_filters=-tsan --test_tag_filters=-tsan
   ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
 elif [ "$1" == "release" ]; then
-  ${BAZELISK} test //...
+  if [[ -z "${SKIP_TESTS}" ]]; then
+    # Tests fail after 2h in GitHub actions when generating provenances, seemingly
+    # since the worker runs out of space. Hence an option to skip tests is used.
+    ${BAZELISK} test //...
+  fi
   ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll

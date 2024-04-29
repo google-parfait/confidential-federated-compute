@@ -37,16 +37,12 @@ f() {
   build_docker_image() {
     local context_dir
     context_dir="$(mktemp -d)"
+    cp scripts/setup_build_env.sh "${context_dir}"
     trap 'rm -rf -- "${context_dir}"' EXIT
     docker build --cache-from "${DOCKER_IMAGE_NAME}" --tag "${DOCKER_IMAGE_NAME}" -f - "${context_dir}" <<EOF
 FROM rust@sha256:4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563
-RUN rustup default nightly-2023-11-15
-RUN rustup target add x86_64-unknown-none
-RUN curl -LSso protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
-    echo "78ab9c3288919bdaa6cfcec6127a04813cf8a0ce406afa625e48e816abee2878 protoc.zip" | sha256sum -c && \
-    unzip -q protoc.zip -d /usr/local/protobuf && \
-    rm protoc.zip
-ENV PROTOC /usr/local/protobuf/bin/protoc
+COPY setup_build_env.sh /tmp/setup_build_env.sh
+RUN /tmp/setup_build_env.sh
 EOF
   }
 }

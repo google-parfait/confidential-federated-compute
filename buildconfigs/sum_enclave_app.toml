@@ -1,0 +1,6 @@
+command = [
+  "sh",
+  "-c",
+  "GITHUB_ACTION=\"provenance\" scripts/setup_build_env.sh && cargo build --release --package sum_enclave_app"
+]
+artifact_path = "target/x86_64-unknown-none/release/sum_enclave_app"

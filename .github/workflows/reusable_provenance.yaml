@@ -1,0 +1,22 @@
+name: Build SLSA3 Provenances
+
+on:
+  workflow_call:
+    inputs:
+      build-config-path:
+        required: true
+        type: string
+
+jobs:
+  generate_provenance:
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_container-based_slsa3.yml@v2.0.0
+    with:
+      builder-image: 'rust'
+      builder-digest: 'sha256:4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563'
+      config-path: ${{ inputs.build-config-path }}
+      provenance-name: attestation.intoto
+      compile-builder: true

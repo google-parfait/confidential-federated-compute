@@ -1,0 +1,6 @@
+command = [
+  "sh",
+  "-c",
+  "GITHUB_ACTION=\"provenance\" scripts/setup_build_env.sh && SKIP_TESTS=\"true\" BINARY_OUTPUTS_DIR=\"bazel-out/confidential-federated-compute/binaries\" scripts/bazel_build.sh release"
+]
+artifact_path = "bazel-out/confidential-federated-compute/binaries/*"
