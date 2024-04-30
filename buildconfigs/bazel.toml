@@ -3,4 +3,4 @@ command = [
   "-c",
   "GITHUB_ACTION=\"provenance\" scripts/setup_build_env.sh && SKIP_TESTS=\"true\" BINARY_OUTPUTS_DIR=\"binaries\" scripts/bazel_build.sh release"
 ]
-artifact_path = "binaries/*"
+artifact_path = "binaries/*/*"
