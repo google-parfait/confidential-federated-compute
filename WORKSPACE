@@ -125,9 +125,9 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "f5ddbce964173580f274cb206043dcf403c88916248b58add2e716d8250bd6f5",
-    strip_prefix = "federated-compute-de4cd90a81b661d025db7cb1710ca6771814567c",
-    url = "https://github.com/google/federated-compute/archive/de4cd90a81b661d025db7cb1710ca6771814567c.tar.gz",
+    sha256 = "c3cc7b485ebea8ff902ade390c3871a6d7b016e72534153e97b4b1d6717eebec",
+    strip_prefix = "federated-compute-2aa79cc6801673bb0209f3ada26a15958159464b",
+    url = "https://github.com/google/federated-compute/archive/2aa79cc6801673bb0209f3ada26a15958159464b.tar.gz",
 )
 
 git_repository(
