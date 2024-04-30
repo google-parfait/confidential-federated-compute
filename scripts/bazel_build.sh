@@ -47,9 +47,9 @@ elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=tsan --build_tag_filters=-tsan --test_tag_filters=-tsan
   ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
 elif [ "$1" == "release" ]; then
-  if [[ -z "${SKIP_TESTS}" ]]; then
+  if [[ "${GITHUB_ACTION:-}" == "provenance" ]]; then
     # Tests fail after 2h in GitHub actions when generating provenances, seemingly
-    # since the worker runs out of space. Hence an option to skip tests is used.
+    # since the worker runs out of space. Hence skip tests.
     ${BAZELISK} test //...
   fi
   ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}"
@@ -61,6 +61,12 @@ elif [ "$1" == "release" ]; then
     for target in "${!RELEASE_TARGETS[@]}"; do
       src="${BAZEL_BIN}${target/:/\//}"
       dst="${BINARY_OUTPUTS_DIR}/${RELEASE_TARGETS[$target]}"
+      if [[ "${GITHUB_ACTION:-}" == "provenance" ]]; then
+        # The provenance GitHub Action expects a flat set of output binaries.
+        flattened_target=${RELEASE_TARGETS[$target]//\//_}
+        dst="${BINARY_OUTPUTS_DIR}/${flattened_target}"
+        echo "using flat binary output for ${dst}"
+      fi
       mkdir --parents "$(dirname "$dst")"
       cp -f "$src" "$dst"
     done
