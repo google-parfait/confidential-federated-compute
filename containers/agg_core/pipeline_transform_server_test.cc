@@ -156,6 +156,19 @@ TEST_F(AggCoreTransformTest, InvalidConfigureAndAttestRequest) {
               HasSubstr("is not a supported intrinsic_uri"));
 }
 
+TEST_F(AggCoreTransformTest, ConfigureAndAttestRequestWrongMessageType) {
+  grpc::ClientContext context;
+  google::protobuf::Value value;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  request.mutable_configuration()->PackFrom(value);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Configuration cannot be unpacked."));
+}
+
 TEST_F(AggCoreTransformTest, ConfigureAndAttestRequestNoIntrinsicConfigs) {
   grpc::ClientContext context;
   Configuration invalid_config;

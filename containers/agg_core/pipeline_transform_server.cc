@@ -89,7 +89,9 @@ absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
     ConfigureAndAttestResponse* response) {
   Configuration config;
-  request->configuration().UnpackTo(&config);
+  if (!request->configuration().UnpackTo(&config)) {
+    return absl::InvalidArgumentError("Configuration cannot be unpacked.");
+  }
   FCP_RETURN_IF_ERROR(CheckpointAggregator::ValidateConfig(config));
   const RecordDecryptor* record_decryptor;
   {
