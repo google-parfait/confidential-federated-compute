@@ -96,7 +96,9 @@ absl::Status SqlPipelineTransform::SqlConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
     ConfigureAndAttestResponse* response) {
   SqlQuery sql_query;
-  request->configuration().UnpackTo(&sql_query);
+  if (!request->configuration().UnpackTo(&sql_query)) {
+    return absl::InvalidArgumentError("Configuration cannot be unpacked.");
+  }
   if (sql_query.database_schema().table_size() != 1) {
     return absl::InvalidArgumentError(
         "SQL query input or output schema does not contain exactly "

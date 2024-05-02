@@ -157,12 +157,25 @@ class SqlPipelineTransformTest : public Test {
 
 TEST_F(SqlPipelineTransformTest, InvalidConfigureAndAttestRequest) {
   grpc::ClientContext context;
+  SqlQuery query;
   ConfigureAndAttestRequest request;
+  request.mutable_configuration()->PackFrom(query);
   ConfigureAndAttestResponse response;
   auto status = stub_->ConfigureAndAttest(&context, request, &response);
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("does not contain exactly one table schema"));
+}
+
+TEST_F(SqlPipelineTransformTest, ConfigureAndAttestRequestWrongMessageType) {
+  grpc::ClientContext context;
+  google::protobuf::Value value;
+  ConfigureAndAttestRequest request;
+  ConfigureAndAttestResponse response;
+  request.mutable_configuration()->PackFrom(value);
+
+  auto status = stub_->ConfigureAndAttest(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 TEST_F(SqlPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
