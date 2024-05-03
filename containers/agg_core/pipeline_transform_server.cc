@@ -24,28 +24,19 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "containers/crypto.h"
-#include "fcp/aggregation/core/intrinsic.h"
-#include "fcp/aggregation/protocol/checkpoint_aggregator.h"
-#include "fcp/aggregation/protocol/config_converter.h"
-#include "fcp/aggregation/protocol/configuration.pb.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/configuration.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 
 namespace confidential_federated_compute::agg_core {
 
-using ::fcp::aggregation::CheckpointAggregator;
-using ::fcp::aggregation::CheckpointBuilder;
-using ::fcp::aggregation::CheckpointParser;
-using ::fcp::aggregation::Configuration;
-using ::fcp::aggregation::DT_DOUBLE;
-using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
-using ::fcp::aggregation::Intrinsic;
-using ::fcp::aggregation::Tensor;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -54,6 +45,17 @@ using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::grpc::ServerContext;
+using ::tensorflow_federated::aggregation::CheckpointAggregator;
+using ::tensorflow_federated::aggregation::CheckpointBuilder;
+using ::tensorflow_federated::aggregation::CheckpointParser;
+using ::tensorflow_federated::aggregation::Configuration;
+using ::tensorflow_federated::aggregation::DT_DOUBLE;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::Tensor;
 
 constexpr char kFedSqlDPGroupByUri[] = "fedsql_dp_group_by";
 
@@ -101,8 +103,9 @@ absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
           "ConfigureAndAttest can only be called once.");
     }
 
-    FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
-                         fcp::aggregation::ParseFromConfig(config));
+    FCP_ASSIGN_OR_RETURN(
+        std::vector<Intrinsic> intrinsics,
+        tensorflow_federated::aggregation::ParseFromConfig(config));
     FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
     google::protobuf::Struct config_properties;
     (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(

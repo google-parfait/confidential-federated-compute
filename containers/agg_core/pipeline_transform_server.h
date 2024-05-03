@@ -22,14 +22,14 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/crypto.h"
-#include "fcp/aggregation/core/intrinsic.h"
-#include "fcp/aggregation/protocol/checkpoint_aggregator.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 
 namespace confidential_federated_compute::agg_core {
 
@@ -71,8 +71,8 @@ class AggCorePipelineTransform final
 
   oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   absl::Mutex mutex_;
-  std::optional<const std::vector<fcp::aggregation::Intrinsic>> intrinsics_
-      ABSL_GUARDED_BY(mutex_);
+  std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
+      intrinsics_ ABSL_GUARDED_BY(mutex_);
   // The mutex is used to protect the optional wrapping the RecordDecryptor to
   // ensure the RecordDecryptor is initialized, but the RecordDecryptor itself
   // is threadsafe.

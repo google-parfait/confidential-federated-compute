@@ -64,15 +64,8 @@ python_register_toolchains(
 
 http_archive(
     name = "org_tensorflow_federated",
-    patches = [
-        "//third_party/org_tensorflow_federated:BUILD.patch",
-    ],
-    # Note that we also depend on TFF from a pypi dependency in requirements.txt
-    # If the version used here for protos is incompatible with the version used
-    # for the rest of TFF, it could cause issues.
-    sha256 = "f997054fe365dbc0dd5cc0ace7c0adb8c083d9d294308e0d2788cb3a162d438b",
-    strip_prefix = "federated-0.75.0",
-    url = "https://github.com/tensorflow/federated/archive/refs/tags/v0.75.0.tar.gz",
+    strip_prefix = "federated-93ffd03340d021a336994ace52ea6919b1821ff5",
+    url = "https://github.com/tensorflow/federated/archive/93ffd03340d021a336994ace52ea6919b1821ff5.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
