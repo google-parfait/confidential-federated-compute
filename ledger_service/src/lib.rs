@@ -1142,7 +1142,7 @@ mod tests {
                 recipient_nonce: b"nonce2".to_vec(),
                 ..Default::default()
             }),
-            micro_rpc::StatusCode::ResourceExhausted,
+            micro_rpc::StatusCode::PermissionDenied,
             ""
         );
     }
@@ -1189,7 +1189,7 @@ mod tests {
                 recipient_nonce: b"nonce".to_vec(),
                 ..Default::default()
             }),
-            micro_rpc::StatusCode::ResourceExhausted,
+            micro_rpc::StatusCode::PermissionDenied,
             ""
         );
     }

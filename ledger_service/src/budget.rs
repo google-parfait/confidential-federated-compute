@@ -179,7 +179,7 @@ impl BudgetTracker {
     ) -> Result<usize, micro_rpc::Status> {
         if self.consumed_budgets.contains(blob_id) {
             return Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::ResourceExhausted,
+                micro_rpc::StatusCode::PermissionDenied,
                 "data access budget consumed",
             ));
         }
@@ -204,7 +204,7 @@ impl BudgetTracker {
 
         Err(match match_found {
             true => micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::ResourceExhausted,
+                micro_rpc::StatusCode::PermissionDenied,
                 "data access budget exhausted",
             ),
             false => micro_rpc::Status::new_with_message(
@@ -464,7 +464,7 @@ mod tests {
                 Duration::default()
             ),
             Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::ResourceExhausted,
+                micro_rpc::StatusCode::PermissionDenied,
                 "data access budget exhausted"
             ))
         );
@@ -592,7 +592,7 @@ mod tests {
                 Duration::default()
             ),
             Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::ResourceExhausted,
+                micro_rpc::StatusCode::PermissionDenied,
                 "data access budget consumed"
             ))
         );
@@ -683,7 +683,7 @@ mod tests {
                 Duration::default()
             ),
             Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::ResourceExhausted,
+                micro_rpc::StatusCode::PermissionDenied,
                 "data access budget exhausted",
             ))
         );
