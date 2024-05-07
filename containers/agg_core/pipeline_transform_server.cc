@@ -13,7 +13,7 @@
 // limitations under the License.
 #include "containers/agg_core/pipeline_transform_server.h"
 
-#include <future>
+#include <execution>
 #include <memory>
 #include <optional>
 #include <string>
@@ -193,14 +193,19 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
     FCP_ASSIGN_OR_RETURN(aggregator,
                          CheckpointAggregator::Create(&*intrinsics_));
   }
-  std::vector<std::future<absl::Status>> futures;
-  for (const Record& record : request->inputs()) {
-    futures.push_back(std::async(std::launch::async, AccumulateRecord, record,
-                                 aggregator.get(), record_decryptor));
-  }
 
-  for (std::future<absl::Status>& f : futures) {
-    FCP_RETURN_IF_ERROR(f.get());
+  std::vector<absl::Status> accumulate_results;
+  accumulate_results.resize(request->inputs_size());
+
+  std::transform(std::execution::par, request->inputs().begin(),
+                 request->inputs().end(), accumulate_results.begin(),
+                 [&aggregator, record_decryptor](const Record& record) {
+                   return AccumulateRecord(record, aggregator.get(),
+                                           record_decryptor);
+                 });
+
+  for (absl::Status result : accumulate_results) {
+    FCP_RETURN_IF_ERROR(result);
   }
 
   if (!aggregator->CanReport()) {

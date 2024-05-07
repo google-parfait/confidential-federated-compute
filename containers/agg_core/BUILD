@@ -95,3 +95,25 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
+
+cc_test(
+    name = "pipeline_transform_server_bm",
+    size = "small",
+    srcs = ["pipeline_transform_server_bm.cc"],
+    tags = ["manual"],
+    deps = [
+        ":pipeline_transform_server",
+        "//containers:crypto",
+        "//containers:crypto_test_utils",
+        "//testing:parse_text_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@google_benchmark//:benchmark",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
