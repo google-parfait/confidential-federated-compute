@@ -38,6 +38,11 @@ use sha2::{Digest, Sha256};
 
 mod attestation;
 mod budget;
+mod test_util;
+
+mod replication {
+    include!(concat!(env!("OUT_DIR"), "/replication.rs"));
+}
 
 struct PerKeyLedger {
     private_key: cfc_crypto::PrivateKey,
@@ -331,6 +336,7 @@ impl Ledger for LedgerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_err;
     use crate::attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
     use alloc::{borrow::ToOwned, vec};
@@ -342,26 +348,6 @@ mod tests {
     use googletest::prelude::*;
     use oak_attestation::proto::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
-
-    /// Macro asserting that a result is failed with a particular code and message.
-    macro_rules! assert_err {
-        ($left:expr, $code:expr, $substr:expr) => {
-            match (&$left, &$code, &$substr) {
-                (left_val, code_val, substr_val) =>
-                    assert!(
-                        (*left_val).as_ref().is_err_and(
-                            |err| err.code == *code_val && err.message.contains(*substr_val)),
-                            "assertion failed: \
-                             `(val.err().code == code && val.err().message.contains(substr)`\n\
-                             val: {:?}\n\
-                             code: {:?}\n\
-                             substr: {:?}",
-                            left_val,
-                            code_val,
-                            substr_val)
-            }
-        };
-    }
 
     /// Helper function to create a LedgerService with one key.
     fn create_ledger_service() -> (LedgerService, Vec<u8>) {

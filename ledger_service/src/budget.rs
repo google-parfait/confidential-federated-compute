@@ -15,10 +15,12 @@
 extern crate alloc;
 
 use crate::attestation::Application;
+use crate::replication::{BlobBudgetSnapshot, BudgetSnapshot, PerPolicyBudgetSnapshot};
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     vec::Vec,
 };
+use core::mem;
 use core::time::Duration;
 use federated_compute::proto::{
     access_budget::Kind as AccessBudgetKind, AccessBudget, DataAccessPolicy,
@@ -250,11 +252,89 @@ impl BudgetTracker {
             }
         }
     }
+
+    /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of snapshot replication.
+    pub fn save_snapshot(&self) -> BudgetSnapshot {
+        let mut snapshot = BudgetSnapshot::default();
+
+        for (access_policy_sha256, budgets) in &self.budgets {
+            let mut per_policy_snapshot = PerPolicyBudgetSnapshot::default();
+            per_policy_snapshot.access_policy_sha256 = access_policy_sha256.clone();
+
+            for (blob_id, blob_budget) in budgets {
+                per_policy_snapshot.budgets.push(BlobBudgetSnapshot {
+                    blob_id: blob_id.clone(),
+                    transform_access_budgets: blob_budget.transform_access_budgets.clone(),
+                    shared_access_budgets: blob_budget.shared_access_budgets.clone(),
+                });
+            }
+
+            snapshot.per_policy_snapshots.push(per_policy_snapshot);
+        }
+
+        for blob_id in &self.consumed_budgets {
+            snapshot.consumed_budgets.push(blob_id.clone());
+        }
+
+        snapshot
+    }
+
+    /// Replaces the entire BudgetTracker state with state loaded from BudgetSnapshot as a part of snapshot
+    /// replication.
+    pub fn load_snapshot(&mut self, snapshot: BudgetSnapshot) -> Result<(), micro_rpc::Status> {
+        // New state
+        let mut new_self = BudgetTracker::new();
+
+        for per_policy_snapshot in snapshot.per_policy_snapshots {
+            let mut per_policy_budgets = BTreeMap::<Vec<u8>, BlobBudget>::new();
+            for blob_budget_snapshot in per_policy_snapshot.budgets {
+                if per_policy_budgets
+                    .insert(
+                        blob_budget_snapshot.blob_id,
+                        BlobBudget {
+                            transform_access_budgets: blob_budget_snapshot.transform_access_budgets,
+                            shared_access_budgets: blob_budget_snapshot.shared_access_budgets,
+                        },
+                    )
+                    .is_some()
+                {
+                    return Err(micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        "Duplicated `blob_id` entries in the snapshot",
+                    ));
+                }
+            }
+            if new_self
+                .budgets
+                .insert(per_policy_snapshot.access_policy_sha256, per_policy_budgets)
+                .is_some()
+            {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "Duplicated `access_policy_sha256` entries in the snapshot",
+                ));
+            }
+        }
+
+        for consumed_blob_id in snapshot.consumed_budgets {
+            if !new_self.consumed_budgets.insert(consumed_blob_id) {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "Duplicated `consumed_budgets` entries in the snapshot",
+                ));
+            }
+        }
+
+        // Replace the state with the new state.
+        *self = new_self;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_err;
 
     use alloc::{borrow::ToOwned, vec};
     use federated_compute::proto::{
@@ -771,6 +851,233 @@ mod tests {
         assert_eq!(
             tracker.update_budget(blob_id, transform_index, &policy2, policy_hash2),
             Ok(())
+        );
+    }
+
+    #[test]
+    fn test_updated_budget_snapshot() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(2)),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+        let blob_id = b"blob-id";
+
+        let transform_index = tracker
+            .find_matching_transform(
+                blob_id,
+                /* node_id= */ 0,
+                &policy,
+                policy_hash,
+                &Application::default(),
+                Duration::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
+            Ok(()),
+        );
+
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    budgets: vec![BlobBudgetSnapshot {
+                        blob_id: blob_id.to_vec(),
+                        transform_access_budgets: vec![1],
+                        shared_access_budgets: vec![],
+                    }],
+                }],
+                consumed_budgets: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn test_consumed_budget_snapshot() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(1)),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+        let blob_id = b"blob-id";
+
+        let transform_index = tracker
+            .find_matching_transform(
+                blob_id,
+                /* node_id= */ 0,
+                &policy,
+                policy_hash,
+                &Application::default(),
+                Duration::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
+            Ok(()),
+        );
+        tracker.consume_budget(blob_id);
+
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    budgets: vec![],
+                }],
+                consumed_budgets: vec![blob_id.to_vec()],
+            }
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot() {
+        let mut tracker = BudgetTracker::default();
+
+        let snapshot = BudgetSnapshot {
+            per_policy_snapshots: vec![
+                PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash1".to_vec(),
+                    budgets: vec![BlobBudgetSnapshot {
+                        blob_id: b"blob1".to_vec(),
+                        transform_access_budgets: vec![1],
+                        shared_access_budgets: vec![],
+                    }],
+                },
+                PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash2".to_vec(),
+                    budgets: vec![
+                        BlobBudgetSnapshot {
+                            blob_id: b"blob2".to_vec(),
+                            transform_access_budgets: vec![2, 3],
+                            shared_access_budgets: vec![11],
+                        },
+                        BlobBudgetSnapshot {
+                            blob_id: b"blob3".to_vec(),
+                            transform_access_budgets: vec![],
+                            shared_access_budgets: vec![12, 13, 14],
+                        },
+                    ],
+                },
+            ],
+            consumed_budgets: vec![b"blob4".to_vec(), b"blob5".to_vec()],
+        };
+
+        // Load the snapshot.
+        assert_eq!(tracker.load_snapshot(snapshot.clone()), Ok(()));
+        // Save the new snapshot and verify that it is the same as the loaded one.
+        assert_eq!(tracker.save_snapshot(), snapshot);
+    }
+
+    #[test]
+    fn test_load_snapshot_replaces_state() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(2)),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+        let blob_id = b"blob-id";
+
+        let transform_index = tracker
+            .find_matching_transform(
+                blob_id,
+                /* node_id= */ 0,
+                &policy,
+                policy_hash,
+                &Application::default(),
+                Duration::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
+            Ok(()),
+        );
+        assert_ne!(tracker.save_snapshot(), BudgetSnapshot::default());
+
+        // Load an empty snapshot and verify that an empty snapshot is saved.
+        assert_eq!(tracker.load_snapshot(BudgetSnapshot::default()), Ok(()));
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot::default());
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicated_policy_hash() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                per_policy_snapshots: vec![
+                    PerPolicyBudgetSnapshot {
+                        access_policy_sha256: b"hash1".to_vec(),
+                        budgets: vec![],
+                    },
+                    PerPolicyBudgetSnapshot {
+                        access_policy_sha256: b"hash1".to_vec(),
+                        budgets: vec![],
+                    }
+                ],
+                consumed_budgets: vec![]
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated `access_policy_sha256` entries in the snapshot"
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicated_blob_id() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash1".to_vec(),
+                    budgets: vec![
+                        BlobBudgetSnapshot {
+                            blob_id: b"blob1".to_vec(),
+                            ..Default::default()
+                        },
+                        BlobBudgetSnapshot {
+                            blob_id: b"blob1".to_vec(),
+                            ..Default::default()
+                        },
+                    ],
+                },],
+                consumed_budgets: vec![]
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated `blob_id` entries in the snapshot"
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicated_consumed_blob() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                consumed_budgets: vec![b"blob1".to_vec(), b"blob1".to_vec()],
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated `consumed_budgets` entries in the snapshot"
         );
     }
 }

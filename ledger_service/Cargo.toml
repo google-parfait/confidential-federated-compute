@@ -24,3 +24,6 @@ sha2 = { version = "*", default-features = false }
 googletest = "*"
 oak_attestation = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true, features = ["testing"] }
+
+[build-dependencies]
+micro_rpc_build = { workspace = true }
