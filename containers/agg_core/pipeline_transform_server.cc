@@ -197,12 +197,16 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
   std::vector<absl::Status> accumulate_results;
   accumulate_results.resize(request->inputs_size());
 
-  std::transform(std::execution::par, request->inputs().begin(),
-                 request->inputs().end(), accumulate_results.begin(),
-                 [&aggregator, record_decryptor](const Record& record) {
-                   return AccumulateRecord(record, aggregator.get(),
-                                           record_decryptor);
-                 });
+  std::transform(
+#ifndef _LIBCPP_VERSION
+      // std::execution is not currently supported by libc++.
+      std::execution::par,
+#endif
+      request->inputs().begin(), request->inputs().end(),
+      accumulate_results.begin(),
+      [&aggregator, record_decryptor](const Record& record) {
+        return AccumulateRecord(record, aggregator.get(), record_decryptor);
+      });
 
   for (absl::Status result : accumulate_results) {
     FCP_RETURN_IF_ERROR(result);
