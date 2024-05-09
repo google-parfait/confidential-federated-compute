@@ -135,9 +135,9 @@ http_archive(
     patches = [
         "//third_party/oak:BUILD.containers.patch",
     ],
-    sha256 = "bc4a7f610278c4cb7016500b55ba2351017cf0487f43eecb7f086027fd942395",
-    strip_prefix = "oak-1727a77e16b815ca01e7de2a54cb4482a4b5cfaa",
-    url = "https://github.com/project-oak/oak/archive/1727a77e16b815ca01e7de2a54cb4482a4b5cfaa.tar.gz",
+    sha256 = "194cc48c0d4b9129df962d04cc9d8b87e00d048850ac62ef97225a0fcc0c734f",
+    strip_prefix = "oak-b403859be35f9a88802906a484e56aaa5588a9c2",
+    url = "https://github.com/project-oak/oak/archive/b403859be35f9a88802906a484e56aaa5588a9c2.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")

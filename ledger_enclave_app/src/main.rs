@@ -29,15 +29,6 @@ use oak_restricted_kernel_sdk::{
 
 #[entrypoint]
 fn run_server() -> ! {
-    // Logging from the restricted kernel is very slow (multiple milliseconds);
-    // suppress low-priority messages in non-debug builds.
-    #[cfg(not(debug_assertions))]
-    {
-        oak_restricted_kernel_sdk::utils::log::set_max_level(
-            oak_restricted_kernel_sdk::utils::log::LevelFilter::Warn,
-        );
-    }
-
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
     let service = ledger_service::LedgerService::create(
         Box::new(InstanceEvidenceProvider::create().unwrap()),
