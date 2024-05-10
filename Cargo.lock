@@ -744,6 +744,7 @@ dependencies = [
  "coset",
  "federated_compute",
  "googletest",
+ "hpke",
  "micro_rpc",
  "micro_rpc_build",
  "oak_attestation",

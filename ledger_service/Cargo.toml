@@ -9,6 +9,7 @@ anyhow = { version = "*", default-features = false }
 cfc_crypto = { path = "../cfc_crypto" }
 coset = { version = "*", default-features = false }
 federated_compute = { path = "../third_party/federated_compute" }
+hpke = { version = "*" }
 micro_rpc = { workspace = true }
 oak_attestation = { workspace = true }
 oak_attestation_verification = { workspace = true }

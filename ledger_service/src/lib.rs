@@ -18,7 +18,7 @@ extern crate alloc;
 
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
-use cfc_crypto::{extract_key_from_cwt, PUBLIC_KEY_CLAIM};
+use cfc_crypto::{extract_key_from_cwt, PrivateKey, PUBLIC_KEY_CLAIM};
 use core::time::Duration;
 use coset::{
     cbor::Value, cwt, cwt::ClaimsSetBuilder, iana, Algorithm, CborSerializable, CoseKey,
@@ -29,6 +29,7 @@ use federated_compute::proto::{
     CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest, DeleteKeyResponse, Ledger,
     RevokeAccessRequest, RevokeAccessResponse,
 };
+use hpke::{Deserializable, Serializable};
 use oak_attestation::dice::evidence_to_proto;
 use oak_proto_rust::oak::attestation::v1::Evidence;
 use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
@@ -44,8 +45,10 @@ mod replication {
     include!(concat!(env!("OUT_DIR"), "/replication.rs"));
 }
 
+use crate::replication::{LedgerSnapshot, PerKeySnapshot};
+
 struct PerKeyLedger {
-    private_key: cfc_crypto::PrivateKey,
+    private_key: PrivateKey,
     public_key: Vec<u8>,
     expiration: Duration,
     budget_tracker: budget::BudgetTracker,
@@ -94,6 +97,19 @@ impl LedgerService {
         })
     }
 
+    /// Formats a Duration since the Unix epoch as a proto Timestamp.
+    fn format_timestamp(timestamp: &Duration) -> Result<prost_types::Timestamp, micro_rpc::Status> {
+        Ok(prost_types::Timestamp {
+            seconds: timestamp.as_secs().try_into().map_err(|_| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "timestamp overflowed",
+                )
+            })?,
+            nanos: timestamp.subsec_nanos().try_into().unwrap(),
+        })
+    }
+
     /// Parses a proto Duration as a Rust Duration.
     fn parse_duration(
         duration: &Option<prost_types::Duration>,
@@ -127,6 +143,85 @@ impl LedgerService {
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
+    }
+
+    /// Saves the current state into LedgerSnapshot as a part of snapshot replication.
+    pub fn save_snapshot(&self) -> Result<LedgerSnapshot, micro_rpc::Status> {
+        let mut snapshot = LedgerSnapshot::default();
+
+        snapshot.current_time = Some(Self::format_timestamp(&self.current_time)?);
+
+        for (_, per_key_ledger) in &self.per_key_ledgers {
+            snapshot.per_key_snapshots.push(PerKeySnapshot {
+                public_key: per_key_ledger.public_key.clone(),
+                private_key: per_key_ledger.private_key.to_bytes().to_vec(),
+                expiration: Some(Self::format_timestamp(&per_key_ledger.expiration)?),
+                budgets: Some(per_key_ledger.budget_tracker.save_snapshot()),
+            });
+        }
+        Ok(snapshot)
+    }
+
+    /// Replaces the current state with the state loaded from Ledger snapshot as a part of
+    /// snapshot replication.
+    pub fn load_snapshot(&mut self, snapshot: LedgerSnapshot) -> Result<(), micro_rpc::Status> {
+        // Create a new empty map.
+        let mut new_per_key_ledgers = BTreeMap::<Vec<u8>, PerKeyLedger>::default();
+
+        for per_key_snapshot in snapshot.per_key_snapshots {
+            // Create PerKeyLedger from PerKeySnapshot.
+            let mut per_key_ledger = PerKeyLedger {
+                private_key: PrivateKey::from_bytes(&per_key_snapshot.private_key).map_err(
+                    |err| {
+                        micro_rpc::Status::new_with_message(
+                            micro_rpc::StatusCode::InvalidArgument,
+                            format!("failed to parse private_key: {:?}", err),
+                        )
+                    },
+                )?,
+                public_key: per_key_snapshot.public_key,
+                expiration: Self::parse_timestamp(&per_key_snapshot.expiration).map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("expiration is invalid: {:?}", err),
+                    )
+                })?,
+                budget_tracker: budget::BudgetTracker::new(),
+            };
+            // Load the budgets.
+            if per_key_snapshot.budgets.is_some() {
+                per_key_ledger
+                    .budget_tracker
+                    .load_snapshot(per_key_snapshot.budgets.unwrap())?;
+            }
+            // Extract the key id from the CoseKey inside the public key CWT.
+            let key_id = extract_key_from_cwt(&per_key_ledger.public_key)
+                .map(|key| key.key_id)
+                .map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("public_key is invalid: {:?}", err),
+                    )
+                })?;
+            // Insert the PerKeyLedger with the key id.
+            if new_per_key_ledgers.insert(key_id, per_key_ledger).is_some() {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "Duplicated key_id in the snapshot",
+                ));
+            }
+        }
+
+        // Replace the current time.
+        self.current_time = Self::parse_timestamp(&snapshot.current_time).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("current_time is invalid: {:?}", err),
+            )
+        })?;
+        // Replace the current map with the new one.
+        self.per_key_ledgers = new_per_key_ledgers;
+        Ok(())
     }
 }
 
@@ -338,6 +433,9 @@ mod tests {
     use super::*;
     use crate::assert_err;
     use crate::attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
+    use crate::replication::{
+        BlobBudgetSnapshot, BudgetSnapshot, LedgerSnapshot, PerKeySnapshot, PerPolicyBudgetSnapshot,
+    };
 
     use alloc::{borrow::ToOwned, vec};
     use coset::{cwt::ClaimsSet, CoseSign1};
@@ -1230,6 +1328,270 @@ mod tests {
             }),
             micro_rpc::StatusCode::InvalidArgument,
             "time must be monotonic"
+        );
+    }
+
+    #[test]
+    fn test_save_snapshot() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let recipient_nonce: &[u8] = b"nonce";
+        let now = prost_types::Timestamp {
+            seconds: 1000,
+            ..Default::default()
+        };
+        let _ = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                now: Some(now.clone()),
+                access_policy: access_policy.clone(),
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Produce the snapshot.
+        let snapshot = ledger.save_snapshot().unwrap();
+        assert_eq!(snapshot.per_key_snapshots.len(), 1);
+        // Since the private key isn't exposed we have to assume that the one
+        // in the snapshot is the right one.
+        let private_key = &snapshot.per_key_snapshots[0].private_key;
+        assert_eq!(
+            snapshot,
+            LedgerSnapshot {
+                current_time: Some(now),
+                per_key_snapshots: vec![PerKeySnapshot {
+                    public_key,
+                    private_key: private_key.clone(),
+                    expiration: Some(prost_types::Timestamp {
+                        seconds: 3600,
+                        ..Default::default()
+                    }),
+                    budgets: Some(BudgetSnapshot {
+                        per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                            budgets: vec![BlobBudgetSnapshot {
+                                blob_id: "blob-id".into(),
+                                transform_access_budgets: vec![0],
+                                shared_access_budgets: vec![],
+                            }]
+                        }],
+                        consumed_budgets: vec![],
+                    }),
+                }],
+            }
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot() {
+        let (mut ledger, _) = create_ledger_service();
+        let (private_key_1, public_key_1) = cfc_crypto::gen_keypair(b"key1");
+        let (private_key_2, public_key_2) = cfc_crypto::gen_keypair(b"key2");
+        let snapshot = LedgerSnapshot {
+            current_time: Some(prost_types::Timestamp {
+                seconds: 1000,
+                ..Default::default()
+            }),
+            per_key_snapshots: vec![
+                PerKeySnapshot {
+                    public_key: create_recipient_cwt(public_key_1),
+                    private_key: private_key_1.to_bytes().to_vec(),
+                    expiration: Some(prost_types::Timestamp {
+                        seconds: 2000,
+                        ..Default::default()
+                    }),
+                    budgets: Some(BudgetSnapshot {
+                        per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                            access_policy_sha256: b"hash1".to_vec(),
+                            budgets: vec![BlobBudgetSnapshot {
+                                blob_id: b"blob1".to_vec(),
+                                ..Default::default()
+                            }],
+                        }],
+                        consumed_budgets: vec![],
+                    }),
+                },
+                PerKeySnapshot {
+                    public_key: create_recipient_cwt(public_key_2),
+                    private_key: private_key_2.to_bytes().to_vec(),
+                    expiration: Some(prost_types::Timestamp {
+                        seconds: 2500,
+                        ..Default::default()
+                    }),
+                    budgets: Some(BudgetSnapshot {
+                        per_policy_snapshots: vec![],
+                        consumed_budgets: vec![b"blob2".to_vec()],
+                    }),
+                },
+            ],
+        };
+        // Load the snapshot then save a new one and verify that the same
+        // snapshot is produced.
+        assert_eq!(ledger.load_snapshot(snapshot.clone()), Ok(()));
+        assert_eq!(ledger.save_snapshot(), Ok(snapshot));
+    }
+
+    #[test]
+    fn test_load_snapshot_replaces_state() {
+        let (mut ledger, _) = create_ledger_service();
+        let snapshot = LedgerSnapshot {
+            current_time: Some(prost_types::Timestamp::default()),
+            ..Default::default()
+        };
+        assert_ne!(ledger.save_snapshot(), Ok(snapshot.clone()));
+        assert_eq!(ledger.load_snapshot(snapshot.clone()), Ok(()));
+        assert_eq!(ledger.save_snapshot(), Ok(snapshot));
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicating_key_id() {
+        let (mut ledger, _) = create_ledger_service();
+        let (private_key, public_key) = cfc_crypto::gen_keypair(b"key-id");
+        assert_err!(
+            ledger.load_snapshot(LedgerSnapshot {
+                current_time: Some(prost_types::Timestamp::default()),
+                per_key_snapshots: vec![
+                    PerKeySnapshot {
+                        public_key: create_recipient_cwt(public_key.clone()),
+                        private_key: private_key.to_bytes().to_vec(),
+                        ..Default::default()
+                    },
+                    PerKeySnapshot {
+                        public_key: create_recipient_cwt(public_key.clone()),
+                        private_key: private_key.to_bytes().to_vec(),
+                        ..Default::default()
+                    }
+                ],
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated key_id in the snapshot"
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_after_load_snapshot() {
+        let (mut ledger, _) = create_ledger_service();
+        let (private_key, public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let public_key_bytes = create_recipient_cwt(public_key.clone());
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let access_policy_sha256 = Sha256::digest(&access_policy).to_vec();
+
+        let snapshot = LedgerSnapshot {
+            current_time: Some(prost_types::Timestamp {
+                ..Default::default()
+            }),
+            per_key_snapshots: vec![PerKeySnapshot {
+                public_key: public_key_bytes.clone(),
+                private_key: private_key.to_bytes().to_vec(),
+                expiration: Some(prost_types::Timestamp {
+                    seconds: 2000,
+                    ..Default::default()
+                }),
+                budgets: Some(BudgetSnapshot {
+                    per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                        access_policy_sha256: access_policy_sha256.clone(),
+                        budgets: vec![BlobBudgetSnapshot {
+                            blob_id: b"blob-id".to_vec(),
+                            ..Default::default()
+                        }],
+                    }],
+                    consumed_budgets: vec![],
+                }),
+            }],
+        };
+        // Load the snapshot then save a new one and verify that the same
+        // snapshot is produced.
+        assert_eq!(ledger.load_snapshot(snapshot.clone()), Ok(()));
+
+        // Now test that access can be authorized to the blob "blob-id" with
+        // the same policy as above.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: public_key.key_id.clone(),
+            access_policy_sha256,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &public_key, &blob_header).unwrap();
+
+        // Request access.
+        let (recipient_private_key, recipient_public_key) =
+            cfc_crypto::gen_keypair(b"recipient-key-id");
+        let recipient_nonce: &[u8] = b"nonce";
+        let response = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Verify that the response contains the right public key and allows the message to be read.
+        assert_eq!(response.reencryption_public_key, public_key_bytes);
+        assert_eq!(
+            cfc_crypto::decrypt_message(
+                &ciphertext,
+                &blob_header,
+                &response.encrypted_symmetric_key,
+                &[&response.reencryption_public_key, recipient_nonce].concat(),
+                &response.encapsulated_key,
+                &recipient_private_key
+            )
+            .unwrap(),
+            plaintext
         );
     }
 }
