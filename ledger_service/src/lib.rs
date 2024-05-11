@@ -45,7 +45,7 @@ mod replication {
     include!(concat!(env!("OUT_DIR"), "/replication.rs"));
 }
 
-use crate::replication::{LedgerSnapshot, PerKeySnapshot};
+use crate::replication::{CreateKeyEvent, LedgerSnapshot, PerKeySnapshot};
 
 struct PerKeyLedger {
     private_key: PrivateKey,
@@ -80,11 +80,10 @@ impl LedgerService {
     /// Updates `self.current_time` and removes expired keys.
     fn update_current_time(&mut self, now: &Option<prost_types::Timestamp>) -> anyhow::Result<()> {
         let now = Self::parse_timestamp(now).map_err(|err| anyhow!("{:?}", err))?;
-        if now < self.current_time {
-            return Err(anyhow!("time must be monotonic"));
+        if now > self.current_time {
+            self.current_time = now;
+            self.per_key_ledgers.retain(|_, v| v.expiration > now);
         }
-        self.current_time = now;
-        self.per_key_ledgers.retain(|_, v| v.expiration > now);
         Ok(())
     }
 
@@ -139,6 +138,120 @@ impl LedgerService {
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
+    }
+
+    /// Initiates handling of CreateKeyRequest and produces CreateKeyEvent that
+    /// can be replicated and applied on all replicas of Ledger.
+    pub fn produce_create_key_event(
+        &mut self,
+        request: CreateKeyRequest,
+    ) -> Result<CreateKeyEvent, micro_rpc::Status> {
+        self.update_current_time(&request.now).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("`now` is invalid: {:?}", err),
+            )
+        })?;
+
+        let ttl = Self::parse_duration(&request.ttl).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("`ttl` is invalid: {:?}", err),
+            )
+        })?;
+
+        // The expiration time cannot overflow because proto Timestamps and Durations
+        // are signed but Rust's Durations are unsigned.
+        let expiration = self.current_time + ttl;
+
+        // Find an available key id. The number of keys is expected to remain small, so
+        // this is unlikely to require more than 1 or 2 attempts.
+        // This relies on the state at the time when the event is produced, so there is
+        // an extremely tiny chance of key_id collision by the time when the event is
+        // applied. The code that applies the event must ensure that there is no
+        // collision.
+        let mut key_id = vec![0u8; 4];
+        while {
+            OsRng.fill_bytes(key_id.as_mut_slice());
+            self.per_key_ledgers.contains_key(&key_id)
+        } {}
+
+        // Construct a new keypair.
+        let (private_key, cose_public_key) = cfc_crypto::gen_keypair(&key_id);
+        let public_key = self.build_cwt(cose_public_key, expiration).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::Internal,
+                format!("failed to encode CWT: {:?}", err),
+            )
+        })?;
+
+        // Construct the event
+        Ok(CreateKeyEvent {
+            event_time: Some(Self::format_timestamp(&self.current_time)?),
+            public_key,
+            private_key: private_key.to_bytes().to_vec(),
+            expiration: Some(Self::format_timestamp(&expiration)?),
+        })
+    }
+
+    /// Applies CreateKeyEvent to the ledger state and produces
+    /// CreateKeyResponse.
+    pub fn apply_create_key_event(
+        &mut self,
+        event: CreateKeyEvent,
+    ) -> Result<CreateKeyResponse, micro_rpc::Status> {
+        // Update the current time.
+        self.update_current_time(&event.event_time).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("event_time is invalid: {:?}", err),
+            )
+        })?;
+
+        let expiration = Self::parse_timestamp(&event.expiration).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("expiration is invalid: {:?}", err),
+            )
+        })?;
+
+        // Extract the key id from the CoseKey inside the public key CWT.
+        let key_id =
+            extract_key_from_cwt(&event.public_key).map(|key| key.key_id).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("public_key is invalid: {:?}", err),
+                )
+            })?;
+
+        // Verify that there is no key_id collision
+        if self.per_key_ledgers.contains_key(&key_id) {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "cannot commit changes for already used key id",
+            ));
+        }
+
+        let public_key = event.public_key;
+        let private_key = PrivateKey::from_bytes(&event.private_key).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to parse private_key: {:?}", err),
+            )
+        })?;
+
+        // Insert keys
+        self.per_key_ledgers.insert(
+            key_id,
+            PerKeyLedger {
+                private_key,
+                public_key: public_key.clone(),
+                expiration,
+                budget_tracker: budget::BudgetTracker::new(),
+            },
+        );
+
+        Ok(CreateKeyResponse { public_key, attestation_evidence: Some(self.evidence.clone()) })
     }
 
     /// Saves the current state into LedgerSnapshot as a part of snapshot
@@ -225,50 +338,8 @@ impl Ledger for LedgerService {
         &mut self,
         request: CreateKeyRequest,
     ) -> Result<CreateKeyResponse, micro_rpc::Status> {
-        self.update_current_time(&request.now).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("`now` is invalid: {:?}", err),
-            )
-        })?;
-        let ttl = Self::parse_duration(&request.ttl).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("`ttl` is invalid: {:?}", err),
-            )
-        })?;
-        // The expiration time cannot overflow because proto Timestamps and Durations
-        // are signed but Rust's Durations are unsigned.
-        let expiration = self.current_time + ttl;
-
-        // Find an available key id. The number of keys is expected to remain small, so
-        // this is unlikely to require more than 1 or 2 attempts.
-        let mut key_id = vec![0u8; 4];
-        while {
-            OsRng.fill_bytes(key_id.as_mut_slice());
-            self.per_key_ledgers.contains_key(&key_id)
-        } {}
-
-        // Construct and save a new keypair.
-        let (private_key, cose_public_key) = cfc_crypto::gen_keypair(&key_id);
-        let public_key = self.build_cwt(cose_public_key, expiration).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::Internal,
-                format!("failed to encode CWT: {:?}", err),
-            )
-        })?;
-        self.per_key_ledgers.insert(
-            key_id,
-            PerKeyLedger {
-                private_key,
-                public_key: public_key.clone(),
-                expiration,
-                budget_tracker: budget::BudgetTracker::new(),
-            },
-        );
-
-        // Construct the response.
-        Ok(CreateKeyResponse { public_key, attestation_evidence: Some(self.evidence.clone()) })
+        let create_key_event = self.produce_create_key_event(request)?;
+        self.apply_create_key_event(create_key_event)
     }
 
     fn delete_key(
@@ -1242,31 +1313,118 @@ mod tests {
     }
 
     #[test]
-    fn test_monotonic_time() {
-        let (mut ledger, _) = create_ledger_service();
-        ledger
-            .create_key(CreateKeyRequest {
+    fn test_produce_create_key_event_monotonic_time() {
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
+
+        let event1 = ledger
+            .produce_create_key_event(CreateKeyRequest {
                 now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
-                ..Default::default()
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
             })
             .unwrap();
 
-        // Timestamps passed to the LedgerService must be non-decreasing.
-        assert_err!(
-            ledger.create_key(CreateKeyRequest {
+        // The second request uses the `now` time that is before the `now` time from
+        // the first request
+        let event2 = ledger
+            .produce_create_key_event(CreateKeyRequest {
                 now: Some(prost_types::Timestamp { seconds: 500, ..Default::default() }),
-                ..Default::default()
-            }),
-            micro_rpc::StatusCode::InvalidArgument,
-            "time must be monotonic"
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
+            })
+            .unwrap();
+
+        // Despite that the event_time should not go back and the expiration time for
+        // both keys should be the same.
+        assert_eq!(
+            event1.event_time,
+            Some(prost_types::Timestamp { seconds: 1000, ..Default::default() })
         );
+        assert_eq!(
+            event2.event_time,
+            Some(prost_types::Timestamp { seconds: 1000, ..Default::default() })
+        );
+        assert_eq!(
+            event1.expiration,
+            Some(prost_types::Timestamp { seconds: 1100, ..Default::default() })
+        );
+        assert_eq!(
+            event2.expiration,
+            Some(prost_types::Timestamp { seconds: 1100, ..Default::default() })
+        );
+    }
+
+    #[test]
+    fn test_apply_create_key_event_twice() {
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
+
+        let event = ledger
+            .produce_create_key_event(CreateKeyRequest {
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
+            })
+            .unwrap();
+
+        // Applying the event for the first time should work.
+        assert!(ledger.apply_create_key_event(event.to_owned()).is_ok());
+
+        // Applying the same event for the second must fail due to key collision.
         assert_err!(
-            ledger.authorize_access(AuthorizeAccessRequest {
-                now: Some(prost_types::Timestamp { seconds: 500, ..Default::default() }),
-                ..Default::default()
-            }),
+            ledger.apply_create_key_event(event),
             micro_rpc::StatusCode::InvalidArgument,
-            "time must be monotonic"
+            "cannot commit changes for already used key id"
+        );
+    }
+
+    #[test]
+    fn test_apply_create_key_event_invalid_public_key() {
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
+
+        let mut event = ledger
+            .produce_create_key_event(CreateKeyRequest {
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
+            })
+            .unwrap();
+
+        event.public_key = b"public-key".into();
+        assert_err!(
+            ledger.apply_create_key_event(event),
+            micro_rpc::StatusCode::InvalidArgument,
+            "public_key is invalid"
+        );
+    }
+
+    #[test]
+    fn test_apply_create_key_event_invalid_private_key() {
+        let mut ledger = LedgerService::create(
+            Box::new(MockEvidenceProvider::create().unwrap()),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
+
+        let mut event = ledger
+            .produce_create_key_event(CreateKeyRequest {
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
+            })
+            .unwrap();
+
+        event.private_key = b"private-key".into();
+        assert_err!(
+            ledger.apply_create_key_event(event),
+            micro_rpc::StatusCode::InvalidArgument,
+            "failed to parse private_key"
         );
     }
 
