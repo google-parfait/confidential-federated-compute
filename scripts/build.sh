@@ -27,6 +27,7 @@
 # If `sanitizers` is passed, runs all bazel tests with each of the configured
 # sanitizers.
 set -e
+set -x
 
 cd $(dirname -- "$0")/..
 

@@ -25,6 +25,7 @@
 # If `sanitizers` is passed, runs all tests with each of the configured
 # sanitizers.
 set -e
+set -x
 
 readonly WORKSPACE_DIR="$(dirname -- "$0")/.."
 # If bazelisk isn't in user's path, the BAZELISK environment variable may be set

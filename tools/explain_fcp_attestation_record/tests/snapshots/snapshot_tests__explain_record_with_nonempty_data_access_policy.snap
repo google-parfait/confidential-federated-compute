@@ -1,0 +1,142 @@
+---
+source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
+expression: buf
+---
+========================================
+===== LEDGER ATTESTATION EVIDENCE ======
+========================================
+
+Oak Restricted Kernel Stack in a AMD SEV-SNP TEE
+
+_____ Root Layer _____
+
+Firmware [Digest]: SHA2-256:33d5453b09e16ed0d6deb7c9f076b66b92a1b472d89534034717143554f6746d
+ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:6c090e4594fd40ee186c90d43f7ad8d904838baa9643a4be1d9d4ff0fdd670a62565e2417660008e058cc2f2029eac8a.
+Firmware [Provenances]: https://search.sigstore.dev/?hash=33d5453b09e16ed0d6deb7c9f076b66b92a1b472d89534034717143554f6746d
+
+Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
+
+_____ Kernel Layer _____
+
+Kernel Image [Digest]: SHA2-256:ec752c660481432f525f49d0be1521c7ea42ebbf2ce705aad2781a329e1001d8
+Kernel Setup Data [Digest]: SHA2-256:4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1
+Kernel Image/Setup-Data [Provenances]: https://search.sigstore.dev/?hash=ec752c660481432f525f49d0be1521c7ea42ebbf2ce705aad2781a329e1001d8
+Kernel Command Line [String]: console=ttyS0
+Initial RAM Disk [Digest]: SHA2-256:daf79f24b5744340ac18c2b468e7e0a7915684c5dfda2450acfa7225bdc75bb8
+Inital RAM Disk [Provenances]: https://search.sigstore.dev/?hash=daf79f24b5744340ac18c2b468e7e0a7915684c5dfda2450acfa7225bdc75bb8
+
+Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
+
+_____ Application Layer _____
+
+Binary [Digest]: SHA2-256:892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+Binary [Provenances]: https://search.sigstore.dev/?hash=892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+
+Note: this layer describes the "ledger" application binary, which is generally a build of the `ledger_enclave_app` in the https://github.com/google-parfait/confidential-federated-compute repository.
+
+
+========================================
+========== DATA ACCESS POLICY ==========
+========================================
+
+The data access policy allows 3 data transformations and defines 2 shared access budgets.
+
+>>>>> Transform #0 <<<<<
+Source blob ID: 0
+Destination blob ID: 1
+
+Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
+- limited access budget (at most 2 times): the transform may only access its source blob this many times.
+- limited shared access budget #1 (at most 2 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
+
+Application matcher for this transform:
+- Tag: app2
+- Binary configuration restrictions:
+  StructMatcher { fields: [FieldMatcher { path: "field_a", matcher: Some(ValueMatcher { kind: Some(NumberValue(NumberMatcher { kind: Some(Eq(1234.0)) })) }) }] }
+- Applications performing this transform must provide attestation evidence that can be verified with the following reference values:
+
+Reference values for the Oak Restricted Kernel stack
+oak_restricted_kernel:
+  root_layer:
+    amd_sev:
+      min_tcb_version:
+        boot_loader: 1
+        tee: 2
+        snp: 3
+        microcode: 4
+      stage0:
+        skip: {}
+  kernel_layer:
+    kernel:
+      skip: {}
+    kernel_cmd_line_text:
+      skip: {}
+    init_ram_fs:
+      skip: {}
+    memory_map:
+      skip: {}
+    acpi:
+      skip: {}
+  application_layer:
+    binary:
+      skip: {}
+    configuration:
+      skip: {}
+
+
+Note: we don't print sigstore.dev links for the binary digests in this list of reference values. You can construct such links manually using the following template: https://search.sigstore.dev/?hash=${SHA2_256_HASH}. For the root layer stage0 binary the reference value will list the SHA2-384 hash, in which case the SHA2-256 hash of that SHA2-384 hash should be used for the sigstore.dev lookup.
+
+>>>>> Transform #1 <<<<<
+Source blob ID: 0
+Destination blob ID: N/A (terminal transform)
+
+Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
+- limited shared access budget #1 (at most 2 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
+
+Application matcher for this transform:
+- Tag: app2
+- Binary configuration restrictions:
+  StructMatcher { fields: [FieldMatcher { path: "field_b", matcher: Some(ValueMatcher { kind: Some(NumberValue(NumberMatcher { kind: Some(Eq(5678.0)) })) }) }] }
+- Applications performing this transform must provide attestation evidence that can be verified with the following reference values:
+
+Reference values for the Oak Restricted Kernel stack
+oak_restricted_kernel:
+  root_layer:
+    amd_sev:
+      min_tcb_version:
+        boot_loader: 1
+        tee: 2
+        snp: 3
+        microcode: 4
+      stage0:
+        skip: {}
+  kernel_layer:
+    kernel:
+      skip: {}
+    kernel_cmd_line_text:
+      skip: {}
+    init_ram_fs:
+      skip: {}
+    memory_map:
+      skip: {}
+    acpi:
+      skip: {}
+  application_layer:
+    binary:
+      skip: {}
+    configuration:
+      skip: {}
+
+
+Note: we don't print sigstore.dev links for the binary digests in this list of reference values. You can construct such links manually using the following template: https://search.sigstore.dev/?hash=${SHA2_256_HASH}. For the root layer stage0 binary the reference value will list the SHA2-384 hash, in which case the SHA2-256 hash of that SHA2-384 hash should be used for the sigstore.dev lookup.
+
+>>>>> Transform #2 <<<<<
+Source blob ID: 1
+Destination blob ID: N/A (terminal transform)
+
+Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
+- limited shared access budget #0 (at most 5 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
+
+Application matcher for this transform:
+- Tag: app3
+- Any application can perform this transform (attestation evidence will not be verified).

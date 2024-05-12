@@ -19,6 +19,7 @@
 # passed, also builds the binaries in release mode and exports them to
 # BINARY_OUTPUTS_DIR.
 set -e
+set -x
 
 cd $(dirname -- "$0")/..
 
@@ -41,8 +42,20 @@ if [ "$1" == "continuous" ] || [ "$1" == "presubmit" ]; then
   readonly CARGO_LOCKED="--locked"
 fi
 
+# The first `cargo build` and `cargo test` invocations build the workspace's default set of
+# packages, which are all `no_std` and can target the "x86_64-unknown-none" target.
+#
+# We then build the tools/explain_fcp_attestation_record package using a separate `cargo`
+# invocation, since it is not `no_std` compatible nor can it target the "x86_64-unknown-none"
+# target.
+#
+# See the comments in the root Cargo.toml file for more info.
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
-    sh -c "cargo build ${CARGO_LOCKED} && cargo test ${CARGO_LOCKED}"
+    sh -c "
+    set -x && \
+    cargo build ${CARGO_LOCKED} && cargo test ${CARGO_LOCKED} && \
+    (cd tools/explain_fcp_attestation_record && \
+        cargo build ${CARGO_LOCKED} && cargo test ${CARGO_LOCKED} )"
 
 if [ "$1" == "release" ]; then
   # Build packages one at a time so that cargo doesn't merge features:
@@ -51,7 +64,8 @@ if [ "$1" == "release" ]; then
   # Note: release builds unconditionally run with "--locked" as well, since
   # those should never update the lock file either.
   docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" bash -c \
-      "echo -n \"$packages\" \
+      "set -x && \
+      echo -n \"$packages\" \
       | xargs -d ' ' -I {} cargo build --locked --release -p {}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
