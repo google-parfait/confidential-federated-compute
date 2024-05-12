@@ -19,8 +19,9 @@ fn main() {
             "federated-compute/fcp/protos/confidentialcompute/blob_header.proto",
             "federated-compute/fcp/protos/confidentialcompute/ledger.proto",
             "federated-compute/fcp/protos/confidentialcompute/pipeline_transform.proto",
+            "federated-compute/fcp/protos/confidentialcompute/verification_record.proto",
         ],
-        &["federated-compute/fcp/protos/confidentialcompute", "rust_proto_stubs"],
+        &["federated-compute/", "rust_proto_stubs"],
         micro_rpc_build::CompileOptions {
             extern_paths: vec![micro_rpc_build::ExternPath::new(
                 ".oak.attestation.v1",
