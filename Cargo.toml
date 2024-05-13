@@ -1,3 +1,5 @@
+cargo-features = ["trim-paths"]
+
 [workspace]
 resolver = "2"
 members = [
@@ -11,6 +13,10 @@ members = [
   "pipeline_transforms",
   "third_party/federated_compute",
 ]
+
+[profile.release]
+strip = "debuginfo" # Debug info is not always deterministic.
+trim-paths = "all"  # Remove path prefixes outside the workspace root.
 
 [workspace.dependencies]
 micro_rpc = { git = "https://github.com/project-oak/oak", rev = "1727a77e16b815ca01e7de2a54cb4482a4b5cfaa" }
