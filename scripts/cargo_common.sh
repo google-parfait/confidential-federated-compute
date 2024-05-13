@@ -24,6 +24,13 @@ f() {
   # don't always work with docker.
   local workspace_root
   workspace_root="$(readlink -f -- "$(dirname -- "${BASH_SOURCE[0]}")/..")"
+
+  if [ ! -e "${workspace_root}/third_party/federated_compute/federated-compute/fcp" ]; then
+    echo 'third_party/federated_compute/federated-compute/fcp does not exist;' 2>&1
+    echo 'did you forget to run `git submodule update --init`?' 2>&1
+    return 1
+  fi
+
   DOCKER_RUN_FLAGS=(
     '--rm'
     '--tty'
