@@ -35,10 +35,6 @@ fn run_server() -> ! {
         Box::new(InstanceSigner::create().unwrap()),
     );
     let server = pipeline_transforms::proto::PipelineTransformServer::new(service);
-    start_blocking_server(
-        Box::<FileDescriptorChannel>::default(),
-        server,
-        &mut invocation_stats,
-    )
-    .expect("server encountered an unrecoverable error");
+    start_blocking_server(Box::<FileDescriptorChannel>::default(), server, &mut invocation_stats)
+        .expect("server encountered an unrecoverable error");
 }

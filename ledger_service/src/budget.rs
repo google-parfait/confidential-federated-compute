@@ -37,10 +37,7 @@ impl BlobBudget {
         let mut transform_access_budgets = Vec::with_capacity(policy.transforms.len());
         for transform in &policy.transforms {
             transform_access_budgets.push(match transform.access_budget {
-                Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(n)),
-                    ..
-                }) => n,
+                Some(AccessBudget { kind: Some(AccessBudgetKind::Times(n)), .. }) => n,
                 Some(AccessBudget { kind: None }) => 0,
                 None => 0,
             })
@@ -54,10 +51,7 @@ impl BlobBudget {
             })
         }
 
-        Self {
-            transform_access_budgets,
-            shared_access_budgets,
-        }
+        Self { transform_access_budgets, shared_access_budgets }
     }
 
     /// Returns whether another access is allowed.
@@ -87,7 +81,8 @@ impl BlobBudget {
         true
     }
 
-    /// Returns whether the there's sufficient budget at the specified index for another access.
+    /// Returns whether the there's sufficient budget at the specified index for
+    /// another access.
     fn has_remaining_budget(budgets: &[u32], index: usize, access_budget: &AccessBudget) -> bool {
         match access_budget.kind {
             Some(AccessBudgetKind::Times(_)) => budgets.get(index).copied().unwrap_or(0) > 0,
@@ -112,15 +107,12 @@ impl BlobBudget {
         for &shared_index in &transform.shared_access_budget_indices {
             let shared_index = shared_index as usize;
             let access_budget =
-                policy
-                    .shared_access_budgets
-                    .get(shared_index)
-                    .ok_or_else(|| {
-                        micro_rpc::Status::new_with_message(
-                            micro_rpc::StatusCode::InvalidArgument,
-                            "AccessPolicy is invalid",
-                        )
-                    })?;
+                policy.shared_access_budgets.get(shared_index).ok_or_else(|| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        "AccessPolicy is invalid",
+                    )
+                })?;
             Self::update_remaining_budget(
                 &mut self.shared_access_budgets,
                 shared_index,
@@ -130,7 +122,8 @@ impl BlobBudget {
         Ok(())
     }
 
-    /// Updates the budget with the specified index based on the AccessBudget type.
+    /// Updates the budget with the specified index based on the AccessBudget
+    /// type.
     fn update_remaining_budget(
         budgets: &mut [u32],
         index: usize,
@@ -143,7 +136,7 @@ impl BlobBudget {
                     return Err(micro_rpc::Status::new_with_message(
                         micro_rpc::StatusCode::Internal,
                         "no budget remaining or DataAccessPolicy invalid",
-                    ))
+                    ));
                 }
             }
         }
@@ -165,10 +158,12 @@ impl BudgetTracker {
         Self::default()
     }
 
-    /// Finds the first matching transform in the policy that has sufficient budget available.
+    /// Finds the first matching transform in the policy that has sufficient
+    /// budget available.
     ///
-    /// The `policy_hash` is used as a concise, stable identifier for the policy; it's the caller's
-    /// responsibility to ensure that the policy hash matches the policy.
+    /// The `policy_hash` is used as a concise, stable identifier for the
+    /// policy; it's the caller's responsibility to ensure that the policy
+    /// hash matches the policy.
     pub fn find_matching_transform(
         &self,
         blob_id: &[u8],
@@ -237,22 +232,24 @@ impl BudgetTracker {
             .or_insert_with(|| BlobBudget::new(policy))
             .record_access(transform_index, policy)
 
-        // TODO: To reduce memory overhead, consider moving the entry to `consumed_budgets` if the
-        // budget has been entirely consumed.
+        // TODO: To reduce memory overhead, consider moving the entry to
+        // `consumed_budgets` if the budget has been entirely consumed.
     }
 
-    /// Consumes all remaining budget for a blob, making all future calls to update_budget fail.
+    /// Consumes all remaining budget for a blob, making all future calls to
+    /// update_budget fail.
     pub fn consume_budget(&mut self, blob_id: &[u8]) {
         if self.consumed_budgets.insert(blob_id.to_vec()) {
-            // If the budget wasn't already consumed, remove any not-yet-consumed budgets since
-            // they'll never be accessed.
+            // If the budget wasn't already consumed, remove any not-yet-consumed budgets
+            // since they'll never be accessed.
             for (_, map) in self.budgets.iter_mut() {
                 map.remove(blob_id);
             }
         }
     }
 
-    /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of snapshot replication.
+    /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of
+    /// snapshot replication.
     pub fn save_snapshot(&self) -> BudgetSnapshot {
         let mut snapshot = BudgetSnapshot::default();
 
@@ -278,8 +275,8 @@ impl BudgetTracker {
         snapshot
     }
 
-    /// Replaces the entire BudgetTracker state with state loaded from BudgetSnapshot as a part of snapshot
-    /// replication.
+    /// Replaces the entire BudgetTracker state with state loaded from
+    /// BudgetSnapshot as a part of snapshot replication.
     pub fn load_snapshot(&mut self, snapshot: BudgetSnapshot) -> Result<(), micro_rpc::Status> {
         // New state
         let mut new_self = BudgetTracker::new();
@@ -344,10 +341,7 @@ mod tests {
     #[test]
     fn test_find_matching_transform_success() {
         let tracker = BudgetTracker::default();
-        let app = Application {
-            tag: "foo",
-            ..Default::default()
-        };
+        let app = Application { tag: "foo", ..Default::default() };
         let policy = DataAccessPolicy {
             transforms: vec![
                 // This transform won't match because the src index is wrong.
@@ -393,7 +387,7 @@ mod tests {
         assert_eq!(
             tracker.find_matching_transform(
                 &[],
-                /* node_id=*/ 1,
+                /* node_id= */ 1,
                 &policy,
                 b"policy-hash",
                 &app,
@@ -431,33 +425,31 @@ mod tests {
         let policy_hash = b"hash";
 
         // A transform should not be found if the tag doesn't match.
-        assert!(tracker
-            .find_matching_transform(
-                blob_id,
-                /* node_id=*/ 1,
-                &policy,
-                policy_hash,
-                &Application {
-                    tag: "no-match",
-                    ..Default::default()
-                },
-                Duration::default()
-            )
-            .is_err());
+        assert!(
+            tracker
+                .find_matching_transform(
+                    blob_id,
+                    /* node_id= */ 1,
+                    &policy,
+                    policy_hash,
+                    &Application { tag: "no-match", ..Default::default() },
+                    Duration::default()
+                )
+                .is_err()
+        );
         // A transform should not be found if the index doesn't match.
-        assert!(tracker
-            .find_matching_transform(
-                blob_id,
-                /* node_id=*/ 10,
-                &policy,
-                policy_hash,
-                &Application {
-                    tag: "tag1",
-                    ..Default::default()
-                },
-                Duration::default()
-            )
-            .is_err());
+        assert!(
+            tracker
+                .find_matching_transform(
+                    blob_id,
+                    /* node_id= */ 10,
+                    &policy,
+                    policy_hash,
+                    &Application { tag: "tag1", ..Default::default() },
+                    Duration::default()
+                )
+                .is_err()
+        );
     }
 
     #[test]
@@ -473,16 +465,18 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(tracker
-            .find_matching_transform(
-                &[],
-                /* node_id=*/ 0,
-                &policy,
-                b"policy-hash",
-                &Application::default(),
-                Duration::default()
-            )
-            .is_err());
+        assert!(
+            tracker
+                .find_matching_transform(
+                    &[],
+                    /* node_id= */ 0,
+                    &policy,
+                    b"policy-hash",
+                    &Application::default(),
+                    Duration::default()
+                )
+                .is_err()
+        );
     }
 
     #[test]
@@ -491,9 +485,7 @@ mod tests {
         let policy = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(2)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -511,10 +503,7 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
         // The remaining budget should now be 1, so the next access should also succeed.
         let transform_index = tracker
@@ -527,16 +516,13 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
         // But a third access should fail.
         assert_eq!(
             tracker.find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -555,9 +541,7 @@ mod tests {
         let policy = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(1)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -575,10 +559,7 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
         // update_budget shouldn't be called if there's no remaining budget because
         // find_matching_transforms will have failed. But if it is, it should fail.
@@ -595,25 +576,18 @@ mod tests {
     fn test_update_budget_after_consume() {
         let mut tracker = BudgetTracker::default();
         let policy = DataAccessPolicy {
-            transforms: vec![Transform {
-                src: 0,
-                ..Default::default()
-            }],
+            transforms: vec![Transform { src: 0, ..Default::default() }],
             ..Default::default()
         };
         let blob_id = b"blob-id";
 
         tracker.consume_budget(blob_id);
 
-        // update_budget shouldn't be called after consume_budget because find_matching_transforms
-        // will have failed. But if it is, it should fail.
+        // update_budget shouldn't be called after consume_budget because
+        // find_matching_transforms will have failed. But if it is, it should
+        // fail.
         assert_eq!(
-            tracker.update_budget(
-                blob_id,
-                /* transform_index= */ 0,
-                &policy,
-                b"policy-hash"
-            ),
+            tracker.update_budget(blob_id, /* transform_index= */ 0, &policy, b"policy-hash"),
             Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::Internal,
                 "data access budget consumed"
@@ -634,26 +608,21 @@ mod tests {
             ..Default::default()
         };
 
-        // update_budget shouldn't be called with an invalid policy because find_matching_transforms
-        // will have failed. But if it is, it should fail.
-        assert!(tracker
-            .update_budget(
-                b"blob-id",
-                /* transform_index= */ 0,
-                &policy,
-                b"policy-hash"
-            )
-            .is_err());
+        // update_budget shouldn't be called with an invalid policy because
+        // find_matching_transforms will have failed. But if it is, it should
+        // fail.
+        assert!(
+            tracker
+                .update_budget(b"blob-id", /* transform_index= */ 0, &policy, b"policy-hash")
+                .is_err()
+        );
     }
 
     #[test]
     fn test_consume_budget() {
         let mut tracker = BudgetTracker::default();
         let policy = DataAccessPolicy {
-            transforms: vec![Transform {
-                src: 0,
-                ..Default::default()
-            }],
+            transforms: vec![Transform { src: 0, ..Default::default() }],
             ..Default::default()
         };
         let policy_hash = b"hash";
@@ -664,7 +633,7 @@ mod tests {
         assert_eq!(
             tracker.find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -680,7 +649,7 @@ mod tests {
         assert_eq!(
             tracker.find_matching_transform(
                 b"blob-id2",
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -697,21 +666,13 @@ mod tests {
             transforms: vec![
                 Transform {
                     src: 0,
-                    access_budget: Some(AccessBudget {
-                        kind: Some(AccessBudgetKind::Times(1)),
-                    }),
+                    access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
                     shared_access_budget_indices: vec![0],
                     ..Default::default()
                 },
-                Transform {
-                    src: 0,
-                    shared_access_budget_indices: vec![0],
-                    ..Default::default()
-                },
+                Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
             ],
-            shared_access_budgets: vec![AccessBudget {
-                kind: Some(AccessBudgetKind::Times(2)),
-            }],
+            shared_access_budgets: vec![AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }],
             ..Default::default()
         };
         let policy_hash = b"hash";
@@ -721,7 +682,7 @@ mod tests {
         assert_eq!(
             tracker.find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -734,11 +695,12 @@ mod tests {
             Ok(())
         );
 
-        // The second should match the second transform since the first's budget is exhausted.
+        // The second should match the second transform since the first's budget is
+        // exhausted.
         assert_eq!(
             tracker.find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -751,11 +713,12 @@ mod tests {
             Ok(())
         );
 
-        // The third request should fail because the shared budget has now been exhausted.
+        // The third request should fail because the shared budget has now been
+        // exhausted.
         assert_eq!(
             tracker.find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -767,12 +730,12 @@ mod tests {
             ))
         );
 
-        // A request for a different blob id (but the same node id) should succeed since budgets
-        // are tracked per blob id.
+        // A request for a different blob id (but the same node id) should succeed since
+        // budgets are tracked per blob id.
         assert_eq!(
             tracker.find_matching_transform(
                 b"blob-id2",
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy,
                 policy_hash,
                 &Application::default(),
@@ -785,10 +748,7 @@ mod tests {
     #[test]
     fn test_policy_isolation() {
         let mut tracker = BudgetTracker::default();
-        let app = Application {
-            tag: "tag",
-            ..Default::default()
-        };
+        let app = Application { tag: "tag", ..Default::default() };
         let policy1 = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
@@ -819,38 +779,32 @@ mod tests {
         let policy_hash2 = b"hash2";
         let blob_id = b"blob-id";
 
-        // Budgets for different policies should be tracked separately -- especially to prevent
-        // malicious blob id collisions from causing incorrect tracking. If the budgets were
-        // shared, the second access would fail.
+        // Budgets for different policies should be tracked separately -- especially to
+        // prevent malicious blob id collisions from causing incorrect tracking.
+        // If the budgets were shared, the second access would fail.
         let transform_index = tracker
             .find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy1,
                 policy_hash1,
                 &app,
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy1, policy_hash1),
-            Ok(())
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy1, policy_hash1), Ok(()));
 
         let transform_index = tracker
             .find_matching_transform(
                 blob_id,
-                /* node_id=*/ 0,
+                /* node_id= */ 0,
                 &policy2,
                 policy_hash2,
                 &app,
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy2, policy_hash2),
-            Ok(())
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy2, policy_hash2), Ok(()));
     }
 
     #[test]
@@ -859,9 +813,7 @@ mod tests {
         let policy = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(2)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -879,10 +831,7 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
         assert_eq!(
             tracker.save_snapshot(),
@@ -906,9 +855,7 @@ mod tests {
         let policy = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(1)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -926,10 +873,7 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
         tracker.consume_budget(blob_id);
 
         assert_eq!(
@@ -989,9 +933,7 @@ mod tests {
         let policy = DataAccessPolicy {
             transforms: vec![Transform {
                 src: 0,
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(2)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -1009,10 +951,7 @@ mod tests {
                 Duration::default(),
             )
             .unwrap();
-        assert_eq!(
-            tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
-            Ok(()),
-        );
+        assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
         assert_ne!(tracker.save_snapshot(), BudgetSnapshot::default());
 
         // Load an empty snapshot and verify that an empty snapshot is saved.
@@ -1050,14 +989,8 @@ mod tests {
                 per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                     access_policy_sha256: b"hash1".to_vec(),
                     budgets: vec![
-                        BlobBudgetSnapshot {
-                            blob_id: b"blob1".to_vec(),
-                            ..Default::default()
-                        },
-                        BlobBudgetSnapshot {
-                            blob_id: b"blob1".to_vec(),
-                            ..Default::default()
-                        },
+                        BlobBudgetSnapshot { blob_id: b"blob1".to_vec(), ..Default::default() },
+                        BlobBudgetSnapshot { blob_id: b"blob1".to_vec(), ..Default::default() },
                     ],
                 },],
                 consumed_budgets: vec![]

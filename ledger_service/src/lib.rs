@@ -66,8 +66,8 @@ impl LedgerService {
         evidence_provider: Box<dyn EvidenceProvider>,
         signer: Box<dyn Signer>,
     ) -> anyhow::Result<Self> {
-        // Pre-generate and convert the evidence so that we don't have to do it every time a key is
-        // created.
+        // Pre-generate and convert the evidence so that we don't have to do it every
+        // time a key is created.
         let evidence = evidence_to_proto(evidence_provider.get_evidence().clone())?;
         Ok(Self {
             evidence,
@@ -114,17 +114,13 @@ impl LedgerService {
     fn parse_duration(
         duration: &Option<prost_types::Duration>,
     ) -> Result<Duration, prost_types::DurationError> {
-        duration
-            .clone()
-            .map_or(Ok(Duration::ZERO), <Duration>::try_from)
+        duration.clone().map_or(Ok(Duration::ZERO), <Duration>::try_from)
     }
 
     /// Builds a CWT containing a CoseKey.
     fn build_cwt(&self, cose_key: CoseKey, expiration: Duration) -> anyhow::Result<Vec<u8>> {
         let claims = ClaimsSetBuilder::new()
-            .expiration_time(cwt::Timestamp::WholeSeconds(
-                expiration.as_secs().try_into().unwrap(),
-            ))
+            .expiration_time(cwt::Timestamp::WholeSeconds(expiration.as_secs().try_into().unwrap()))
             .issued_at(cwt::Timestamp::WholeSeconds(
                 self.current_time.as_secs().try_into().unwrap(),
             ))
@@ -145,7 +141,8 @@ impl LedgerService {
             .map_err(anyhow::Error::msg)
     }
 
-    /// Saves the current state into LedgerSnapshot as a part of snapshot replication.
+    /// Saves the current state into LedgerSnapshot as a part of snapshot
+    /// replication.
     pub fn save_snapshot(&self) -> Result<LedgerSnapshot, micro_rpc::Status> {
         let mut snapshot = LedgerSnapshot::default();
 
@@ -162,8 +159,8 @@ impl LedgerService {
         Ok(snapshot)
     }
 
-    /// Replaces the current state with the state loaded from Ledger snapshot as a part of
-    /// snapshot replication.
+    /// Replaces the current state with the state loaded from Ledger snapshot as
+    /// a part of snapshot replication.
     pub fn load_snapshot(&mut self, snapshot: LedgerSnapshot) -> Result<(), micro_rpc::Status> {
         // Create a new empty map.
         let mut new_per_key_ledgers = BTreeMap::<Vec<u8>, PerKeyLedger>::default();
@@ -190,9 +187,7 @@ impl LedgerService {
             };
             // Load the budgets.
             if per_key_snapshot.budgets.is_some() {
-                per_key_ledger
-                    .budget_tracker
-                    .load_snapshot(per_key_snapshot.budgets.unwrap())?;
+                per_key_ledger.budget_tracker.load_snapshot(per_key_snapshot.budgets.unwrap())?;
             }
             // Extract the key id from the CoseKey inside the public key CWT.
             let key_id = extract_key_from_cwt(&per_key_ledger.public_key)
@@ -242,12 +237,12 @@ impl Ledger for LedgerService {
                 format!("`ttl` is invalid: {:?}", err),
             )
         })?;
-        // The expiration time cannot overflow because proto Timestamps and Durations are signed
-        // but Rust's Durations are unsigned.
+        // The expiration time cannot overflow because proto Timestamps and Durations
+        // are signed but Rust's Durations are unsigned.
         let expiration = self.current_time + ttl;
 
-        // Find an available key id. The number of keys is expected to remain small, so this is
-        // unlikely to require more than 1 or 2 attempts.
+        // Find an available key id. The number of keys is expected to remain small, so
+        // this is unlikely to require more than 1 or 2 attempts.
         let mut key_id = vec![0u8; 4];
         while {
             OsRng.fill_bytes(key_id.as_mut_slice());
@@ -273,10 +268,7 @@ impl Ledger for LedgerService {
         );
 
         // Construct the response.
-        Ok(CreateKeyResponse {
-            public_key,
-            attestation_evidence: Some(self.evidence.clone()),
-        })
+        Ok(CreateKeyResponse { public_key, attestation_evidence: Some(self.evidence.clone()) })
     }
 
     fn delete_key(
@@ -284,9 +276,8 @@ impl Ledger for LedgerService {
         request: DeleteKeyRequest,
     ) -> Result<DeleteKeyResponse, micro_rpc::Status> {
         // Extract the key id from the CoseKey inside the public key CWT.
-        let key_id = extract_key_from_cwt(&request.public_key)
-            .map(|key| key.key_id)
-            .map_err(|err| {
+        let key_id =
+            extract_key_from_cwt(&request.public_key).map(|key| key.key_id).map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("public_key is invalid: {:?}", err),
@@ -312,7 +303,8 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        // Verify the attestation and compute the properties of the requesting application.
+        // Verify the attestation and compute the properties of the requesting
+        // application.
         let (recipient_app, recipient_public_key) = attestation::verify_attestation(
             &request.recipient_public_key,
             request.recipient_attestation_evidence.as_ref(),
@@ -326,11 +318,13 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        // Decode the blob header and access policy. Since the access policy was provided by an
-        // untrusted source, we need to verify it by checking the hash in the header. The header is
-        // also unverified at this point, but will be authenticated later when it's used as the
-        // associated data for re-wrapping the symmetric key. This ensures that any request that
-        // uses a different header or access policy than what was approved by the client will fail.
+        // Decode the blob header and access policy. Since the access policy was
+        // provided by an untrusted source, we need to verify it by checking the
+        // hash in the header. The header is also unverified at this point, but
+        // will be authenticated later when it's used as the associated data for
+        // re-wrapping the symmetric key. This ensures that any request that
+        // uses a different header or access policy than what was approved by the client
+        // will fail.
         let header = BlobHeader::decode(request.blob_header.as_ref()).map_err(|err| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
@@ -352,17 +346,15 @@ impl Ledger for LedgerService {
             })?;
 
         // Find the right per-key ledger.
-        let per_key_ledger = self
-            .per_key_ledgers
-            .get_mut(&header.key_id)
-            .ok_or_else(|| {
-                micro_rpc::Status::new_with_message(
-                    micro_rpc::StatusCode::NotFound,
-                    "public key not found",
-                )
-            })?;
+        let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::NotFound,
+                "public key not found",
+            )
+        })?;
 
-        // Verify that the access is authorized and that there is still budget remaining.
+        // Verify that the access is authorized and that there is still budget
+        // remaining.
         let transform_index = per_key_ledger.budget_tracker.find_matching_transform(
             &header.blob_id,
             header.access_policy_node_id,
@@ -372,8 +364,9 @@ impl Ledger for LedgerService {
             self.current_time,
         )?;
 
-        // Re-wrap the blob's symmetric key. This should be done before budgets are updated in case
-        // there are decryption errors (e.g., due to invalid associated data).
+        // Re-wrap the blob's symmetric key. This should be done before budgets are
+        // updated in case there are decryption errors (e.g., due to invalid
+        // associated data).
         let wrap_associated_data =
             [&per_key_ledger.public_key[..], &request.recipient_nonce[..]].concat();
         let (encapsulated_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
@@ -391,7 +384,8 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        // Update the budget. This shouldn't fail since there was sufficient budget earlier.
+        // Update the budget. This shouldn't fail since there was sufficient budget
+        // earlier.
         per_key_ledger.budget_tracker.update_budget(
             &header.blob_id,
             transform_index,
@@ -399,7 +393,8 @@ impl Ledger for LedgerService {
             &header.access_policy_sha256,
         )?;
 
-        // TODO(b/288282266): Include the selected transform's destination node id in the response.
+        // TODO: b/288282266 - Include the selected transform's destination node id in
+        // the response.
         Ok(AuthorizeAccessResponse {
             encapsulated_key,
             encrypted_symmetric_key,
@@ -411,19 +406,14 @@ impl Ledger for LedgerService {
         &mut self,
         request: RevokeAccessRequest,
     ) -> Result<RevokeAccessResponse, micro_rpc::Status> {
-        let per_key_ledger = self
-            .per_key_ledgers
-            .get_mut(&request.key_id)
-            .ok_or_else(|| {
-                micro_rpc::Status::new_with_message(
-                    micro_rpc::StatusCode::NotFound,
-                    "public key not found",
-                )
-            })?;
+        let per_key_ledger = self.per_key_ledgers.get_mut(&request.key_id).ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::NotFound,
+                "public key not found",
+            )
+        })?;
 
-        per_key_ledger
-            .budget_tracker
-            .consume_budget(&request.blob_id);
+        per_key_ledger.budget_tracker.consume_budget(&request.blob_id);
         Ok(RevokeAccessResponse {})
     }
 }
@@ -456,26 +446,20 @@ mod tests {
         .unwrap();
         let response = ledger
             .create_key(CreateKeyRequest {
-                ttl: Some(prost_types::Duration {
-                    seconds: 3600,
-                    ..Default::default()
-                }),
+                ttl: Some(prost_types::Duration { seconds: 3600, ..Default::default() }),
                 ..Default::default()
             })
             .unwrap();
         (ledger, response.public_key)
     }
 
-    /// Helper function to wrap a CoseKey in a CWT as would be generated by app requesting access.
+    /// Helper function to wrap a CoseKey in a CWT as would be generated by app
+    /// requesting access.
     fn create_recipient_cwt(cose_key: CoseKey) -> Vec<u8> {
         let claims = ClaimsSetBuilder::new()
             .private_claim(PUBLIC_KEY_CLAIM, Value::from(cose_key.to_vec().unwrap()))
             .build();
-        CoseSign1Builder::new()
-            .payload(claims.to_vec().unwrap())
-            .build()
-            .to_vec()
-            .unwrap()
+        CoseSign1Builder::new().payload(claims.to_vec().unwrap()).build().to_vec().unwrap()
     }
 
     #[test]
@@ -483,9 +467,7 @@ mod tests {
         struct FakeSigner;
         impl Signer for FakeSigner {
             fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
-                return Ok(Signature {
-                    signature: Sha256::digest(message).to_vec(),
-                });
+                return Ok(Signature { signature: Sha256::digest(message).to_vec() });
             }
         }
         let mut ledger = LedgerService::create(
@@ -496,14 +478,8 @@ mod tests {
 
         let response1 = ledger
             .create_key(CreateKeyRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 1000,
-                    ..Default::default()
-                }),
-                ttl: Some(prost_types::Duration {
-                    seconds: 100,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
             })
             .unwrap();
         assert!(response1.attestation_evidence.is_some());
@@ -514,30 +490,18 @@ mod tests {
             Ok(())
         })
         .expect("signature mismatch");
-        assert_eq!(
-            cwt.protected.header.alg,
-            Some(Algorithm::Assigned(iana::Algorithm::ES256))
-        );
+        assert_eq!(cwt.protected.header.alg, Some(Algorithm::Assigned(iana::Algorithm::ES256)));
         let claims = ClaimsSet::from_slice(&cwt.payload.unwrap()).unwrap();
         assert_eq!(claims.issued_at, Some(cwt::Timestamp::WholeSeconds(1000)));
-        assert_eq!(
-            claims.expiration_time,
-            Some(cwt::Timestamp::WholeSeconds(1100))
-        );
+        assert_eq!(claims.expiration_time, Some(cwt::Timestamp::WholeSeconds(1100)));
         let key1 = extract_key_from_cwt(&response1.public_key).unwrap();
 
-        // Since the key contains random fields, we can't check them directly. Instead, we create a
-        // second key and verify that those fields are different.
+        // Since the key contains random fields, we can't check them directly. Instead,
+        // we create a second key and verify that those fields are different.
         let response2 = ledger
             .create_key(CreateKeyRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 1000,
-                    ..Default::default()
-                }),
-                ttl: Some(prost_types::Duration {
-                    seconds: 100,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
             })
             .unwrap();
         let key2 = extract_key_from_cwt(&response2.public_key).unwrap();
@@ -555,13 +519,10 @@ mod tests {
             Ok(DeleteKeyResponse::default())
         );
 
-        // To verify that the key was actually deleted, we check that attempting to delete it again
-        // produces an error.
+        // To verify that the key was actually deleted, we check that attempting to
+        // delete it again produces an error.
         assert_err!(
-            ledger.delete_key(DeleteKeyRequest {
-                public_key,
-                ..Default::default()
-            }),
+            ledger.delete_key(DeleteKeyRequest { public_key, ..Default::default() }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
         );
@@ -585,10 +546,7 @@ mod tests {
         let (_, public_key) = create_ledger_service();
         let (mut ledger, _) = create_ledger_service();
         assert_err!(
-            ledger.delete_key(DeleteKeyRequest {
-                public_key,
-                ..Default::default()
-            }),
+            ledger.delete_key(DeleteKeyRequest { public_key, ..Default::default() }),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
         );
@@ -641,7 +599,8 @@ mod tests {
             })
             .unwrap();
 
-        // Verify that the response contains the right public key and allows the message to be read.
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
         assert_eq!(response.reencryption_public_key, public_key);
         assert_eq!(
             cfc_crypto::decrypt_message(
@@ -703,11 +662,7 @@ mod tests {
             .create_signature(b"", |message| {
                 // The MockSigner signs the key with application signing key provided by the
                 // MockEvidenceProvider.
-                MockSigner::create()
-                    .unwrap()
-                    .sign(message)
-                    .unwrap()
-                    .signature
+                MockSigner::create().unwrap().sign(message).unwrap().signature
             })
             .build()
             .to_vec()
@@ -727,7 +682,8 @@ mod tests {
             })
             .unwrap();
 
-        // Verify that the response contains the right public key and allows the message to be read.
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
         assert_eq!(response.reencryption_public_key, public_key);
         assert_eq!(
             cfc_crypto::decrypt_message(
@@ -789,11 +745,7 @@ mod tests {
             .create_signature(b"", |message| {
                 // The MockSigner signs the key with application signing key provided by the
                 // MockEvidenceProvider.
-                MockSigner::create()
-                    .unwrap()
-                    .sign(message)
-                    .unwrap()
-                    .signature
+                MockSigner::create().unwrap().sign(message).unwrap().signature
             })
             .build()
             .to_vec()
@@ -811,9 +763,7 @@ mod tests {
                 recipient_nonce: recipient_nonce.to_owned(),
                 ..Default::default()
             }),
-            err(displays_as(contains_substring(
-                "attestation validation failed"
-            )))
+            err(displays_as(contains_substring("attestation validation failed")))
         );
     }
 
@@ -1154,13 +1104,11 @@ mod tests {
         let (_, encapsulated_key, encrypted_symmetric_key) =
             cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
 
-        // Request access. Since `now` is after the key's expiration time, access should be denied.
+        // Request access. Since `now` is after the key's expiration time, access should
+        // be denied.
         assert_err!(
             ledger.authorize_access(AuthorizeAccessRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 1_000_000_000,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 1_000_000_000, ..Default::default() }),
                 access_policy,
                 blob_header: blob_header,
                 encapsulated_key,
@@ -1181,9 +1129,7 @@ mod tests {
         let cose_key = extract_key_from_cwt(&public_key).unwrap();
         let access_policy = DataAccessPolicy {
             transforms: vec![Transform {
-                access_budget: Some(AccessBudget {
-                    kind: Some(AccessBudgetKind::Times(1)),
-                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
                 ..Default::default()
             }],
             ..Default::default()
@@ -1201,18 +1147,22 @@ mod tests {
             cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
         // The first access should succeed.
-        assert!(ledger
-            .authorize_access(AuthorizeAccessRequest {
-                access_policy: access_policy.clone(),
-                blob_header: blob_header.clone(),
-                encapsulated_key: encapsulated_key.clone(),
-                encrypted_symmetric_key: encrypted_symmetric_key.clone(),
-                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
-                recipient_tag: "tag".to_owned(),
-                recipient_nonce: b"nonce1".to_vec(),
-                ..Default::default()
-            })
-            .is_ok());
+        assert!(
+            ledger
+                .authorize_access(AuthorizeAccessRequest {
+                    access_policy: access_policy.clone(),
+                    blob_header: blob_header.clone(),
+                    encapsulated_key: encapsulated_key.clone(),
+                    encrypted_symmetric_key: encrypted_symmetric_key.clone(),
+                    recipient_public_key: create_recipient_cwt(
+                        cfc_crypto::gen_keypair(b"key-id").1
+                    ),
+                    recipient_tag: "tag".to_owned(),
+                    recipient_nonce: b"nonce1".to_vec(),
+                    ..Default::default()
+                })
+                .is_ok()
+        );
 
         // But the second should fail because the budget has been exhausted.
         assert_err!(
@@ -1246,11 +1196,9 @@ mod tests {
         );
 
         // Subsequent access should not be granted.
-        let access_policy = DataAccessPolicy {
-            transforms: vec![Transform::default()],
-            ..Default::default()
-        }
-        .encode_to_vec();
+        let access_policy =
+            DataAccessPolicy { transforms: vec![Transform::default()], ..Default::default() }
+                .encode_to_vec();
         let plaintext = b"plaintext";
         let blob_header = BlobHeader {
             blob_id: blob_id.to_vec(),
@@ -1298,10 +1246,7 @@ mod tests {
         let (mut ledger, _) = create_ledger_service();
         ledger
             .create_key(CreateKeyRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 1000,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
                 ..Default::default()
             })
             .unwrap();
@@ -1309,10 +1254,7 @@ mod tests {
         // Timestamps passed to the LedgerService must be non-decreasing.
         assert_err!(
             ledger.create_key(CreateKeyRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 500,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 500, ..Default::default() }),
                 ..Default::default()
             }),
             micro_rpc::StatusCode::InvalidArgument,
@@ -1320,10 +1262,7 @@ mod tests {
         );
         assert_err!(
             ledger.authorize_access(AuthorizeAccessRequest {
-                now: Some(prost_types::Timestamp {
-                    seconds: 500,
-                    ..Default::default()
-                }),
+                now: Some(prost_types::Timestamp { seconds: 500, ..Default::default() }),
                 ..Default::default()
             }),
             micro_rpc::StatusCode::InvalidArgument,
@@ -1364,10 +1303,7 @@ mod tests {
         // Request access.
         let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
         let recipient_nonce: &[u8] = b"nonce";
-        let now = prost_types::Timestamp {
-            seconds: 1000,
-            ..Default::default()
-        };
+        let now = prost_types::Timestamp { seconds: 1000, ..Default::default() };
         let _ = ledger
             .authorize_access(AuthorizeAccessRequest {
                 now: Some(now.clone()),
@@ -1421,10 +1357,7 @@ mod tests {
         let (private_key_1, public_key_1) = cfc_crypto::gen_keypair(b"key1");
         let (private_key_2, public_key_2) = cfc_crypto::gen_keypair(b"key2");
         let snapshot = LedgerSnapshot {
-            current_time: Some(prost_types::Timestamp {
-                seconds: 1000,
-                ..Default::default()
-            }),
+            current_time: Some(prost_types::Timestamp { seconds: 1000, ..Default::default() }),
             per_key_snapshots: vec![
                 PerKeySnapshot {
                     public_key: create_recipient_cwt(public_key_1),
@@ -1523,16 +1456,11 @@ mod tests {
         let access_policy_sha256 = Sha256::digest(&access_policy).to_vec();
 
         let snapshot = LedgerSnapshot {
-            current_time: Some(prost_types::Timestamp {
-                ..Default::default()
-            }),
+            current_time: Some(prost_types::Timestamp { ..Default::default() }),
             per_key_snapshots: vec![PerKeySnapshot {
                 public_key: public_key_bytes.clone(),
                 private_key: private_key.to_bytes().to_vec(),
-                expiration: Some(prost_types::Timestamp {
-                    seconds: 2000,
-                    ..Default::default()
-                }),
+                expiration: Some(prost_types::Timestamp { seconds: 2000, ..Default::default() }),
                 budgets: Some(BudgetSnapshot {
                     per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                         access_policy_sha256: access_policy_sha256.clone(),
@@ -1579,7 +1507,8 @@ mod tests {
             })
             .unwrap();
 
-        // Verify that the response contains the right public key and allows the message to be read.
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
         assert_eq!(response.reencryption_public_key, public_key_bytes);
         assert_eq!(
             cfc_crypto::decrypt_message(

@@ -1,0 +1,6 @@
+edition = "2021"
+version = "Two"
+use_small_heuristics = "Max"
+newline_style = "Unix"
+wrap_comments = true
+format_generated_files = false

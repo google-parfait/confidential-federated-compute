@@ -29,8 +29,8 @@ use oak_restricted_kernel_sdk::{
 
 #[entrypoint]
 fn run_server() -> ! {
-    // Logging from the restricted kernel is very slow (multiple milliseconds); suppress
-    // low-priority messages in non-debug builds.
+    // Logging from the restricted kernel is very slow (multiple milliseconds);
+    // suppress low-priority messages in non-debug builds.
     #[cfg(not(debug_assertions))]
     {
         oak_restricted_kernel_sdk::utils::log::set_max_level(
@@ -45,10 +45,6 @@ fn run_server() -> ! {
     )
     .expect("failed to create LedgerService");
     let server = federated_compute::proto::LedgerServer::new(service);
-    start_blocking_server(
-        Box::<FileDescriptorChannel>::default(),
-        server,
-        &mut invocation_stats,
-    )
-    .expect("server encountered an unrecoverable error");
+    start_blocking_server(Box::<FileDescriptorChannel>::default(), server, &mut invocation_stats)
+        .expect("server encountered an unrecoverable error");
 }

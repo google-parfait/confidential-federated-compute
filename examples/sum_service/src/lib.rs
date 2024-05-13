@@ -37,12 +37,7 @@ pub struct SumService {
 
 impl SumService {
     pub fn new(evidence_provider: Box<dyn EvidenceProvider>, signer: Box<dyn Signer>) -> Self {
-        Self {
-            evidence_provider,
-            signer,
-            record_decoder: None,
-            record_encoder: RecordEncoder,
-        }
+        Self { evidence_provider, signer, record_decoder: None, record_encoder: RecordEncoder }
     }
 }
 
@@ -88,9 +83,7 @@ impl PipelineTransform for SumService {
                 format!("nonces_count is invalid: {:?}", err),
             )
         })?;
-        Ok(GenerateNoncesResponse {
-            nonces: record_decoder.generate_nonces(count),
-        })
+        Ok(GenerateNoncesResponse { nonces: record_decoder.generate_nonces(count) })
     }
 
     fn transform(
@@ -119,32 +112,26 @@ impl PipelineTransform for SumService {
                     "input must be 8 bytes",
                 ));
             }
-            sum = sum
-                .checked_add(LittleEndian::read_u64(&data))
-                .ok_or_else(|| {
-                    micro_rpc::Status::new_with_message(
-                        micro_rpc::StatusCode::InvalidArgument,
-                        "addition overflow",
-                    )
-                })?;
+            sum = sum.checked_add(LittleEndian::read_u64(&data)).ok_or_else(|| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "addition overflow",
+                )
+            })?;
         }
 
         let mut buffer = [0; 8];
         LittleEndian::write_u64(&mut buffer, sum);
 
         // SumService always produces unencrypted outputs.
-        let output = self
-            .record_encoder
-            .encode(EncryptionMode::Unencrypted, &buffer)
-            .map_err(|err| {
+        let output =
+            self.record_encoder.encode(EncryptionMode::Unencrypted, &buffer).map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::Internal,
                     format!("failed to encode output: {:?}", err),
                 )
             })?;
-        Ok(TransformResponse {
-            outputs: vec![output],
-        })
+        Ok(TransformResponse { outputs: vec![output] })
     }
 }
 
@@ -167,9 +154,7 @@ mod tests {
 
     /// Helper function to convert data to an unencrypted Record.
     fn encode_unencrypted(data: &[u8]) -> Record {
-        RecordEncoder::default()
-            .encode(EncryptionMode::Unencrypted, data)
-            .unwrap()
+        RecordEncoder::default().encode(EncryptionMode::Unencrypted, data).unwrap()
     }
 
     #[test]
@@ -177,9 +162,7 @@ mod tests {
         struct FakeSigner;
         impl Signer for FakeSigner {
             fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
-                return Ok(Signature {
-                    signature: Sha256::digest(message).to_vec(),
-                });
+                return Ok(Signature { signature: Sha256::digest(message).to_vec() });
             }
         }
 
@@ -215,18 +198,14 @@ mod tests {
     #[test]
     fn test_generate_nonces_without_configure() {
         let mut service = create_sum_service();
-        assert!(service
-            .generate_nonces(GenerateNoncesRequest { nonces_count: 3 })
-            .is_err());
+        assert!(service.generate_nonces(GenerateNoncesRequest { nonces_count: 3 }).is_err());
     }
 
     #[test]
     fn test_generate_nonces_with_invalid_count() -> Result<(), micro_rpc::Status> {
         let mut service = create_sum_service();
         service.configure_and_attest(ConfigureAndAttestRequest::default())?;
-        assert!(service
-            .generate_nonces(GenerateNoncesRequest { nonces_count: -1 })
-            .is_err());
+        assert!(service.generate_nonces(GenerateNoncesRequest { nonces_count: -1 }).is_err());
         Ok(())
     }
 
@@ -280,10 +259,7 @@ mod tests {
             let expected = encode_unencrypted(&[0, (1..(count + 1)).sum(), 0, 0, 0, 0, 0, 0]);
             assert_eq!(
                 service.transform(request)?,
-                TransformResponse {
-                    outputs: vec![expected],
-                    ..Default::default()
-                }
+                TransformResponse { outputs: vec![expected], ..Default::default() }
             );
         }
         Ok(())
@@ -321,10 +297,7 @@ mod tests {
         let expected = encode_unencrypted(&[3, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(
             service.transform(request)?,
-            TransformResponse {
-                outputs: vec![expected],
-                ..Default::default()
-            }
+            TransformResponse { outputs: vec![expected], ..Default::default() }
         );
         Ok(())
     }

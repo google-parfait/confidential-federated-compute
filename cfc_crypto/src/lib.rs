@@ -34,10 +34,9 @@ use hpke::{
 
 pub type PrivateKey = <X25519HkdfSha256 as Kem>::PrivateKey;
 
-// A fixed random nonce, which is safe to reuse because the symmetric key is never reused.
-static NONCE: [u8; 12] = [
-    0x74, 0xDF, 0x8F, 0xD4, 0xBE, 0x34, 0xAF, 0x64, 0x7F, 0x5E, 0x54, 0xF6,
-];
+// A fixed random nonce, which is safe to reuse because the symmetric key is
+// never reused.
+static NONCE: [u8; 12] = [0x74, 0xDF, 0x8F, 0xD4, 0xBE, 0x34, 0xAF, 0x64, 0x7F, 0x5E, 0x54, 0xF6];
 
 // The HPKE info field is not used.
 static INFO: [u8; 0] = [];
@@ -154,7 +153,8 @@ pub fn gen_keypair(key_id: &[u8]) -> (PrivateKey, CoseKey) {
 ///
 /// # Return Value
 ///
-/// Returns `Ok((ciphertext, encapped_key, encrypted_symmetric_key))` on success.
+/// Returns `Ok((ciphertext, encapped_key, encrypted_symmetric_key))` on
+/// success.
 pub fn encrypt_message(
     plaintext: &[u8],
     public_key: &CoseKey,
@@ -164,13 +164,7 @@ pub fn encrypt_message(
     let symmetric_key = Aes128GcmSiv::generate_key(OsRng);
     let cipher = Aes128GcmSiv::new(&symmetric_key);
     let ciphertext = cipher
-        .encrypt(
-            (&NONCE).into(),
-            Payload {
-                msg: plaintext,
-                aad: associated_data,
-            },
-        )
+        .encrypt((&NONCE).into(), Payload { msg: plaintext, aad: associated_data })
         .map_err(|err| anyhow!("failed to encrypt plaintext: {:?}", err))?;
 
     // Construct and serialize a CoseKey containing the symmetric key material.
@@ -192,21 +186,27 @@ pub fn encrypt_message(
     Ok((ciphertext, encapped_key, encrypted_symmetric_key))
 }
 
-/// Unwraps and re-wraps the AEAD symmetric key for consumption by another party.
+/// Unwraps and re-wraps the AEAD symmetric key for consumption by another
+/// party.
 ///
-/// Instead of directly decrypting the message, this method allows the AEAD symmetric to be
-/// passed off to another party without sharing the private key. In other words, it opens
-/// the original HPKE message and then re-seals it for the new recipient.
+/// Instead of directly decrypting the message, this method allows the AEAD
+/// symmetric to be passed off to another party without sharing the private key.
+/// In other words, it opens the original HPKE message and then re-seals it for
+/// the new recipient.
 ///
 /// # Arguments
 ///
-/// * `encrypted_symmetric_key` - The encrypted symmetric key produced by `encrypt_message`.
-/// * `serialized_encapped_key` - The encapped public key returned by `encrypt_message`.
-/// * `private_key` - The corresponding private key for the public key passed to `encrypt_message`.
-/// * `unwrap_associated_data` - The associated data passed to `encrypt_message`.
+/// * `encrypted_symmetric_key` - The encrypted symmetric key produced by
+///   `encrypt_message`.
+/// * `serialized_encapped_key` - The encapped public key returned by
+///   `encrypt_message`.
+/// * `private_key` - The corresponding private key for the public key passed to
+///   `encrypt_message`.
+/// * `unwrap_associated_data` - The associated data passed to
+///   `encrypt_message`.
 /// * `recipient_public_key` - The public key of the recipient.
-/// * `wrap_associated_data` - Additional data to be verified along with the message. This replaces
-///    `unwrap_associated_data`.
+/// * `wrap_associated_data` - Additional data to be verified along with the
+///   message. This replaces `unwrap_associated_data`.
 ///
 /// # Return Value
 ///
@@ -236,11 +236,14 @@ pub fn rewrap_symmetric_key(
 /// # Arguments
 ///
 /// * `ciphertext` - The encrypted message.
-/// * `ciphertext_associated_data` - The associated data passed to `encrypt_message`.
-/// * `encrypted_symmetric_key` - The encrypted symmetric key produced by `rewrap_symmetric_key`.
+/// * `ciphertext_associated_data` - The associated data passed to
+///   `encrypt_message`.
+/// * `encrypted_symmetric_key` - The encrypted symmetric key produced by
+///   `rewrap_symmetric_key`.
 /// * `encrypted_symmetric_key_associated_data` - The associated data passed to
 ///   `rewrap_symmetric_key`.
-/// * `serialized_encapped_key` - The encapped public key returned by `rewrap_symmetric_key`.
+/// * `serialized_encapped_key` - The encapped public key returned by
+///   `rewrap_symmetric_key`.
 /// * `private_key` - The corresponding private key for the public key passed to
 ///   `rewrap_symmetric_key`.
 ///
@@ -280,18 +283,12 @@ pub fn decrypt_message(
     let cipher = Aes128GcmSiv::new_from_slice(raw_symmetric_key)
         .map_err(|err| anyhow!("failed to load symmetric key: {:?}", err))?;
     cipher
-        .decrypt(
-            (&NONCE).into(),
-            Payload {
-                msg: ciphertext,
-                aad: ciphertext_associated_data,
-            },
-        )
+        .decrypt((&NONCE).into(), Payload { msg: ciphertext, aad: ciphertext_associated_data })
         .map_err(|err| anyhow!("failed to decrypt data: {:?}", err))
 }
 
-/// Extracts a CoseKey from a CBOR Web Token (CWT). No validation is performed on the CWT signature
-/// or claims.
+/// Extracts a CoseKey from a CBOR Web Token (CWT). No validation is performed
+/// on the CWT signature or claims.
 pub fn extract_key_from_cwt(cwt: &[u8]) -> anyhow::Result<CoseKey> {
     CoseSign1::from_slice(cwt)
         .and_then(|cwt| ClaimsSet::from_slice(cwt.payload.as_deref().unwrap_or_default()))
@@ -323,10 +320,7 @@ mod tests {
     fn test_gen_keypair_public_key_params() {
         let (_, public_key) = gen_keypair(b"key-id");
         assert_eq!(public_key.kty, KeyType::Assigned(iana::KeyType::OKP));
-        assert_eq!(
-            public_key.alg,
-            Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))
-        );
+        assert_eq!(public_key.alg, Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)));
         assert_eq!(public_key.key_id, b"key-id");
         assert_eq!(
             public_key
@@ -336,12 +330,14 @@ mod tests {
                 .map(|(_, value)| value),
             Some(&Value::from(iana::EllipticCurve::X25519 as u64))
         );
-        assert!(public_key
-            .params
-            .iter()
-            .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
-            .map(|(_, value)| value)
-            .is_some());
+        assert!(
+            public_key
+                .params
+                .iter()
+                .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
+                .map(|(_, value)| value)
+                .is_some()
+        );
     }
 
     #[test]
@@ -399,9 +395,7 @@ mod tests {
             .unwrap();
         assert_that!(
             encrypt_message(plaintext, &public_key, associated_data),
-            err(displays_as(contains_substring(
-                "failed to parse recipient public key"
-            )))
+            err(displays_as(contains_substring("failed to parse recipient public key")))
         );
     }
 
@@ -424,9 +418,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -449,9 +441,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "failed to load encapped key"
-            )))
+            err(displays_as(contains_substring("failed to load encapped key")))
         );
     }
 
@@ -474,9 +464,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -499,9 +487,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -630,9 +616,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "CoseKey missing X parameter"
-            )))
+            err(displays_as(contains_substring("CoseKey missing X parameter")))
         );
     }
 
@@ -661,9 +645,7 @@ mod tests {
                 &public_key2,
                 associated_data2,
             ),
-            err(displays_as(contains_substring(
-                "failed to parse recipient public key"
-            )))
+            err(displays_as(contains_substring("failed to parse recipient public key")))
         );
     }
 
@@ -759,9 +741,7 @@ mod tests {
                 &encapped_key2,
                 &private_key2,
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -793,9 +773,7 @@ mod tests {
                 &encapped_key2,
                 &private_key2,
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -827,9 +805,7 @@ mod tests {
                 b"invalid",
                 &private_key2,
             ),
-            err(displays_as(contains_substring(
-                "failed to load encapped key"
-            )))
+            err(displays_as(contains_substring("failed to load encapped key")))
         );
     }
 
@@ -861,9 +837,7 @@ mod tests {
                 &encapped_key2,
                 &private_key1, // Should be private_key2.
             ),
-            err(displays_as(contains_substring(
-                "failed to unwrap symmetric key"
-            )))
+            err(displays_as(contains_substring("failed to unwrap symmetric key")))
         );
     }
 
@@ -921,16 +895,11 @@ mod tests {
 
     #[test]
     fn test_extract_key_from_cwt_with_invalid_payload() {
-        let public_key = CoseSign1Builder::new()
-            .payload(b"invalid".into())
-            .build()
-            .to_vec()
-            .unwrap();
+        let public_key =
+            CoseSign1Builder::new().payload(b"invalid".into()).build().to_vec().unwrap();
         assert_that!(
             extract_key_from_cwt(&public_key),
-            err(displays_as(contains_substring(
-                "failed to decode CWT claims"
-            )))
+            err(displays_as(contains_substring("failed to decode CWT claims")))
         );
     }
 
@@ -938,9 +907,7 @@ mod tests {
     fn test_extract_key_from_cwt_with_invalid_cwt() {
         assert_that!(
             extract_key_from_cwt(b"invalid"),
-            err(displays_as(contains_substring(
-                "failed to decode CWT claims"
-            )))
+            err(displays_as(contains_substring("failed to decode CWT claims")))
         );
     }
 }

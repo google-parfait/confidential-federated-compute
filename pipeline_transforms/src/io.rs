@@ -52,8 +52,8 @@ pub struct RecordDecoder {
 }
 
 impl RecordDecoder {
-    /// Creates an `RecordDecoder` that supports all decryption modes and makes no claims about its
-    /// config properties.
+    /// Creates an `RecordDecoder` that supports all decryption modes and makes
+    /// no claims about its config properties.
     pub fn create<F>(signer: F) -> anyhow::Result<Self>
     where
         F: FnOnce(&[u8]) -> anyhow::Result<Vec<u8>>,
@@ -61,8 +61,8 @@ impl RecordDecoder {
         Self::create_with_config_and_modes(signer, &Struct::default(), DecryptionModeSet::all())
     }
 
-    /// Constructs a new RecordDecoder that claims the specified config properties and only
-    /// supports the specified modes.
+    /// Constructs a new RecordDecoder that claims the specified config
+    /// properties and only supports the specified modes.
     pub fn create_with_config_and_modes<F>(
         signer: F,
         config: &Struct,
@@ -88,12 +88,7 @@ impl RecordDecoder {
             .to_vec()
             .map_err(anyhow::Error::msg)?;
 
-        Ok(Self {
-            allowed_modes,
-            private_key,
-            public_key,
-            nonces: BTreeSet::new(),
-        })
+        Ok(Self { allowed_modes, private_key, public_key, nonces: BTreeSet::new() })
     }
 
     pub fn public_key(&self) -> &[u8] {
@@ -170,10 +165,7 @@ impl RecordDecoder {
                     .map_err(|err| anyhow!("decompression failed: {:?}", err))?;
                 Ok(result)
             }
-            _ => Err(anyhow!(
-                "unsupported compression type {:?}",
-                compression_type
-            )),
+            _ => Err(anyhow!("unsupported compression type {:?}", compression_type)),
         }
     }
 }
@@ -182,10 +174,7 @@ impl RecordDecoder {
 #[derive(Clone, Copy)]
 pub enum EncryptionMode<'a> {
     Unencrypted,
-    HpkePlusAead {
-        public_key: &'a [u8],
-        associated_data: &'a [u8],
-    },
+    HpkePlusAead { public_key: &'a [u8], associated_data: &'a [u8] },
 }
 
 /// Encodes pipeline_transforms Record messages.
@@ -203,10 +192,7 @@ impl RecordEncoder {
         let kind = match mode {
             EncryptionMode::Unencrypted => RecordKind::UnencryptedData(data.to_vec()),
 
-            EncryptionMode::HpkePlusAead {
-                public_key,
-                associated_data,
-            } => {
+            EncryptionMode::HpkePlusAead { public_key, associated_data } => {
                 let cose_key = extract_key_from_cwt(public_key).context("invalid public key")?;
                 let (ciphertext, encapsulated_public_key, encrypted_symmetric_key) =
                     cfc_crypto::encrypt_message(data, &cose_key, associated_data)
@@ -218,22 +204,18 @@ impl RecordEncoder {
                     encapsulated_public_key,
                     symmetric_key_associated_data_components: Some(
                         SymmetricKeyAssociatedDataComponents::LedgerSymmetricKeyAssociatedData(
-                            LedgerAssociatedData {
-                                record_header: associated_data.to_vec(),
-                            },
+                            LedgerAssociatedData { record_header: associated_data.to_vec() },
                         ),
                     ),
                 })
             }
         };
-        Ok(Record {
-            kind: Some(kind),
-            compression_type: CompressionType::None.into(),
-        })
+        Ok(Record { kind: Some(kind), compression_type: CompressionType::None.into() })
     }
 }
 
-/// Creates a Record that has been rewrapped so that it can be decrypted by a RecordDecoder.
+/// Creates a Record that has been rewrapped so that it can be decrypted by a
+/// RecordDecoder.
 #[cfg(feature = "test")]
 pub fn create_rewrapped_record(
     plaintext: &[u8],
@@ -386,9 +368,7 @@ mod tests {
         .unwrap();
         assert_that!(
             decoder.decode(&input),
-            err(displays_as(contains_substring(
-                "unencrypted_data is not supported"
-            )))
+            err(displays_as(contains_substring("unencrypted_data is not supported")))
         );
     }
 
@@ -400,9 +380,7 @@ mod tests {
         let config = Struct {
             fields: BTreeMap::from([(
                 "key".into(),
-                prost_types::Value {
-                    kind: Some(prost_types::value::Kind::NumberValue(3.0)),
-                },
+                prost_types::Value { kind: Some(prost_types::value::Kind::NumberValue(3.0)) },
             )]),
         };
         let mut decoder = RecordDecoder::create_with_config_and_modes(
@@ -431,10 +409,7 @@ mod tests {
             })
             .expect("failed to decode CWT claims")
             .expect("CONFIG_PROPERTIES_CLAIM not found");
-        assert_that!(
-            Struct::decode(config_properties_claim.as_slice()),
-            ok(eq(config))
-        );
+        assert_that!(Struct::decode(config_properties_claim.as_slice()), ok(eq(config)));
         Ok(())
     }
 
@@ -481,9 +456,7 @@ mod tests {
         )?;
         assert_that!(
             decoder.decode(&input),
-            err(displays_as(contains_substring(
-                "hpke_plus_aead_data is not supported"
-            )))
+            err(displays_as(contains_substring("hpke_plus_aead_data is not supported")))
         );
         Ok(())
     }
@@ -505,10 +478,7 @@ mod tests {
             decoder.public_key(),
             b"nonce", // Use a nonce that wasn't generated by the RecordDecoder.
         )?;
-        assert_that!(
-            decoder.decode(&input),
-            err(displays_as(contains_substring("invalid nonce")))
-        );
+        assert_that!(decoder.decode(&input), err(displays_as(contains_substring("invalid nonce"))));
         Ok(())
     }
 
@@ -554,9 +524,7 @@ mod tests {
         let mut decoder = RecordDecoder::create(sha256_sign).unwrap();
         assert_that!(
             decoder.decode(&input),
-            err(displays_as(contains_substring(
-                "unsupported compression type"
-            )))
+            err(displays_as(contains_substring("unsupported compression type")))
         );
     }
 
@@ -607,10 +575,7 @@ mod tests {
             .unwrap();
 
         let output = RecordEncoder::default().encode(
-            EncryptionMode::HpkePlusAead {
-                public_key: &public_key,
-                associated_data,
-            },
+            EncryptionMode::HpkePlusAead { public_key: &public_key, associated_data },
             plaintext,
         )?;
         let msg = match output.kind {
@@ -621,13 +586,9 @@ mod tests {
         assert_eq!(&msg.ciphertext_associated_data, associated_data);
         assert_eq!(
             msg.symmetric_key_associated_data_components,
-            Some(
-                SymmetricKeyAssociatedDataComponents::LedgerSymmetricKeyAssociatedData(
-                    LedgerAssociatedData {
-                        record_header: associated_data.to_vec(),
-                    }
-                )
-            )
+            Some(SymmetricKeyAssociatedDataComponents::LedgerSymmetricKeyAssociatedData(
+                LedgerAssociatedData { record_header: associated_data.to_vec() }
+            ))
         );
         assert_eq!(
             cfc_crypto::decrypt_message(
@@ -649,10 +610,7 @@ mod tests {
         let associated_data = b"associated data";
         assert_that!(
             RecordEncoder::default().encode(
-                EncryptionMode::HpkePlusAead {
-                    public_key: b"invalid key",
-                    associated_data,
-                },
+                EncryptionMode::HpkePlusAead { public_key: b"invalid key", associated_data },
                 plaintext,
             ),
             err(displays_as(contains_substring("invalid public key")))

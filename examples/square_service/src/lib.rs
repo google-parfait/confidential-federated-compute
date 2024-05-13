@@ -82,10 +82,7 @@ impl PipelineTransform for SquareService {
                 Some(u32::decode(value.as_slice()).map_err(|err| {
                     micro_rpc::Status::new_with_message(
                         micro_rpc::StatusCode::InvalidArgument,
-                        format!(
-                            "failed to unpack configuration as an UInt32Value: {:?}",
-                            err
-                        ),
+                        format!("failed to unpack configuration as an UInt32Value: {:?}", err),
                     )
                 })?)
             }
@@ -94,7 +91,7 @@ impl PipelineTransform for SquareService {
                 return Err(micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("unexpected type for configuration: {}", type_url),
-                ))
+                ));
             }
             None => None,
         };
@@ -154,9 +151,7 @@ impl PipelineTransform for SquareService {
                 format!("nonces_count is invalid: {:?}", err),
             )
         })?;
-        Ok(GenerateNoncesResponse {
-            nonces: record_decoder.generate_nonces(count),
-        })
+        Ok(GenerateNoncesResponse { nonces: record_decoder.generate_nonces(count) })
     }
 
     fn transform(
@@ -206,10 +201,7 @@ impl PipelineTransform for SquareService {
                 ciphertext_associated_data: ref header,
                 symmetric_key_associated_data_components:
                     Some(SymmetricKeyAssociatedDataComponents::RewrappedSymmetricKeyAssociatedData(
-                        RewrappedAssociatedData {
-                            reencryption_public_key: ref public_key,
-                            ..
-                        },
+                        RewrappedAssociatedData { reencryption_public_key: ref public_key, .. },
                     )),
                 ..
             })) => {
@@ -223,7 +215,7 @@ impl PipelineTransform for SquareService {
                 return Err(micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     "rewrapped_symmetric_key_associated_data is required",
-                ))
+                ));
             }
             _ => EncryptionMode::Unencrypted,
         };
@@ -234,9 +226,7 @@ impl PipelineTransform for SquareService {
                 format!("failed to encode output: {:?}", err),
             )
         })?;
-        Ok(TransformResponse {
-            outputs: vec![output],
-        })
+        Ok(TransformResponse { outputs: vec![output] })
     }
 }
 
@@ -263,9 +253,7 @@ mod tests {
 
     /// Helper function to convert data to an unencrypted Record.
     fn encode_unencrypted(data: &[u8]) -> Record {
-        RecordEncoder::default()
-            .encode(EncryptionMode::Unencrypted, data)
-            .unwrap()
+        RecordEncoder::default().encode(EncryptionMode::Unencrypted, data).unwrap()
     }
 
     #[test]
@@ -273,9 +261,7 @@ mod tests {
         struct FakeSigner;
         impl Signer for FakeSigner {
             fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
-                return Ok(Signature {
-                    signature: Sha256::digest(message).to_vec(),
-                });
+                return Ok(Signature { signature: Sha256::digest(message).to_vec() });
             }
         }
 
@@ -307,9 +293,7 @@ mod tests {
             Some(Ok(Struct {
                 fields: BTreeMap::from([(
                     "dest".into(),
-                    Value {
-                        kind: Some(value::Kind::NumberValue(3.0)),
-                    }
+                    Value { kind: Some(value::Kind::NumberValue(3.0)) }
                 ),]),
             }))
         );
@@ -320,11 +304,9 @@ mod tests {
     fn test_configure_and_attest_with_empty_config() -> Result<(), micro_rpc::Status> {
         let mut service = create_square_service();
 
-        // For backwards compatibility, configure_and_attest should succeed if the configuration is
-        // empty (either unset or set to the default Any).
-        service.configure_and_attest(ConfigureAndAttestRequest {
-            configuration: None,
-        })?;
+        // For backwards compatibility, configure_and_attest should succeed if the
+        // configuration is empty (either unset or set to the default Any).
+        service.configure_and_attest(ConfigureAndAttestRequest { configuration: None })?;
         service.configure_and_attest(ConfigureAndAttestRequest {
             configuration: Some(Any::default()),
         })?;
@@ -335,14 +317,16 @@ mod tests {
     fn test_configure_and_attest_with_invalid_config() {
         let mut service = create_square_service();
 
-        assert!(service
-            .configure_and_attest(ConfigureAndAttestRequest {
-                configuration: Some(Any {
-                    type_url: "type.googleapis.com/google.protobuf.DoubleValue".into(),
-                    value: 3.0.encode_to_vec(),
-                }),
-            })
-            .is_err());
+        assert!(
+            service
+                .configure_and_attest(ConfigureAndAttestRequest {
+                    configuration: Some(Any {
+                        type_url: "type.googleapis.com/google.protobuf.DoubleValue".into(),
+                        value: 3.0.encode_to_vec(),
+                    }),
+                })
+                .is_err()
+        );
     }
 
     #[test]
@@ -360,18 +344,14 @@ mod tests {
     #[test]
     fn test_generate_nonces_without_configure() {
         let mut service = create_square_service();
-        assert!(service
-            .generate_nonces(GenerateNoncesRequest { nonces_count: 3 })
-            .is_err());
+        assert!(service.generate_nonces(GenerateNoncesRequest { nonces_count: 3 }).is_err());
     }
 
     #[test]
     fn test_generate_nonces_with_invalid_count() -> Result<(), micro_rpc::Status> {
         let mut service = create_square_service();
         service.configure_and_attest(ConfigureAndAttestRequest::default())?;
-        assert!(service
-            .generate_nonces(GenerateNoncesRequest { nonces_count: -1 })
-            .is_err());
+        assert!(service.generate_nonces(GenerateNoncesRequest { nonces_count: -1 }).is_err());
         Ok(())
     }
 
@@ -390,10 +370,8 @@ mod tests {
         let mut service = create_square_service();
         let input = encode_unencrypted(&[0; 8]);
         for count in [0, 2, 3] {
-            let request = TransformRequest {
-                inputs: vec![input.clone(); count],
-                ..Default::default()
-            };
+            let request =
+                TransformRequest { inputs: vec![input.clone(); count], ..Default::default() };
             assert!(service.transform(request).is_err());
         }
     }
@@ -463,14 +441,11 @@ mod tests {
             &nonces_response.nonces[0],
         )
         .unwrap();
-        let request = TransformRequest {
-            inputs: vec![input],
-            ..Default::default()
-        };
+        let request = TransformRequest { inputs: vec![input], ..Default::default() };
         let response = service.transform(request)?;
         assert_eq!(response.outputs.len(), 1);
-        // The output record should be encrypted using the public key provided as the encrypted
-        // symmetric key associated data.
+        // The output record should be encrypted using the public key provided as the
+        // encrypted symmetric key associated data.
         match response.outputs[0].kind {
             Some(RecordKind::HpkePlusAeadData(HpkePlusAeadData {
                 ref ciphertext,
@@ -494,10 +469,7 @@ mod tests {
                 );
                 assert_eq!(
                     BlobHeader::decode(ciphertext_associated_data.as_slice()).unwrap(),
-                    BlobHeader {
-                        access_policy_node_id: 7,
-                        ..header
-                    }
+                    BlobHeader { access_policy_node_id: 7, ..header }
                 );
             }
             _ => panic!("output is not encrypted"),
