@@ -20,8 +20,8 @@ use cfc_crypto::CONFIG_PROPERTIES_CLAIM;
 use core::time::Duration;
 use coset::{cwt::ClaimName, cwt::ClaimsSet, CborSerializable, CoseKey, CoseSign1};
 use federated_compute::proto::{
-    value_matcher::Kind as ValueMatcherKind, value_matcher::NumberMatcher, ApplicationMatcher,
-    StructMatcher, ValueMatcher,
+    value_matcher::Kind as ValueMatcherKind, value_matcher::NumberMatcher,
+    value_matcher::StringMatcher, ApplicationMatcher, StructMatcher, ValueMatcher,
 };
 use oak_attestation_verification::verifier::{verify, verify_dice_chain};
 use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
@@ -125,6 +125,10 @@ impl Application<'_> {
                 Value { kind: Some(ValueKind::NumberValue(v)) },
                 Some(ValueMatcher { kind: Some(ValueMatcherKind::NumberValue(m)) }),
             ) => Self::number_value_matches(*v, m),
+            (
+                Value { kind: Some(ValueKind::StringValue(v)) },
+                Some(ValueMatcher { kind: Some(ValueMatcherKind::StringValue(m)) }),
+            ) => Self::string_value_matches(v, m),
             _ => false,
         }
     }
@@ -138,6 +142,15 @@ impl Application<'_> {
             Some(Kind::Eq(x)) => value == x,
             Some(Kind::Ge(x)) => value >= x,
             Some(Kind::Gt(x)) => value > x,
+            _ => false,
+        }
+    }
+
+    /// Returns whether a string matches a StringMatcher.
+    fn string_value_matches(value: &String, matcher: &StringMatcher) -> bool {
+        use federated_compute::proto::value_matcher::string_matcher::Kind;
+        match &matcher.kind {
+            Some(Kind::Eq(x)) => x == value,
             _ => false,
         }
     }
@@ -289,6 +302,7 @@ mod tests {
     };
     use federated_compute::proto::{
         struct_matcher::FieldMatcher, value_matcher::number_matcher::Kind as NumberMatcherKind,
+        value_matcher::string_matcher::Kind as StringMatcherKind,
     };
     use googletest::prelude::*;
     use oak_proto_rust::oak::attestation::v1::{
@@ -397,10 +411,15 @@ mod tests {
     fn test_application_matches_config_properties() {
         let app = Application {
             config_properties: Some(Struct {
-                fields: BTreeMap::from([(
-                    "x".into(),
-                    prost_types::Value { kind: Some(ValueKind::NumberValue(1.0)) },
-                )]),
+                fields: BTreeMap::from([
+                    ("x".into(), prost_types::Value { kind: Some(ValueKind::NumberValue(1.0)) }),
+                    (
+                        "y".into(),
+                        prost_types::Value {
+                            kind: Some(ValueKind::StringValue(String::from("apple"))),
+                        },
+                    ),
+                ]),
             }),
             ..Default::default()
         };
@@ -416,7 +435,8 @@ mod tests {
             Duration::default(),
         ));
 
-        // If the FieldMatcher matches, the ApplicationMatcher should as well.
+        // If the FieldMatcher matches a NumberValue, the ApplicationMatcher should as
+        // well.
         assert!(app.matches(
             &Some(ApplicationMatcher {
                 config_properties: Some(StructMatcher {
@@ -435,7 +455,27 @@ mod tests {
             Duration::default(),
         ));
 
-        // And matching should fail if the FieldMatcher doesn't match.
+        // If the FieldMatcher matches a StringValue, the ApplicationMatcher should as
+        // well.
+        assert!(app.matches(
+            &Some(ApplicationMatcher {
+                config_properties: Some(StructMatcher {
+                    fields: vec![FieldMatcher {
+                        path: "y".into(),
+                        matcher: Some(ValueMatcher {
+                            kind: Some(ValueMatcherKind::StringValue(StringMatcher {
+                                kind: Some(StringMatcherKind::Eq(String::from("apple")))
+                            })),
+                        }),
+                    },],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            Duration::default(),
+        ));
+
+        // And matching should fail if the FieldMatcher doesn't match a NumberMatcher.
         assert!(!app.matches(
             &Some(ApplicationMatcher {
                 config_properties: Some(StructMatcher {
@@ -444,6 +484,25 @@ mod tests {
                         matcher: Some(ValueMatcher {
                             kind: Some(ValueMatcherKind::NumberValue(NumberMatcher {
                                 kind: Some(NumberMatcherKind::Lt(1.0))
+                            })),
+                        }),
+                    },],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            Duration::default(),
+        ));
+
+        // And matching should fail if the FieldMatcher doesn't match a StringMatcher.
+        assert!(!app.matches(
+            &Some(ApplicationMatcher {
+                config_properties: Some(StructMatcher {
+                    fields: vec![FieldMatcher {
+                        path: "x".into(),
+                        matcher: Some(ValueMatcher {
+                            kind: Some(ValueMatcherKind::StringValue(StringMatcher {
+                                kind: Some(StringMatcherKind::Eq(String::from("pear")))
                             })),
                         }),
                     },],
