@@ -37,10 +37,11 @@ build_docker_image
 docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" sh -c 'cargo build && cargo test'
 
 if [ "$1" == "release" ]; then
-  args=()
-  for pkg in "${!RELEASE_PACKAGES[@]}"; do args+=(-p "${pkg}"); done
-  docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
-      cargo build --release "${args[@]}"
+  # Build packages one at a time so that cargo doesn't merge features:
+  # https://doc.rust-lang.org/nightly/cargo/reference/resolver.html#features.
+  packages="${!RELEASE_PACKAGES[@]}"
+  docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" bash -c \
+      "echo -n \"$packages\" | xargs -d ' ' -I {} cargo build --release -p {}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
