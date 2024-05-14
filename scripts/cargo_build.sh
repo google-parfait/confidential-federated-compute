@@ -34,14 +34,25 @@ declare -Ar RELEASE_PACKAGES=(
 
 build_docker_image
 
-docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" sh -c 'cargo build && cargo test'
+if [ "$1" == "continuous" ] || [ "$1" == "presubmit" ]; then
+  # Note that we in pre/postsubmits we build everything with "--locked" to
+  # ensure that the lockfile is up-to-date, and hence that builds will
+  # reproducibly re-use the same dep versions each time.
+  readonly CARGO_LOCKED="--locked"
+fi
+
+docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
+    sh -c "cargo build ${CARGO_LOCKED} && cargo test ${CARGO_LOCKED}"
 
 if [ "$1" == "release" ]; then
   # Build packages one at a time so that cargo doesn't merge features:
   # https://doc.rust-lang.org/nightly/cargo/reference/resolver.html#features.
   packages="${!RELEASE_PACKAGES[@]}"
+  # Note: release builds unconditionally run with "--locked" as well, since
+  # those should never update the lock file either.
   docker run "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" bash -c \
-      "echo -n \"$packages\" | xargs -d ' ' -I {} cargo build --release -p {}"
+      "echo -n \"$packages\" \
+      | xargs -d ' ' -I {} cargo build --locked --release -p {}"
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
