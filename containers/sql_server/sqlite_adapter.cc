@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -344,8 +343,6 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
       "INSERT INTO %s (%s) VALUES (%s);", schema.name(),
       absl::StrJoin(column_names, ", ", &EscapeSqlColumnName),
       absl::StrJoin(std::vector<std::string>(schema.column_size(), "?"), ", "));
-
-  LOG(INFO) << "Insert SQL statement: " << insert_stmt_.value();
 
   return absl::OkStatus();
 }

@@ -19,7 +19,9 @@
 
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/time/clock.h"
 #include "containers/crypto.h"
 #include "containers/sql_server/sqlite_adapter.h"
 #include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
@@ -187,8 +189,12 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
     configuration = &*configuration_;
   }
 
+  auto create_sqlite_start_time = absl::Now();
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
+  auto create_sqlite_end_time = absl::Now();
+  LOG(INFO) << "SQL Server: SqliteAdapter::Create wall clock time: "
+            << create_sqlite_end_time - create_sqlite_start_time << "\n";
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration->input_schema));
   const Record& record = request->inputs(0);
   FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
@@ -198,13 +204,20 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
       Deserialize(absl::Cord(unencrypted_data), configuration->input_schema));
   if (contents.size() > 0) {
     int num_rows = contents.at(0).tensor_.num_elements();
+    auto add_contents_start_time = absl::Now();
     FCP_RETURN_IF_ERROR(
         sqlite->AddTableContents(std::move(contents), num_rows));
+    auto add_contents_end_time = absl::Now();
+    LOG(INFO) << "SQL Server: EvaluateQuery wall clock time: "
+              << add_contents_end_time - add_contents_start_time << "\n";
   }
-
+  auto evaluate_query_start_time = absl::Now();
   FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> result,
                        sqlite->EvaluateQuery(configuration->query,
                                              configuration->output_columns));
+  auto evaluate_query_end_time = absl::Now();
+  LOG(INFO) << "SQL Server: EvaluateQuery wall clock time: "
+            << evaluate_query_end_time - evaluate_query_start_time << "\n";
 
   FCP_ASSIGN_OR_RETURN(absl::Cord output_data, Serialize(std::move(result)));
   // Protobuf version 23.0 is required to use [ctype = CORD], however, we can't

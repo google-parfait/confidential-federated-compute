@@ -97,6 +97,7 @@ cc_library(
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/aggregation/core:tensor",
         "@federated-compute//fcp/aggregation/protocol:federated_compute_checkpoint_builder",
