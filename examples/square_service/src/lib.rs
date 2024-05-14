@@ -19,8 +19,7 @@ extern crate alloc;
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use byteorder::{ByteOrder, LittleEndian};
 use federated_compute::proto::BlobHeader;
-use oak_attestation::dice::evidence_to_proto;
-use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
+use oak_restricted_kernel_sdk::crypto::Signer;
 use pipeline_transforms::{
     io::{DecryptionModeSet, EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
@@ -36,7 +35,6 @@ use prost::Message;
 use prost_types::{value, Any, NullValue, Struct, Value};
 
 pub struct SquareService {
-    evidence_provider: Box<dyn EvidenceProvider>,
     signer: Box<dyn Signer>,
     record_decoder: Option<RecordDecoder>,
     record_encoder: RecordEncoder,
@@ -44,14 +42,8 @@ pub struct SquareService {
 }
 
 impl SquareService {
-    pub fn new(evidence_provider: Box<dyn EvidenceProvider>, signer: Box<dyn Signer>) -> Self {
-        Self {
-            evidence_provider,
-            signer,
-            record_decoder: None,
-            record_encoder: RecordEncoder,
-            dest_node_id: None,
-        }
+    pub fn new(signer: Box<dyn Signer>) -> Self {
+        Self { signer, record_decoder: None, record_encoder: RecordEncoder, dest_node_id: None }
     }
 
     /// Updates access_policy_node_id in a serialized BlobHeader.
@@ -109,13 +101,6 @@ impl PipelineTransform for SquareService {
             )]),
         };
 
-        let evidence =
-            evidence_to_proto(self.evidence_provider.get_evidence().clone()).map_err(|err| {
-                micro_rpc::Status::new_with_message(
-                    micro_rpc::StatusCode::Internal,
-                    format!("failed to generate evidence: {:?}", err),
-                )
-            })?;
         self.record_decoder = Some(
             RecordDecoder::create_with_config_and_modes(
                 |msg| Ok(self.signer.sign(msg)?.signature),
@@ -131,7 +116,7 @@ impl PipelineTransform for SquareService {
         );
         Ok(ConfigureAndAttestResponse {
             public_key: self.record_decoder.as_ref().unwrap().public_key().to_vec(),
-            attestation_evidence: Some(evidence),
+            ..Default::default()
         })
     }
 
@@ -239,16 +224,13 @@ mod tests {
         CborSerializable, CoseSign1,
     };
     use oak_attestation::proto::oak::crypto::v1::Signature;
-    use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
+    use oak_restricted_kernel_sdk::testing::MockSigner;
     use pipeline_transforms::proto::Record;
     use sha2::{Digest, Sha256};
 
     /// Helper function to create a SquareService.
     fn create_square_service() -> SquareService {
-        SquareService::new(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
+        SquareService::new(Box::new(MockSigner::create().unwrap()))
     }
 
     /// Helper function to convert data to an unencrypted Record.
@@ -265,10 +247,7 @@ mod tests {
             }
         }
 
-        let mut service = SquareService::new(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(FakeSigner),
-        );
+        let mut service = SquareService::new(Box::new(FakeSigner));
         let response = service.configure_and_attest(ConfigureAndAttestRequest {
             configuration: Some(Any {
                 type_url: "type.googleapis.com/google.protobuf.UInt32Value".into(),
@@ -276,7 +255,6 @@ mod tests {
             }),
         })?;
         assert!(!response.public_key.is_empty());
-        assert!(response.attestation_evidence.is_some());
         let cwt = CoseSign1::from_slice(&response.public_key).unwrap();
         cwt.verify_signature(b"", |signature, message| {
             anyhow::ensure!(signature == Sha256::digest(message).as_slice());

@@ -18,8 +18,7 @@ extern crate alloc;
 
 use alloc::{boxed::Box, format, vec};
 use byteorder::{ByteOrder, LittleEndian};
-use oak_attestation::dice::evidence_to_proto;
-use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
+use oak_restricted_kernel_sdk::crypto::Signer;
 use pipeline_transforms::{
     io::{EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
@@ -29,15 +28,14 @@ use pipeline_transforms::{
 };
 
 pub struct SumService {
-    evidence_provider: Box<dyn EvidenceProvider>,
     signer: Box<dyn Signer>,
     record_decoder: Option<RecordDecoder>,
     record_encoder: RecordEncoder,
 }
 
 impl SumService {
-    pub fn new(evidence_provider: Box<dyn EvidenceProvider>, signer: Box<dyn Signer>) -> Self {
-        Self { evidence_provider, signer, record_decoder: None, record_encoder: RecordEncoder }
+    pub fn new(signer: Box<dyn Signer>) -> Self {
+        Self { signer, record_decoder: None, record_encoder: RecordEncoder }
     }
 }
 
@@ -46,13 +44,6 @@ impl PipelineTransform for SumService {
         &mut self,
         _request: ConfigureAndAttestRequest,
     ) -> Result<ConfigureAndAttestResponse, micro_rpc::Status> {
-        let evidence =
-            evidence_to_proto(self.evidence_provider.get_evidence().clone()).map_err(|err| {
-                micro_rpc::Status::new_with_message(
-                    micro_rpc::StatusCode::Internal,
-                    format!("failed to generate evidence: {:?}", err),
-                )
-            })?;
         self.record_decoder = Some(
             RecordDecoder::create(|msg| Ok(self.signer.sign(msg)?.signature)).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -63,7 +54,7 @@ impl PipelineTransform for SumService {
         );
         Ok(ConfigureAndAttestResponse {
             public_key: self.record_decoder.as_ref().unwrap().public_key().to_vec(),
-            attestation_evidence: Some(evidence),
+            ..Default::default()
         })
     }
 
@@ -140,16 +131,13 @@ mod tests {
     use super::*;
     use coset::{CborSerializable, CoseSign1};
     use oak_attestation::proto::oak::crypto::v1::Signature;
-    use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
+    use oak_restricted_kernel_sdk::testing::MockSigner;
     use pipeline_transforms::proto::Record;
     use sha2::{Digest, Sha256};
 
     /// Helper function to create a SumService.
     fn create_sum_service() -> SumService {
-        SumService::new(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
+        SumService::new(Box::new(MockSigner::create().unwrap()))
     }
 
     /// Helper function to convert data to an unencrypted Record.
@@ -166,13 +154,9 @@ mod tests {
             }
         }
 
-        let mut service = SumService::new(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(FakeSigner),
-        );
+        let mut service = SumService::new(Box::new(FakeSigner));
         let response = service.configure_and_attest(ConfigureAndAttestRequest::default())?;
         assert!(!response.public_key.is_empty());
-        assert!(response.attestation_evidence.is_some());
         CoseSign1::from_slice(&response.public_key)
             .unwrap()
             .verify_signature(b"", |signature, message| {
