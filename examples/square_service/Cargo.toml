@@ -8,7 +8,6 @@ license = "Apache-2.0"
 byteorder = { version = "*", default-features = false }
 federated_compute = { path = "../../third_party/federated_compute" }
 micro_rpc = { workspace = true }
-oak_attestation = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true }
 pipeline_transforms = { path = "../../pipeline_transforms" }
 prost = { version = "*", default-features = false }
@@ -18,6 +17,7 @@ prost-types = { version = "*", default-features = false }
 anyhow = { version = "*", default-features = false }
 cfc_crypto = { path = "../../cfc_crypto" }
 coset = { version = "*", default-features = false }
+oak_attestation = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true, features = ["testing"] }
 pipeline_transforms = { path = "../../pipeline_transforms", features = ["test"] }
 sha2 = { version = "*", default-features = false }

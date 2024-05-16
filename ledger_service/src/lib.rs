@@ -30,9 +30,7 @@ use federated_compute::proto::{
     RevokeAccessRequest, RevokeAccessResponse,
 };
 use hpke::{Deserializable, Serializable};
-use oak_attestation::dice::evidence_to_proto;
-use oak_proto_rust::oak::attestation::v1::Evidence;
-use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, crypto::Signer};
+use oak_restricted_kernel_sdk::crypto::Signer;
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -55,26 +53,14 @@ struct PerKeyLedger {
 }
 
 pub struct LedgerService {
-    evidence: Evidence,
     signer: Box<dyn Signer>,
     current_time: Duration,
     per_key_ledgers: BTreeMap<Vec<u8>, PerKeyLedger>,
 }
 
 impl LedgerService {
-    pub fn create(
-        evidence_provider: Box<dyn EvidenceProvider>,
-        signer: Box<dyn Signer>,
-    ) -> anyhow::Result<Self> {
-        // Pre-generate and convert the evidence so that we don't have to do it every
-        // time a key is created.
-        let evidence = evidence_to_proto(evidence_provider.get_evidence().clone())?;
-        Ok(Self {
-            evidence,
-            signer,
-            current_time: Duration::default(),
-            per_key_ledgers: BTreeMap::default(),
-        })
+    pub fn new(signer: Box<dyn Signer>) -> Self {
+        Self { signer, current_time: Duration::default(), per_key_ledgers: BTreeMap::default() }
     }
 
     /// Updates `self.current_time` and removes expired keys.
@@ -251,7 +237,7 @@ impl LedgerService {
             },
         );
 
-        Ok(CreateKeyResponse { public_key, attestation_evidence: Some(self.evidence.clone()) })
+        Ok(CreateKeyResponse { public_key, ..Default::default() })
     }
 
     /// Saves the current state into LedgerSnapshot as a part of snapshot
@@ -506,15 +492,12 @@ mod tests {
     };
     use googletest::prelude::*;
     use oak_attestation::proto::oak::crypto::v1::Signature;
-    use oak_restricted_kernel_sdk::testing::{MockEvidenceProvider, MockSigner};
+    use oak_proto_rust::oak::attestation::v1::Evidence;
+    use oak_restricted_kernel_sdk::testing::MockSigner;
 
     /// Helper function to create a LedgerService with one key.
     fn create_ledger_service() -> (LedgerService, Vec<u8>) {
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(MockSigner::create().unwrap()));
         let response = ledger
             .create_key(CreateKeyRequest {
                 ttl: Some(prost_types::Duration { seconds: 3600, ..Default::default() }),
@@ -541,11 +524,7 @@ mod tests {
                 return Ok(Signature { signature: Sha256::digest(message).to_vec() });
             }
         }
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(FakeSigner),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(FakeSigner));
 
         let response1 = ledger
             .create_key(CreateKeyRequest {
@@ -553,7 +532,6 @@ mod tests {
                 ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
             })
             .unwrap();
-        assert!(response1.attestation_evidence.is_some());
 
         let cwt = CoseSign1::from_slice(&response1.public_key).unwrap();
         cwt.verify_signature(b"", |signature, message| {
@@ -1314,11 +1292,7 @@ mod tests {
 
     #[test]
     fn test_produce_create_key_event_monotonic_time() {
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(MockSigner::create().unwrap()));
 
         let event1 = ledger
             .produce_create_key_event(CreateKeyRequest {
@@ -1358,11 +1332,7 @@ mod tests {
 
     #[test]
     fn test_apply_create_key_event_twice() {
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(MockSigner::create().unwrap()));
 
         let event = ledger
             .produce_create_key_event(CreateKeyRequest {
@@ -1384,11 +1354,7 @@ mod tests {
 
     #[test]
     fn test_apply_create_key_event_invalid_public_key() {
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(MockSigner::create().unwrap()));
 
         let mut event = ledger
             .produce_create_key_event(CreateKeyRequest {
@@ -1407,11 +1373,7 @@ mod tests {
 
     #[test]
     fn test_apply_create_key_event_invalid_private_key() {
-        let mut ledger = LedgerService::create(
-            Box::new(MockEvidenceProvider::create().unwrap()),
-            Box::new(MockSigner::create().unwrap()),
-        )
-        .unwrap();
+        let mut ledger = LedgerService::new(Box::new(MockSigner::create().unwrap()));
 
         let mut event = ledger
             .produce_create_key_event(CreateKeyRequest {

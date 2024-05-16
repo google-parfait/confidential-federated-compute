@@ -20,7 +20,6 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use oak_restricted_kernel_sdk::{
-    attestation::InstanceEvidenceProvider,
     channel::{start_blocking_server, FileDescriptorChannel},
     crypto::InstanceSigner,
     entrypoint,
@@ -30,11 +29,7 @@ use oak_restricted_kernel_sdk::{
 #[entrypoint]
 fn run_server() -> ! {
     let mut invocation_stats = StaticSampleStore::<1000>::new().unwrap();
-    let service = ledger_service::LedgerService::create(
-        Box::new(InstanceEvidenceProvider::create().unwrap()),
-        Box::new(InstanceSigner::create().unwrap()),
-    )
-    .expect("failed to create LedgerService");
+    let service = ledger_service::LedgerService::new(Box::new(InstanceSigner::create().unwrap()));
     let server = federated_compute::proto::LedgerServer::new(service);
     start_blocking_server(Box::<FileDescriptorChannel>::default(), server, &mut invocation_stats)
         .expect("server encountered an unrecoverable error");
