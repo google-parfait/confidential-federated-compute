@@ -208,7 +208,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
     FCP_RETURN_IF_ERROR(
         sqlite->AddTableContents(std::move(contents), num_rows));
     auto add_contents_end_time = absl::Now();
-    LOG(INFO) << "SQL Server: EvaluateQuery wall clock time: "
+    LOG(INFO) << "SQL Server: AddTableContents wall clock time: "
               << add_contents_end_time - add_contents_start_time << "\n";
   }
   auto evaluate_query_start_time = absl::Now();
