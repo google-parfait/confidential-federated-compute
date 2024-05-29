@@ -551,6 +551,198 @@ TEST_F(SqlPipelineTransformTest,
   ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
 }
 
+TEST_F(SqlPipelineTransformTest, TransformReturnsEmptyResponseForNoRecords) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  TransformRequest transform_request;
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 0);
+}
+
+TEST_F(SqlPipelineTransformTest, TransformReturnsNoOutputsIfDecryptionFails) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  std::string recipient_public_key = configure_response.public_key();
+
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(1);
+  grpc::Status generate_nonces_status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_TRUE(generate_nonces_status.ok())
+      << "GenerateNonces status code was: "
+      << generate_nonces_status.error_code();
+  ASSERT_THAT(nonces_response.nonces(), SizeIs(1));
+  std::string nonce = nonces_response.nonces(0);
+
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
+  std::string ciphertext_associated_data = "ciphertext associated data";
+  std::string message =
+      BuildSingleInt64TensorCheckpoint(input_col_name, {1, 2});
+  absl::StatusOr<Record> rewrapped_record =
+      crypto_test_utils::CreateRewrappedRecord(
+          message, ciphertext_associated_data, recipient_public_key, nonce,
+          *reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record.ok()) << rewrapped_record.status();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record);
+  transform_request.mutable_inputs(0)
+      ->mutable_hpke_plus_aead_data()
+      ->set_ciphertext("invalid");
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 0);
+  ASSERT_EQ(transform_response.num_ignored_inputs(), 1);
+}
+
+TEST_F(SqlPipelineTransformTest,
+       TransformReturnsNoOutputsIfCheckpointUnparseable) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data("invalid_checkpoint");
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 0);
+  ASSERT_EQ(transform_response.num_ignored_inputs(), 1);
+}
+
+TEST_F(SqlPipelineTransformTest,
+       TransformReturnsNoOutputsIfCheckpointHasWrongColumn) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "int_val";
+  std::string output_col_name = "int_sum";
+  TableSchema input_schema = CreateTableSchema(
+      "input",
+      absl::StrFormat("CREATE TABLE input (%s INTEGER)", input_col_name),
+      CreateColumnSchema(input_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  SqlQuery query = CreateSqlQuery(
+      input_schema,
+      absl::StrFormat("SELECT SUM(%s) AS %s FROM input", input_col_name,
+                      output_col_name),
+      CreateColumnSchema(output_col_name,
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  configure_request.mutable_configuration()->PackFrom(query);
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  std::string checkpoint =
+      BuildSingleInt64TensorCheckpoint("wrong_col_name", {1, 2});
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(checkpoint);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 0);
+  ASSERT_EQ(transform_response.num_ignored_inputs(), 1);
+}
+
 TEST_F(SqlPipelineTransformTest, TransformFailsForMultipleRecords) {
   FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
@@ -593,7 +785,7 @@ TEST_F(SqlPipelineTransformTest, TransformFailsForMultipleRecords) {
 
   ASSERT_EQ(transform_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(transform_status.error_message(),
-              HasSubstr("Transform requires exactly one `Record` per request"));
+              HasSubstr("Transform requires at most one `Record` per request"));
 }
 
 TEST_F(SqlPipelineTransformTest, TransformBeforeConfigureAndAttest) {

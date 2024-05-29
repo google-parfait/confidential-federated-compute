@@ -72,7 +72,7 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
       num_rows.emplace(tensor_column_values.num_elements());
     } else if (num_rows.value() != tensor_column_values.num_elements()) {
       return absl::InvalidArgumentError(
-          "Record has columns with differing numbers of rows.");
+          "Checkpoint has columns with differing numbers of rows.");
     }
     FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
                          TensorColumn::Create(table_schema.column(i),
@@ -169,10 +169,6 @@ absl::Status SqlPipelineTransform::SqlGenerateNonces(
 
 absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
                                                 TransformResponse* response) {
-  if (request->inputs_size() != 1) {
-    return absl::InvalidArgumentError(
-        "Transform requires exactly one `Record` per request.");
-  }
   RecordDecryptor* record_decryptor;
   const SqlConfiguration* configuration;
   {
@@ -191,6 +187,36 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
     configuration = &*configuration_;
   }
 
+  if (request->inputs_size() == 0) {
+    // If no inputs were provided, return an empty response.
+    return absl::OkStatus();
+  } else if (request->inputs_size() != 1) {
+    return absl::InvalidArgumentError(
+        "Transform requires at most one `Record` per request.");
+  }
+
+  // Attempt to decrypt and parse the record, returning a response with no
+  // outputs indicating that the input was ignored if either step fails. This
+  // will allow pipelines using this container to continue in spite of some bad
+  // inputs, while recording the number of inputs that are ignored.
+  const Record& record = request->inputs(0);
+  absl::StatusOr<std::string> unencrypted_data =
+      record_decryptor->DecryptRecord(record);
+  if (!unencrypted_data.ok()) {
+    LOG(WARNING) << "Failed to decrypt input: " << unencrypted_data.status();
+    response->set_num_ignored_inputs(1);
+    return absl::OkStatus();
+  }
+  absl::StatusOr<std::vector<TensorColumn>> contents = Deserialize(
+      absl::Cord(unencrypted_data.value()), configuration->input_schema);
+  if (!contents.ok()) {
+    LOG(WARNING) << "Failed to deserialize input into a vector of "
+                    "TensorColumns of the expected schema: "
+                 << unencrypted_data.status();
+    response->set_num_ignored_inputs(1);
+    return absl::OkStatus();
+  }
+
   auto create_sqlite_start_time = absl::Now();
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
@@ -198,17 +224,12 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   LOG(INFO) << "SQL Server: SqliteAdapter::Create wall clock time: "
             << create_sqlite_end_time - create_sqlite_start_time << "\n";
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration->input_schema));
-  const Record& record = request->inputs(0);
-  FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
-                       record_decryptor->DecryptRecord(record));
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<TensorColumn> contents,
-      Deserialize(absl::Cord(unencrypted_data), configuration->input_schema));
-  if (contents.size() > 0) {
-    int num_rows = contents.at(0).tensor_.num_elements();
+
+  if (contents->size() > 0) {
+    int num_rows = contents->at(0).tensor_.num_elements();
     auto add_contents_start_time = absl::Now();
     FCP_RETURN_IF_ERROR(
-        sqlite->AddTableContents(std::move(contents), num_rows));
+        sqlite->AddTableContents(*std::move(contents), num_rows));
     auto add_contents_end_time = absl::Now();
     LOG(INFO) << "SQL Server: AddTableContents wall clock time: "
               << add_contents_end_time - add_contents_start_time << "\n";
