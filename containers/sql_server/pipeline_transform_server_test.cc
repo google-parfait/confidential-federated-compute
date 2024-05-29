@@ -21,9 +21,6 @@
 #include "absl/strings/str_format.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
-#include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
@@ -39,18 +36,15 @@
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
 #include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 
 namespace confidential_federated_compute::sql_server {
 
 namespace {
 
-using ::fcp::aggregation::CheckpointBuilder;
-using ::fcp::aggregation::CreateTestData;
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidential_compute::EncryptMessageResult;
@@ -79,6 +73,15 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
+using ::tensorflow_federated::aggregation::CheckpointBuilder;
+using ::tensorflow_federated::aggregation::CreateTestData;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::testing::Test;

@@ -24,23 +24,18 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "fcp/aggregation/core/mutable_string_data.h"
-#include "fcp/aggregation/core/mutable_vector_data.h"
-#include "fcp/aggregation/core/tensor.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/plan.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql_server {
 
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::MutableStringData;
-using ::fcp::aggregation::MutableVectorData;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::TensorData;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::TableSchema;
@@ -63,6 +58,11 @@ using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::google::internal::federated::plan::Plan;
 using ::google::protobuf::RepeatedPtrField;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::MutableStringData;
+using ::tensorflow_federated::aggregation::MutableVectorData;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorData;
 namespace {
 
 // A wrapper around `sqlite_stmt*` to automatically call `sqlite3_finalize()`

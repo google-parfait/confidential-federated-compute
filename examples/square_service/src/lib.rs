@@ -211,7 +211,7 @@ impl PipelineTransform for SquareService {
                 format!("failed to encode output: {:?}", err),
             )
         })?;
-        Ok(TransformResponse { outputs: vec![output] })
+        Ok(TransformResponse { outputs: vec![output], num_ignored_inputs: 0 })
     }
 }
 

@@ -22,14 +22,15 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
-#include "fcp/aggregation/tensorflow/converters.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
 #include "grpcpp/server_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
@@ -59,14 +60,15 @@ using ::grpc::ServerContext;
 // around decryption/encryption & protecting the configuration with mutexes.
 namespace {
 
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::tensorflow::ToTfTensor;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TffWorkerConfiguration;
 using ::fcp::confidentialcompute::TffWorkerConfiguration_ClientWork;
 using ::fcp::confidentialcompute::
     TffWorkerConfiguration_ClientWork_FedSqlTensorflowCheckpoint;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::tensorflow::ToTfTensor;
 
 // Returns the unencrypted_data field from a specified Record object.
 //
@@ -142,7 +144,8 @@ absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
   tff::v0::Value restored_value;
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord client_stacked_tensor_result(input);
-  // Generate a std::unique_ptr<::fcp::aggregation::CheckpointParser>.
+  // Generate a
+  // std::unique_ptr<::tensorflow_federated::aggregation::CheckpointParser>.
   FCP_ASSIGN_OR_RETURN(auto parser,
                        parser_factory.Create(client_stacked_tensor_result));
 

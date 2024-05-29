@@ -23,5 +23,4 @@ build_docker_image
 
 docker run -i "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
     sh -c "rustup component add clippy rustfmt \
-        && cargo install insta \
         && bash"

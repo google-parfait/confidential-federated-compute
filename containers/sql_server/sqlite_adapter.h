@@ -20,11 +20,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "fcp/aggregation/core/tensor.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql_server {
 
@@ -32,7 +32,7 @@ class TensorColumn final {
  public:
   static absl::StatusOr<TensorColumn> Create(
       fcp::confidentialcompute::ColumnSchema column_schema,
-      fcp::aggregation::Tensor tensor);
+      tensorflow_federated::aggregation::Tensor tensor);
 
   // Define a default constructor to enable creation of a vector of
   // TensorColumns. A tensor created with the default constructor is not valid
@@ -40,11 +40,11 @@ class TensorColumn final {
   TensorColumn() : column_schema_(), tensor_() {}
 
   fcp::confidentialcompute::ColumnSchema column_schema_;
-  fcp::aggregation::Tensor tensor_;
+  tensorflow_federated::aggregation::Tensor tensor_;
 
  private:
   explicit TensorColumn(fcp::confidentialcompute::ColumnSchema column_schema,
-                        fcp::aggregation::Tensor tensor)
+                        tensorflow_federated::aggregation::Tensor tensor)
       : column_schema_(column_schema), tensor_(std::move(tensor)) {}
 };
 

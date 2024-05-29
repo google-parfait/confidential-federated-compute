@@ -24,11 +24,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "fcp/aggregation/core/datatype.h"
-#include "fcp/aggregation/core/tensor.h"
-#include "fcp/aggregation/core/tensor_shape.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
-#include "fcp/aggregation/testing/test_data.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
@@ -46,6 +41,11 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/datatype.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
 #include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
@@ -56,11 +56,6 @@ namespace {
 
 namespace tff_proto = ::tensorflow_federated::v0;
 
-using ::fcp::aggregation::CreateTestData;
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::TensorShape;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
 using ::fcp::confidentialcompute::PipelineTransform;
@@ -78,6 +73,12 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::StatusCode;
 using ::tensorflow_federated::kClientsUri;
+using ::tensorflow_federated::aggregation::CreateTestData;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::HasSubstr;
 using ::testing::Test;
 

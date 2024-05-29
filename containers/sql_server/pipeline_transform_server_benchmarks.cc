@@ -17,7 +17,6 @@
 #include "absl/log/check.h"
 #include "benchmark/benchmark.h"
 #include "containers/sql_server/pipeline_transform_server.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "fcp/aggregation/testing/test_data.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
@@ -32,18 +31,12 @@
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
 #include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 
 namespace confidential_federated_compute::sql_server {
 
 namespace {
 
-using ::fcp::aggregation::CheckpointBuilder;
-using ::fcp::aggregation::CreateTestData;
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::MutableVectorData;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::ColumnSchema;
@@ -66,6 +59,14 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
+using ::tensorflow_federated::aggregation::CheckpointBuilder;
+using ::tensorflow_federated::aggregation::CreateTestData;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::MutableVectorData;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::HasSubstr;
 using ::testing::Test;
 

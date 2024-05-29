@@ -19,21 +19,16 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "fcp/aggregation/testing/test_data.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 
 namespace confidential_federated_compute::sql_server {
 
 namespace {
 
-using ::fcp::aggregation::CreateTestData;
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::Tensor;
-using ::fcp::aggregation::TensorData;
-using ::fcp::aggregation::TensorShape;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Int64Values;
 using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
@@ -56,6 +51,11 @@ using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
+using ::tensorflow_federated::aggregation::CreateTestData;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorData;
+using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::HasSubstr;
 using ::testing::Test;
 

@@ -24,22 +24,16 @@
 #include "absl/time/clock.h"
 #include "containers/crypto.h"
 #include "containers/sql_server/sqlite_adapter.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_builder.h"
-#include "fcp/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 
 namespace confidential_federated_compute::sql_server {
 
-using ::fcp::aggregation::CheckpointBuilder;
-using ::fcp::aggregation::CheckpointParser;
-using ::fcp::aggregation::DataType;
-using ::fcp::aggregation::FederatedComputeCheckpointBuilderFactory;
-using ::fcp::aggregation::FederatedComputeCheckpointParserFactory;
-using ::fcp::aggregation::Tensor;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnSchema;
@@ -53,6 +47,14 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::ServerContext;
+using ::tensorflow_federated::aggregation::CheckpointBuilder;
+using ::tensorflow_federated::aggregation::CheckpointParser;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::Tensor;
 
 namespace {
 
