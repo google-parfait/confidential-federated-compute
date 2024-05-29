@@ -37,6 +37,8 @@
 
 namespace confidential_federated_compute::agg_core {
 
+namespace {
+
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ConfigureAndAttestRequest;
 using ::fcp::confidentialcompute::ConfigureAndAttestResponse;
@@ -86,6 +88,45 @@ absl::Status ValidateTopLevelIntrinsics(
   }
   return absl::OkStatus();
 }
+
+// Decrypts and parses a record and accumulates it into the state of the
+// CheckpointAggregator `aggregator`.
+//
+// Returns `true` if the input was successfully decrypted, parsed, and
+// accumulated into the state of `aggregator`.
+//
+// Returns `false` if the input could not be successfully decrypted or parsed
+// but `aggregator` is guaranteed to be valid and unchanged.
+//
+// Returns a failed status if accumulating the input failed and `aggregator`
+// should no longer be used due to being in a potentially invalid state where
+// an input was partially accumulated.
+absl::StatusOr<bool> AccumulateRecord(const Record& record,
+                                      CheckpointAggregator* aggregator,
+                                      RecordDecryptor* record_decryptor) {
+  absl::StatusOr<std::string> unencrypted_data =
+      record_decryptor->DecryptRecord(record);
+  if (!unencrypted_data.ok()) {
+    LOG(WARNING) << "Failed to decrypt input: " << unencrypted_data.status();
+    return false;
+  }
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
+      parser_factory.Create(absl::Cord(*std::move(unencrypted_data)));
+  if (!parser.ok()) {
+    LOG(WARNING) << "Failed to parse input into the expected "
+                    "FederatedComputeCheckpoint format"
+                 << parser.status();
+    return false;
+  }
+  // The CheckpointAggregator contract does not guarantee that it will
+  // be in a valid state if an Accumulate operation returns an invalid status.
+  // If this changes, consider changing this logic to no longer return an error.
+  FCP_RETURN_IF_ERROR(aggregator->Accumulate(*parser.value()));
+  return true;
+}
+}  // namespace
 
 absl::Status AggCorePipelineTransform::AggCoreConfigureAndAttest(
     const ConfigureAndAttestRequest* request,
@@ -161,18 +202,6 @@ absl::Status AggCorePipelineTransform::AggCoreGenerateNonces(
   return absl::OkStatus();
 }
 
-static absl::Status AccumulateRecord(const Record& record,
-                                     CheckpointAggregator* aggregator,
-                                     RecordDecryptor* record_decryptor) {
-  FCP_ASSIGN_OR_RETURN(std::string unencrypted_data,
-                       record_decryptor->DecryptRecord(record));
-  FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
-                       parser_factory.Create(absl::Cord(unencrypted_data)));
-  FCP_RETURN_IF_ERROR(aggregator->Accumulate(*parser));
-  return absl::OkStatus();
-}
-
 absl::Status AggCorePipelineTransform::AggCoreTransform(
     const TransformRequest* request, TransformResponse* response) {
   RecordDecryptor* record_decryptor;
@@ -194,7 +223,7 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
                          CheckpointAggregator::Create(&*intrinsics_));
   }
 
-  std::vector<absl::Status> accumulate_results;
+  std::vector<absl::StatusOr<bool>> accumulate_results;
   accumulate_results.resize(request->inputs_size());
 
   std::transform(
@@ -208,9 +237,14 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
         return AccumulateRecord(record, aggregator.get(), record_decryptor);
       });
 
-  for (absl::Status result : accumulate_results) {
+  uint32_t ignored_inputs = 0;
+  for (absl::StatusOr<bool> result : accumulate_results) {
     FCP_RETURN_IF_ERROR(result);
+    if (!result.value()) {
+      ++ignored_inputs;
+    }
   }
+  response->set_num_ignored_inputs(ignored_inputs);
 
   if (!aggregator->CanReport()) {
     return absl::FailedPreconditionError(

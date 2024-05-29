@@ -326,6 +326,38 @@ TEST_F(AggCoreTransformTest,
   ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
 }
 
+TEST_F(AggCoreTransformTest, TransformZeroInputsReturnsEmptyCheckpoint) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  configure_request.mutable_configuration()->PackFrom(DefaultConfiguration());
+
+  ASSERT_TRUE(stub_
+                  ->ConfigureAndAttest(&configure_context, configure_request,
+                                       &configure_response)
+                  .ok());
+
+  TransformRequest transform_request;
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok());
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("foo_out");
+  // A column with a sum of 0 is returned.
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 0);
+}
+
 TEST_F(AggCoreTransformTest, TransformExecutesFederatedSum) {
   FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
@@ -577,7 +609,134 @@ TEST_F(AggCoreTransformTest,
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 6);
 }
 
-TEST_F(AggCoreTransformTest, TransformFailsForInvalidInput) {
+TEST_F(AggCoreTransformTest, TransformIgnoresUndecryptableInputs) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  std::string input_col_name = "foo";
+  std::string output_col_name = "foo_out";
+  configure_request.mutable_configuration()->PackFrom(DefaultConfiguration());
+
+  grpc::Status configure_and_attest_status = stub_->ConfigureAndAttest(
+      &configure_context, configure_request, &configure_response);
+  ASSERT_TRUE(configure_and_attest_status.ok())
+      << "ConfigureAndAttest status code was: "
+      << configure_and_attest_status.error_code();
+
+  std::string recipient_public_key = configure_response.public_key();
+
+  grpc::ClientContext nonces_context;
+  GenerateNoncesRequest nonces_request;
+  GenerateNoncesResponse nonces_response;
+  nonces_request.set_nonces_count(3);
+  grpc::Status generate_nonces_status =
+      stub_->GenerateNonces(&nonces_context, nonces_request, &nonces_response);
+  ASSERT_TRUE(generate_nonces_status.ok())
+      << "GenerateNonces status code was: "
+      << generate_nonces_status.error_code();
+  ASSERT_THAT(nonces_response.nonces(), SizeIs(3));
+
+  std::string reencryption_public_key = "";
+  std::string ciphertext_associated_data = "ciphertext associated data";
+
+  std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  // Create two records that will fail to decrypt and one record that can be
+  // successfully decrypted.
+  absl::StatusOr<Record> rewrapped_record_1 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_1, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(0), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
+  rewrapped_record_1->mutable_hpke_plus_aead_data()->set_ciphertext("invalid");
+
+  std::string message_2 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
+  absl::StatusOr<Record> rewrapped_record_2 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_2, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(1), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_2.ok()) << rewrapped_record_2.status();
+  rewrapped_record_2->mutable_hpke_plus_aead_data()->set_ciphertext(
+      "undecryptable");
+
+  std::string message_3 =
+      BuildSingleInt32TensorCheckpoint(input_col_name, {42});
+  absl::StatusOr<Record> rewrapped_record_3 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_3, ciphertext_associated_data, recipient_public_key,
+          nonces_response.nonces(2), reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_3.ok()) << rewrapped_record_3.status();
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_1);
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_2);
+  transform_request.add_inputs()->CopyFrom(*rewrapped_record_3);
+
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  grpc::Status transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok())
+      << "Transform status code was: " << transform_status.error_code();
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+  // Ensure that the number of ignored inputs is recorded.
+  ASSERT_EQ(transform_response.num_ignored_inputs(), 2);
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor(output_col_name);
+  // The query sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 42);
+}
+
+TEST_F(AggCoreTransformTest, TransformIgnoresUnparseableInputs) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  grpc::ClientContext configure_context;
+  ConfigureAndAttestRequest configure_request;
+  ConfigureAndAttestResponse configure_response;
+  configure_request.mutable_configuration()->PackFrom(DefaultConfiguration());
+
+  ASSERT_TRUE(stub_
+                  ->ConfigureAndAttest(&configure_context, configure_request,
+                                       &configure_response)
+                  .ok());
+
+  TransformRequest transform_request;
+  transform_request.add_inputs()->set_unencrypted_data(
+      BuildSingleInt32TensorCheckpoint("foo", {42}));
+  transform_request.add_inputs()->set_unencrypted_data("invalid_checkpoint");
+  transform_request.add_inputs()->set_unencrypted_data(
+      "another_invalid_checkpoint");
+  for (auto& input : *transform_request.mutable_inputs()) {
+    input.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  }
+  grpc::ClientContext transform_context;
+  TransformResponse transform_response;
+  auto transform_status = stub_->Transform(
+      &transform_context, transform_request, &transform_response);
+
+  ASSERT_TRUE(transform_status.ok());
+  ASSERT_EQ(transform_response.outputs_size(), 1);
+  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
+  // Ensure that the number of ignored inputs is recorded.
+  ASSERT_EQ(transform_response.num_ignored_inputs(), 2);
+
+  absl::Cord wire_format_result(
+      transform_response.outputs(0).unencrypted_data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("foo_out");
+  // The query sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 42);
+}
+
+TEST_F(AggCoreTransformTest, TransformFailsIfInputCannotBeAccumulated) {
   FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
   ConfigureAndAttestRequest configure_request;
@@ -592,6 +751,7 @@ TEST_F(AggCoreTransformTest, TransformFailsForInvalidInput) {
 
   std::string message = BuildSingleInt32TensorCheckpoint("bad_col_name", {1});
   Record record;
+  record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
   record.set_unencrypted_data(message);
 
   TransformRequest transform_request;
@@ -602,7 +762,7 @@ TEST_F(AggCoreTransformTest, TransformFailsForInvalidInput) {
   grpc::Status transform_status = stub_->Transform(
       &transform_context, transform_request, &transform_response);
 
-  ASSERT_EQ(transform_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_EQ(transform_status.error_code(), grpc::StatusCode::NOT_FOUND);
 }
 
 TEST_F(AggCoreTransformTest, TransformBeforeConfigureAndAttest) {
