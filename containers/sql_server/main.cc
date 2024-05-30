@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -46,6 +47,12 @@ void RunServer() {
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
+  if (int concurrency = std::thread::hardware_concurrency(); concurrency > 0) {
+    // Allow roughly one idle thread per core to minimize thread churn at low
+    // QPS. When running with 1 core, this matches the gRPC default of 2.
+    LOG(INFO) << "Setting gRPC max_pollers to " << (concurrency + 1);
+    builder.SetSyncServerOption(ServerBuilder::MAX_POLLERS, concurrency + 1);
+  }
   std::unique_ptr<Server> server = builder.BuildAndStart();
   LOG(INFO) << "SQL Server listening on " << server_address << "\n";
 
