@@ -48,9 +48,9 @@ elif [ "$1" == "sanitizers" ]; then
   ${BAZELISK} test //... --config=tsan --build_tag_filters=-tsan --test_tag_filters=-tsan
   ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
 elif [ "$1" == "release" ]; then
-  if [[ "${GITHUB_ACTION:-}" != "provenance" ]]; then
-    # Tests fail after 2h in GitHub actions when generating provenances, seemingly
-    # since the worker runs out of space. Hence skip tests.
+  # Tests fail after 2h in GitHub actions, seemingly since the worker runs
+  # out of space. Hence skip tests.
+  if [ -z "${GITHUB_ACTION}" ]; then
     ${BAZELISK} test //...
   fi
   ${BAZELISK} build -c opt "${!RELEASE_TARGETS[@]}"
