@@ -212,7 +212,7 @@ absl::Status SqlPipelineTransform::SqlTransform(const TransformRequest* request,
   if (!contents.ok()) {
     LOG(WARNING) << "Failed to deserialize input into a vector of "
                     "TensorColumns of the expected schema: "
-                 << unencrypted_data.status();
+                 << contents.status();
     response->set_num_ignored_inputs(1);
     return absl::OkStatus();
   }

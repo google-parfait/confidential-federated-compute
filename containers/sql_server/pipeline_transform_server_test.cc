@@ -688,6 +688,8 @@ TEST_F(SqlPipelineTransformTest,
 
   TransformRequest transform_request;
   transform_request.add_inputs()->set_unencrypted_data("invalid_checkpoint");
+  transform_request.mutable_inputs(0)->set_compression_type(
+      Record::COMPRESSION_TYPE_NONE);
 
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
@@ -731,6 +733,8 @@ TEST_F(SqlPipelineTransformTest,
       BuildSingleInt64TensorCheckpoint("wrong_col_name", {1, 2});
   TransformRequest transform_request;
   transform_request.add_inputs()->set_unencrypted_data(checkpoint);
+  transform_request.mutable_inputs(0)->set_compression_type(
+      Record::COMPRESSION_TYPE_NONE);
 
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
