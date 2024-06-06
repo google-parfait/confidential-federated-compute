@@ -43,7 +43,7 @@ mod replication {
     include!(concat!(env!("OUT_DIR"), "/replication.rs"));
 }
 
-use crate::replication::{CreateKeyEvent, LedgerSnapshot, PerKeySnapshot};
+use crate::replication::{AuthorizeAccessEvent, CreateKeyEvent, LedgerSnapshot, PerKeySnapshot};
 
 struct PerKeyLedger {
     private_key: PrivateKey,
@@ -240,6 +240,175 @@ impl LedgerService {
         Ok(CreateKeyResponse { public_key, ..Default::default() })
     }
 
+    pub fn attest_and_produce_authorize_access_event(
+        &mut self,
+        request: AuthorizeAccessRequest,
+    ) -> Result<AuthorizeAccessEvent, micro_rpc::Status> {
+        self.update_current_time(&request.now).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("`now` is invalid: {:?}", err),
+            )
+        })?;
+
+        // Verify the attestation and compute the properties of the requesting
+        // application.
+        let (recipient_app, _) = attestation::verify_attestation(
+            &request.recipient_public_key,
+            request.recipient_attestation_evidence.as_ref(),
+            request.recipient_attestation_endorsements.as_ref(),
+            &request.recipient_tag,
+        )
+        .map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("attestation validation failed: {:?}", err),
+            )
+        })?;
+
+        // Decode the blob header and access policy. Since the access policy was
+        // provided by an untrusted source, we need to verify it by checking the
+        // hash in the header. The header is also unverified at this point, but
+        // will be authenticated later when it's used as the associated data for
+        // re-wrapping the symmetric key. This ensures that any request that
+        // uses a different header or access policy than what was approved by the client
+        // will fail.
+        let header = BlobHeader::decode(request.blob_header.as_ref()).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to parse blob header: {:?}", err),
+            )
+        })?;
+
+        if Sha256::digest(&request.access_policy).as_slice() != header.access_policy_sha256 {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "access policy does not match blob header",
+            ));
+        }
+
+        let access_policy =
+            DataAccessPolicy::decode(request.access_policy.as_ref()).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("failed to parse access policy: {:?}", err),
+                )
+            })?;
+
+        // Find the right per-key ledger.
+        let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::NotFound,
+                "public key not found",
+            )
+        })?;
+
+        // Verify that the access is authorized and that there is still budget
+        // remaining.
+        let transform_index = per_key_ledger.budget_tracker.find_matching_transform(
+            &header.blob_id,
+            header.access_policy_node_id,
+            &access_policy,
+            &header.access_policy_sha256,
+            &recipient_app,
+            self.current_time,
+        )?;
+
+        Ok(AuthorizeAccessEvent {
+            event_time: Some(Self::format_timestamp(&self.current_time)?),
+            access_policy: request.access_policy,
+            transform_index: transform_index.try_into().unwrap(),
+            blob_header: request.blob_header,
+            encapsulated_key: request.encapsulated_key,
+            encrypted_symmetric_key: request.encrypted_symmetric_key,
+            recipient_public_key: request.recipient_public_key,
+            recipient_nonce: request.recipient_nonce,
+        })
+    }
+
+    pub fn apply_authorize_access_event(
+        &mut self,
+        event: AuthorizeAccessEvent,
+    ) -> Result<AuthorizeAccessResponse, micro_rpc::Status> {
+        // Update the current time.
+        self.update_current_time(&event.event_time).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("event_time is invalid: {:?}", err),
+            )
+        })?;
+
+        let recipient_public_key =
+            extract_key_from_cwt(&event.recipient_public_key).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("public_key is invalid: {:?}", err),
+                )
+            })?;
+
+        // Decode the blob header and the access policy.
+        let header = BlobHeader::decode(event.blob_header.as_ref()).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to parse blob header: {:?}", err),
+            )
+        })?;
+
+        let access_policy =
+            DataAccessPolicy::decode(event.access_policy.as_ref()).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("failed to parse access policy: {:?}", err),
+                )
+            })?;
+
+        // Find the right per-key ledger.
+        let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::NotFound,
+                "public key not found",
+            )
+        })?;
+
+        // Re-wrap the blob's symmetric key. This should be done before budgets are
+        // updated in case there are decryption errors (e.g., due to invalid
+        // associated data).
+        let wrap_associated_data =
+            [&per_key_ledger.public_key[..], &event.recipient_nonce[..]].concat();
+        let (encapsulated_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
+            &event.encrypted_symmetric_key,
+            &event.encapsulated_key,
+            &per_key_ledger.private_key,
+            /* unwrap_associated_data= */ &event.blob_header,
+            &recipient_public_key,
+            &wrap_associated_data,
+        )
+        .map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to re-wrap symmetric key: {:?}", err),
+            )
+        })?;
+
+        // Update the budget. This can potentially fail if the budget is insufficient at
+        // the time when the event is applied, which can be a short delay from from the
+        // attestation and initially checking the budget.
+        per_key_ledger.budget_tracker.update_budget(
+            &header.blob_id,
+            event.transform_index.try_into().unwrap(),
+            &access_policy,
+            &header.access_policy_sha256,
+        )?;
+
+        // TODO: b/288282266 - Include the selected transform's destination node id in
+        // the response.
+        Ok(AuthorizeAccessResponse {
+            encapsulated_key,
+            encrypted_symmetric_key,
+            reencryption_public_key: per_key_ledger.public_key.clone(),
+        })
+    }
+
     /// Saves the current state into LedgerSnapshot as a part of snapshot
     /// replication.
     pub fn save_snapshot(&self) -> Result<LedgerSnapshot, micro_rpc::Status> {
@@ -353,110 +522,8 @@ impl Ledger for LedgerService {
         &mut self,
         request: AuthorizeAccessRequest,
     ) -> Result<AuthorizeAccessResponse, micro_rpc::Status> {
-        self.update_current_time(&request.now).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("`now` is invalid: {:?}", err),
-            )
-        })?;
-
-        // Verify the attestation and compute the properties of the requesting
-        // application.
-        let (recipient_app, recipient_public_key) = attestation::verify_attestation(
-            &request.recipient_public_key,
-            request.recipient_attestation_evidence.as_ref(),
-            request.recipient_attestation_endorsements.as_ref(),
-            &request.recipient_tag,
-        )
-        .map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("attestation validation failed: {:?}", err),
-            )
-        })?;
-
-        // Decode the blob header and access policy. Since the access policy was
-        // provided by an untrusted source, we need to verify it by checking the
-        // hash in the header. The header is also unverified at this point, but
-        // will be authenticated later when it's used as the associated data for
-        // re-wrapping the symmetric key. This ensures that any request that
-        // uses a different header or access policy than what was approved by the client
-        // will fail.
-        let header = BlobHeader::decode(request.blob_header.as_ref()).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("failed to parse blob header: {:?}", err),
-            )
-        })?;
-        if Sha256::digest(&request.access_policy).as_slice() != header.access_policy_sha256 {
-            return Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                "access policy does not match blob header",
-            ));
-        }
-        let access_policy =
-            DataAccessPolicy::decode(request.access_policy.as_ref()).map_err(|err| {
-                micro_rpc::Status::new_with_message(
-                    micro_rpc::StatusCode::InvalidArgument,
-                    format!("failed to parse access policy: {:?}", err),
-                )
-            })?;
-
-        // Find the right per-key ledger.
-        let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::NotFound,
-                "public key not found",
-            )
-        })?;
-
-        // Verify that the access is authorized and that there is still budget
-        // remaining.
-        let transform_index = per_key_ledger.budget_tracker.find_matching_transform(
-            &header.blob_id,
-            header.access_policy_node_id,
-            &access_policy,
-            &header.access_policy_sha256,
-            &recipient_app,
-            self.current_time,
-        )?;
-
-        // Re-wrap the blob's symmetric key. This should be done before budgets are
-        // updated in case there are decryption errors (e.g., due to invalid
-        // associated data).
-        let wrap_associated_data =
-            [&per_key_ledger.public_key[..], &request.recipient_nonce[..]].concat();
-        let (encapsulated_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
-            &request.encrypted_symmetric_key,
-            &request.encapsulated_key,
-            &per_key_ledger.private_key,
-            /* unwrap_associated_data= */ &request.blob_header,
-            &recipient_public_key,
-            &wrap_associated_data,
-        )
-        .map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("failed to re-wrap symmetric key: {:?}", err),
-            )
-        })?;
-
-        // Update the budget. This shouldn't fail since there was sufficient budget
-        // earlier.
-        per_key_ledger.budget_tracker.update_budget(
-            &header.blob_id,
-            transform_index,
-            &access_policy,
-            &header.access_policy_sha256,
-        )?;
-
-        // TODO: b/288282266 - Include the selected transform's destination node id in
-        // the response.
-        Ok(AuthorizeAccessResponse {
-            encapsulated_key,
-            encrypted_symmetric_key,
-            reencryption_public_key: per_key_ledger.public_key.clone(),
-        })
+        let authorize_access_event = self.attest_and_produce_authorize_access_event(request)?;
+        self.apply_authorize_access_event(authorize_access_event)
     }
 
     fn revoke_access(
@@ -1387,6 +1454,137 @@ mod tests {
             ledger.apply_create_key_event(event),
             micro_rpc::StatusCode::InvalidArgument,
             "failed to parse private_key"
+        );
+    }
+
+    #[test]
+    fn test_apply_authorize_access_event_key_expired() {
+        let (mut ledger, public_key) = create_ledger_service();
+
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Request access - produce an event but not apply it yet.
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let recipient_nonce: &[u8] = b"nonce";
+        let authorize_access_event = ledger
+            .attest_and_produce_authorize_access_event(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Create another key at 4000 sec to move the time forward on the ledger.
+        // This should be past expiration of the first key that was used
+        // in the above authorize_access_event.
+        ledger
+            .create_key(CreateKeyRequest {
+                now: Some(prost_types::Timestamp { seconds: 4000, ..Default::default() }),
+                ttl: Some(prost_types::Duration { seconds: 100, ..Default::default() }),
+            })
+            .expect("create_key succeeded");
+
+        // Apply authorize_access_event. It should fail because the key has now expired
+        // and no longer known.
+        assert_err!(
+            ledger.apply_authorize_access_event(authorize_access_event),
+            micro_rpc::StatusCode::NotFound,
+            "public key not found"
+        );
+    }
+
+    #[test]
+    fn test_apply_authorize_access_event_budget_consumed() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: b"blob-id".to_vec(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Create the event for the first request without committing it.
+        let authorize_access_event = ledger
+            .attest_and_produce_authorize_access_event(AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                blob_header: blob_header.clone(),
+                encapsulated_key: encapsulated_key.clone(),
+                encrypted_symmetric_key: encrypted_symmetric_key.clone(),
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce1".to_vec(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Submit and commit the second request. This one should succeed because the
+        // first request hasn't updated the budget yet.
+        assert!(
+            ledger
+                .authorize_access(AuthorizeAccessRequest {
+                    access_policy,
+                    blob_header: blob_header.clone(),
+                    encapsulated_key,
+                    encrypted_symmetric_key,
+                    recipient_public_key: create_recipient_cwt(
+                        cfc_crypto::gen_keypair(b"key-id").1
+                    ),
+                    recipient_tag: "tag".to_owned(),
+                    recipient_nonce: b"nonce2".to_vec(),
+                    ..Default::default()
+                })
+                .is_ok()
+        );
+
+        // Now applying the event for the first request must fail.
+        assert_err!(
+            ledger.apply_authorize_access_event(authorize_access_event),
+            micro_rpc::StatusCode::PermissionDenied,
+            "no budget remaining"
         );
     }
 

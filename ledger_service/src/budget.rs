@@ -134,7 +134,7 @@ impl BlobBudget {
                 Some(b) if *b > 0 => *b -= 1,
                 _ => {
                     return Err(micro_rpc::Status::new_with_message(
-                        micro_rpc::StatusCode::Internal,
+                        micro_rpc::StatusCode::PermissionDenied,
                         "no budget remaining or DataAccessPolicy invalid",
                     ));
                 }
@@ -561,12 +561,12 @@ mod tests {
             .unwrap();
         assert_eq!(tracker.update_budget(blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
-        // update_budget shouldn't be called if there's no remaining budget because
-        // find_matching_transforms will have failed. But if it is, it should fail.
+        // There is a small chance that update_budget might be called after there's no
+        // remaining budget because of the replication. It should fail in that case.
         assert_eq!(
             tracker.update_budget(blob_id, transform_index, &policy, policy_hash),
             Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::Internal,
+                micro_rpc::StatusCode::PermissionDenied,
                 "no budget remaining or DataAccessPolicy invalid"
             ))
         );
