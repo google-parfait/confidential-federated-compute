@@ -1629,6 +1629,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "436b050e76ed2903236f032a59761c1eb99e1b0aead2c257922771dab1fc8c78"
 
 [[package]]
+name = "replicated_ledger_enclave_app"
+version = "0.1.0"
+dependencies = [
+ "federated_compute",
+ "ledger_service",
+ "oak_restricted_kernel_sdk",
+]
+
+[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

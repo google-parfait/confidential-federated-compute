@@ -29,6 +29,7 @@ source scripts/cargo_common.sh
 # the resulting artifacts in BINARY_OUTPUTS_DIR.
 declare -Ar RELEASE_PACKAGES=(
   [ledger_enclave_app]=ledger/binary
+  [replicated_ledger_enclave_app]=replicated_ledger/binary
   [square_enclave_app]=square_example/binary
   [sum_enclave_app]=sum_example/binary
 )

@@ -11,6 +11,7 @@ members = [
   "ledger_enclave_app",
   "ledger_service",
   "pipeline_transforms",
+  "replicated_ledger_enclave_app",
   "third_party/federated_compute",
   "tools/explain_fcp_attestation_record",
 ]
@@ -40,6 +41,7 @@ default-members = [
   "ledger_enclave_app",
   "ledger_service",
   "pipeline_transforms",
+  "replicated_ledger_enclave_app",
   "third_party/federated_compute",
 ]
 
