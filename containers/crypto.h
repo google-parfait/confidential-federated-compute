@@ -24,11 +24,74 @@
 #include "absl/strings/string_view.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
+
+// Class used to track a session-level nonce and blob counter.
+//
+// This class is not threadsafe.
+class SessionNonceTracker {
+ public:
+  SessionNonceTracker();
+  // Checks that the blob-level nonce matches the session-level nonce and blob
+  // counter. If so, increments the counter. If the blob is unencrypted, always
+  // returns OK and doesn't increment the blob counter.
+  absl::Status CheckBlobNonce(
+      const fcp::confidentialcompute::BlobMetadata& blob_metadata);
+
+  std::string GetSessionNonce() { return session_nonce_; }
+
+ private:
+  std::string session_nonce_;
+  uint32_t counter_ = 0;
+};
+
+// Class used to decrypt blobs that have been rewrapped for access by
+// this container by the Ledger.
+//
+// Unlike RecordDecryptor, this class does not track nonces to ensure that each
+// blob can be decrypted once. This class is threadsafe.
+class BlobDecryptor {
+ public:
+  // Constructs a new BlobDecryptor.
+  //
+  // Optional configuration properties may be supplied in a Struct to document
+  // any important configuration that should be verifiable during attestation;
+  // see ApplicationMatcher.config_properties in
+  // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/access_policy.proto.
+  BlobDecryptor(oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
+                google::protobuf::Struct config_properties = {});
+
+  // BlobDecryptor is not copyable or moveable due to the use of
+  // fcp::confidential_compute::MessageDecryptor.
+  BlobDecryptor(const BlobDecryptor& other) = delete;
+  BlobDecryptor& operator=(const BlobDecryptor& other) = delete;
+
+  // Returns a string_view encoding a public key and signature (represented as a
+  // signed CWT). This key can be used for encrypting messages that can be
+  // decrypted by this object. The CWT also contains claims for any
+  // configuration properties supplied when the BlobDecryptor was constructed.
+  //
+  // This class must outlive the string_view that is returned.
+  //
+  // If this method is called multiple times, the same public key and signature
+  // will be returned. A caller wanting to update the configuration and generate
+  // a new public key should create a new instance of this class.
+  absl::StatusOr<absl::string_view> GetPublicKey() const;
+
+  // Decrypts a record encrypted with the public key owned by this class.
+  absl::StatusOr<std::string> DecryptBlob(
+      const fcp::confidentialcompute::BlobMetadata& metadata,
+      absl::string_view blob);
+
+ private:
+  fcp::confidential_compute::MessageDecryptor message_decryptor_;
+  absl::StatusOr<std::string> signed_public_key_;
+};
 
 // Class used to create an encrypted Record with a symmetric key that can be
 // decrypted by the Ledger.
@@ -48,6 +111,8 @@ class RecordEncryptor {
 // this container by the Ledger.
 //
 // This class is threadsafe.
+// TODO: Remove this class once we transition the existing containers to the new
+// untrusted to TEE API.
 class RecordDecryptor {
  public:
   // Constructs a new RecordDecryptor.

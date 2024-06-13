@@ -42,6 +42,7 @@ namespace {
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::
     Record_HpkePlusAeadData_RewrappedAssociatedData;
@@ -86,6 +87,93 @@ absl::StatusOr<std::string> Decompress(
 
 }  // namespace
 
+SessionNonceTracker::SessionNonceTracker() {
+  std::string nonce(kNonceSize, '\0');
+  // BoringSSL documentation says that it always returns 1 so we don't check
+  // the return value.
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
+                   nonce.size());
+  session_nonce_ = std::move(nonce);
+}
+
+absl::Status SessionNonceTracker::CheckBlobNonce(const BlobMetadata& metadata) {
+  if (metadata.has_unencrypted()) {
+    return absl::OkStatus();
+  }
+  // We assume that the untrusted and trusted code are running on a machine with
+  // the same endianness.
+  std::string expected_blob_nonce(kNonceSize + sizeof(uint32_t), '\0');
+  std::memcpy(expected_blob_nonce.data(), session_nonce_.data(), kNonceSize);
+  std::memcpy(expected_blob_nonce.data() + kNonceSize, &counter_,
+              sizeof(uint32_t));
+
+  if (metadata.hpke_plus_aead_data()
+          .rewrapped_symmetric_key_associated_data()
+          .nonce() == expected_blob_nonce) {
+    if (counter_ == UINT32_MAX) {
+      return absl::InternalError("Counter has overflowed.");
+    }
+    counter_++;
+    return absl::OkStatus();
+  }
+  return absl::PermissionDeniedError(
+      "Input nonce does not match the expected value.");
+}
+
+BlobDecryptor::BlobDecryptor(OrchestratorCrypto::StubInterface& stub,
+                             google::protobuf::Struct config_properties)
+    : message_decryptor_(std::move(config_properties)),
+      signed_public_key_(message_decryptor_.GetPublicKey(
+          [&stub](absl::string_view message) {
+            return SignWithOrchestrator(stub, message);
+          },
+          kAlgorithmES256)) {}
+
+absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
+  if (!signed_public_key_.ok()) {
+    return signed_public_key_.status();
+  }
+  return *signed_public_key_;
+}
+
+absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
+    const BlobMetadata& metadata, absl::string_view blob) {
+  switch (metadata.encryption_metadata_case()) {
+    case BlobMetadata::kUnencrypted:
+      return Decompress(blob, static_cast<Record::CompressionType>(
+                                  metadata.compression_type()));
+    case BlobMetadata::kHpkePlusAeadData:
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          "Blob to decrypt must contain unencrypted_data or "
+          "rewrapped_symmetric_key_associated_data");
+  }
+  if (!metadata.hpke_plus_aead_data()
+           .has_rewrapped_symmetric_key_associated_data()) {
+    return absl::InvalidArgumentError(
+        "Blob to decrypt must contain "
+        "rewrapped_symmetric_key_associated_data");
+  }
+
+  std::string associated_data =
+      absl::StrCat(metadata.hpke_plus_aead_data()
+                       .rewrapped_symmetric_key_associated_data()
+                       .reencryption_public_key(),
+                   metadata.hpke_plus_aead_data()
+                       .rewrapped_symmetric_key_associated_data()
+                       .nonce());
+  FCP_ASSIGN_OR_RETURN(
+      std::string decrypted,
+      message_decryptor_.Decrypt(
+          blob, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+          metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+          associated_data,
+          metadata.hpke_plus_aead_data().encapsulated_public_key()));
+  return Decompress(decrypted, static_cast<Record::CompressionType>(
+                                   metadata.compression_type()));
+}
+
 absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
     absl::string_view plaintext, absl::string_view public_key,
     absl::string_view access_policy_sha256, uint32_t access_policy_node_id) {
@@ -111,6 +199,7 @@ absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
       message_encryptor_.Encrypt(plaintext, public_key, serialized_header));
 
   Record result;
+  result.set_compression_type(Record::COMPRESSION_TYPE_NONE);
   Record::HpkePlusAeadData* hpke_plus_aead_data =
       result.mutable_hpke_plus_aead_data();
   hpke_plus_aead_data->set_ciphertext(encrypted_message.ciphertext);
