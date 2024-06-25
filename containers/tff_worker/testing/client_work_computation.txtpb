@@ -492,8 +492,6 @@ lambda {
                         }
                       }
                       session_token_tensor_name: "session_token_tensor:0"
-                      layout_map {
-                      }
                     }
                   }
                 }
