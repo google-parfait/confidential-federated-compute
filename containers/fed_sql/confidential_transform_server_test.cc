@@ -23,6 +23,7 @@
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/confidentialcompute/cose.h"
+#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/agg_core_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -49,6 +50,7 @@ namespace {
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::AggCoreAggregationType;
 using ::fcp::confidentialcompute::AggCoreContainerFinalizeConfiguration;
@@ -585,14 +587,15 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     stream_ = stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
     CHECK(stream_->Read(&session_response));
-    session_nonce_ = session_response.configure().nonce();
+    nonce_generator_ =
+        std::make_unique<NonceGenerator>(session_response.configure().nonce());
   }
 
  protected:
   grpc::ClientContext session_context_;
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream_;
-  std::string session_nonce_;
+  std::unique_ptr<NonceGenerator> nonce_generator_;
   std::string public_key_;
 };
 
@@ -817,14 +820,11 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
-  uint32_t counter_0 = 0;
-  std::string nonce_0(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_0.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_0.data() + session_nonce_.length(), &counter_0,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_0 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
   absl::StatusOr<Record> rewrapped_record_0 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_0, ciphertext_associated_data, public_key_, nonce_0,
+          message_0, ciphertext_associated_data, public_key_, *nonce_0,
           *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
 
@@ -847,14 +847,11 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   ASSERT_EQ(response_0.write().status().code(), grpc::OK);
 
   std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
-  uint32_t counter_1 = 1;
-  std::string nonce_1(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_1.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_1.data() + session_nonce_.length(), &counter_1,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_1 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_1.ok());
   absl::StatusOr<Record> rewrapped_record_1 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_1, ciphertext_associated_data, public_key_, nonce_1,
+          message_1, ciphertext_associated_data, public_key_, *nonce_1,
           *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
 
@@ -874,14 +871,11 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   ASSERT_EQ(response_1.write().status().code(), grpc::OK);
 
   std::string message_2 = BuildSingleInt32TensorCheckpoint(input_col_name, {3});
-  uint32_t counter_2 = 2;
-  std::string nonce_2(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_2.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_2.data() + session_nonce_.length(), &counter_2,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_2 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_2.ok());
   absl::StatusOr<Record> rewrapped_record_2 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_2, ciphertext_associated_data, public_key_, nonce_2,
+          message_2, ciphertext_associated_data, public_key_, *nonce_2,
           *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_2.ok()) << rewrapped_record_2.status();
 
@@ -948,14 +942,11 @@ TEST_F(FedSqlServerFederatedSumTest,
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
-  uint32_t counter_0 = 0;
-  std::string nonce_0(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_0.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_0.data() + session_nonce_.length(), &counter_0,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_0 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
   absl::StatusOr<Record> rewrapped_record_0 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_0, ciphertext_associated_data, public_key_, nonce_0,
+          message_0, ciphertext_associated_data, public_key_, *nonce_0,
           *earliest_reencryption_key);
   ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
 
@@ -978,11 +969,8 @@ TEST_F(FedSqlServerFederatedSumTest,
   ASSERT_EQ(response_0.write().status().code(), grpc::OK);
 
   std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
-  uint32_t counter_1 = 1;
-  std::string nonce_1(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_1.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_1.data() + session_nonce_.length(), &counter_1,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_1 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_1.ok());
 
   MessageDecryptor later_decryptor;
   absl::StatusOr<std::string> other_reencryption_public_key =
@@ -998,7 +986,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   ASSERT_TRUE(later_reencryption_key.ok());
   absl::StatusOr<Record> rewrapped_record_1 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_1, ciphertext_associated_data, public_key_, nonce_1,
+          message_1, ciphertext_associated_data, public_key_, *nonce_1,
           *later_reencryption_key);
   ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
 
@@ -1097,14 +1085,11 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   // Create one record that will fail to decrypt and one record that can be
   // successfully decrypted.
   std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
-  uint32_t counter_0 = 0;
-  std::string nonce_0(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_0.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_0.data() + session_nonce_.length(), &counter_0,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_0 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
   absl::StatusOr<Record> rewrapped_record_0 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_0, ciphertext_associated_data, public_key_, nonce_0,
+          message_0, ciphertext_associated_data, public_key_, *nonce_0,
           *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
 
@@ -1126,14 +1111,11 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   ASSERT_EQ(response_0.write().status().code(), grpc::INVALID_ARGUMENT);
 
   std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
-  uint32_t counter_1 = 1;
-  std::string nonce_1(session_nonce_.length() + sizeof(uint32_t), '\0');
-  std::memcpy(nonce_1.data(), session_nonce_.data(), session_nonce_.length());
-  std::memcpy(nonce_1.data() + session_nonce_.length(), &counter_1,
-              sizeof(uint32_t));
+  absl::StatusOr<std::string> nonce_1 = nonce_generator_->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_1.ok());
   absl::StatusOr<Record> rewrapped_record_1 =
       crypto_test_utils::CreateRewrappedRecord(
-          message_1, ciphertext_associated_data, public_key_, nonce_1,
+          message_1, ciphertext_associated_data, public_key_, *nonce_1,
           *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
 

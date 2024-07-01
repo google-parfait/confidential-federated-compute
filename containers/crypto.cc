@@ -87,39 +87,6 @@ absl::StatusOr<std::string> Decompress(
 
 }  // namespace
 
-SessionNonceTracker::SessionNonceTracker() {
-  std::string nonce(kNonceSize, '\0');
-  // BoringSSL documentation says that it always returns 1 so we don't check
-  // the return value.
-  (void)RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
-                   nonce.size());
-  session_nonce_ = std::move(nonce);
-}
-
-absl::Status SessionNonceTracker::CheckBlobNonce(const BlobMetadata& metadata) {
-  if (metadata.has_unencrypted()) {
-    return absl::OkStatus();
-  }
-  // We assume that the untrusted and trusted code are running on a machine with
-  // the same endianness.
-  std::string expected_blob_nonce(kNonceSize + sizeof(uint32_t), '\0');
-  std::memcpy(expected_blob_nonce.data(), session_nonce_.data(), kNonceSize);
-  std::memcpy(expected_blob_nonce.data() + kNonceSize, &counter_,
-              sizeof(uint32_t));
-
-  if (metadata.hpke_plus_aead_data()
-          .rewrapped_symmetric_key_associated_data()
-          .nonce() == expected_blob_nonce) {
-    if (counter_ == UINT32_MAX) {
-      return absl::InternalError("Counter has overflowed.");
-    }
-    counter_++;
-    return absl::OkStatus();
-  }
-  return absl::PermissionDeniedError(
-      "Input nonce does not match the expected value.");
-}
-
 BlobDecryptor::BlobDecryptor(OrchestratorCrypto::StubInterface& stub,
                              google::protobuf::Struct config_properties)
     : message_decryptor_(std::move(config_properties)),

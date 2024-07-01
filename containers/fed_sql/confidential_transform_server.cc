@@ -28,6 +28,7 @@
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/agg_core_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -46,6 +47,7 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidential_compute::NonceChecker;
 using ::fcp::confidentialcompute::AggCoreContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::AggCoreContainerWriteConfiguration;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
@@ -131,11 +133,11 @@ SessionResponse ToSessionWriteResponse(absl::Status status,
 // TODO: add tracking for available memory.
 absl::Status HandleWrite(
     const WriteRequest& request, CheckpointAggregator& aggregator,
-    BlobDecryptor* blob_decryptor, SessionNonceTracker& nonce_tracker,
+    BlobDecryptor* blob_decryptor, NonceChecker& nonce_checker,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
     long available_memory, const std::vector<Intrinsic>* intrinsics) {
   if (absl::Status nonce_status =
-          nonce_tracker.CheckBlobNonce(request.first_request_metadata());
+          nonce_checker.CheckBlobNonce(request.first_request_metadata());
       !nonce_status.ok()) {
     stream->Write(ToSessionWriteResponse(nonce_status, available_memory));
     return absl::OkStatus();
@@ -379,9 +381,9 @@ absl::Status FedSqlConfidentialTransform::FedSqlSession(
         "requests.");
   }
   SessionResponse configure_response;
-  SessionNonceTracker nonce_tracker;
+  NonceChecker nonce_checker;
   *configure_response.mutable_configure()->mutable_nonce() =
-      nonce_tracker.GetSessionNonce();
+      nonce_checker.GetSessionNonce();
   configure_response.mutable_configure()->set_write_capacity_bytes(
       available_memory);
   stream->Write(configure_response);
@@ -416,7 +418,7 @@ absl::Status FedSqlConfidentialTransform::FedSqlSession(
         result_blob_metadata = *earliest_expiration_metadata;
         // TODO: spin up a thread to incorporate each blob.
         FCP_RETURN_IF_ERROR(HandleWrite(write_request, *aggregator,
-                                        blob_decryptor, nonce_tracker, stream,
+                                        blob_decryptor, nonce_checker, stream,
                                         available_memory, intrinsics));
         break;
       }

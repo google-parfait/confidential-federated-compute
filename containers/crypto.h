@@ -31,25 +31,6 @@
 
 namespace confidential_federated_compute {
 
-// Class used to track a session-level nonce and blob counter.
-//
-// This class is not threadsafe.
-class SessionNonceTracker {
- public:
-  SessionNonceTracker();
-  // Checks that the blob-level nonce matches the session-level nonce and blob
-  // counter. If so, increments the counter. If the blob is unencrypted, always
-  // returns OK and doesn't increment the blob counter.
-  absl::Status CheckBlobNonce(
-      const fcp::confidentialcompute::BlobMetadata& blob_metadata);
-
-  std::string GetSessionNonce() { return session_nonce_; }
-
- private:
-  std::string session_nonce_;
-  uint32_t counter_ = 0;
-};
-
 // Class used to decrypt blobs that have been rewrapped for access by
 // this container by the Ledger.
 //

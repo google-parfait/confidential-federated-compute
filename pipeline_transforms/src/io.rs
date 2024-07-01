@@ -210,7 +210,11 @@ impl RecordEncoder {
                 })
             }
         };
-        Ok(Record { kind: Some(kind), compression_type: CompressionType::None.into() })
+        Ok(Record {
+            kind: Some(kind),
+            compression_type: CompressionType::None.into(),
+            record_id: vec![],
+        })
     }
 }
 
