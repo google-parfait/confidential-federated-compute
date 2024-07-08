@@ -39,7 +39,7 @@ class SessionTracker {
 
  private:
   absl::Mutex mutex_;
-  int num_sessions_ = 0 ABSL_GUARDED_BY(mutex_);
+  int num_sessions_ ABSL_GUARDED_BY(mutex_) = 0;
   int max_num_sessions_;
   // Memory for each session in bytes.
   long max_session_memory_bytes_;
