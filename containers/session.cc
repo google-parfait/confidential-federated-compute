@@ -13,7 +13,15 @@
 // limitations under the License.
 #include "containers/session.h"
 
+#include "fcp/base/status_converters.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "grpcpp/support/status.h"
+
 namespace confidential_federated_compute {
+
+using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 
 long SessionTracker::AddSession() {
   absl::MutexLock l(&mutex_);
@@ -32,6 +40,19 @@ absl::Status SessionTracker::RemoveSession() {
   }
   num_sessions_--;
   return absl::OkStatus();
+}
+
+SessionResponse ToSessionWriteFinishedResponse(absl::Status status,
+                                               long available_memory,
+                                               long committed_size_bytes) {
+  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
+  SessionResponse session_response;
+  WriteFinishedResponse* response = session_response.mutable_write();
+  response->mutable_status()->set_code(grpc_status.error_code());
+  response->mutable_status()->set_message(grpc_status.error_message());
+  response->set_write_capacity_bytes(available_memory);
+  response->set_committed_size_bytes(committed_size_bytes);
+  return session_response;
 }
 
 }  // namespace confidential_federated_compute

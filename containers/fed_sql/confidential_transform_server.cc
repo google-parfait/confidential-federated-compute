@@ -67,7 +67,6 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
-using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::ServerContext;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
@@ -112,17 +111,6 @@ absl::Status ValidateTopLevelIntrinsics(
   return absl::OkStatus();
 }
 
-SessionResponse ToSessionWriteResponse(absl::Status status,
-                                       long available_memory) {
-  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
-  SessionResponse session_response;
-  WriteFinishedResponse* response = session_response.mutable_write();
-  response->mutable_status()->set_code(grpc_status.error_code());
-  response->mutable_status()->set_message(grpc_status.error_message());
-  response->set_write_capacity_bytes(available_memory);
-  return session_response;
-}
-
 // Decrypts and parses a record and accumulates it into the state of the
 // CheckpointAggregator `aggregator`.
 //
@@ -140,13 +128,14 @@ absl::Status HandleWrite(
   if (absl::Status nonce_status =
           nonce_checker.CheckBlobNonce(request.first_request_metadata());
       !nonce_status.ok()) {
-    stream->Write(ToSessionWriteResponse(nonce_status, available_memory));
+    stream->Write(
+        ToSessionWriteFinishedResponse(nonce_status, available_memory));
     return absl::OkStatus();
   }
 
   FedSqlContainerWriteConfiguration write_config;
   if (!request.first_request_configuration().UnpackTo(&write_config)) {
-    stream->Write(ToSessionWriteResponse(
+    stream->Write(ToSessionWriteFinishedResponse(
         absl::InvalidArgumentError(
             "Failed to parse FedSqlContainerWriteConfiguration."),
         available_memory));
@@ -155,8 +144,9 @@ absl::Status HandleWrite(
   absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
       request.first_request_metadata(), request.data());
   if (!unencrypted_data.ok()) {
-    stream->Write(
-        ToSessionWriteResponse(unencrypted_data.status(), available_memory));
+    stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status(),
+
+                                                 available_memory));
     return absl::OkStatus();
   }
 
@@ -170,7 +160,7 @@ absl::Status HandleWrite(
       absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
           parser_factory.Create(absl::Cord(std::move(*unencrypted_data)));
       if (!parser.ok()) {
-        stream->Write(ToSessionWriteResponse(
+        stream->Write(ToSessionWriteFinishedResponse(
             absl::Status(parser.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_ACCUMULATE: ",
@@ -185,7 +175,7 @@ absl::Status HandleWrite(
       absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
           CheckpointAggregator::Deserialize(intrinsics, *unencrypted_data);
       if (!other.ok()) {
-        stream->Write(ToSessionWriteResponse(
+        stream->Write(ToSessionWriteFinishedResponse(
             absl::Status(other.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_MERGE: ",
@@ -197,21 +187,16 @@ absl::Status HandleWrite(
       break;
     }
     default:
-      stream->Write(ToSessionWriteResponse(
+      stream->Write(ToSessionWriteFinishedResponse(
           absl::InvalidArgumentError(
               "AggCoreAggregationType must be specified."),
           available_memory));
       return absl::OkStatus();
   }
 
-  SessionResponse session_response;
-  WriteFinishedResponse* response = session_response.mutable_write();
-  response->set_committed_size_bytes(
-      request.first_request_metadata().total_size_bytes());
-  response->mutable_status()->set_code(grpc::OK);
-  response->set_write_capacity_bytes(available_memory);
-
-  stream->Write(session_response);
+  stream->Write(ToSessionWriteFinishedResponse(
+      absl::OkStatus(), available_memory,
+      request.first_request_metadata().total_size_bytes()));
   return absl::OkStatus();
 }
 
@@ -406,7 +391,7 @@ absl::Status FedSqlConfidentialTransform::FedSqlSession(
             EarliestExpirationTimeMetadata(
                 result_blob_metadata, write_request.first_request_metadata());
         if (!earliest_expiration_metadata.ok()) {
-          stream->Write(ToSessionWriteResponse(
+          stream->Write(ToSessionWriteFinishedResponse(
               absl::Status(
                   earliest_expiration_metadata.status().code(),
                   absl::StrCat(

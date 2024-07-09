@@ -18,6 +18,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 
 #include "absl/status/status.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -44,6 +45,10 @@ class SessionTracker {
   // Memory for each session in bytes.
   long max_session_memory_bytes_;
 };
+
+// Create a SessionResponse with a WriteFinishedResponse.
+fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
+    absl::Status status, long available_memory, long committed_size_bytes = 0);
 
 }  // namespace confidential_federated_compute
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_

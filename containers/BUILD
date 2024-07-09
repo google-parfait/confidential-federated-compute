@@ -45,6 +45,8 @@ cc_library(
     hdrs = ["session.h"],
     deps = [
         "@com_google_absl//absl/status",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )
 

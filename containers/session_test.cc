@@ -13,10 +13,14 @@
 // limitations under the License.
 #include "containers/session.h"
 
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
 
 namespace confidential_federated_compute {
 namespace {
+
+using ::fcp::confidentialcompute::SessionResponse;
 
 TEST(SessionTest, AddSession) {
   SessionTracker session_tracker(1, 100);
@@ -41,6 +45,27 @@ TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
   SessionTracker session_tracker(1, 100);
   ASSERT_EQ(session_tracker.RemoveSession().code(),
             absl::StatusCode::kFailedPrecondition);
+}
+
+TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
+  SessionResponse response = ToSessionWriteFinishedResponse(
+      absl::InvalidArgumentError("invalid arg"), 42);
+  ASSERT_TRUE(response.has_write());
+  EXPECT_EQ(response.write().committed_size_bytes(), 0);
+  EXPECT_EQ(response.write().write_capacity_bytes(), 42);
+  EXPECT_EQ(response.write().status().code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_EQ(response.write().status().message(), "invalid arg");
+}
+
+TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
+  SessionResponse response =
+      ToSessionWriteFinishedResponse(absl::OkStatus(), 42, 6);
+  ASSERT_TRUE(response.has_write());
+  EXPECT_EQ(response.write().committed_size_bytes(), 6);
+  EXPECT_EQ(response.write().write_capacity_bytes(), 42);
+  EXPECT_EQ(response.write().status().code(), grpc::StatusCode::OK);
+  EXPECT_TRUE(response.write().status().message().empty());
 }
 
 }  // namespace
