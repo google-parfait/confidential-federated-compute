@@ -29,9 +29,9 @@
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
-#include "fcp/protos/confidentialcompute/agg_core_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -48,8 +48,6 @@ namespace {
 
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidential_compute::NonceChecker;
-using ::fcp::confidentialcompute::AggCoreContainerFinalizeConfiguration;
-using ::fcp::confidentialcompute::AggCoreContainerWriteConfiguration;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -57,6 +55,9 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
+using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -143,11 +144,11 @@ absl::Status HandleWrite(
     return absl::OkStatus();
   }
 
-  AggCoreContainerWriteConfiguration write_config;
+  FedSqlContainerWriteConfiguration write_config;
   if (!request.first_request_configuration().UnpackTo(&write_config)) {
     stream->Write(ToSessionWriteResponse(
         absl::InvalidArgumentError(
-            "Failed to parse AggCoreContainerWriteConfiguration."),
+            "Failed to parse FedSqlContainerWriteConfiguration."),
         available_memory));
     return absl::OkStatus();
   }
@@ -224,10 +225,10 @@ absl::Status HandleFinalize(
     std::unique_ptr<CheckpointAggregator> aggregator,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
     const BlobMetadata& input_metadata) {
-  AggCoreContainerFinalizeConfiguration finalize_config;
+  FedSqlContainerFinalizeConfiguration finalize_config;
   if (!request.configuration().UnpackTo(&finalize_config)) {
     return absl::InvalidArgumentError(
-        "Failed to parse AggCoreContainerFinalizeConfiguration.");
+        "Failed to parse FedSqlContainerFinalizeConfiguration.");
   }
   std::string result;
   BlobMetadata result_metadata;
@@ -297,13 +298,13 @@ absl::Status HandleFinalize(
 absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
     const fcp::confidentialcompute::InitializeRequest* request,
     fcp::confidentialcompute::InitializeResponse* response) {
-  // TODO: Switch to using a FedSql-specific wrapper message that contains a
-  // aggcore Configuration.
-  Configuration config;
+  FedSqlContainerInitializeConfiguration config;
   if (!request->configuration().UnpackTo(&config)) {
-    return absl::InvalidArgumentError("Configuration cannot be unpacked.");
+    return absl::InvalidArgumentError(
+        "FedSqlContainerInitializeConfiguration cannot be unpacked.");
   }
-  FCP_RETURN_IF_ERROR(CheckpointAggregator::ValidateConfig(config));
+  FCP_RETURN_IF_ERROR(
+      CheckpointAggregator::ValidateConfig(config.agg_configuration()));
   const BlobDecryptor* blob_decryptor;
   {
     absl::MutexLock l(&mutex_);
@@ -312,9 +313,9 @@ absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
           "Initialize can only be called once.");
     }
 
-    FCP_ASSIGN_OR_RETURN(
-        std::vector<Intrinsic> intrinsics,
-        tensorflow_federated::aggregation::ParseFromConfig(config));
+    FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
+                         tensorflow_federated::aggregation::ParseFromConfig(
+                             config.agg_configuration()));
     FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
     google::protobuf::Struct config_properties;
     (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(

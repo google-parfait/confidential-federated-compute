@@ -24,9 +24,9 @@
 #include "containers/crypto_test_utils.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
-#include "fcp/protos/confidentialcompute/agg_core_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -54,8 +54,6 @@ using ::fcp::confidential_compute::NonceAndCounter;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::AggCoreAggregationType;
-using ::fcp::confidentialcompute::AggCoreContainerFinalizeConfiguration;
-using ::fcp::confidentialcompute::AggCoreContainerWriteConfiguration;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -63,6 +61,9 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
+using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -127,7 +128,7 @@ SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
     unencrypted {}
   )pb");
   metadata.set_total_size_bytes(data.size());
-  AggCoreContainerWriteConfiguration config;
+  FedSqlContainerWriteConfiguration config;
   config.set_type(agg_type);
   SessionRequest request;
   WriteRequest* write_request = request.mutable_write();
@@ -194,8 +195,10 @@ Configuration FedSqlServerTest::DefaultConfiguration() const {
 
 TEST_F(FedSqlServerTest, InvalidInitializeRequest) {
   grpc::ClientContext context;
-  Configuration invalid_config;
-  invalid_config.add_intrinsic_configs()->set_intrinsic_uri("BAD URI");
+  FedSqlContainerInitializeConfiguration invalid_config;
+  invalid_config.mutable_agg_configuration()
+      ->add_intrinsic_configs()
+      ->set_intrinsic_uri("BAD URI");
   InitializeRequest request;
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
@@ -221,7 +224,7 @@ TEST_F(FedSqlServerTest, InitializeRequestWrongMessageType) {
 
 TEST_F(FedSqlServerTest, InitializeRequestNoIntrinsicConfigs) {
   grpc::ClientContext context;
-  Configuration invalid_config;
+  FedSqlContainerInitializeConfiguration invalid_config;
   InitializeRequest request;
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
@@ -236,34 +239,36 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersInitialize) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
-  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs: {
-      intrinsic_uri: "fedsql_dp_group_by"
-      intrinsic_args { parameter { dtype: DT_INT64 int64_val: 42 } }
-      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
-      }
-      inner_intrinsics {
-        intrinsic_uri: "GoogleSQL:sum"
-        intrinsic_args {
-          input_tensor {
-            name: "val"
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_INT64 int64_val: 42 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
             dtype: DT_INT64
             shape {}
           }
         }
-        output_tensors {
-          name: "val_out"
-          dtype: DT_INT64
-          shape {}
-        }
       }
     }
   )pb");
-  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+  request.mutable_configuration()->PackFrom(init_config);
 
   auto status = stub_->Initialize(&context, request, &response);
 
@@ -278,25 +283,27 @@ TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsInitialize) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
-  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs: {
-      intrinsic_uri: "federated_sum"
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "federated_sum"
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
       }
-    }
-    intrinsic_configs: {
-      intrinsic_uri: "federated_sum"
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
+      intrinsic_configs: {
+        intrinsic_uri: "federated_sum"
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
       }
     }
   )pb");
-  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+  request.mutable_configuration()->PackFrom(init_config);
 
   auto status = stub_->Initialize(&context, request, &response);
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
@@ -308,7 +315,9 @@ TEST_F(FedSqlServerTest, InitializeMoreThanOnce) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
-  request.mutable_configuration()->PackFrom(DefaultConfiguration());
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
 
   ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
 
@@ -324,7 +333,9 @@ TEST_F(FedSqlServerTest, ValidInitialize) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
-  request.mutable_configuration()->PackFrom(DefaultConfiguration());
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
 
   ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
 }
@@ -333,34 +344,36 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
-  Configuration fedsql_dp_group_by_config = PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs: {
-      intrinsic_uri: "fedsql_dp_group_by"
-      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
-      intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
-      }
-      inner_intrinsics {
-        intrinsic_uri: "GoogleSQL:sum"
-        intrinsic_args {
-          input_tensor {
-            name: "val"
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
             dtype: DT_INT64
             shape {}
           }
         }
-        output_tensors {
-          name: "val_out"
-          dtype: DT_INT64
-          shape {}
-        }
       }
     }
   )pb");
-  request.mutable_configuration()->PackFrom(fedsql_dp_group_by_config);
+  request.mutable_configuration()->PackFrom(init_config);
 
   auto status = stub_->Initialize(&context, request, &response);
   ASSERT_TRUE(status.ok());
@@ -377,7 +390,9 @@ TEST_F(FedSqlServerTest, SessionConfigureGeneratesNonce) {
   grpc::ClientContext configure_context;
   InitializeRequest request;
   InitializeResponse response;
-  request.mutable_configuration()->PackFrom(DefaultConfiguration());
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -401,7 +416,9 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   grpc::ClientContext configure_context;
   InitializeRequest request;
   InitializeResponse response;
-  request.mutable_configuration()->PackFrom(DefaultConfiguration());
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -483,39 +500,41 @@ TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
   grpc::ClientContext init_context;
   InitializeRequest request;
   InitializeResponse response;
-  Configuration fedsql_config = PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs: {
-      intrinsic_uri: "fedsql_group_by"
-      intrinsic_args {
-        input_tensor {
-          name: "key"
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_group_by"
+        intrinsic_args {
+          input_tensor {
+            name: "key"
+            dtype: DT_INT64
+            shape { dim_sizes: -1 }
+          }
+        }
+        output_tensors {
+          name: "key_out"
           dtype: DT_INT64
           shape { dim_sizes: -1 }
         }
-      }
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
-      }
-      inner_intrinsics {
-        intrinsic_uri: "GoogleSQL:sum"
-        intrinsic_args {
-          input_tensor {
-            name: "val"
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
             dtype: DT_INT64
             shape {}
           }
         }
-        output_tensors {
-          name: "val_out"
-          dtype: DT_INT64
-          shape {}
-        }
       }
     }
   )pb");
-  request.mutable_configuration()->PackFrom(fedsql_config);
+  request.mutable_configuration()->PackFrom(init_config);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -543,7 +562,7 @@ TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
   ASSERT_TRUE(stream->Write(write_request_2));
   ASSERT_TRUE(stream->Read(&write_response_2));
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
@@ -576,7 +595,9 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     grpc::ClientContext configure_context;
     InitializeRequest request;
     InitializeResponse response;
-    request.mutable_configuration()->PackFrom(DefaultConfiguration());
+    FedSqlContainerInitializeConfiguration init_config;
+    *init_config.mutable_agg_configuration() = DefaultConfiguration();
+    request.mutable_configuration()->PackFrom(init_config);
 
     CHECK(stub_->Initialize(&configure_context, request, &response).ok());
     public_key_ = response.public_key();
@@ -630,7 +651,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndReports) {
   ASSERT_TRUE(stream_->Write(write_request));
   ASSERT_TRUE(stream_->Read(&write_response));
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
@@ -669,7 +690,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
   ASSERT_TRUE(stream_->Write(write_request));
   ASSERT_TRUE(stream_->Read(&write_response));
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
   )pb");
   SessionRequest finalize_request;
@@ -723,7 +744,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
   ASSERT_TRUE(stream_->Write(write_request));
   ASSERT_TRUE(stream_->Read(&write_response));
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
@@ -771,7 +792,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
   ASSERT_EQ(write_response_2.write().write_capacity_bytes(),
             kMaxSessionMemoryBytes);
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
@@ -832,7 +853,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
-  AggCoreContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
@@ -907,7 +928,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   ASSERT_TRUE(stream_->Read(&response_2));
   ASSERT_EQ(response_2.write().status().code(), grpc::OK);
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
@@ -966,7 +987,7 @@ TEST_F(FedSqlServerFederatedSumTest,
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
-  AggCoreContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
@@ -1037,7 +1058,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   ASSERT_TRUE(stream_->Read(&unencrypted_response));
   ASSERT_EQ(unencrypted_response.write().status().code(), grpc::OK);
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
   )pb");
   SessionRequest finalize_request;
@@ -1117,7 +1138,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
-  AggCoreContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
@@ -1163,7 +1184,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   ASSERT_TRUE(stream_->Read(&response_1));
   ASSERT_EQ(response_1.write().status().code(), grpc::OK);
 
-  AggCoreContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
   SessionRequest finalize_request;
