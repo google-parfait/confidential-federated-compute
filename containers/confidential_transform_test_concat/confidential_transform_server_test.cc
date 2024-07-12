@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/test_concat/confidential_transform_server.h"
+#include "containers/confidential_transform_test_concat/confidential_transform_server.h"
 
 #include <memory>
 #include <string>
@@ -35,7 +35,7 @@
 #include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::test_concat {
+namespace confidential_federated_compute::confidential_transform_test_concat {
 
 namespace {
 
@@ -357,4 +357,5 @@ TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::test_concat
+}  // namespace
+   // confidential_federated_compute::confidential_transform_test_concat

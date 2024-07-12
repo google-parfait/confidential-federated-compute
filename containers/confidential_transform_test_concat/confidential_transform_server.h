@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONFIDENTIAL_TRANSFORM_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONFIDENTIAL_TRANSFORM_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_
 
 #include <optional>
 #include <string>
@@ -28,7 +28,7 @@
 #include "grpcpp/support/status.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
-namespace confidential_federated_compute::test_concat {
+namespace confidential_federated_compute::confidential_transform_test_concat {
 
 // Test ConfidentialTransform service that concatenates inputs. This test
 // service doesn't return `write_capacity_bytes`, nor does it manage the number
@@ -71,6 +71,7 @@ class TestConcatConfidentialTransform final
       ABSL_GUARDED_BY(mutex_);
 };
 
-}  // namespace confidential_federated_compute::test_concat
+}  // namespace
+   // confidential_federated_compute::confidential_transform_test_concat
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONFIDENTIAL_TRANSFORM_TEST_CONCAT_CONFIDENTIAL_TRANSFORM_SERVER_H_

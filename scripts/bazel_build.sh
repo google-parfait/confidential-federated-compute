@@ -38,6 +38,7 @@ readonly BAZELISK="${BAZELISK:-bazelisk}"
 declare -Ar RELEASE_TARGETS=(
   [//containers/sql_server:oci_runtime_bundle.tar]=sql_server/container.tar
   [//containers/test_concat:oci_runtime_bundle.tar]=test_concat/container.tar
+  [//containers/confidential_transform_test_concat:oci_runtime_bundle.tar]=confidential_transform_test_concat/container.tar
   [//containers/agg_core:oci_runtime_bundle.tar]=agg_core/container.tar
 )
 

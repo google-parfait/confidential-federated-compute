@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/test_concat/confidential_transform_server.h"
+#include "containers/confidential_transform_test_concat/confidential_transform_server.h"
 
 #include <execution>
 #include <memory>
@@ -31,7 +31,7 @@
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 
-namespace confidential_federated_compute::test_concat {
+namespace confidential_federated_compute::confidential_transform_test_concat {
 
 namespace {
 
@@ -180,4 +180,5 @@ grpc::Status TestConcatConfidentialTransform::Session(
   return status;
 }
 
-}  // namespace confidential_federated_compute::test_concat
+}  // namespace
+   // confidential_federated_compute::confidential_transform_test_concat
