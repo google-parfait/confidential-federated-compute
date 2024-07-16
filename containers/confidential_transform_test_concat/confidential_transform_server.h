@@ -31,8 +31,7 @@
 namespace confidential_federated_compute::confidential_transform_test_concat {
 
 // Test ConfidentialTransform service that concatenates inputs. This test
-// service doesn't return `write_capacity_bytes`, nor does it manage the number
-// of sessions.
+// service doesn't manage the number of sessions.
 class TestConcatConfidentialTransform final
     : public fcp::confidentialcompute::ConfidentialTransform::Service {
  public:

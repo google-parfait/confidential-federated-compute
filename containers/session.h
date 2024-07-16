@@ -27,13 +27,11 @@ namespace confidential_federated_compute {
 // This class is threadsafe.
 class SessionTracker {
  public:
-  SessionTracker(int max_num_sessions, long max_session_memory_bytes)
-      : max_num_sessions_(max_num_sessions),
-        max_session_memory_bytes_(max_session_memory_bytes) {};
+  SessionTracker(int max_num_sessions) : max_num_sessions_(max_num_sessions) {};
 
   // Tries to add a session and returns the amount of memory in bytes that the
   // session is allowed. Returns 0 if there is no available memory.
-  long AddSession();
+  absl::Status AddSession();
 
   // Tries to remove a session and returns an error if unable to do so.
   absl::Status RemoveSession();
@@ -48,7 +46,7 @@ class SessionTracker {
 
 // Create a SessionResponse with a WriteFinishedResponse.
 fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
-    absl::Status status, long available_memory, long committed_size_bytes = 0);
+    absl::Status status, long committed_size_bytes = 0);
 
 }  // namespace confidential_federated_compute
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_

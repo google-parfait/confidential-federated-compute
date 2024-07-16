@@ -100,7 +100,6 @@ using ::testing::Test;
 using testing::UnorderedElementsAre;
 
 inline constexpr int kMaxNumSessions = 8;
-inline constexpr long kMaxSessionMemoryBytes = 1000000;
 
 std::string BuildSingleInt32TensorCheckpoint(
     std::string column_name, std::initializer_list<int32_t> input_values) {
@@ -166,8 +165,7 @@ class FedSqlServerTest : public Test {
   BlobMetadata DefaultBlobMetadata() const;
 
   testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  FedSqlConfidentialTransform service_{&mock_crypto_stub_, kMaxNumSessions,
-                                       kMaxSessionMemoryBytes};
+  FedSqlConfidentialTransform service_{&mock_crypto_stub_, kMaxNumSessions};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
@@ -408,8 +406,6 @@ TEST_F(FedSqlServerTest, SessionConfigureGeneratesNonce) {
 
   ASSERT_TRUE(session_response.has_configure());
   ASSERT_GT(session_response.configure().nonce().size(), 0);
-  ASSERT_EQ(session_response.configure().write_capacity_bytes(),
-            kMaxSessionMemoryBytes);
 }
 
 TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
@@ -453,7 +449,8 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
       stream = stub_->Session(&rejected_context);
   ASSERT_TRUE(stream->Write(rejected_request));
   ASSERT_FALSE(stream->Read(&rejected_response));
-  ASSERT_EQ(stream->Finish().error_code(), grpc::StatusCode::UNAVAILABLE);
+  ASSERT_EQ(stream->Finish().error_code(),
+            grpc::StatusCode::FAILED_PRECONDITION);
 }
 
 TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
@@ -635,8 +632,6 @@ TEST_F(FedSqlServerFederatedSumTest, SessionWriteAccumulateCommitsBlob) {
   ASSERT_TRUE(write_response.has_write());
   ASSERT_EQ(write_response.write().committed_size_bytes(), data.size());
   ASSERT_EQ(write_response.write().status().code(), grpc::OK);
-  ASSERT_EQ(write_response.write().write_capacity_bytes(),
-            kMaxSessionMemoryBytes);
 }
 
 TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndReports) {
@@ -789,8 +784,6 @@ TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
   ASSERT_TRUE(write_response_2.has_write());
   ASSERT_EQ(write_response_2.write().committed_size_bytes(), 0);
   ASSERT_EQ(write_response_2.write().status().code(), grpc::INVALID_ARGUMENT);
-  ASSERT_EQ(write_response_2.write().write_capacity_bytes(),
-            kMaxSessionMemoryBytes);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT

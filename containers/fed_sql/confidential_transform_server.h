@@ -44,9 +44,9 @@ class FedSqlConfidentialTransform final
   // TODO: add absl::Nonnull to crypto_stub.
   explicit FedSqlConfidentialTransform(
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      int max_num_sessions, long max_session_memory_bytes)
+      int max_num_sessions)
       : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
-        session_tracker_(max_num_sessions, max_session_memory_bytes) {}
+        session_tracker_(max_num_sessions) {}
 
   grpc::Status Initialize(
       grpc::ServerContext* context,
@@ -67,8 +67,7 @@ class FedSqlConfidentialTransform final
   absl::Status FedSqlSession(
       grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
                                fcp::confidentialcompute::SessionRequest>*
-          stream,
-      long stream_memory);
+          stream);
 
   oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   confidential_federated_compute::SessionTracker session_tracker_;

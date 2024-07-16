@@ -124,29 +124,24 @@ absl::Status HandleWrite(
     const WriteRequest& request, CheckpointAggregator& aggregator,
     BlobDecryptor* blob_decryptor, NonceChecker& nonce_checker,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    long available_memory, const std::vector<Intrinsic>* intrinsics) {
+    const std::vector<Intrinsic>* intrinsics) {
   if (absl::Status nonce_status =
           nonce_checker.CheckBlobNonce(request.first_request_metadata());
       !nonce_status.ok()) {
-    stream->Write(
-        ToSessionWriteFinishedResponse(nonce_status, available_memory));
+    stream->Write(ToSessionWriteFinishedResponse(nonce_status));
     return absl::OkStatus();
   }
 
   FedSqlContainerWriteConfiguration write_config;
   if (!request.first_request_configuration().UnpackTo(&write_config)) {
-    stream->Write(ToSessionWriteFinishedResponse(
-        absl::InvalidArgumentError(
-            "Failed to parse FedSqlContainerWriteConfiguration."),
-        available_memory));
+    stream->Write(ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+        "Failed to parse FedSqlContainerWriteConfiguration.")));
     return absl::OkStatus();
   }
   absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
       request.first_request_metadata(), request.data());
   if (!unencrypted_data.ok()) {
-    stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status(),
-
-                                                 available_memory));
+    stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
     return absl::OkStatus();
   }
 
@@ -164,8 +159,7 @@ absl::Status HandleWrite(
             absl::Status(parser.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_ACCUMULATE: ",
-                                      parser.status().message())),
-            available_memory));
+                                      parser.status().message()))));
         return absl::OkStatus();
       }
       FCP_RETURN_IF_ERROR(aggregator.Accumulate(*parser.value()));
@@ -179,24 +173,20 @@ absl::Status HandleWrite(
             absl::Status(other.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_MERGE: ",
-                                      other.status().message())),
-            available_memory));
+                                      other.status().message()))));
         return absl::OkStatus();
       }
       FCP_RETURN_IF_ERROR(aggregator.MergeWith(std::move(*other.value())));
       break;
     }
     default:
-      stream->Write(ToSessionWriteFinishedResponse(
-          absl::InvalidArgumentError(
-              "AggCoreAggregationType must be specified."),
-          available_memory));
+      stream->Write(ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+          "AggCoreAggregationType must be specified.")));
       return absl::OkStatus();
   }
 
   stream->Write(ToSessionWriteFinishedResponse(
-      absl::OkStatus(), available_memory,
-      request.first_request_metadata().total_size_bytes()));
+      absl::OkStatus(), request.first_request_metadata().total_size_bytes()));
   return absl::OkStatus();
 }
 
@@ -334,8 +324,7 @@ absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
 }
 
 absl::Status FedSqlConfidentialTransform::FedSqlSession(
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    long available_memory) {
+    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
   BlobDecryptor* blob_decryptor;
   std::unique_ptr<CheckpointAggregator> aggregator;
   const std::vector<Intrinsic>* intrinsics;
@@ -370,8 +359,6 @@ absl::Status FedSqlConfidentialTransform::FedSqlSession(
   NonceChecker nonce_checker;
   *configure_response.mutable_configure()->mutable_nonce() =
       nonce_checker.GetSessionNonce();
-  configure_response.mutable_configure()->set_write_capacity_bytes(
-      available_memory);
   stream->Write(configure_response);
 
   // Initialze result_blob_metadata with unencrypted metadata since
@@ -391,21 +378,18 @@ absl::Status FedSqlConfidentialTransform::FedSqlSession(
             EarliestExpirationTimeMetadata(
                 result_blob_metadata, write_request.first_request_metadata());
         if (!earliest_expiration_metadata.ok()) {
-          stream->Write(ToSessionWriteFinishedResponse(
-              absl::Status(
-                  earliest_expiration_metadata.status().code(),
-                  absl::StrCat(
-                      "Failed to extract expiration timestamp from "
-                      "BlobMetadata with encryption: ",
-                      earliest_expiration_metadata.status().message())),
-              available_memory));
+          stream->Write(ToSessionWriteFinishedResponse(absl::Status(
+              earliest_expiration_metadata.status().code(),
+              absl::StrCat("Failed to extract expiration timestamp from "
+                           "BlobMetadata with encryption: ",
+                           earliest_expiration_metadata.status().message()))));
           break;
         }
         result_blob_metadata = *earliest_expiration_metadata;
         // TODO: spin up a thread to incorporate each blob.
         FCP_RETURN_IF_ERROR(HandleWrite(write_request, *aggregator,
                                         blob_decryptor, nonce_checker, stream,
-                                        available_memory, intrinsics));
+                                        intrinsics));
         break;
       }
       case SessionRequest::kFinalize:
@@ -432,16 +416,16 @@ grpc::Status FedSqlConfidentialTransform::Initialize(
 grpc::Status FedSqlConfidentialTransform::Session(
     ServerContext* context,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  long available_memory = session_tracker_.AddSession();
-  if (available_memory > 0) {
-    grpc::Status status = ToGrpcStatus(FedSqlSession(stream, available_memory));
-    absl::Status remove_session = session_tracker_.RemoveSession();
-    if (!remove_session.ok()) {
-      return ToGrpcStatus(remove_session);
-    }
-    return status;
+  if (absl::Status session_status = session_tracker_.AddSession();
+      !session_status.ok()) {
+    return ToGrpcStatus(session_status);
   }
-  return ToGrpcStatus(absl::UnavailableError("No session memory available."));
+  grpc::Status status = ToGrpcStatus(FedSqlSession(stream));
+  absl::Status remove_session = session_tracker_.RemoveSession();
+  if (!remove_session.ok()) {
+    return ToGrpcStatus(remove_session);
+  }
+  return status;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

@@ -23,36 +23,37 @@ namespace {
 using ::fcp::confidentialcompute::SessionResponse;
 
 TEST(SessionTest, AddSession) {
-  SessionTracker session_tracker(1, 100);
-  ASSERT_GT(session_tracker.AddSession(), 0);
+  SessionTracker session_tracker(1);
+  EXPECT_TRUE(session_tracker.AddSession().ok());
 }
 
 TEST(SessionTest, MaximumSessionsReachedAddSession) {
-  SessionTracker session_tracker(1, 100);
-  ASSERT_GT(session_tracker.AddSession(), 0);
-  ASSERT_EQ(session_tracker.AddSession(), 0);
+  SessionTracker session_tracker(1);
+  EXPECT_TRUE(session_tracker.AddSession().ok());
+  EXPECT_EQ(session_tracker.AddSession().code(),
+            absl::StatusCode::kFailedPrecondition);
 }
 
 TEST(SessionTest, MaximumSessionsReachedCanAddSessionAfterRemoveSession) {
-  SessionTracker session_tracker(1, 100);
-  ASSERT_GT(session_tracker.AddSession(), 0);
-  ASSERT_EQ(session_tracker.AddSession(), 0);
-  ASSERT_TRUE(session_tracker.RemoveSession().ok());
-  ASSERT_GT(session_tracker.AddSession(), 0);
+  SessionTracker session_tracker(1);
+  EXPECT_TRUE(session_tracker.AddSession().ok());
+  EXPECT_EQ(session_tracker.AddSession().code(),
+            absl::StatusCode::kFailedPrecondition);
+  EXPECT_TRUE(session_tracker.RemoveSession().ok());
+  EXPECT_TRUE(session_tracker.AddSession().ok());
 }
 
 TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
-  SessionTracker session_tracker(1, 100);
-  ASSERT_EQ(session_tracker.RemoveSession().code(),
+  SessionTracker session_tracker(1);
+  EXPECT_EQ(session_tracker.RemoveSession().code(),
             absl::StatusCode::kFailedPrecondition);
 }
 
 TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
-  SessionResponse response = ToSessionWriteFinishedResponse(
-      absl::InvalidArgumentError("invalid arg"), 42);
+  SessionResponse response =
+      ToSessionWriteFinishedResponse(absl::InvalidArgumentError("invalid arg"));
   ASSERT_TRUE(response.has_write());
   EXPECT_EQ(response.write().committed_size_bytes(), 0);
-  EXPECT_EQ(response.write().write_capacity_bytes(), 42);
   EXPECT_EQ(response.write().status().code(),
             grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_EQ(response.write().status().message(), "invalid arg");
@@ -60,10 +61,9 @@ TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
 
 TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
   SessionResponse response =
-      ToSessionWriteFinishedResponse(absl::OkStatus(), 42, 6);
+      ToSessionWriteFinishedResponse(absl::OkStatus(), 6);
   ASSERT_TRUE(response.has_write());
   EXPECT_EQ(response.write().committed_size_bytes(), 6);
-  EXPECT_EQ(response.write().write_capacity_bytes(), 42);
   EXPECT_EQ(response.write().status().code(), grpc::StatusCode::OK);
   EXPECT_TRUE(response.write().status().message().empty());
 }

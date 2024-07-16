@@ -23,13 +23,14 @@ using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 
-long SessionTracker::AddSession() {
+absl::Status SessionTracker::AddSession() {
   absl::MutexLock l(&mutex_);
   if (num_sessions_ < max_num_sessions_) {
     num_sessions_++;
-    return max_session_memory_bytes_;
+    return absl::OkStatus();
   }
-  return 0;
+  return absl::FailedPreconditionError(
+      "SessionTracker: already at the maximum number of sessions.");
 }
 
 absl::Status SessionTracker::RemoveSession() {
@@ -43,14 +44,12 @@ absl::Status SessionTracker::RemoveSession() {
 }
 
 SessionResponse ToSessionWriteFinishedResponse(absl::Status status,
-                                               long available_memory,
                                                long committed_size_bytes) {
   grpc::Status grpc_status = ToGrpcStatus(std::move(status));
   SessionResponse session_response;
   WriteFinishedResponse* response = session_response.mutable_write();
   response->mutable_status()->set_code(grpc_status.error_code());
   response->mutable_status()->set_message(grpc_status.error_message());
-  response->set_write_capacity_bytes(available_memory);
   response->set_committed_size_bytes(committed_size_bytes);
   return session_response;
 }

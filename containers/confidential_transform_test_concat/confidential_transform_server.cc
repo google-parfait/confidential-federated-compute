@@ -117,8 +117,7 @@ absl::Status TestConcatConfidentialTransform::Session(
         if (absl::Status nonce_status = nonce_checker.CheckBlobNonce(
                 write_request.first_request_metadata());
             !nonce_status.ok()) {
-          stream->Write(ToSessionWriteFinishedResponse(nonce_status,
-                                                       /*available_memory*/ 0));
+          stream->Write(ToSessionWriteFinishedResponse(nonce_status));
           break;
         }
 
@@ -127,14 +126,13 @@ absl::Status TestConcatConfidentialTransform::Session(
                                         write_request.data());
         if (!unencrypted_data.ok()) {
           stream->Write(
-              ToSessionWriteFinishedResponse(unencrypted_data.status(),
-                                             /*available_memory*/ 0));
+              ToSessionWriteFinishedResponse(unencrypted_data.status()));
           break;
         }
 
         absl::StrAppend(&state, *unencrypted_data);
         stream->Write(ToSessionWriteFinishedResponse(
-            absl::OkStatus(), /*available_memory*/ 0,
+            absl::OkStatus(),
             write_request.first_request_metadata().total_size_bytes()));
         break;
       }
