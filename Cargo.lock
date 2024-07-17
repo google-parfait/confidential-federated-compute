@@ -80,6 +80,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
+
+[[package]]
 name = "anstream"
 version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,6 +173,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "autotools"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef941527c41b0fc0dd48511a8154cd5fc7e29200a0ff8b7203c5d777dbc795cf"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,6 +204,12 @@ name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
+
+[[package]]
+name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
@@ -233,6 +254,12 @@ name = "bytes"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
+
+[[package]]
+name = "cc"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aba8f4e9906c7ce3c73463f62a7f0c65183ada1a2d47e397cc8810827f9694f"
 
 [[package]]
 name = "cfc_crypto"
@@ -394,9 +421,9 @@ dependencies = [
 
 [[package]]
 name = "coset"
-version = "0.3.5"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99c214bbc5c8b4518856d79cae4d323feaa881ecf3e31b5af6572bb5313c11d5"
+checksum = "ff8aad850c1f86daa47e812913051eb5a26c4d9fb4242a89178bf99b946e4e3c"
 dependencies = [
  "ciborium",
  "ciborium-io",
@@ -617,7 +644,7 @@ dependencies = [
  "oak_attestation_explain",
  "oak_attestation_verification",
  "oak_proto_rust",
- "prost",
+ "prost 0.12.4",
  "tempfile",
 ]
 
@@ -634,8 +661,8 @@ dependencies = [
  "micro_rpc",
  "micro_rpc_build",
  "oak_proto_rust",
- "prost",
- "prost-types",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
 ]
 
 [[package]]
@@ -686,6 +713,18 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "getset"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e45727250e75cc04ff2846a66397da8ef2b3db8e40e0cef4df67950a07621eb9"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -757,6 +796,10 @@ name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash",
+ "allocator-api2",
+]
 
 [[package]]
 name = "heck"
@@ -792,6 +835,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "home"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]
@@ -865,6 +917,15 @@ checksum = "f8478577c03552c21db0e2724ffb8986a5ce7af88107e6be5d2ee6e158c12800"
 
 [[package]]
 name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
@@ -884,7 +945,7 @@ version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 dependencies = [
- "spin",
+ "spin 0.5.2",
 ]
 
 [[package]]
@@ -913,10 +974,13 @@ dependencies = [
  "oak_proto_rust",
  "oak_restricted_kernel_sdk",
  "p256",
- "prost",
- "prost-types",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
  "rand",
  "sha2",
+ "slog",
+ "tcp_proto",
+ "tcp_runtime",
 ]
 
 [[package]]
@@ -992,20 +1056,20 @@ checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 [[package]]
 name = "micro_rpc"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "async-trait",
  "micro_rpc_build",
- "prost",
+ "prost 0.12.4",
 ]
 
 [[package]]
 name = "micro_rpc_build"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
- "prost-build",
+ "prost-build 0.12.4",
 ]
 
 [[package]]
@@ -1070,7 +1134,7 @@ dependencies = [
 [[package]]
 name = "oak_attestation"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -1081,7 +1145,7 @@ dependencies = [
  "oak_dice",
  "oak_proto_rust",
  "p256",
- "prost",
+ "prost 0.12.4",
  "rand_core",
  "sha2",
  "zeroize",
@@ -1090,13 +1154,13 @@ dependencies = [
 [[package]]
 name = "oak_attestation_explain"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
- "base64 0.13.1",
  "hex",
  "oak_proto_rust",
  "serde",
+ "serde_json",
  "serde_yaml",
  "sha2",
  "zerocopy",
@@ -1105,7 +1169,7 @@ dependencies = [
 [[package]]
 name = "oak_attestation_verification"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -1118,7 +1182,7 @@ dependencies = [
  "oak_sev_snp_attestation_report",
  "p256",
  "p384",
- "prost",
+ "prost 0.12.4",
  "rsa",
  "serde",
  "serde_json",
@@ -1131,10 +1195,10 @@ dependencies = [
 [[package]]
 name = "oak_channel"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
- "bitflags",
+ "bitflags 2.4.1",
  "bytes",
  "oak_core",
  "static_assertions",
@@ -1143,7 +1207,7 @@ dependencies = [
 [[package]]
 name = "oak_core"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "getrandom",
  "lock_api",
@@ -1153,8 +1217,9 @@ dependencies = [
 [[package]]
 name = "oak_crypto"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
+ "aead",
  "aes-gcm",
  "anyhow",
  "async-trait",
@@ -1167,7 +1232,8 @@ dependencies = [
  "p256",
  "pkcs8",
  "primeorder",
- "prost",
+ "prost 0.12.4",
+ "rand_chacha",
  "rand_core",
  "sha2",
  "static_assertions",
@@ -1177,9 +1243,9 @@ dependencies = [
 [[package]]
 name = "oak_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
- "bitflags",
+ "bitflags 2.4.1",
  "ciborium",
  "coset",
  "hex",
@@ -1196,7 +1262,7 @@ dependencies = [
 [[package]]
 name = "oak_enclave_runtime_support"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "libm",
  "log",
@@ -1208,21 +1274,19 @@ dependencies = [
 [[package]]
 name = "oak_proto_rust"
 version = "0.0.1"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "micro_rpc",
  "micro_rpc_build",
- "pbjson",
- "pbjson-build",
- "prost",
- "prost-build",
- "serde",
+ "prost 0.12.4",
+ "prost-build 0.12.4",
+ "prost-types 0.12.4",
 ]
 
 [[package]]
 name = "oak_restricted_kernel_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "coset",
  "hkdf",
@@ -1235,16 +1299,16 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_interface"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
- "bitflags",
+ "bitflags 2.4.1",
  "strum",
 ]
 
 [[package]]
 name = "oak_restricted_kernel_sdk"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -1268,18 +1332,28 @@ dependencies = [
 [[package]]
 name = "oak_restricted_kernel_sdk_proc_macro"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "quote",
- "syn 1.0.109",
+ "syn 2.0.48",
+]
+
+[[package]]
+name = "oak_session"
+version = "0.1.0"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
+dependencies = [
+ "anyhow",
+ "oak_crypto",
+ "oak_proto_rust",
 ]
 
 [[package]]
 name = "oak_sev_snp_attestation_report"
 version = "0.0.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
- "bitflags",
+ "bitflags 2.4.1",
  "static_assertions",
  "strum",
  "zerocopy",
@@ -1288,7 +1362,7 @@ dependencies = [
 [[package]]
 name = "oak_stage0_dice"
 version = "0.1.0"
-source = "git+https://github.com/project-oak/oak?rev=fee9e1e46751a01579f3a7d4df2f371cb409e2bb#fee9e1e46751a01579f3a7d4df2f371cb409e2bb"
+source = "git+https://github.com/project-oak/oak?rev=e95a37eaf0b1592ca036a64ed2a3e112c1ee5154#e95a37eaf0b1592ca036a64ed2a3e112c1ee5154"
 dependencies = [
  "coset",
  "hex",
@@ -1338,28 +1412,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pbjson"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1030c719b0ec2a2d25a5df729d6cff1acf3cc230bf766f4f97833591f7577b90"
-dependencies = [
- "base64 0.21.7",
- "serde",
-]
-
-[[package]]
-name = "pbjson-build"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2580e33f2292d34be285c5bc3dba5259542b083cfad6037b6d70345f24dcb735"
-dependencies = [
- "heck 0.4.1",
- "itertools",
- "prost",
- "prost-types",
-]
-
-[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1391,8 +1443,8 @@ dependencies = [
  "googletest",
  "libflate",
  "pipeline_transforms",
- "prost",
- "prost-types",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
  "rand",
  "sha2",
 ]
@@ -1488,6 +1540,16 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c8646e95016a7a6c4adea95bafa8a16baab64b583356217f2c85db4a39d9a86"
+dependencies = [
+ "proc-macro2",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "prettyplease"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d3928fb5db768cb86f891ff014f0144589297e3c6a1aba6ed7cecfdace270c7"
@@ -1506,6 +1568,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-error"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
+dependencies = [
+ "proc-macro-error-attr",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "version_check",
+]
+
+[[package]]
+name = "proc-macro-error-attr"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "version_check",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1516,12 +1602,44 @@ dependencies = [
 
 [[package]]
 name = "prost"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
+dependencies = [
+ "bytes",
+ "prost-derive 0.11.9",
+]
+
+[[package]]
+name = "prost"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0f5d036824e4761737860779c906171497f6d55681139d8312388f8fe398922"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.12.4",
+]
+
+[[package]]
+name = "prost-build"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "119533552c9a7ffacc21e099c24a0ac8bb19c2a2a3f363de84cd9b844feab270"
+dependencies = [
+ "bytes",
+ "heck 0.4.1",
+ "itertools 0.10.5",
+ "lazy_static",
+ "log",
+ "multimap",
+ "petgraph",
+ "prettyplease 0.1.25",
+ "prost 0.11.9",
+ "prost-types 0.11.9",
+ "regex",
+ "syn 1.0.109",
+ "tempfile",
+ "which",
 ]
 
 [[package]]
@@ -1532,17 +1650,30 @@ checksum = "80b776a1b2dc779f5ee0641f8ade0125bc1298dd41a9a0c16d8bd57b42d222b1"
 dependencies = [
  "bytes",
  "heck 0.5.0",
- "itertools",
+ "itertools 0.11.0",
  "log",
  "multimap",
  "once_cell",
  "petgraph",
- "prettyplease",
- "prost",
- "prost-types",
+ "prettyplease 0.2.17",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
  "regex",
  "syn 2.0.48",
  "tempfile",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
+dependencies = [
+ "anyhow",
+ "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1552,10 +1683,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19de2de2a00075bf566bee3bd4db014b11587e84184d3f7a791bc17f1a8e9e48"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.11.0",
  "proc-macro2",
  "quote",
  "syn 2.0.48",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
+dependencies = [
+ "prost 0.11.9",
 ]
 
 [[package]]
@@ -1564,7 +1704,31 @@ version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3235c33eb02c1f1e212abdbe34c78b264b038fb58ca612664343271e36e55ffe"
 dependencies = [
- "prost",
+ "prost 0.12.4",
+]
+
+[[package]]
+name = "protobuf-build"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c852d9625b912c3e50480cdc701f60f49890b5d7ad46198dd583600f15e7c6ec"
+dependencies = [
+ "bitflags 1.3.2",
+ "proc-macro2",
+ "prost-build 0.11.9",
+ "protobuf-src",
+ "quote",
+ "regex",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "protobuf-src"
+version = "1.1.0+21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7ac8852baeb3cc6fb83b93646fb93c0ffe5d14bf138c945ceb4b9948ee0e3c1"
+dependencies = [
+ "autotools",
 ]
 
 [[package]]
@@ -1574,6 +1738,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "raft"
+version = "0.7.0"
+source = "git+https://github.com/google-parfait/raft-rs?rev=10968a112dcc4143ad19a1b35b6dca6e30d2e439#10968a112dcc4143ad19a1b35b6dca6e30d2e439"
+dependencies = [
+ "ahash",
+ "getrandom",
+ "getset",
+ "hashbrown 0.14.5",
+ "prost 0.12.4",
+ "raft-proto",
+ "rand",
+ "slog",
+ "spin 0.9.8",
+]
+
+[[package]]
+name = "raft-proto"
+version = "0.7.0"
+source = "git+https://github.com/google-parfait/raft-rs?rev=10968a112dcc4143ad19a1b35b6dca6e30d2e439#10968a112dcc4143ad19a1b35b6dca6e30d2e439"
+dependencies = [
+ "lazy_static",
+ "prost 0.12.4",
+ "protobuf-build",
 ]
 
 [[package]]
@@ -1700,7 +1890,7 @@ version = "0.38.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70dc5ec042f7a43c4a73241207cecc9873a06d45debb38b329f8541d85c2730f"
 dependencies = [
- "bitflags",
+ "bitflags 2.4.1",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -1817,6 +2007,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa42c91313f1d05da9b26f267f931cf178d4aba455b4c4622dd7355eb80c6640"
 
 [[package]]
+name = "slog"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8347046d4ebd943127157b94d63abb990fcf729dc4e9978927fdf4ac3c998d06"
+
+[[package]]
 name = "smallvec"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1827,6 +2023,15 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "spinning_top"
@@ -1869,8 +2074,8 @@ dependencies = [
  "oak_attestation",
  "oak_restricted_kernel_sdk",
  "pipeline_transforms",
- "prost",
- "prost-types",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
  "sha2",
 ]
 
@@ -1970,6 +2175,42 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tcp_proto"
+version = "0.1.0"
+source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=2842cdd292bc5daad471e820b1eca5415784dcb8#2842cdd292bc5daad471e820b1eca5415784dcb8"
+dependencies = [
+ "byteorder",
+ "micro_rpc",
+ "micro_rpc_build",
+ "oak_proto_rust",
+ "prost 0.12.4",
+ "prost-types 0.12.4",
+]
+
+[[package]]
+name = "tcp_runtime"
+version = "0.1.0"
+source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=2842cdd292bc5daad471e820b1eca5415784dcb8#2842cdd292bc5daad471e820b1eca5415784dcb8"
+dependencies = [
+ "anyhow",
+ "hashbrown 0.14.5",
+ "micro_rpc",
+ "oak_attestation",
+ "oak_attestation_verification",
+ "oak_crypto",
+ "oak_proto_rust",
+ "oak_restricted_kernel_sdk",
+ "oak_session",
+ "prost 0.12.4",
+ "prost-build 0.12.4",
+ "raft",
+ "raft-proto",
+ "slog",
+ "spin 0.9.8",
+ "tcp_proto",
 ]
 
 [[package]]
@@ -2080,6 +2321,18 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
+
+[[package]]
+name = "which"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix",
+]
 
 [[package]]
 name = "windows-sys"

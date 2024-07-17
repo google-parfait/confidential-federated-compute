@@ -50,10 +50,12 @@ strip = "debuginfo" # Debug info is not always deterministic.
 trim-paths = "all"  # Remove path prefixes outside the workspace root.
 
 [workspace.dependencies]
-micro_rpc = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-oak_attestation = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-oak_attestation_explain = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-oak_attestation_verification = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-oak_proto_rust = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
-oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev = "fee9e1e46751a01579f3a7d4df2f371cb409e2bb" }
+micro_rpc = { git = "https://github.com/project-oak/oak", rev = "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+micro_rpc_build = { git = "https://github.com/project-oak/oak", rev = "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+oak_attestation = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+oak_attestation_explain = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+oak_attestation_verification = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+oak_proto_rust = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
+tcp_runtime = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "2842cdd292bc5daad471e820b1eca5415784dcb8" }
+tcp_proto = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "2842cdd292bc5daad471e820b1eca5415784dcb8" }

@@ -80,10 +80,10 @@ _____ Root Layer _____
 
 _____ Application Layer _____
 
-Binary [Digest]:
-SHA2-256:892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
-Binary [Provenances]:
-https://search.sigstore.dev/?hash=892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+binary:
+  sha2_256: 892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+config: {}
+
 
 Note: this layer describes the "ledger" application binary, which is generally
 a build of the `ledger_enclave_app` in the
@@ -108,18 +108,35 @@ the following access rules:
   sharing this same budget may only access their source blobs this many times
   combined.
 
-Reference values for the Oak Restricted Kernel stack
-oak_restricted_kernel:
-  root_layer:
-    amd_sev:
-      min_tcb_version:
-        boot_loader: 1
-        tee: 2
-        snp: 3
-        microcode: 4
-      stage0:
+Application matcher for this transform:
+- Tag: app2
+- ...<snip>...
+- Applications performing this transform must provide attestation evidence that
+  can be verified with the following reference values:
 
-... <snip> ...
+Reference values for the Oak Restricted Kernel stack
+_____ Root Layer _____
+
+The attestation must be rooted in an AMD SEV-SNP TEE.
+
+The reference values describing this layer are printed below.
+
+amd_sev:
+... <snip>...
+
+_____ Kernel Layer _____
+
+The reference values describing this layer are printed below.
+
+acpi:
+... <snip>...
+
+_____ Application Layer _____
+
+binary:
+  skip: {}
+configuration:
+  skip: {}
 ```
 
 ## Mapping binaries from an attestation verification record to their provenance

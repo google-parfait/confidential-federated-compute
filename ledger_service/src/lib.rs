@@ -35,6 +35,8 @@ use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
+pub mod actor;
+
 mod attestation;
 mod budget;
 mod test_util;
