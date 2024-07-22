@@ -81,7 +81,7 @@ _____ Root Layer _____
 _____ Application Layer _____
 
 binary:
-  sha2_256: 892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+  sha2_256: 5d10d8013345814e07141c6a4c9297d37653239132749574a2a71483c413e9fe
 config: {}
 
 
@@ -154,44 +154,39 @@ the `https://search.sigstore.dev/?hash={THE_SHA256_HASH}` URL format, where
 `{THE_SHA256_HASH}` is the SHA2-256 hash of the binary in the evidence/access
 policy. These entries should show the binaries' provenance, including a link to
 the Git commit on GitHub that the binaries were built from, as well as the
-command that was used to build the binary, and which should allow you to
+workflow that was used to build the binary, and which should allow you to
 rebuild the same binary in a reproducible manner.
 
 For example, below is an excerpt of the SLSA provenance record for the ledger
 application binary listed in the example explanation output above
-(https://search.sigstore.dev/?hash=892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4):
+(https://search.sigstore.dev/?hash=5d10d8013345814e07141c6a4c9297d37653239132749574a2a71483c413e9fe):
 
 ```
-predicate:
-  buildDefinition:
-    buildType: https://slsa.dev/container-based-build/v0.1?draft
-    externalParameters:
-      source:
-        uri: >-
-          git+https://github.com/google-parfait/confidential-federated-compute@refs/heads/main
-        digest:
-          sha1: 20a4f3fc1f49943d03b76b264d3dc0ce90f83ade
-      builderImage:
-        uri: >-
-          rust@sha256:4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563
-        digest:
-          sha256: 4013eb0e2e5c7157d5f0f11d83594d8bad62238a86957f3d57e447a6a6bdf563
-      configPath: buildconfigs/ledger_enclave_app.toml
-      buildConfig:
-        ArtifactPath: target/x86_64-unknown-none/release/ledger_enclave_app
-        Command:
-          - sh
-          - '-c'
-          - >-
-            GITHUB_ACTION="provenance" scripts/setup_build_env.sh && cargo build
-            --release --package ledger_enclave_app
+GitHub Workflow SHA: 0f8072c8e9dda36170f0fa466305e9664716fb56
+GitHub Workflow Name: Build and attest all
+GitHub Workflow Repository: google-parfait/confidential-federated-compute
+GitHub Workflow Ref: refs/heads/main
+OIDC Issuer (v2): https://token.actions.githubusercontent.com
+Build Signer URI: https://github.com/google-parfait/confidential-federated-compute/.github/workflows/build.yaml@refs/heads/main
+Build Signer Digest: 0f8072c8e9dda36170f0fa466305e9664716fb56
+Runner Environment: github-hosted
+Source Repository URI: https://github.com/google-parfait/confidential-federated-compute
+Source Repository Digest: 0f8072c8e9dda36170f0fa466305e9664716fb56
+Source Repository Ref: refs/heads/main
+Source Repository Identifier: '775138920'
+Source Repository Owner URI: https://github.com/google-parfait
+Source Repository Owner Identifier: '164364956'
+Build Config URI: https://github.com/google-parfait/confidential-federated-compute/.github/workflows/build.yaml@refs/heads/main
+Build Config Digest: 0f8072c8e9dda36170f0fa466305e9664716fb56
+Build Trigger: push
+Run Invocation URI: https://github.com/google-parfait/confidential-federated-compute/actions/runs/10088700871/attempts/1
 
 ... <snip> ...
 ```
 
 It describes that the ledger application binary was produced at commit
-20a4f3fc1f49943d03b76b264d3dc0ce90f83ade in the
-https://github.com/google-parfait/confidential-federated-compute repository,
-and it shows that the `GITHUB_ACTION="provenance" scripts/setup_build_env.sh &&
-cargo build --release --package ledger_enclave_app` command was used to build
-the binary.
+0f8072c8e9dda36170f0fa466305e9664716fb56 in the
+https://github.com/google-parfait/confidential-federated-compute repository
+using the "Build and attest all" workflow.
+https://github.com/google-parfait/confidential-federated-compute/actions/runs/10088700871/attempts/1
+has more information about the action that produced the binary.

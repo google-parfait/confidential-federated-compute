@@ -1,6 +1,5 @@
 ---
 source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
-assertion_line: 109
 expression: buf
 ---
 ========================================
@@ -14,9 +13,9 @@ _____ Root Layer _____
 The attestation is rooted in an AMD SEV-SNP TEE.
 
 Attestations identifying the firmware captured in the evidence can be found here:
-https://search.sigstore.dev/?hash=33d5453b09e16ed0d6deb7c9f076b66b92a1b472d89534034717143554f6746d
+https://search.sigstore.dev/?hash=a8c51290169976afc37e6e6d866107285b5f4711a9ce5389c05d9a5d297d68c5
 
-ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:6c090e4594fd40ee186c90d43f7ad8d904838baa9643a4be1d9d4ff0fdd670a62565e2417660008e058cc2f2029eac8a; it is listed as the 'initial_measurement' in the evidence of this layer.
+ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:571e632335e16997bdc312208d540b083518fe05d84b8954a6529a019a04229f25347fdaac1bc80418addc64a3d48704; it is listed as the 'initial_measurement' in the evidence of this layer.
 
 The evidence describing this layer is outlined below.
 
@@ -24,16 +23,16 @@ sev_snp:
   current_tcb:
     boot_loader: 3
     microcode: 209
-    snp: 20
+    snp: 22
     tee: 0
   debug: false
-  hardware_id: d137b92d3ea7907e6829d123513c2a250acfa5c9eecfc5759f79c574eaf61792c0692af3b9caa39ab4069a329e7f8152b3fa2e2fee2717b42cd263983244198f
-  initial_measurement: 6c090e4594fd40ee186c90d43f7ad8d904838baa9643a4be1d9d4ff0fdd670a62565e2417660008e058cc2f2029eac8a
-  report_data: 8ef5ac52c6101d73903859b9b242cc1a84ca096a1fc13b15abcfd2857b6ea0450000000000000000000000000000000000000000000000000000000000000000
+  hardware_id: c1f5c58f728e2eded313ee675ac982393169c9bbffe6e250c54d81fcea2dad556d314f3c62c16cb9ae3d22f68a747261835f220d3656d0e6b646e6b2f11252cf
+  initial_measurement: 571e632335e16997bdc312208d540b083518fe05d84b8954a6529a019a04229f25347fdaac1bc80418addc64a3d48704
+  report_data: f75ac8ac3bfd479a0f121c384d71b4c032867895db71d91d135710083fd780a10000000000000000000000000000000000000000000000000000000000000000
   reported_tcb:
     boot_loader: 3
     microcode: 209
-    snp: 20
+    snp: 22
     tee: 0
   vmpl: 0
 
@@ -43,19 +42,19 @@ Note: binaries for this layer are generally provided by the Oak project (https:/
 _____ Kernel Layer _____
 
 Attestations identifying the binaries captured in the evidence in this layer can be found as outlined below.
-Kernel: https://search.sigstore.dev/?hash=ec752c660481432f525f49d0be1521c7ea42ebbf2ce705aad2781a329e1001d8
-Initial Ramdisk: https://search.sigstore.dev/?hash=daf79f24b5744340ac18c2b468e7e0a7915684c5dfda2450acfa7225bdc75bb8
+Kernel: https://search.sigstore.dev/?hash=4b1e70ad0ad326f3ee6f8f45f77358f0b8bb5df05321a5abc34c66022e27450b
+Initial Ramdisk: https://search.sigstore.dev/?hash=51534334403d87176dc66406a07b5108d51f46a8534497c21f2769d1217c51b8
 
 The evidence describing the kernel layer is outlined below.
 
 acpi:
   sha2_256: dbaccae7bfbf006e2b8623a82f1a5fcda2ea0392233c26b18356b3bcfac231eb
 init_ram_fs:
-  sha2_256: daf79f24b5744340ac18c2b468e7e0a7915684c5dfda2450acfa7225bdc75bb8
+  sha2_256: 51534334403d87176dc66406a07b5108d51f46a8534497c21f2769d1217c51b8
 kernel_cmd_line:
   sha2_256: 2b98586d9905a605c295d77c61e8cfd2027ae5b8a04eefa9018436f6ad114297
 kernel_image:
-  sha2_256: ec752c660481432f525f49d0be1521c7ea42ebbf2ce705aad2781a329e1001d8
+  sha2_256: 4b1e70ad0ad326f3ee6f8f45f77358f0b8bb5df05321a5abc34c66022e27450b
 kernel_raw_cmd_line: console=ttyS0
 kernel_setup_data:
   sha2_256: 4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1
@@ -70,7 +69,7 @@ _____ Application Layer _____
 The evidence describing the application is outlined below.
 
 binary:
-  sha2_256: 892137def97d26c6b054093a5757919189878732ce4ab111212729007b30c0b4
+  sha2_256: 5d10d8013345814e07141c6a4c9297d37653239132749574a2a71483c413e9fe
 config: {}
 
 
