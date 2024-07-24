@@ -21,7 +21,9 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
+#include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "grpcpp/server_context.h"
@@ -30,44 +32,70 @@
 
 namespace confidential_federated_compute::confidential_transform_test_concat {
 
-// Test ConfidentialTransform service that concatenates inputs. This test
-// service doesn't manage the number of sessions.
-class TestConcatConfidentialTransform final
-    : public fcp::confidentialcompute::ConfidentialTransform::Service {
+// TestConcat implementation of Session interface. Not threadsafe.
+class TestConcatSession final : public confidential_federated_compute::Session {
  public:
-  // The OrchestratorCrypto stub must not be NULL and must outlive this object.
-  explicit TestConcatConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
+  TestConcatSession() {};
+  // Currently no per-session configuration.
+  absl::Status ConfigureSession(
+      fcp::confidentialcompute::SessionRequest configure_request) override {
+    return absl::OkStatus();
+  }
+  // Concatenates the unencrypted data to the result string.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
+      const fcp::confidentialcompute::WriteRequest& write_request,
+      std::string unencrypted_data) override {
+    absl::StrAppend(&state_, unencrypted_data);
+    return confidential_federated_compute::ToSessionWriteFinishedResponse(
+        absl::OkStatus(),
+        write_request.first_request_metadata().total_size_bytes());
+  }
+  // Run any session finalization logic and complete the session.
+  // After finalization, the session state is no longer mutable.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
+      const fcp::confidentialcompute::FinalizeRequest& request,
+      const fcp::confidentialcompute::BlobMetadata& input_metadata) override {
+    fcp::confidentialcompute::SessionResponse response;
+    fcp::confidentialcompute::ReadResponse* read_response =
+        response.mutable_read();
+    read_response->set_finish_read(true);
+    *(read_response->mutable_data()) = state_;
 
-  grpc::Status Initialize(
-      grpc::ServerContext* context,
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response) override;
-
-  grpc::Status Session(
-      grpc::ServerContext* context,
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream) override;
+    fcp::confidentialcompute::BlobMetadata result_metadata;
+    result_metadata.mutable_unencrypted();
+    result_metadata.set_total_size_bytes(state_.length());
+    result_metadata.set_compression_type(
+        fcp::confidentialcompute::BlobMetadata::COMPRESSION_TYPE_NONE);
+    *(read_response->mutable_first_response_metadata()) = result_metadata;
+    return response;
+  }
 
  private:
-  absl::Status Initialize(
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response);
+  std::string state_ = "";
+};
 
-  absl::Status Session(
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream);
+// Test ConfidentialTransform service that concatenates inputs.
+class TestConcatConfidentialTransform final
+    : public confidential_federated_compute::ConfidentialTransformBase {
+ public:
+  TestConcatConfidentialTransform(
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      int max_num_sessions = 1)
+      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {};
 
-  oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
-  absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping blob_decryptor_ to
-  // ensure the BlobDecryptor is initialized, but the BlobDecryptor is itself
-  // threadsafe.
-  std::optional<confidential_federated_compute::BlobDecryptor> blob_decryptor_
-      ABSL_GUARDED_BY(mutex_);
+ protected:
+  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
+      const fcp::confidentialcompute::InitializeRequest* request) override {
+    google::protobuf::Struct config_properties;
+    return config_properties;
+  }
+  virtual absl::StatusOr<
+      std::unique_ptr<confidential_federated_compute::Session>>
+  CreateSession() override {
+    return std::make_unique<
+        confidential_federated_compute::confidential_transform_test_concat::
+            TestConcatSession>();
+  };
 };
 
 }  // namespace

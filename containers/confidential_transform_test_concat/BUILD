@@ -18,10 +18,10 @@ load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 cc_library(
     name = "confidential_transform_server",
-    srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     deps = [
         "//containers:blob_metadata",
+        "//containers:confidential_transform_server_base",
         "//containers:crypto",
         "//containers:session",
         "@com_github_grpc_grpc//:grpc++",
@@ -52,6 +52,7 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest_main",

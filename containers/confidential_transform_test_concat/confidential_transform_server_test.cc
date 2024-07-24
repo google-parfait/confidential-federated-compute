@@ -21,6 +21,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
@@ -39,6 +40,7 @@ namespace confidential_federated_compute::confidential_transform_test_concat {
 
 namespace {
 
+using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::NonceAndCounter;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -211,7 +213,10 @@ TEST_F(TestConcatServerSessionTest, SessionWritesAndFinalizesUnencryptedBlobs) {
 }
 
 TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
-  std::string reencryption_public_key = "reencryption key";
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
@@ -222,7 +227,7 @@ TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
   absl::StatusOr<Record> rewrapped_record_0 =
       crypto_test_utils::CreateRewrappedRecord(
           message_0, ciphertext_associated_data, public_key_,
-          nonce_0->blob_nonce, reencryption_public_key);
+          nonce_0->blob_nonce, *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
 
   SessionRequest request_0;
@@ -249,7 +254,7 @@ TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
   absl::StatusOr<Record> rewrapped_record_1 =
       crypto_test_utils::CreateRewrappedRecord(
           message_1, ciphertext_associated_data, public_key_,
-          nonce_1->blob_nonce, reencryption_public_key);
+          nonce_1->blob_nonce, *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
 
   SessionRequest request_1;
@@ -285,7 +290,10 @@ TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
 }
 
 TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
-  std::string reencryption_public_key = "reencryption key";
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
@@ -296,7 +304,7 @@ TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
   absl::StatusOr<Record> rewrapped_record_0 =
       crypto_test_utils::CreateRewrappedRecord(
           message_0, ciphertext_associated_data, public_key_,
-          nonce_0->blob_nonce, reencryption_public_key);
+          nonce_0->blob_nonce, *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
 
   SessionRequest request_0;
@@ -321,7 +329,7 @@ TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
   absl::StatusOr<Record> rewrapped_record_1 =
       crypto_test_utils::CreateRewrappedRecord(
           "unused message", ciphertext_associated_data, public_key_,
-          nonce_1->blob_nonce, reencryption_public_key);
+          nonce_1->blob_nonce, *reencryption_public_key);
   ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
 
   SessionRequest invalid_request;
