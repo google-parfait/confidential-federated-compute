@@ -18,6 +18,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute {
@@ -47,6 +48,27 @@ class SessionTracker {
 // Create a SessionResponse with a WriteFinishedResponse.
 fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
     absl::Status status, long committed_size_bytes = 0);
+
+// Interface for interacting with a session in a container. Implementations
+// may not be threadsafe.
+class Session {
+ public:
+  // Initialize the session with the given configuration.
+  virtual absl::Status ConfigureSession(
+      fcp::confidentialcompute::SessionRequest configure_request) = 0;
+  // Incorporate a write request into the session.
+  virtual absl::StatusOr<fcp::confidentialcompute::SessionResponse>
+  SessionWrite(const fcp::confidentialcompute::WriteRequest& write_request,
+               std::string unencrypted_data) = 0;
+  // Run any session finalization logic and complete the session.
+  // After finalization, the session state is no longer mutable.
+  virtual absl::StatusOr<fcp::confidentialcompute::SessionResponse>
+  FinalizeSession(
+      const fcp::confidentialcompute::FinalizeRequest& request,
+      const fcp::confidentialcompute::BlobMetadata& input_metadata) = 0;
+
+  virtual ~Session() = default;
+};
 
 }  // namespace confidential_federated_compute
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_

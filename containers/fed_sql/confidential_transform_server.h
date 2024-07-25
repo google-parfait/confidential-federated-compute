@@ -21,6 +21,7 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -38,47 +39,59 @@ namespace confidential_federated_compute::fed_sql {
 // step of FedSQL.
 // TODO: execute the per-client SQL query step.
 class FedSqlConfidentialTransform final
-    : public fcp::confidentialcompute::ConfidentialTransform::Service {
+    : public confidential_federated_compute::ConfidentialTransformBase {
  public:
-  // The OrchestratorCrypto stub must not be NULL and must outlive this object.
-  // TODO: add absl::Nonnull to crypto_stub.
-  explicit FedSqlConfidentialTransform(
+  FedSqlConfidentialTransform(
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
       int max_num_sessions)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
-        session_tracker_(max_num_sessions) {}
+      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {};
 
-  grpc::Status Initialize(
-      grpc::ServerContext* context,
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response) override;
-
-  grpc::Status Session(
-      grpc::ServerContext* context,
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream) override;
+ protected:
+  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
+      const fcp::confidentialcompute::InitializeRequest* request) override;
+  virtual absl::StatusOr<
+      std::unique_ptr<confidential_federated_compute::Session>>
+  CreateSession() override;
 
  private:
-  absl::Status FedSqlInitialize(
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response);
-
-  absl::Status FedSqlSession(
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream);
-
-  oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
-  confidential_federated_compute::SessionTracker session_tracker_;
   absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping blob_decryptor_ and
-  // intrinsics_ to ensure the BlobDecryptor and vector are initialized, but
-  // the BlobDecryptor and const vector are themselves threadsafe.
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
-  std::optional<confidential_federated_compute::BlobDecryptor> blob_decryptor_
-      ABSL_GUARDED_BY(mutex_);
+};
+
+// FedSql implementation of Session interface. Not threadsafe.
+class FedSqlSession final : public confidential_federated_compute::Session {
+ public:
+  FedSqlSession(
+      std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
+          aggregator,
+      const std::vector<tensorflow_federated::aggregation::Intrinsic>&
+          intrinsics)
+      : aggregator_(std::move(aggregator)), intrinsics_(intrinsics) {};
+  // Currently no FedSql per-session configuration.
+  absl::Status ConfigureSession(
+      fcp::confidentialcompute::SessionRequest configure_request) override {
+    return absl::OkStatus();
+  }
+  // Accumulates a record into the state of the CheckpointAggregator
+  // `aggregator`.
+  //
+  // Returns an error if the aggcore state may be invalid and the session
+  // needs to be shut down.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
+      const fcp::confidentialcompute::WriteRequest& write_request,
+      std::string unencrypted_data) override;
+  // Run any session finalization logic and complete the session.
+  // After finalization, the session state is no longer mutable.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
+      const fcp::confidentialcompute::FinalizeRequest& request,
+      const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+
+ private:
+  // The aggregator used during the session to accumulate writes.
+  std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
+      aggregator_;
+  const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

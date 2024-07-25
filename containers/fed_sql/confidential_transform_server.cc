@@ -38,7 +38,6 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/protocol/configuration.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 
@@ -46,15 +45,10 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::fcp::base::ToGrpcStatus;
-using ::fcp::confidential_compute::NonceChecker;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::ConfidentialTransform;
-using ::fcp::confidentialcompute::ConfigureRequest;
-using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -62,24 +56,19 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::InitializeRequest;
-using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
-using ::grpc::ServerContext;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
-using ::tensorflow_federated::aggregation::Configuration;
 using ::tensorflow_federated::aggregation::DT_DOUBLE;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
-using ::tensorflow_federated::aggregation::Tensor;
 
 constexpr char kFedSqlDpGroupByUri[] = "fedsql_dp_group_by";
 
@@ -111,38 +100,14 @@ absl::Status ValidateTopLevelIntrinsics(
   return absl::OkStatus();
 }
 
-// Decrypts and parses a record and accumulates it into the state of the
-// CheckpointAggregator `aggregator`.
-//
-// Returns an error if the aggcore state may be invalid and the session needs to
-// be shut down. Otherwise, reports status to the client in
-// WriteFinishedResponse
-//
-// TODO: handle blobs that span multiple WriteRequests.
-// TODO: add tracking for available memory.
-absl::Status HandleWrite(
-    const WriteRequest& request, CheckpointAggregator& aggregator,
-    BlobDecryptor* blob_decryptor, NonceChecker& nonce_checker,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    const std::vector<Intrinsic>* intrinsics) {
-  if (absl::Status nonce_status =
-          nonce_checker.CheckBlobNonce(request.first_request_metadata());
-      !nonce_status.ok()) {
-    stream->Write(ToSessionWriteFinishedResponse(nonce_status));
-    return absl::OkStatus();
-  }
+}  // namespace
 
+absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
+    const WriteRequest& write_request, std::string unencrypted_data) {
   FedSqlContainerWriteConfiguration write_config;
-  if (!request.first_request_configuration().UnpackTo(&write_config)) {
-    stream->Write(ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
-        "Failed to parse FedSqlContainerWriteConfiguration.")));
-    return absl::OkStatus();
-  }
-  absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
-      request.first_request_metadata(), request.data());
-  if (!unencrypted_data.ok()) {
-    stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
-    return absl::OkStatus();
+  if (!write_request.first_request_configuration().UnpackTo(&write_config)) {
+    return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+        "Failed to parse FedSqlContainerWriteConfiguration."));
   }
 
   // In case of an error with Accumulate or MergeWith, the session is
@@ -153,41 +118,37 @@ absl::Status HandleWrite(
     case AGGREGATION_TYPE_ACCUMULATE: {
       FederatedComputeCheckpointParserFactory parser_factory;
       absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
-          parser_factory.Create(absl::Cord(std::move(*unencrypted_data)));
+          parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
       if (!parser.ok()) {
-        stream->Write(ToSessionWriteFinishedResponse(
+        return ToSessionWriteFinishedResponse(
             absl::Status(parser.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_ACCUMULATE: ",
-                                      parser.status().message()))));
-        return absl::OkStatus();
+                                      parser.status().message())));
       }
-      FCP_RETURN_IF_ERROR(aggregator.Accumulate(*parser.value()));
+      FCP_RETURN_IF_ERROR(aggregator_->Accumulate(*parser.value()));
       break;
     }
     case AGGREGATION_TYPE_MERGE: {
       absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
-          CheckpointAggregator::Deserialize(intrinsics, *unencrypted_data);
+          CheckpointAggregator::Deserialize(&intrinsics_, unencrypted_data);
       if (!other.ok()) {
-        stream->Write(ToSessionWriteFinishedResponse(
+        return ToSessionWriteFinishedResponse(
             absl::Status(other.status().code(),
                          absl::StrCat("Failed to deserialize checkpoint for "
                                       "AGGREGATION_TYPE_MERGE: ",
-                                      other.status().message()))));
-        return absl::OkStatus();
+                                      other.status().message())));
       }
-      FCP_RETURN_IF_ERROR(aggregator.MergeWith(std::move(*other.value())));
+      FCP_RETURN_IF_ERROR(aggregator_->MergeWith(std::move(*other.value())));
       break;
     }
     default:
-      stream->Write(ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
-          "AggCoreAggregationType must be specified.")));
-      return absl::OkStatus();
+      return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+          "AggCoreAggregationType must be specified."));
   }
-
-  stream->Write(ToSessionWriteFinishedResponse(
-      absl::OkStatus(), request.first_request_metadata().total_size_bytes()));
-  return absl::OkStatus();
+  return ToSessionWriteFinishedResponse(
+      absl::OkStatus(),
+      write_request.first_request_metadata().total_size_bytes());
 }
 
 // Runs the requested finalization operation and write the uncompressed result
@@ -195,11 +156,8 @@ absl::Status HandleWrite(
 //
 // Any errors in HandleFinalize kill the stream, since the stream can no longer
 // be modified after the Finalize call.
-absl::Status HandleFinalize(
-    const FinalizeRequest& request,
-    std::unique_ptr<CheckpointAggregator> aggregator,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    const BlobMetadata& input_metadata) {
+absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
+    const FinalizeRequest& request, const BlobMetadata& input_metadata) {
   FedSqlContainerFinalizeConfiguration finalize_config;
   if (!request.configuration().UnpackTo(&finalize_config)) {
     return absl::InvalidArgumentError(
@@ -209,7 +167,7 @@ absl::Status HandleFinalize(
   BlobMetadata result_metadata;
   switch (finalize_config.type()) {
     case fcp::confidentialcompute::FINALIZATION_TYPE_REPORT: {
-      if (!aggregator->CanReport()) {
+      if (!aggregator_->CanReport()) {
         return absl::FailedPreconditionError(
             "The aggregation can't be completed due to failed preconditions.");
       }
@@ -217,7 +175,7 @@ absl::Status HandleFinalize(
       FederatedComputeCheckpointBuilderFactory builder_factory;
       std::unique_ptr<CheckpointBuilder> checkpoint_builder =
           builder_factory.Create();
-      FCP_RETURN_IF_ERROR(aggregator->Report(*checkpoint_builder));
+      FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
       FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
                            checkpoint_builder->Build());
       absl::CopyCordToString(checkpoint_cord, &result);
@@ -228,7 +186,7 @@ absl::Status HandleFinalize(
     }
     case FINALIZATION_TYPE_SERIALIZE: {
       FCP_ASSIGN_OR_RETURN(std::string serialized_aggregator,
-                           std::move(*aggregator).Serialize());
+                           std::move(*aggregator_).Serialize());
       if (input_metadata.has_unencrypted()) {
         result = std::move(serialized_aggregator);
         result_metadata.set_total_size_bytes(result.size());
@@ -264,15 +222,12 @@ absl::Status HandleFinalize(
   read_response->set_finish_read(true);
   *(read_response->mutable_data()) = result;
   *(read_response->mutable_first_response_metadata()) = result_metadata;
-  stream->Write(response);
-  return absl::OkStatus();
+  return response;
 }
 
-}  // namespace
-
-absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
-    const fcp::confidentialcompute::InitializeRequest* request,
-    fcp::confidentialcompute::InitializeResponse* response) {
+absl::StatusOr<google::protobuf::Struct>
+FedSqlConfidentialTransform::InitializeTransform(
+    const fcp::confidentialcompute::InitializeRequest* request) {
   FedSqlContainerInitializeConfiguration config;
   if (!request->configuration().UnpackTo(&config)) {
     return absl::InvalidArgumentError(
@@ -280,7 +235,6 @@ absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
   }
   FCP_RETURN_IF_ERROR(
       CheckpointAggregator::ValidateConfig(config.agg_configuration()));
-  const BlobDecryptor* blob_decryptor;
   {
     absl::MutexLock l(&mutex_);
     if (intrinsics_ != std::nullopt) {
@@ -309,123 +263,30 @@ absl::Status FedSqlConfidentialTransform::FedSqlInitialize(
     }
 
     intrinsics_.emplace(std::move(intrinsics));
-    blob_decryptor_.emplace(crypto_stub_, config_properties);
-
-    // Since blob_decryptor_ is set once in Initialize and never
-    // modified, and the underlying object is threadsafe, it is safe to store a
-    // local pointer to it and access the object without a lock after we check
-    // under the mutex that a value has been set for the std::optional wrapper.
-    blob_decryptor = &*blob_decryptor_;
+    return config_properties;
   }
-
-  FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
-                       blob_decryptor->GetPublicKey());
-  return absl::OkStatus();
 }
 
-absl::Status FedSqlConfidentialTransform::FedSqlSession(
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  BlobDecryptor* blob_decryptor;
+absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
+FedSqlConfidentialTransform::CreateSession() {
   std::unique_ptr<CheckpointAggregator> aggregator;
   const std::vector<Intrinsic>* intrinsics;
   {
     absl::MutexLock l(&mutex_);
-    if (intrinsics_ == std::nullopt || blob_decryptor_ == std::nullopt) {
+    if (intrinsics_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "Initialize must be called before Session.");
     }
 
-    // Since blob_decryptor_ is set once in Initialize and never
+    // Since intrinsics_ is set once in Initialize and never
     // modified, and the underlying object is threadsafe, it is safe to store a
     // local pointer to it and access the object without a lock after we check
     // under the mutex that values have been set for the std::optional wrappers.
-    blob_decryptor = &*blob_decryptor_;
     intrinsics = &*intrinsics_;
   }
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  SessionRequest configure_request;
-  bool success = stream->Read(&configure_request);
-  if (!success) {
-    return absl::AbortedError("Session failed to read client message.");
-  }
-
-  if (!configure_request.has_configure()) {
-    return absl::FailedPreconditionError(
-        "Session must be configured with a ConfigureRequest before any other "
-        "requests.");
-  }
-  SessionResponse configure_response;
-  NonceChecker nonce_checker;
-  *configure_response.mutable_configure()->mutable_nonce() =
-      nonce_checker.GetSessionNonce();
-  stream->Write(configure_response);
-
-  // Initialze result_blob_metadata with unencrypted metadata since
-  // EarliestExpirationTimeMetadata expects inputs to have either unencrypted or
-  // hpke_plus_aead_data.
-  BlobMetadata result_blob_metadata;
-  result_blob_metadata.mutable_unencrypted();
-  SessionRequest session_request;
-  while (stream->Read(&session_request)) {
-    switch (session_request.kind_case()) {
-      case SessionRequest::kWrite: {
-        const WriteRequest& write_request = session_request.write();
-        // If any of the input blobs are encrypted, then encrypt the result of
-        // FINALIZATION_TYPE_SERIALIZE. Use the metadata with the earliest
-        // expiration timestamp.
-        absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
-            EarliestExpirationTimeMetadata(
-                result_blob_metadata, write_request.first_request_metadata());
-        if (!earliest_expiration_metadata.ok()) {
-          stream->Write(ToSessionWriteFinishedResponse(absl::Status(
-              earliest_expiration_metadata.status().code(),
-              absl::StrCat("Failed to extract expiration timestamp from "
-                           "BlobMetadata with encryption: ",
-                           earliest_expiration_metadata.status().message()))));
-          break;
-        }
-        result_blob_metadata = *earliest_expiration_metadata;
-        // TODO: spin up a thread to incorporate each blob.
-        FCP_RETURN_IF_ERROR(HandleWrite(write_request, *aggregator,
-                                        blob_decryptor, nonce_checker, stream,
-                                        intrinsics));
-        break;
-      }
-      case SessionRequest::kFinalize:
-        return HandleFinalize(session_request.finalize(), std::move(aggregator),
-                              stream, result_blob_metadata);
-      case SessionRequest::kConfigure:
-      default:
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Session expected a write request but received request of type: ",
-            session_request.kind_case()));
-    }
-  }
-
-  return absl::AbortedError(
-      "Session failed to read client write or finalize message.");
+  return std::make_unique<FedSqlSession>(
+      FedSqlSession(std::move(aggregator), *intrinsics));
 }
-
-grpc::Status FedSqlConfidentialTransform::Initialize(
-    ServerContext* context, const InitializeRequest* request,
-    InitializeResponse* response) {
-  return ToGrpcStatus(FedSqlInitialize(request, response));
-}
-
-grpc::Status FedSqlConfidentialTransform::Session(
-    ServerContext* context,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  if (absl::Status session_status = session_tracker_.AddSession();
-      !session_status.ok()) {
-    return ToGrpcStatus(session_status);
-  }
-  grpc::Status status = ToGrpcStatus(FedSqlSession(stream));
-  absl::Status remove_session = session_tracker_.RemoveSession();
-  if (!remove_session.ok()) {
-    return ToGrpcStatus(remove_session);
-  }
-  return status;
-}
-
 }  // namespace confidential_federated_compute::fed_sql
