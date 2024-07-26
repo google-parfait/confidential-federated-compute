@@ -326,7 +326,7 @@ TEST_F(AggCoreTransformTest,
   ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
 }
 
-TEST_F(AggCoreTransformTest, TransformZeroInputsReturnsEmptyCheckpoint) {
+TEST_F(AggCoreTransformTest, TransformZeroInputsReturnsInvalidArgumentError) {
   FederatedComputeCheckpointParserFactory parser_factory;
   grpc::ClientContext configure_context;
   ConfigureAndAttestRequest configure_request;
@@ -341,21 +341,15 @@ TEST_F(AggCoreTransformTest, TransformZeroInputsReturnsEmptyCheckpoint) {
   TransformRequest transform_request;
   grpc::ClientContext transform_context;
   TransformResponse transform_response;
-  auto transform_status = stub_->Transform(
-      &transform_context, transform_request, &transform_response);
+  auto status = stub_->Transform(&transform_context, transform_request,
+                                 &transform_response);
 
-  ASSERT_TRUE(transform_status.ok());
-  ASSERT_EQ(transform_response.outputs_size(), 1);
-  ASSERT_TRUE(transform_response.outputs(0).has_unencrypted_data());
-
-  absl::Cord wire_format_result(
-      transform_response.outputs(0).unencrypted_data());
-  auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("foo_out");
-  // A column with a sum of 0 is returned.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 0);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "The aggregation can't be successfully completed because no inputs "
+          "were aggregated"));
 }
 
 TEST_F(AggCoreTransformTest, TransformExecutesFederatedSum) {

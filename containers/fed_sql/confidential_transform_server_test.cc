@@ -765,6 +765,82 @@ TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
 }
 
+TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
+  SessionRequest write_request =
+      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
+                                BuildSingleInt32TensorCheckpoint("foo", {1}));
+  SessionResponse write_response;
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&finalize_response));
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(
+      finalize_response.read().first_response_metadata().has_unencrypted());
+
+  absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
+      CheckpointAggregator::Deserialize(DefaultConfiguration(),
+                                        finalize_response.read().data());
+  ASSERT_TRUE(deserialized_agg.ok());
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+      builder_factory.Create();
+
+  absl::StatusOr<int> num_checkpoints_aggregated =
+      (*deserialized_agg)->GetNumCheckpointsAggregated();
+  ASSERT_TRUE(num_checkpoints_aggregated.ok())
+      << num_checkpoints_aggregated.status();
+  ASSERT_EQ(*num_checkpoints_aggregated, 0);
+
+  // Merging the empty serialized aggregator with another aggregator should have
+  // no effect on the output of the other aggregator.
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory
+          .Create(absl::Cord(BuildSingleInt32TensorCheckpoint("foo", {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> other_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_TRUE(other_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_TRUE(
+      other_aggregator->MergeWith(std::move(*deserialized_agg->release()))
+          .ok());
+
+  ASSERT_TRUE((*other_aggregator).Report(*checkpoint_builder).ok());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  auto parser = parser_factory.Create(*checkpoint);
+  auto col_values = (*parser)->GetTensor("foo_out");
+  // A column with a sum of 3 is returned.
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
+}
+
+TEST_F(FedSqlServerFederatedSumTest, ReportZeroInputsReturnsInvalidArgument) {
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_FALSE(stream_->Read(&finalize_response));
+  grpc::Status status = stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
 TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
   SessionRequest write_request_1 =
       CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,

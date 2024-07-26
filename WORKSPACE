@@ -64,9 +64,9 @@ python_register_toolchains(
 
 http_archive(
     name = "org_tensorflow_federated",
-    sha256 = "e3e198f291375d4d05d584b2555c1a64c72e83fe34ada28ca129997000afc269",
-    strip_prefix = "tensorflow-federated-a34fb3088695221e326d532e4d417957325dd9cd",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/a34fb3088695221e326d532e4d417957325dd9cd.tar.gz",
+    sha256 = "343d12a98ef8d98202e1dca898d84390a14fdc296af60f889cbb4023f38ebcdb",
+    strip_prefix = "tensorflow-federated-734a8669dc9842f4355d4bce240cd47883bda0c4",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/734a8669dc9842f4355d4bce240cd47883bda0c4.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use

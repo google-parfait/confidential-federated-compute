@@ -251,6 +251,17 @@ absl::Status AggCorePipelineTransform::AggCoreTransform(
         "The aggregation can't be completed due to failed preconditions.");
   }
 
+  // Fail if there were no valid inputs, as this likely indicates some issue
+  // with configuration of the overall workload.
+  FCP_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
+                       aggregator->GetNumCheckpointsAggregated());
+  if (num_checkpoints_aggregated < 1) {
+    return absl::InvalidArgumentError(
+        "The aggregation can't be successfully completed because no inputs "
+        "were aggregated.\n"
+        "This may be because inputs were ignored due to an earlier error.");
+  }
+
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
