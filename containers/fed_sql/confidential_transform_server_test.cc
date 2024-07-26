@@ -788,23 +788,25 @@ TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
   ASSERT_TRUE(
       finalize_response.read().first_response_metadata().has_unencrypted());
 
-  absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
-      CheckpointAggregator::Deserialize(DefaultConfiguration(),
-                                        finalize_response.read().data());
-  ASSERT_TRUE(deserialized_agg.ok());
+  absl::StatusOr<std::unique_ptr<CheckpointAggregator>>
+      deserialized_agg_status = CheckpointAggregator::Deserialize(
+          DefaultConfiguration(), finalize_response.read().data());
+  ASSERT_TRUE(deserialized_agg_status.ok());
+  std::unique_ptr<CheckpointAggregator> deserialized_agg =
+      *std::move(deserialized_agg_status);
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
 
   absl::StatusOr<int> num_checkpoints_aggregated =
-      (*deserialized_agg)->GetNumCheckpointsAggregated();
+      deserialized_agg->GetNumCheckpointsAggregated();
   ASSERT_TRUE(num_checkpoints_aggregated.ok())
       << num_checkpoints_aggregated.status();
   ASSERT_EQ(*num_checkpoints_aggregated, 0);
 
-  // Merging the empty serialized aggregator with another aggregator should have
-  // no effect on the output of the other aggregator.
+  // Merging the empty deserialized aggregator with another aggregator should
+  // have no effect on the output of the other aggregator.
   FederatedComputeCheckpointParserFactory parser_factory;
   auto input_parser =
       parser_factory
@@ -813,9 +815,8 @@ TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
   std::unique_ptr<CheckpointAggregator> other_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
   ASSERT_TRUE(other_aggregator->Accumulate(*input_parser).ok());
-  ASSERT_TRUE(
-      other_aggregator->MergeWith(std::move(*deserialized_agg->release()))
-          .ok());
+
+  ASSERT_TRUE(other_aggregator->MergeWith(std::move(*deserialized_agg)).ok());
 
   ASSERT_TRUE((*other_aggregator).Report(*checkpoint_builder).ok());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
