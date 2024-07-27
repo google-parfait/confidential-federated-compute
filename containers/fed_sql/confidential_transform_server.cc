@@ -271,6 +271,18 @@ FedSqlConfidentialTransform::InitializeTransform(
           epsilon);
       (*config_properties.mutable_fields())["delta"].set_number_value(delta);
     }
+    if (config.serialize_output_access_policy_node_id() > 0) {
+      (*config_properties.mutable_fields())["serialize_dest"].set_number_value(
+          config.serialize_output_access_policy_node_id());
+      serialize_output_access_policy_node_id_.emplace(
+          config.serialize_output_access_policy_node_id());
+    }
+    if (config.report_output_access_policy_node_id() > 0) {
+      (*config_properties.mutable_fields())["report_dest"].set_number_value(
+          config.report_output_access_policy_node_id());
+      report_output_access_policy_node_id_.emplace(
+          config.report_output_access_policy_node_id());
+    }
 
     intrinsics_.emplace(std::move(intrinsics));
     return config_properties;

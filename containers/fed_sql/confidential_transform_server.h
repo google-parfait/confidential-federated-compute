@@ -57,6 +57,8 @@ class FedSqlConfidentialTransform final
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
+  std::optional<uint32_t> serialize_output_access_policy_node_id_;
+  std::optional<uint32_t> report_output_access_policy_node_id_;
 };
 
 // FedSql implementation of Session interface. Not threadsafe.
