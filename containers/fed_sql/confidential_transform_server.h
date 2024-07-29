@@ -26,6 +26,7 @@
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
@@ -70,11 +71,10 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics)
       : aggregator_(std::move(aggregator)), intrinsics_(intrinsics) {};
-  // Currently no FedSql per-session configuration.
+
+  // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
-      fcp::confidentialcompute::SessionRequest configure_request) override {
-    return absl::OkStatus();
-  }
+      fcp::confidentialcompute::SessionRequest configure_request) override;
   // Accumulates a record into the state of the CheckpointAggregator
   // `aggregator`.
   //
@@ -90,10 +90,18 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
 
  private:
+  // Configuration of the per-client SQL query step.
+  struct SqlConfiguration {
+    std::string query;
+    fcp::confidentialcompute::TableSchema input_schema;
+    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
+        output_columns;
+  };
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
+  std::optional<const SqlConfiguration> sql_configuration_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

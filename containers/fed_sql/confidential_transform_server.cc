@@ -32,6 +32,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -59,6 +60,7 @@ using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
@@ -310,5 +312,35 @@ FedSqlConfidentialTransform::CreateSession() {
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   return std::make_unique<FedSqlSession>(
       FedSqlSession(std::move(aggregator), *intrinsics));
+}
+
+absl::Status FedSqlSession::ConfigureSession(
+    fcp::confidentialcompute::SessionRequest configure_request) {
+  if (!configure_request.configure().has_configuration()) {
+    return absl::OkStatus();
+  }
+  SqlQuery sql_query;
+  if (!configure_request.configure().configuration().UnpackTo(&sql_query)) {
+    return absl::InvalidArgumentError("SQL configuration cannot be unpacked.");
+  }
+  if (sql_query.database_schema().table_size() != 1) {
+    return absl::InvalidArgumentError(
+        "SQL query input or output schema does not contain exactly "
+        "one table schema.");
+  }
+  if (sql_query.database_schema().table(0).column_size() == 0) {
+    return absl::InvalidArgumentError("SQL query input schema has no columns.");
+  }
+  if (sql_configuration_ != std::nullopt) {
+    return absl::FailedPreconditionError(
+        "Session can only be configured once.");
+  }
+
+  sql_configuration_.emplace(
+      SqlConfiguration{std::move(sql_query.raw_sql()),
+                       std::move(sql_query.database_schema().table(0)),
+                       std::move(sql_query.output_columns())});
+
+  return absl::OkStatus();
 }
 }  // namespace confidential_federated_compute::fed_sql

@@ -27,6 +27,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -58,9 +59,11 @@ using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
+using ::fcp::confidentialcompute::DatabaseSchema;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -73,10 +76,16 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -100,6 +109,44 @@ using ::testing::Test;
 using testing::UnorderedElementsAre;
 
 inline constexpr int kMaxNumSessions = 8;
+
+TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
+                              ColumnSchema column) {
+  TableSchema schema;
+  schema.set_name(name);
+  schema.set_create_table_sql(create_table_sql);
+  *(schema.add_column()) = column;
+  return schema;
+}
+
+SqlQuery CreateSqlQuery(TableSchema input_table_schema, std::string raw_query,
+                        ColumnSchema output_column) {
+  SqlQuery query;
+  DatabaseSchema* input_schema = query.mutable_database_schema();
+  *(input_schema->add_table()) = input_table_schema;
+  *(query.add_output_columns()) = output_column;
+  query.set_raw_sql(raw_query);
+  return query;
+}
+
+ColumnSchema CreateColumnSchema(
+    std::string name, ExampleQuerySpec_OutputVectorSpec_DataType type) {
+  ColumnSchema schema;
+  schema.set_name(name);
+  schema.set_type(type);
+  return schema;
+}
+
+SqlQuery GetDefaultSqlQuery() {
+  TableSchema schema = CreateTableSchema(
+      "input", "CREATE TABLE input (int_val INTEGER)",
+      CreateColumnSchema("int_val",
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+  return CreateSqlQuery(
+      schema, "SELECT SUM(int_val) AS int_sum FROM input",
+      CreateColumnSchema("int_sum",
+                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+}
 
 std::string BuildSingleInt32TensorCheckpoint(
     std::string column_name, std::initializer_list<int32_t> input_values) {
@@ -390,7 +437,115 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
             7);
 }
 
-TEST_F(FedSqlServerTest, SessionConfigureGeneratesNonce) {
+TEST_F(FedSqlServerTest, InvalidConfigureRequest) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  SqlQuery query;
+  session_request.mutable_configure()->mutable_configuration()->PackFrom(query);
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_FALSE(stream->Read(&session_response));
+
+  grpc::Status status = stream->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("does not contain exactly one table schema"));
+}
+
+TEST_F(FedSqlServerTest, ConfigureRequestWrongMessageType) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  google::protobuf::Value value;
+  session_request.mutable_configure()->mutable_configuration()->PackFrom(value);
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_FALSE(stream->Read(&session_response));
+
+  grpc::Status status = stream->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("configuration cannot be unpacked"));
+}
+
+TEST_F(FedSqlServerTest, ConfigureInvalidTableSchema) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  SqlQuery query;
+  DatabaseSchema* input_schema = query.mutable_database_schema();
+  input_schema->add_table();
+  session_request.mutable_configure()->mutable_configuration()->PackFrom(query);
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_FALSE(stream->Read(&session_response));
+
+  grpc::Status status = stream->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("SQL query input schema has no columns"));
+}
+
+TEST_F(FedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
+  grpc::ClientContext configure_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_configure()->mutable_configuration()->PackFrom(
+      GetDefaultSqlQuery());
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_TRUE(stream->Read(&session_response));
+
+  ASSERT_TRUE(session_response.has_configure());
+  ASSERT_GT(session_response.configure().nonce().size(), 0);
+}
+
+TEST_F(FedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
   grpc::ClientContext configure_context;
   InitializeRequest request;
   InitializeResponse response;
@@ -433,7 +588,8 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
         std::make_unique<grpc::ClientContext>();
     SessionRequest session_request;
     SessionResponse session_response;
-    session_request.mutable_configure();
+    session_request.mutable_configure()->mutable_configuration()->PackFrom(
+        GetDefaultSqlQuery());
 
     std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
         stream = stub_->Session(session_context.get());
@@ -449,7 +605,8 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   grpc::ClientContext rejected_context;
   SessionRequest rejected_request;
   SessionResponse rejected_response;
-  rejected_request.mutable_configure();
+  rejected_request.mutable_configure()->mutable_configuration()->PackFrom(
+      GetDefaultSqlQuery());
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&rejected_context);
@@ -544,7 +701,8 @@ TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
-  configure_request.mutable_configure()->mutable_configuration();
+  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
+      GetDefaultSqlQuery());
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
@@ -607,7 +765,8 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
 
     SessionRequest session_request;
     SessionResponse session_response;
-    session_request.mutable_configure();
+    session_request.mutable_configure()->mutable_configuration()->PackFrom(
+        GetDefaultSqlQuery());
 
     stream_ = stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
