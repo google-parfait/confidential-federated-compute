@@ -55,3 +55,10 @@ build:cfc-remote --extra_execution_platforms=//:remote_platform
 build:cfc-remote --host_platform=//:remote_platform
 build:cfc-remote --platforms=//:remote_platform
 build:cfc-remote --jobs=50
+
+# Settings for uploading results to BES.
+build:cfc-remote --bes_backend=buildeventservice-pa.googleapis.com
+build:cfc-remote --bes_instance_name=560162532548
+build:cfc-remote --bes_header=X-Goog-User-Project=560162532548
+build:cfc-remote --bes_results_url=http://sponge2/
+build:cfc-remote --grpc_keepalive_time=30s
