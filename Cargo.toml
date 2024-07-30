@@ -57,5 +57,6 @@ oak_attestation_explain = { git = "https://github.com/project-oak/oak", rev =  "
 oak_attestation_verification = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
 oak_proto_rust = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
 oak_restricted_kernel_sdk = { git = "https://github.com/project-oak/oak", rev =  "e95a37eaf0b1592ca036a64ed2a3e112c1ee5154" }
-tcp_runtime = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "2842cdd292bc5daad471e820b1eca5415784dcb8" }
-tcp_proto = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "2842cdd292bc5daad471e820b1eca5415784dcb8" }
+tcp_runtime = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "eccaa63c89793852a0d75296cb1524e12c7b921a" }
+tcp_proto = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "eccaa63c89793852a0d75296cb1524e12c7b921a" }
+tcp_integration = { git = "https://github.com/google-parfait/trusted-computations-platform", rev = "eccaa63c89793852a0d75296cb1524e12c7b921a" }

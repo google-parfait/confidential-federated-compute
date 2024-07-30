@@ -967,6 +967,7 @@ dependencies = [
  "federated_compute",
  "googletest",
  "hpke",
+ "ledger_service",
  "micro_rpc",
  "micro_rpc_build",
  "oak_attestation",
@@ -979,6 +980,7 @@ dependencies = [
  "rand",
  "sha2",
  "slog",
+ "tcp_integration",
  "tcp_proto",
  "tcp_runtime",
 ]
@@ -2179,9 +2181,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tcp_integration"
+version = "0.1.0"
+source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=eccaa63c89793852a0d75296cb1524e12c7b921a#eccaa63c89793852a0d75296cb1524e12c7b921a"
+dependencies = [
+ "hashbrown 0.14.5",
+ "micro_rpc",
+ "prost 0.12.4",
+ "prost-build 0.12.4",
+ "raft",
+ "raft-proto",
+ "slog",
+ "tcp_proto",
+ "tcp_runtime",
+]
+
+[[package]]
 name = "tcp_proto"
 version = "0.1.0"
-source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=2842cdd292bc5daad471e820b1eca5415784dcb8#2842cdd292bc5daad471e820b1eca5415784dcb8"
+source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=eccaa63c89793852a0d75296cb1524e12c7b921a#eccaa63c89793852a0d75296cb1524e12c7b921a"
 dependencies = [
  "byteorder",
  "micro_rpc",
@@ -2194,7 +2212,7 @@ dependencies = [
 [[package]]
 name = "tcp_runtime"
 version = "0.1.0"
-source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=2842cdd292bc5daad471e820b1eca5415784dcb8#2842cdd292bc5daad471e820b1eca5415784dcb8"
+source = "git+https://github.com/google-parfait/trusted-computations-platform?rev=eccaa63c89793852a0d75296cb1524e12c7b921a#eccaa63c89793852a0d75296cb1524e12c7b921a"
 dependencies = [
  "anyhow",
  "hashbrown 0.14.5",

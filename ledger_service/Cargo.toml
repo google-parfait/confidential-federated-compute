@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+[features]
+default = []
+testing = ["oak_restricted_kernel_sdk/testing", "dep:oak_attestation"]
+
 [dependencies]
 anyhow = { version = "*", default-features = false }
 cfc_crypto = { path = "../cfc_crypto" }
@@ -11,6 +15,7 @@ coset = { version = "*", default-features = false }
 federated_compute = { path = "../third_party/federated_compute" }
 hpke = { version = "*" }
 micro_rpc = { workspace = true }
+oak_attestation = { workspace = true, optional = true}
 oak_attestation_verification = { workspace = true }
 oak_proto_rust = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true }
@@ -25,8 +30,10 @@ tcp_proto = { workspace = true }
 
 [dev-dependencies]
 googletest = "*"
+ledger_service = { path = ".", features = ["testing"] }
 oak_attestation = { workspace = true }
 oak_restricted_kernel_sdk = { workspace = true, features = ["testing"] }
+tcp_integration = { workspace = true }
 
 [build-dependencies]
 micro_rpc_build = { workspace = true }

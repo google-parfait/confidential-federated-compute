@@ -223,7 +223,7 @@ pub fn verify_attestation<'a>(
 }
 
 /// Helper function that returns a test Evidence message.
-#[cfg(test)]
+#[cfg(feature = "testing")]
 pub fn get_test_evidence() -> Evidence {
     use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, testing::MockEvidenceProvider};
 
@@ -234,7 +234,7 @@ pub fn get_test_evidence() -> Evidence {
 }
 
 /// Helper function that returns a test Endorsements message.
-#[cfg(test)]
+#[cfg(feature = "testing")]
 pub fn get_test_endorsements() -> Endorsements {
     use oak_proto_rust::oak::attestation::v1::{
         endorsements, OakRestrictedKernelEndorsements, RootLayerEndorsements,
@@ -249,7 +249,7 @@ pub fn get_test_endorsements() -> Endorsements {
 }
 
 /// Helper function that returns ReferenceValues that match the test Evidence.
-#[cfg(test)]
+#[cfg(feature = "testing")]
 pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::ReferenceValues {
     use oak_proto_rust::oak::attestation::v1::{
         binary_reference_value, kernel_binary_reference_value, reference_values,

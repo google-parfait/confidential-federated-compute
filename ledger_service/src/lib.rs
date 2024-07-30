@@ -36,7 +36,6 @@ use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 pub mod actor;
-
 mod attestation;
 mod budget;
 mod test_util;
@@ -44,6 +43,9 @@ mod test_util;
 mod replication {
     include!(concat!(env!("OUT_DIR"), "/replication.rs"));
 }
+
+#[cfg(feature = "testing")]
+pub use attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
 use crate::replication::{AuthorizeAccessEvent, CreateKeyEvent, LedgerSnapshot, PerKeySnapshot};
 
