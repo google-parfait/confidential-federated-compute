@@ -370,6 +370,8 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
         }
       }
     }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -382,6 +384,10 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
             "fedsql_dp_group_by");
   ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
   ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
+            42);
+  ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
+            7);
 }
 
 TEST_F(FedSqlServerTest, SessionConfigureGeneratesNonce) {
