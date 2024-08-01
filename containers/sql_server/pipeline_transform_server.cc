@@ -23,7 +23,7 @@
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "containers/crypto.h"
-#include "containers/sql_server/sqlite_adapter.h"
+#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
@@ -34,6 +34,8 @@
 
 namespace confidential_federated_compute::sql_server {
 
+using ::confidential_federated_compute::sql::SqliteAdapter;
+using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnSchema;

@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/sql_server/sqlite_adapter.h"
+#include "containers/sql/sqlite_adapter.h"
 
 #include <thread>
 
@@ -25,7 +25,7 @@
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 
-namespace confidential_federated_compute::sql_server {
+namespace confidential_federated_compute::sql {
 
 namespace {
 
@@ -582,4 +582,4 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::sql_server
+}  // namespace confidential_federated_compute::sql

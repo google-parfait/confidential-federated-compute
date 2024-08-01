@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQLITE_ADAPTER_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQLITE_ADAPTER_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_
 
 #include <memory>
 
@@ -26,7 +26,7 @@
 #include "sqlite3.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::sql_server {
+namespace confidential_federated_compute::sql {
 
 class TensorColumn final {
  public:
@@ -113,6 +113,6 @@ class SqliteAdapter {
   std::optional<std::string> insert_stmt_;
 };
 
-}  // namespace confidential_federated_compute::sql_server
+}  // namespace confidential_federated_compute::sql
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SERVER_SQLITE_ADAPTER_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_

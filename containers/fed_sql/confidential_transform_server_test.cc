@@ -85,6 +85,8 @@ using ::fcp::confidentialcompute::WriteRequest;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
+using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
@@ -111,20 +113,21 @@ using testing::UnorderedElementsAre;
 inline constexpr int kMaxNumSessions = 8;
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
-                              ColumnSchema column) {
+                              std::vector<ColumnSchema> columns) {
   TableSchema schema;
   schema.set_name(name);
   schema.set_create_table_sql(create_table_sql);
-  *(schema.add_column()) = column;
+  schema.mutable_column()->Add(columns.begin(), columns.end());
   return schema;
 }
 
 SqlQuery CreateSqlQuery(TableSchema input_table_schema, std::string raw_query,
-                        ColumnSchema output_column) {
+                        std::vector<ColumnSchema> output_columns) {
   SqlQuery query;
   DatabaseSchema* input_schema = query.mutable_database_schema();
   *(input_schema->add_table()) = input_table_schema;
-  *(query.add_output_columns()) = output_column;
+  query.mutable_output_columns()->Add(output_columns.begin(),
+                                      output_columns.end());
   query.set_raw_sql(raw_query);
   return query;
 }
@@ -139,13 +142,13 @@ ColumnSchema CreateColumnSchema(
 
 SqlQuery GetDefaultSqlQuery() {
   TableSchema schema = CreateTableSchema(
-      "input", "CREATE TABLE input (int_val INTEGER)",
-      CreateColumnSchema("int_val",
-                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+      "input", "CREATE TABLE input (foo INTEGER)",
+      {CreateColumnSchema("foo",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
   return CreateSqlQuery(
-      schema, "SELECT SUM(int_val) AS int_sum FROM input",
-      CreateColumnSchema("int_sum",
-                         ExampleQuerySpec_OutputVectorSpec_DataType_INT64));
+      schema, "SELECT foo * 2 AS foo FROM input",
+      std::vector{CreateColumnSchema(
+          "foo", ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
 }
 
 std::string BuildSingleInt32TensorCheckpoint(
@@ -656,7 +659,108 @@ std::string BuildFedSqlGroupByCheckpoint(
   return checkpoint_string;
 }
 
-TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
+TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  TableSchema schema = CreateTableSchema(
+      "input", "CREATE TABLE input (val INTEGER)",
+      {CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
+  // The output columns of the SQL query don't match the aggregation config, so
+  // the results can't be aggregated.
+  SqlQuery query = CreateSqlQuery(
+      schema, "SELECT val * 2 AS half_val FROM input",
+      std::vector{CreateColumnSchema(
+          "half_val", ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
+  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
+      query);
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE,
+      BuildSingleInt32TensorCheckpoint("val", {10, 12}));
+  SessionResponse write_response_1;
+
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_FALSE(stream->Read(&write_response_1));
+  grpc::Status finish_status = stream->Finish();
+  ASSERT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(finish_status.error_message(),
+              HasSubstr("Failed to accumulate SQL query results"));
+}
+
+TEST_F(FedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  // No SQL query is configured.
+  configure_request.mutable_configure();
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+
+  SessionRequest write_request_1 =
+      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
+                                BuildSingleInt32TensorCheckpoint("foo", {10}));
+  SessionResponse write_response_1;
+
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_TRUE(stream->Read(&write_response_1));
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_TRUE(stream->Read(&write_response_1));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(
+      finalize_response.read().first_response_metadata().has_unencrypted());
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::Cord wire_format_result(finalize_response.read().data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("foo_out");
+  // The aggregation sums the input column
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 20);
+}
+
+TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
   grpc::ClientContext init_context;
   InitializeRequest request;
   InitializeResponse response;
@@ -701,8 +805,20 @@ TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
+  TableSchema schema = CreateTableSchema(
+      "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  SqlQuery query = CreateSqlQuery(
+      schema, "SELECT key, val * 2 AS val FROM input",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
-      GetDefaultSqlQuery());
+      query);
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
@@ -744,10 +860,11 @@ TEST_F(FedSqlServerTest, TransformExecutesFedSqlGroupBy) {
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("val_out");
-  // The query sums the val column, grouping by key
+  // The SQL query doubles each `val`, and the aggregation sums the val
+  // column, grouping by key.
   ASSERT_EQ(col_values->num_elements(), 3);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(7, 5, 0));
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
 }
 
 class FedSqlServerFederatedSumTest : public FedSqlServerTest {
@@ -832,10 +949,10 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndReports) {
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("foo_out");
-  // The query sums the input column
+  // The SQL query doubles each input and the aggregation sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 2);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
 }
 
 TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
@@ -883,7 +1000,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
   // The query sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 2);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
 }
 
 TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
@@ -924,7 +1041,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("foo_out");
-  // The query sums the input column
+  // The input aggregator should be merged with the session aggregator
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
@@ -1051,18 +1168,19 @@ TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
   // The invalid input should be ignored
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 7);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 14);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionFailsIfInputCannotBeAccumulated) {
+TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresInputThatCannotBeQueried) {
   SessionRequest write_request_1 = CreateDefaultWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
       BuildSingleInt32TensorCheckpoint("bad_col_name", {7}));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream_->Write(write_request_1));
-  ASSERT_FALSE(stream_->Read(&write_response_1));
-  ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::NOT_FOUND);
+  ASSERT_TRUE(stream_->Read(&write_response_1));
+  ASSERT_EQ(write_response_1.write().status().code(),
+            grpc::StatusCode::NOT_FOUND);
 }
 
 TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
@@ -1184,10 +1302,10 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor(output_col_name);
-  // The query sums the input column
+  // The SQL query doubles every input and the aggregation sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 6);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 12);
 }
 
 TEST_F(FedSqlServerFederatedSumTest,
@@ -1284,9 +1402,9 @@ TEST_F(FedSqlServerFederatedSumTest,
 
   // Unencrypted request should be incorporated, but the serialized result
   // should still be encrypted.
-  SessionRequest unencrypted_request =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {3}));
+  SessionRequest unencrypted_request = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE,
+      BuildSingleInt32TensorCheckpoint(input_col_name, {3}));
   SessionResponse unencrypted_response;
 
   ASSERT_TRUE(stream_->Write(unencrypted_request));
@@ -1346,7 +1464,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   // The query sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 6);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 12);
 }
 
 TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
@@ -1443,7 +1561,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   // The undecryptable write is ignored, and only the valid write is aggregated.
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 2);
+  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
 }
 
 }  // namespace

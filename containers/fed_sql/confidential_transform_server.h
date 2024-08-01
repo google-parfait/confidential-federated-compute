@@ -18,12 +18,14 @@
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
+#include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -45,7 +47,9 @@ class FedSqlConfidentialTransform final
   FedSqlConfidentialTransform(
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
       int max_num_sessions)
-      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {};
+      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {
+    CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+  };
 
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
@@ -97,6 +101,13 @@ class FedSqlSession final : public confidential_federated_compute::Session {
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
   };
+
+  absl::StatusOr<
+      std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
+  ExecuteClientQuery(
+      const SqlConfiguration& configuration,
+      tensorflow_federated::aggregation::CheckpointParser* parser);
+
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;

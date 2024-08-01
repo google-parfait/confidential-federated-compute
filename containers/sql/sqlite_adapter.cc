@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/sql_server/sqlite_adapter.h"
+#include "containers/sql/sqlite_adapter.h"
 
 #include <memory>
 #include <string>
@@ -34,7 +34,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::sql_server {
+namespace confidential_federated_compute::sql {
 
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::SqlQuery;
@@ -451,4 +451,4 @@ absl::StatusOr<std::vector<TensorColumn>> SqliteAdapter::EvaluateQuery(
   return result;
 }
 
-}  // namespace confidential_federated_compute::sql_server
+}  // namespace confidential_federated_compute::sql

@@ -27,6 +27,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
+#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -46,6 +47,8 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::sql::SqliteAdapter;
+using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -61,6 +64,7 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
@@ -71,6 +75,7 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::Tensor;
 
 constexpr char kFedSqlDpGroupByUri[] = "fedsql_dp_group_by";
 
@@ -102,7 +107,64 @@ absl::Status ValidateTopLevelIntrinsics(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<TensorColumn>> Deserialize(
+    const TableSchema& table_schema, CheckpointParser* parser) {
+  std::vector<TensorColumn> columns(table_schema.column_size());
+  std::optional<int> num_rows;
+  for (int i = 0; i < table_schema.column_size(); i++) {
+    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
+                         parser->GetTensor(table_schema.column(i).name()));
+    if (!num_rows.has_value()) {
+      num_rows.emplace(tensor_column_values.num_elements());
+    } else if (num_rows.value() != tensor_column_values.num_elements()) {
+      return absl::InvalidArgumentError(
+          "Checkpoint has columns with differing numbers of rows.");
+    }
+    FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
+                         TensorColumn::Create(table_schema.column(i),
+                                              std::move(tensor_column_values)));
+    columns[i] = std::move(tensor_column);
+  }
+  return columns;
+}
+
+absl::StatusOr<absl::Cord> Serialize(std::vector<TensorColumn> columns) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  for (auto& column : columns) {
+    FCP_RETURN_IF_ERROR(
+        ckpt_builder->Add(column.column_schema_.name(), column.tensor_));
+  }
+
+  return ckpt_builder->Build();
+}
+
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<CheckpointParser>>
+FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
+                                  CheckpointParser* parser) {
+  FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> contents,
+                       Deserialize(configuration.input_schema, parser));
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
+                       SqliteAdapter::Create());
+  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
+  if (contents.size() > 0) {
+    int num_rows = contents.at(0).tensor_.num_elements();
+    FCP_RETURN_IF_ERROR(
+        sqlite->AddTableContents(std::move(contents), num_rows));
+  }
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<TensorColumn> result,
+      sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
+  // TODO: stop serializing the query results once we implement an in-memory
+  // CheckpointParser.
+  FCP_ASSIGN_OR_RETURN(absl::Cord serialized_query_result,
+                       Serialize(std::move(result)));
+  FederatedComputeCheckpointParserFactory parser_factory;
+  return parser_factory.Create(serialized_query_result);
+}
 
 absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
     const WriteRequest& write_request, std::string unencrypted_data) {
@@ -128,7 +190,26 @@ absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
                                       "AGGREGATION_TYPE_ACCUMULATE: ",
                                       parser.status().message())));
       }
-      FCP_RETURN_IF_ERROR(aggregator_->Accumulate(*parser.value()));
+      if (sql_configuration_ != std::nullopt) {
+        absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
+            ExecuteClientQuery(*sql_configuration_, parser->get());
+        if (!sql_result_parser.ok()) {
+          return ToSessionWriteFinishedResponse(
+              absl::Status(sql_result_parser.status().code(),
+                           absl::StrCat("Failed to execute SQL query: ",
+                                        sql_result_parser.status().message())));
+        }
+        parser = std::move(sql_result_parser);
+      }
+      absl::Status accumulate_status = aggregator_->Accumulate(*parser.value());
+      if (!accumulate_status.ok()) {
+        if (absl::IsNotFound(accumulate_status)) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Failed to accumulate SQL query results: ",
+                           accumulate_status.message()));
+        }
+        return accumulate_status;
+      }
       break;
     }
     case AGGREGATION_TYPE_MERGE: {

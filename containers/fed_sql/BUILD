@@ -21,6 +21,7 @@ cc_library(
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
         "//containers:session",
+        "//containers/sql:sqlite_adapter",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:die_if_null",
