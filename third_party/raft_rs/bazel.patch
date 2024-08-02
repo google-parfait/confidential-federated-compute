@@ -1,0 +1,78 @@
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,19 @@
++load("@rules_rust//rust:defs.bzl", "rust_library")
++
++rust_library(
++    name = "raft",
++    srcs = glob(["src/**/*.rs"]),
++    crate_features = ["prost-codec"],
++    proc_macro_deps = ["@crates_index//:getset"],
++    visibility = ["//visibility:public"],
++    deps = [
++        "//proto:raft-proto",
++        "@crates_index//:ahash",
++        "@crates_index//:getrandom",
++        "@crates_index//:hashbrown",
++        "@crates_index//:prost",
++        "@crates_index//:rand",
++        "@crates_index//:slog",
++        "@crates_index//:spin",
++    ],
++)
+
+--- /dev/null
++++ proto/BUILD
+@@ -0,0 +1,30 @@
++load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
++load("@rules_rust//rust:defs.bzl", "rust_library")
++
++rust_library(
++    name = "raft-proto",
++    crate_root = "src/lib.rs",
++    srcs = glob(["src/**/*.rs"]),
++    crate_features = ["prost-codec"],
++    proc_macro_deps = ["@crates_index//:prost-derive"],
++    visibility = ["//visibility:public"],
++    deps = [
++        ":build",
++        "@crates_index//:lazy_static",
++        "@crates_index//:prost",
++    ],
++)
++
++cargo_build_script(
++    name = "build",
++    srcs = ["build-bazel.rs"],
++    build_script_env = {
++        "PROTOC": "$(execpath @com_google_protobuf//:protoc)",
++    },
++    data = glob(["proto/**/*.proto"]),
++    tools = ["@com_google_protobuf//:protoc"],
++    deps = [
++        "@crates_index//:prost-build",
++        "@oak//oak_proto_build_utils",
++    ],
++)
+
+--- /dev/null
++++ proto/build-bazel.rs
+@@ -0,0 +1,6 @@
++fn main() {
++  prost_build::Config::new()
++      .compile_protos(&["proto/eraftpb.proto"], &["proto"])
++      .unwrap();
++  oak_proto_build_utils::fix_prost_derives().unwrap();
++}
+
+--- proto/proto/eraftpb.proto
++++ proto/proto/eraftpb.proto
+@@ -4,2 +4,0 @@
+-import "rustproto.proto";
+-option (rustproto.carllerche_bytes_for_bytes_all) = true;
+
+--- proto/src/lib.rs
++++ proto/src/lib.rs
+@@ -32,1 +32,1 @@
+-        include!(concat!(env!("OUT_DIR"), "/protos/eraftpb.rs"));
++        include!(concat!(env!("OUT_DIR"), "/eraftpb.rs"));

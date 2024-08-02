@@ -26,10 +26,10 @@ readonly BAZELISK="${BAZELISK:-bazelisk}"
 # List of available bazel targets, along with the place where the artifact
 # will appear. Positional arguments are required to be in the key set.
 declare -Ar ARTIFACTS=(
-  [//containers/sql_server:oci_runtime_bundle.tar]=sql_server/container.tar
-  [//containers/test_concat:oci_runtime_bundle.tar]=test_concat/container.tar
   [//containers/agg_core:oci_runtime_bundle.tar]=agg_core/container.tar
   [//containers/fed_sql:oci_runtime_bundle.tar]=fed_sql/container.tar
+  [//containers/sql_server:oci_runtime_bundle.tar]=sql_server/container.tar
+  [//ledger_enclave_app:ledger_enclave_app]=ledger/binary
 )
 
 declare -a targets
@@ -62,5 +62,8 @@ for target in "${targets[@]}"; do
   src="${bin_dir}${target/:/\//}"
   dst="${output_dir}/${ARTIFACTS[$target]}"
   mkdir --parents "$(dirname "${dst}")"
-  cp --preserve=timestamps --force "${src}" "${dst}"
+  # Binaries may be in one of multiple bazel-bin directories, not just the
+  # one returned by bazel. Since no binary will appear in more than one, we
+  # can simply add a wildcard character to allow suffixes (e.g. k8-opt*).
+  cp --preserve=timestamps --force "${bin_dir%/bin}"*"/bin${target/:/\//}" "${dst}"
 done

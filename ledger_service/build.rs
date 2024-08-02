@@ -12,15 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io::Result;
-
-fn main() -> Result<()> {
+fn main() {
     micro_rpc_build::compile(
         &["proto/replication.proto"],
         &[
             "proto",
-            "../third_party/federated_compute/federated-compute",
-            "../third_party/federated_compute/rust_proto_stubs",
+            std::env::var("EVIDENCE_PROTO")
+                .unwrap()
+                .strip_suffix("/proto/attestation/evidence.proto")
+                .unwrap(),
+            std::env::var("LEDGER_PROTO")
+                .unwrap()
+                .strip_suffix("/fcp/protos/confidentialcompute/ledger.proto")
+                .unwrap(),
+            std::env::var("DESCRIPTOR_PROTO")
+                .unwrap()
+                .strip_suffix("/google/protobuf/descriptor.proto")
+                .unwrap(),
         ],
         micro_rpc_build::CompileOptions {
             extern_paths: vec![
@@ -36,5 +44,5 @@ fn main() -> Result<()> {
             ..Default::default()
         },
     );
-    Ok(())
+    oak_proto_build_utils::fix_prost_derives().unwrap();
 }

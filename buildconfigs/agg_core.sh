@@ -5,7 +5,7 @@
 export PACKAGE_NAME=agg_core
 
 export BUILD_COMMAND=(
-  scripts/bazel_build_target.sh
+  scripts/build_target.sh
   --output_dir
   binaries
   //containers/agg_core:oci_runtime_bundle.tar

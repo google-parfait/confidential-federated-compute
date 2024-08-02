@@ -81,7 +81,10 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow",
-    patches = ["//third_party/org_tensorflow:internal_visibility.patch"],
+    patches = [
+        "//third_party/org_tensorflow:internal_visibility.patch",
+        "//third_party/org_tensorflow:protobuf.patch",
+    ],
     sha256 = "6b31ed347ed7a03c45b906aa41628ac91c3db7c84cb816971400d470e58ba494",
     strip_prefix = "tensorflow-2.14.1",
     urls = [
@@ -101,7 +104,7 @@ tf_workspace2()
 
 load("@org_tensorflow//tensorflow:workspace1.bzl", "tf_workspace1")
 
-tf_workspace1(with_rules_cc = False)
+tf_workspace1()
 
 load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
@@ -124,6 +127,22 @@ http_archive(
     url = "https://github.com/google/federated-compute/archive/987d5d57c1b581d8a474baa6c70852ddfdae67fe.tar.gz",
 )
 
+http_archive(
+    name = "raft_rs",
+    patches = ["//third_party/raft_rs:bazel.patch"],
+    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
+    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
+    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
+)
+
+http_archive(
+    name = "trusted_computations_platform",
+    patches = ["//third_party/trusted_computations_platform:bazel.patch"],
+    sha256 = "d0cd86ff201d1ee7f23d894cd77f9982ce68f42dd73828c1352cd0963eeedaa9",
+    strip_prefix = "trusted-computations-platform-aa23b882f7999a55ce76c5793db0cfbe9f3d8e82",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/aa23b882f7999a55ce76c5793db0cfbe9f3d8e82.tar.gz",
+)
+
 git_repository(
     name = "libcppbor",
     build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
@@ -135,15 +154,59 @@ http_archive(
     name = "oak",
     patches = [
         "//third_party/oak:BUILD.containers.patch",
+        "//third_party/oak:rustc.patch",
     ],
-    sha256 = "bdc5084a643212273c2b463683328b5dd645a8e735e28147b6f4bd6f529c4609",
-    strip_prefix = "oak-e95a37eaf0b1592ca036a64ed2a3e112c1ee5154",
-    url = "https://github.com/project-oak/oak/archive/e95a37eaf0b1592ca036a64ed2a3e112c1ee5154.tar.gz",
+    # Ensure oak targets use the alias_crates_repository defined below.
+    repo_mapping = {
+        "@oak_crates_index": "@crates_index",
+        "@oak_no_std_crates_index": "@crates_index",
+    },
+    sha256 = "80a7b1958a9a3d03c5bebad77d875a3a7aeb83624a27145823231b3b123bc415",
+    strip_prefix = "oak-c38ebfcf98dcae94aa0aa6d6c8e852b4a29c2e2b",
+    url = "https://github.com/project-oak/oak/archive/c38ebfcf98dcae94aa0aa6d6c8e852b4a29c2e2b.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
 
 oak_toolchain_repositories()
+
+load("@oak//bazel/rust:deps.bzl", "load_rust_repositories")
+
+load_rust_repositories()
+
+load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
+
+setup_rust_dependencies()
+
+load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
+load("//:crates.bzl", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES", "alias_crates_repository")
+
+create_oak_crate_repositories(
+    extra_no_std_packages = CFC_NO_STD_PACKAGES,
+    extra_packages = CFC_PACKAGES,
+)
+
+# Define a repository with targets that redirect to @oak_crates_index or
+# @oak_no_std_crates_index depending on the platform. @oak_crates_index and
+# @oak_no_std_crates_index are defined by `create_oak_crate_repositories()`.
+alias_crates_repository(
+    name = "crates_index",
+    overrides = {
+        "prost-types,@platforms//os:none": "@oak//third_party/prost-types",
+    },
+    repositories = {
+        "@platforms//os:none": "oak_no_std_crates_index",
+        "//conditions:default": "oak_crates_index",
+    },
+)
+
+load("@oak_crates_index//:defs.bzl", "crate_repositories")
+
+crate_repositories()
+
+load("@oak_no_std_crates_index//:defs.bzl", no_std_crate_repositories = "crate_repositories")
+
+no_std_crate_repositories()
 
 http_archive(
     name = "googletest",
@@ -223,6 +286,16 @@ gcc_register_toolchain(
     target_arch = ARCHS.x86_64,
 )
 
+gcc_register_toolchain(
+    name = "gcc_toolchain_x86_64_unknown_none",
+    extra_ldflags = ["-nostdlib"],
+    target_arch = ARCHS.x86_64,
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:none",
+    ],
+)
+
 # Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
 # not easily enable sanitizers to be used with tests. The clang toolchain is not
 # registered, so that the registered gcc toolchain is used by default, but can
@@ -264,11 +337,6 @@ stub_repo(
         "java_lite_proto_library",
         "java_proto_library",
     ]},
-)
-
-stub_repo(
-    name = "rules_rust",
-    rules = {"proto/prost:defs.bzl": ["rust_prost_library"]},
 )
 
 # The following enables the use of the library functions in the differential-

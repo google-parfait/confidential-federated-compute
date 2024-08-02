@@ -124,7 +124,9 @@ impl LedgerService {
                 ..Default::default()
             })
             .payload(claims.to_vec().map_err(anyhow::Error::msg)?)
-            .try_create_signature(b"", |msg| Ok(self.signer.sign(msg)?.signature))?
+            .try_create_signature(b"", |msg| {
+                Ok::<Vec<u8>, anyhow::Error>(self.signer.sign(msg)?.signature)
+            })?
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
@@ -562,8 +564,8 @@ mod tests {
         ApplicationMatcher,
     };
     use googletest::prelude::*;
-    use oak_attestation::proto::oak::crypto::v1::Signature;
     use oak_proto_rust::oak::attestation::v1::Evidence;
+    use oak_proto_rust::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::testing::MockSigner;
 
     /// Helper function to create a LedgerService with one key.

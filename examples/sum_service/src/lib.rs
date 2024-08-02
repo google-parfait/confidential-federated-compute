@@ -130,7 +130,7 @@ impl PipelineTransform for SumService {
 mod tests {
     use super::*;
     use coset::{CborSerializable, CoseSign1};
-    use oak_attestation::proto::oak::crypto::v1::Signature;
+    use oak_proto_rust::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::testing::MockSigner;
     use pipeline_transforms::proto::Record;
     use sha2::{Digest, Sha256};

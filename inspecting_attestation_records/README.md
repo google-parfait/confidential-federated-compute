@@ -64,8 +64,7 @@ manually.
 The following is an example of the type of output the tool produces.
 
 ```sh
-$ cd tools/explain_fcp_attestation_record
-$ cargo run -- --record extracted_records/record_l2_to_l19_digest12345678.pb
+$ bazelisk run //tools/explain_fcp_attestation_record:main -- --record=$PWD/extracted_records/record_l2_to_l19_digest12345678.pb
 Inspecting record at extracted_records/record_l2_to_l19_digest12345678.pb.
 
 ========================================

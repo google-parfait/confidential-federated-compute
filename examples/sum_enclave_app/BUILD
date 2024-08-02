@@ -1,5 +1,3 @@
-#!/bin/bash
-#
 # Copyright 2024 Google LLC.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Starts a rust development docker shell for faster build & test cycles.
-set -e
 
-source "$(dirname -- "$0")/cargo_common.sh"
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 
-build_docker_image
-
-docker run -i "${DOCKER_RUN_FLAGS[@]}" "${DOCKER_IMAGE_NAME}" \
-    sh -c "rustup component add clippy rustfmt \
-        && bash"
+rust_binary(
+    name = "sum_enclave_app",
+    srcs = glob(["src/*.rs"]),
+    platform = "@oak//:x86_64-unknown-none",
+    deps = [
+        "//examples/sum_service",
+        "//pipeline_transforms",
+        "@oak//oak_restricted_kernel_sdk",
+    ],
+)

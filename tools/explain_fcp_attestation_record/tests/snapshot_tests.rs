@@ -50,8 +50,7 @@ fn test_explain_record_with_empty_data_access_policy_from_file() -> anyhow::Resu
     // helps ensure that the binary actually works end-to-end, including
     // argument parsing etc. Subsequent tests forego this step and instead call
     // directly into the helper functions upon which the library is built.
-    let cmd = Command::cargo_bin(env!("CARGO_PKG_NAME"))
-        .unwrap()
+    let cmd = Command::new(std::env::var("EXPLAIN_TOOL").unwrap())
         .arg("--record")
         .arg(record_file_path)
         .assert()
@@ -74,8 +73,7 @@ fn test_explain_record_with_empty_data_access_policy_from_stdin() -> anyhow::Res
     // helps ensure that the binary actually works end-to-end, including
     // argument parsing etc. Subsequent tests forego this step and instead call
     // directly into the helper functions upon which the library is built.
-    let cmd = Command::cargo_bin(env!("CARGO_PKG_NAME"))
-        .unwrap()
+    let cmd = Command::new(std::env::var("EXPLAIN_TOOL").unwrap())
         .arg("--record")
         .arg("-")
         .write_stdin(serialized_record)

@@ -2,6 +2,9 @@ build --incompatible_enable_cc_toolchain_resolution
 build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
 build --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 --incompatible_strict_action_env
 build --show_timestamps  # Useful for understanding build performance.
+build --@rules_rust//rust/toolchain/channel=nightly
+build --@rules_rust//:rustfmt.toml=//:.rustfmt.toml
+build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 common --experimental_repo_remote_exec
 
 build:asan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux

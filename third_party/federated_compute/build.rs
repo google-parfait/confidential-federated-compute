@@ -13,15 +13,30 @@
 // limitations under the License.
 
 fn main() {
+    let proto_dir: std::path::PathBuf = std::env::var("LEDGER_PROTO")
+        .unwrap()
+        .strip_suffix("/fcp/protos/confidentialcompute/ledger.proto")
+        .unwrap()
+        .into();
     micro_rpc_build::compile(
         &[
-            "federated-compute/fcp/protos/confidentialcompute/access_policy.proto",
-            "federated-compute/fcp/protos/confidentialcompute/blob_header.proto",
-            "federated-compute/fcp/protos/confidentialcompute/ledger.proto",
-            "federated-compute/fcp/protos/confidentialcompute/pipeline_transform.proto",
-            "federated-compute/fcp/protos/confidentialcompute/verification_record.proto",
+            proto_dir.join("fcp/protos/confidentialcompute/access_policy.proto"),
+            proto_dir.join("fcp/protos/confidentialcompute/blob_header.proto"),
+            proto_dir.join("fcp/protos/confidentialcompute/ledger.proto"),
+            proto_dir.join("fcp/protos/confidentialcompute/pipeline_transform.proto"),
+            proto_dir.join("fcp/protos/confidentialcompute/verification_record.proto"),
         ],
-        &["federated-compute/", "rust_proto_stubs"],
+        &[
+            proto_dir.into_os_string().to_str().unwrap(),
+            std::env::var("EVIDENCE_PROTO")
+                .unwrap()
+                .strip_suffix("/proto/attestation/evidence.proto")
+                .unwrap(),
+            std::env::var("DESCRIPTOR_PROTO")
+                .unwrap()
+                .strip_suffix("/google/protobuf/descriptor.proto")
+                .unwrap(),
+        ],
         micro_rpc_build::CompileOptions {
             extern_paths: vec![micro_rpc_build::ExternPath::new(
                 ".oak.attestation.v1",
@@ -30,4 +45,5 @@ fn main() {
             ..Default::default()
         },
     );
+    oak_proto_build_utils::fix_prost_derives().unwrap();
 }

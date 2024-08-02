@@ -1,6 +1,3 @@
-/.cargo-cache/
 /.sccache-cache/
-/target/
 /.vscode/
 /bazel-*
-tff_worker/server/__pycache__
