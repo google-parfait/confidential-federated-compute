@@ -40,6 +40,7 @@ declare -Ar RELEASE_TARGETS=(
   [//containers/test_concat:oci_runtime_bundle.tar]=test_concat/container.tar
   [//containers/confidential_transform_test_concat:oci_runtime_bundle.tar]=confidential_transform_test_concat/container.tar
   [//containers/agg_core:oci_runtime_bundle.tar]=agg_core/container.tar
+  [//containers/fed_sql:oci_runtime_bundle.tar]=fed_sql/container.tar
 )
 
 if [ "$1" == "continuous" ]; then
