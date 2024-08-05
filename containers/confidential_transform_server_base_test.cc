@@ -116,9 +116,8 @@ class FakeConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   FakeConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      int max_num_sessions)
-      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {};
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+      : ConfidentialTransformBase(crypto_stub) {};
 
   void AddSession(
       std::unique_ptr<confidential_federated_compute::MockSession> session) {
@@ -176,7 +175,7 @@ class ConfidentialTransformServerBaseTest : public Test {
 
  protected:
   testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  FakeConfidentialTransform service_{&mock_crypto_stub_, kMaxNumSessions};
+  FakeConfidentialTransform service_{&mock_crypto_stub_};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
@@ -232,6 +231,7 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionConfigureGeneratesNonce) {
   google::rpc::Status config_status;
   config_status.set_code(grpc::StatusCode::OK);
   request.mutable_configuration()->PackFrom(config_status);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -275,6 +275,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   google::rpc::Status config_status;
   config_status.set_code(grpc::StatusCode::OK);
   request.mutable_configuration()->PackFrom(config_status);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -337,6 +338,7 @@ class InitializedConfidentialTransformServerBaseTest
     google::rpc::Status config_status;
     config_status.set_code(grpc::StatusCode::OK);
     request.mutable_configuration()->PackFrom(config_status);
+    request.set_max_num_sessions(kMaxNumSessions);
 
     CHECK(stub_->Initialize(&configure_context, request, &response).ok());
     public_key_ = response.public_key();

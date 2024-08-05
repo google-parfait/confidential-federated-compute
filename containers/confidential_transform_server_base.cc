@@ -96,6 +96,7 @@ absl::Status ConfidentialTransformBase::InitializeInternal(
           "Initialize can only be called once.");
     }
     blob_decryptor_.emplace(crypto_stub_, config_properties);
+    session_tracker_.emplace(request->max_num_sessions());
 
     // Since blob_decryptor_ is set once in Initialize and never
     // modified, and the underlying object is threadsafe, it is safe to store a
@@ -205,12 +206,26 @@ grpc::Status ConfidentialTransformBase::Initialize(
 grpc::Status ConfidentialTransformBase::Session(
     ServerContext* context,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  if (absl::Status session_status = session_tracker_.AddSession();
+  SessionTracker* session_tracker;
+  {
+    absl::MutexLock l(&mutex_);
+    if (session_tracker_ == std::nullopt) {
+      return ToGrpcStatus(absl::FailedPreconditionError(
+          "Initialize must be called before Session."));
+    }
+
+    // Since session_tracker_ is set once in Initialize and never
+    // modified, and the underlying object is threadsafe, it is safe to store a
+    // local pointer to it and access the object without a lock after we check
+    // under the mutex that a value has been set for the std::optional wrapper.
+    session_tracker = &*session_tracker_;
+  }
+  if (absl::Status session_status = session_tracker->AddSession();
       !session_status.ok()) {
     return ToGrpcStatus(session_status);
   }
   grpc::Status status = ToGrpcStatus(SessionInternal(stream));
-  absl::Status remove_session = session_tracker_.RemoveSession();
+  absl::Status remove_session = session_tracker->RemoveSession();
   if (!remove_session.ok()) {
     return ToGrpcStatus(remove_session);
   }

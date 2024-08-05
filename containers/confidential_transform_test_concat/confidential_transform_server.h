@@ -79,9 +79,8 @@ class TestConcatConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   TestConcatConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      int max_num_sessions = 1)
-      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {};
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+      : ConfidentialTransformBase(crypto_stub) {};
 
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(

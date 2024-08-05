@@ -49,10 +49,8 @@ class ConfidentialTransformBase
 
  protected:
   ConfidentialTransformBase(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      int max_num_sessions)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
-        session_tracker_(max_num_sessions) {}
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
 
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) = 0;
@@ -71,12 +69,13 @@ class ConfidentialTransformBase
           stream);
 
   oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
-  confidential_federated_compute::SessionTracker session_tracker_;
   absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping blob_decryptor_ to
-  // ensure the BlobDecryptor is initialized, but the BlobDecryptor is itself
-  // threadsafe.
+  // The mutex is used to protect the optional wrapping blob_decryptor_ and
+  // session_tracker_ to ensure they are initialized, but the BlobDecryptor and
+  // SessionTracker are themselves threadsafe.
   std::optional<confidential_federated_compute::BlobDecryptor> blob_decryptor_
+      ABSL_GUARDED_BY(mutex_);
+  std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);
 };
 

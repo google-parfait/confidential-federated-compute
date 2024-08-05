@@ -96,6 +96,7 @@ TEST_F(TestConcatServerTest, SessionConfigureGeneratesNonce) {
   grpc::ClientContext configure_context;
   InitializeRequest request;
   InitializeResponse response;
+  request.set_max_num_sessions(8);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -133,6 +134,7 @@ class TestConcatServerSessionTest : public TestConcatServerTest {
     grpc::ClientContext configure_context;
     InitializeRequest request;
     InitializeResponse response;
+    request.set_max_num_sessions(8);
 
     CHECK(stub_->Initialize(&configure_context, request, &response).ok());
     public_key_ = response.public_key();

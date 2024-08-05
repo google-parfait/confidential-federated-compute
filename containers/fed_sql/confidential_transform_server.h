@@ -45,9 +45,8 @@ class FedSqlConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   FedSqlConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      int max_num_sessions)
-      : ConfidentialTransformBase(crypto_stub, max_num_sessions) {
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
+      : ConfidentialTransformBase(crypto_stub) {
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   };
 

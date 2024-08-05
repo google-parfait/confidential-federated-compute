@@ -215,7 +215,7 @@ class FedSqlServerTest : public Test {
   BlobMetadata DefaultBlobMetadata() const;
 
   testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  FedSqlConfidentialTransform service_{&mock_crypto_stub_, kMaxNumSessions};
+  FedSqlConfidentialTransform service_{&mock_crypto_stub_};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
@@ -424,6 +424,7 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
     report_output_access_policy_node_id: 7
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   auto status = stub_->Initialize(&context, request, &response);
   ASSERT_TRUE(status.ok());
@@ -447,6 +448,7 @@ TEST_F(FedSqlServerTest, InvalidConfigureRequest) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -474,6 +476,7 @@ TEST_F(FedSqlServerTest, ConfigureRequestWrongMessageType) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -501,6 +504,7 @@ TEST_F(FedSqlServerTest, ConfigureInvalidTableSchema) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -530,6 +534,7 @@ TEST_F(FedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -555,6 +560,7 @@ TEST_F(FedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -579,6 +585,7 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
 
@@ -666,6 +673,7 @@ TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -709,6 +717,7 @@ TEST_F(FedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -799,6 +808,7 @@ TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
     }
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
   ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
 
@@ -876,6 +886,7 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     FedSqlContainerInitializeConfiguration init_config;
     *init_config.mutable_agg_configuration() = DefaultConfiguration();
     request.mutable_configuration()->PackFrom(init_config);
+    request.set_max_num_sessions(kMaxNumSessions);
 
     CHECK(stub_->Initialize(&configure_context, request, &response).ok());
     public_key_ = response.public_key();
