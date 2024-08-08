@@ -72,8 +72,15 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
-          intrinsics)
-      : aggregator_(std::move(aggregator)), intrinsics_(intrinsics) {};
+          intrinsics,
+      const std::optional<uint32_t> serialize_output_access_policy_node_id,
+      const std::optional<uint32_t> report_output_access_policy_node_id)
+      : aggregator_(std::move(aggregator)),
+        intrinsics_(intrinsics),
+        serialize_output_access_policy_node_id_(
+            serialize_output_access_policy_node_id),
+        report_output_access_policy_node_id_(
+            report_output_access_policy_node_id) {};
 
   // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
@@ -112,6 +119,8 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
+  const std::optional<uint32_t> serialize_output_access_policy_node_id_;
+  const std::optional<uint32_t> report_output_access_policy_node_id_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

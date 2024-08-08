@@ -140,6 +140,24 @@ absl::StatusOr<absl::Cord> Serialize(std::vector<TensorColumn> columns) {
   return ckpt_builder->Build();
 }
 
+absl::StatusOr<Record> EncryptSessionResult(
+    const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
+    uint32_t output_access_policy_node_id) {
+  RecordEncryptor encryptor;
+  BlobHeader previous_header;
+  if (!previous_header.ParseFromString(
+          input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
+    return absl::InvalidArgumentError(
+        "Failed to parse the BlobHeader when trying to encrypt outputs.");
+  }
+  return encryptor.EncryptRecord(unencrypted_result,
+                                 input_metadata.hpke_plus_aead_data()
+                                     .rewrapped_symmetric_key_associated_data()
+                                     .reencryption_public_key(),
+                                 previous_header.access_policy_sha256(),
+                                 output_access_policy_node_id);
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
@@ -271,10 +289,25 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
       FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
                            checkpoint_builder->Build());
-      absl::CopyCordToString(checkpoint_cord, &result);
-      result_metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-      result_metadata.set_total_size_bytes(result.size());
-      result_metadata.mutable_unencrypted();
+      std::string unencrypted_result;
+      absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
+
+      if (input_metadata.has_unencrypted() ||
+          report_output_access_policy_node_id_ == std::nullopt) {
+        result_metadata.set_compression_type(
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+        result_metadata.set_total_size_bytes(unencrypted_result.size());
+        result_metadata.mutable_unencrypted();
+        result = std::move(unencrypted_result);
+        break;
+      }
+
+      FCP_ASSIGN_OR_RETURN(
+          Record result_record,
+          EncryptSessionResult(input_metadata, unencrypted_result,
+                               *report_output_access_policy_node_id_));
+      result_metadata = GetBlobMetadataFromRecord(result_record);
+      result = result_record.hpke_plus_aead_data().ciphertext();
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
@@ -286,21 +319,15 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
         result_metadata.mutable_unencrypted();
         break;
       }
-      RecordEncryptor encryptor;
-      BlobHeader previous_header;
-      if (!previous_header.ParseFromString(input_metadata.hpke_plus_aead_data()
-                                               .ciphertext_associated_data())) {
+      if (serialize_output_access_policy_node_id_ == std::nullopt) {
         return absl::InvalidArgumentError(
-            "Failed to parse the BlobHeader when trying to encrypt outputs.");
+            "No output access policy node ID set for serialized outputs. This "
+            "must be set to output serialized state.");
       }
-      FCP_ASSIGN_OR_RETURN(Record result_record,
-                           encryptor.EncryptRecord(
-                               serialized_aggregator,
-                               input_metadata.hpke_plus_aead_data()
-                                   .rewrapped_symmetric_key_associated_data()
-                                   .reencryption_public_key(),
-                               previous_header.access_policy_sha256(),
-                               finalize_config.output_access_policy_node_id()));
+      FCP_ASSIGN_OR_RETURN(
+          Record result_record,
+          EncryptSessionResult(input_metadata, serialized_aggregator,
+                               *serialize_output_access_policy_node_id_));
       result_metadata = GetBlobMetadataFromRecord(result_record);
       result = result_record.hpke_plus_aead_data().ciphertext();
       break;
@@ -389,10 +416,11 @@ FedSqlConfidentialTransform::CreateSession() {
     // under the mutex that values have been set for the std::optional wrappers.
     intrinsics = &*intrinsics_;
   }
-
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   return std::make_unique<FedSqlSession>(
-      FedSqlSession(std::move(aggregator), *intrinsics));
+      FedSqlSession(std::move(aggregator), *intrinsics,
+                    serialize_output_access_policy_node_id_,
+                    report_output_access_policy_node_id_));
 }
 
 absl::Status FedSqlSession::ConfigureSession(

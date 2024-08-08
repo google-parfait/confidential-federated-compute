@@ -111,6 +111,8 @@ using ::testing::Test;
 using testing::UnorderedElementsAre;
 
 inline constexpr int kMaxNumSessions = 8;
+inline constexpr int kSerializeOutputNodeId = 1;
+inline constexpr int kReportOutputNodeId = 2;
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               std::vector<ColumnSchema> columns) {
@@ -877,6 +879,182 @@ TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
   EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
 }
 
+TEST_F(FedSqlServerTest, SerializeEncryptedInputsWithoutOutputNodeIdFails) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  configure_request.mutable_configure();
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+  auto nonce_generator =
+      std::make_unique<NonceGenerator>(configure_response.configure().nonce());
+
+  std::string input_col_name = "foo";
+  std::string output_col_name = "foo_out";
+
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
+  std::string ciphertext_associated_data =
+      BlobHeader::default_instance().SerializeAsString();
+
+  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
+  absl::StatusOr<Record> rewrapped_record_0 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_0, ciphertext_associated_data, response.public_key(),
+          nonce_0->blob_nonce, *reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+
+  SessionRequest request_0;
+  WriteRequest* write_request_0 = request_0.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  *write_request_0->mutable_first_request_metadata() =
+      GetBlobMetadataFromRecord(*rewrapped_record_0);
+  write_request_0->mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_counter(nonce_0->counter);
+  write_request_0->mutable_first_request_configuration()->PackFrom(config);
+  write_request_0->set_commit(true);
+  write_request_0->set_data(
+      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+
+  SessionResponse response_0;
+
+  ASSERT_TRUE(stream->Write(request_0));
+  ASSERT_TRUE(stream->Read(&response_0));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_FALSE(stream->Read(&finalize_response));
+  grpc::Status finish_status = stream->Finish();
+  EXPECT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(
+      finish_status.error_message(),
+      HasSubstr("No output access policy node ID set for serialized outputs"));
+}
+
+TEST_F(FedSqlServerTest,
+       ReportEncryptedInputsWithOutputNodeIdOutputsEncryptedResult) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  init_config.set_report_output_access_policy_node_id(kReportOutputNodeId);
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  configure_request.mutable_configure();
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+  auto nonce_generator =
+      std::make_unique<NonceGenerator>(configure_response.configure().nonce());
+
+  std::string input_col_name = "foo";
+  std::string output_col_name = "foo_out";
+
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
+  std::string ciphertext_associated_data =
+      BlobHeader::default_instance().SerializeAsString();
+
+  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
+  absl::StatusOr<Record> rewrapped_record_0 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_0, ciphertext_associated_data, response.public_key(),
+          nonce_0->blob_nonce, *reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+
+  SessionRequest request_0;
+  WriteRequest* write_request_0 = request_0.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  *write_request_0->mutable_first_request_metadata() =
+      GetBlobMetadataFromRecord(*rewrapped_record_0);
+  write_request_0->mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_counter(nonce_0->counter);
+  write_request_0->mutable_first_request_configuration()->PackFrom(config);
+  write_request_0->set_commit(true);
+  write_request_0->set_data(
+      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+
+  SessionResponse response_0;
+
+  ASSERT_TRUE(stream->Write(request_0));
+  ASSERT_TRUE(stream->Read(&response_0));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  EXPECT_TRUE(stream->Read(&finalize_response));
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(finalize_response.read()
+                  .first_response_metadata()
+                  .has_hpke_plus_aead_data());
+
+  BlobMetadata::HpkePlusAeadMetadata result_metadata =
+      finalize_response.read().first_response_metadata().hpke_plus_aead_data();
+
+  BlobHeader result_header;
+  EXPECT_TRUE(result_header.ParseFromString(
+      result_metadata.ciphertext_associated_data()));
+  EXPECT_EQ(result_header.access_policy_node_id(), kReportOutputNodeId);
+  absl::StatusOr<std::string> decrypted_result =
+      decryptor.Decrypt(finalize_response.read().data(),
+                        result_metadata.ciphertext_associated_data(),
+                        result_metadata.encrypted_symmetric_key(),
+                        result_metadata.ciphertext_associated_data(),
+                        result_metadata.encapsulated_public_key());
+  ASSERT_TRUE(decrypted_result.ok()) << decrypted_result.status();
+}
+
 class FedSqlServerFederatedSumTest : public FedSqlServerTest {
  public:
   FedSqlServerFederatedSumTest() {
@@ -884,6 +1062,8 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     InitializeRequest request;
     InitializeResponse response;
     FedSqlContainerInitializeConfiguration init_config;
+    init_config.set_serialize_output_access_policy_node_id(
+        kSerializeOutputNodeId);
     *init_config.mutable_agg_configuration() = DefaultConfiguration();
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
@@ -1442,6 +1622,11 @@ TEST_F(FedSqlServerFederatedSumTest,
 
   BlobMetadata::HpkePlusAeadMetadata result_metadata =
       finalize_response.read().first_response_metadata().hpke_plus_aead_data();
+
+  BlobHeader result_header;
+  EXPECT_TRUE(result_header.ParseFromString(
+      result_metadata.ciphertext_associated_data()));
+  EXPECT_EQ(result_header.access_policy_node_id(), kSerializeOutputNodeId);
   // The decryptor with the earliest set expiration time should be able to
   // decrypt the encrypted results. The later decryptor should not.
   absl::StatusOr<std::string> decrypted_result =
