@@ -18,6 +18,7 @@ jobs:
       matrix:
         buildconfig:
           - buildconfigs/agg_core.sh
+          - buildconfigs/fed_sql.sh
           - buildconfigs/ledger_enclave_app.sh
           - buildconfigs/sql_server.sh
 
