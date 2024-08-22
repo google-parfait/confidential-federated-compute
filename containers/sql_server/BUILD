@@ -16,8 +16,6 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
-package(default_visibility = ["//:__subpackages__"])
-
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
@@ -47,6 +45,7 @@ oci_image(
 oci_runtime_bundle(
     name = "oci_runtime_bundle",
     image = ":oci_image",
+    visibility = ["//:__pkg__"],
 )
 
 cc_library(

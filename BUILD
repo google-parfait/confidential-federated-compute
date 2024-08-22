@@ -13,6 +13,8 @@
 # limitations under the License.
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 
 exports_files([".rustfmt.toml"])
 
@@ -27,4 +29,29 @@ platform(
         os_family = "Linux",
     ),
     parents = ["@local_config_platform//:host"],
+)
+
+# All artifacts that will be built for release, along with their names in the
+# destination directory.
+_ALL_BINARIES = {
+    "//containers/agg_core:oci_runtime_bundle.tar": "agg_core/container.tar",
+    "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
+    "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
+    "//containers/sql_server:oci_runtime_bundle.tar": "sql_server/container.tar",
+    "//containers/test_concat:oci_runtime_bundle.tar": "test_concat/container.tar",
+    "//examples/square_enclave_app": "square_example/binary",
+    "//examples/sum_enclave_app": "sum_example/binary",
+    "//ledger_enclave_app": "ledger/binary",
+    "//replicated_ledger_enclave_app": "replicated_ledger/binary",
+}
+
+pkg_files(
+    name = "all_binaries",
+    srcs = _ALL_BINARIES.keys(),
+    renames = _ALL_BINARIES,
+)
+
+pkg_install(
+    name = "install_binaries",
+    srcs = [":all_binaries"],
 )

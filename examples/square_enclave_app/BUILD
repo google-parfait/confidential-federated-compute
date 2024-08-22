@@ -18,6 +18,7 @@ rust_binary(
     name = "square_enclave_app",
     srcs = glob(["src/*.rs"]),
     platform = "@oak//:x86_64-unknown-none",
+    visibility = ["//:__pkg__"],
     deps = [
         "//examples/square_service",
         "//pipeline_transforms",

@@ -45,6 +45,7 @@ oci_image(
 oci_runtime_bundle(
     name = "oci_runtime_bundle",
     image = ":oci_image",
+    visibility = ["//:__pkg__"],
 )
 
 cc_library(

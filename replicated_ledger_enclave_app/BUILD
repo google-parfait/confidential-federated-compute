@@ -18,6 +18,7 @@ rust_binary(
     name = "replicated_ledger_enclave_app",
     srcs = glob(["src/*.rs"]),
     platform = "@oak//:x86_64-unknown-none",
+    visibility = ["//:__pkg__"],
     deps = [
         "//ledger_service",
         "@oak//oak_restricted_kernel_sdk",
