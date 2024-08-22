@@ -20,9 +20,9 @@ rust_library(
     visibility = ["//examples/sum_enclave_app:__pkg__"],
     deps = [
         "//pipeline_transforms",
-        "@crates_index//:byteorder",
         "@oak//micro_rpc",
         "@oak//oak_restricted_kernel_sdk",
+        "@oak_crates_index//:byteorder",
     ],
 )
 
@@ -30,10 +30,10 @@ rust_test(
     name = "sum_service_test",
     crate = ":sum_service",
     deps = [
-        "@crates_index//:anyhow",
-        "@crates_index//:coset",
-        "@crates_index//:sha2",
         "@oak//oak_attestation",
         "@oak//oak_proto_rust",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:sha2",
     ],
 )

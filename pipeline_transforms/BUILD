@@ -25,14 +25,14 @@ rust_library(
     deps = [
         "//cfc_crypto",
         "//third_party/federated_compute",
-        "@crates_index//:anyhow",
-        "@crates_index//:bitmask",
-        "@crates_index//:core2",
-        "@crates_index//:coset",
-        "@crates_index//:libflate",
-        "@crates_index//:prost",
-        "@crates_index//:prost-types",
-        "@crates_index//:rand",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:bitmask",
+        "@oak_crates_index//:core2",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:libflate",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:prost-types",
+        "@oak_crates_index//:rand",
     ],
 )
 
@@ -41,7 +41,7 @@ rust_test(
     crate = ":pipeline_transforms",
     crate_features = ["test"],
     deps = [
-        "@crates_index//:googletest",
-        "@crates_index//:sha2",
+        "@oak_crates_index//:googletest",
+        "@oak_crates_index//:sha2",
     ],
 )

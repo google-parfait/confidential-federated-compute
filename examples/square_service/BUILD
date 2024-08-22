@@ -21,11 +21,11 @@ rust_library(
     deps = [
         "//pipeline_transforms",
         "//third_party/federated_compute",
-        "@crates_index//:byteorder",
-        "@crates_index//:prost",
-        "@crates_index//:prost-types",
         "@oak//micro_rpc",
         "@oak//oak_restricted_kernel_sdk",
+        "@oak_crates_index//:byteorder",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:prost-types",
     ],
 )
 
@@ -34,10 +34,10 @@ rust_test(
     crate = ":square_service",
     deps = [
         "//cfc_crypto",
-        "@crates_index//:anyhow",
-        "@crates_index//:coset",
-        "@crates_index//:sha2",
         "@oak//oak_attestation",
         "@oak//oak_proto_rust",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:sha2",
     ],
 )

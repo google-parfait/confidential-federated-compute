@@ -128,19 +128,18 @@ http_archive(
 )
 
 http_archive(
-    name = "raft_rs",
-    patches = ["//third_party/raft_rs:bazel.patch"],
-    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
-    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
-    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
+    name = "trusted_computations_platform",
+    sha256 = "647054145089d8ff08cfe1033b549fbcce734b8ae6d0bee801d32d6fe598817d",
+    strip_prefix = "trusted-computations-platform-29c119c3c951749fdc321bc6171c04166696ba23",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/29c119c3c951749fdc321bc6171c04166696ba23.tar.gz",
 )
 
 http_archive(
-    name = "trusted_computations_platform",
-    patches = ["//third_party/trusted_computations_platform:bazel.patch"],
-    sha256 = "d0cd86ff201d1ee7f23d894cd77f9982ce68f42dd73828c1352cd0963eeedaa9",
-    strip_prefix = "trusted-computations-platform-aa23b882f7999a55ce76c5793db0cfbe9f3d8e82",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/aa23b882f7999a55ce76c5793db0cfbe9f3d8e82.tar.gz",
+    name = "raft_rs",
+    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
+    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
+    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
+    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
 )
 
 git_repository(
@@ -152,18 +151,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    patches = [
-        "//third_party/oak:BUILD.containers.patch",
-        "//third_party/oak:rustc.patch",
-    ],
-    # Ensure oak targets use the alias_crates_repository defined below.
-    repo_mapping = {
-        "@oak_crates_index": "@crates_index",
-        "@oak_no_std_crates_index": "@crates_index",
-    },
-    sha256 = "80a7b1958a9a3d03c5bebad77d875a3a7aeb83624a27145823231b3b123bc415",
-    strip_prefix = "oak-c38ebfcf98dcae94aa0aa6d6c8e852b4a29c2e2b",
-    url = "https://github.com/project-oak/oak/archive/c38ebfcf98dcae94aa0aa6d6c8e852b4a29c2e2b.tar.gz",
+    sha256 = "71437c5030a4660ecf1b5fda1231e1aeb9543cc84636f99a2bdf354add099913",
+    strip_prefix = "oak-b78e5f5c4be5d25e4b6c6009099c84edaf1c0b36",
+    url = "https://github.com/project-oak/oak/archive/b78e5f5c4be5d25e4b6c6009099c84edaf1c0b36.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
@@ -179,34 +169,17 @@ load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 setup_rust_dependencies()
 
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
-load("//:crates.bzl", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES", "alias_crates_repository")
+load("@trusted_computations_platform//:bazel/crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
+load("//:crates.bzl", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
 
 create_oak_crate_repositories(
-    extra_no_std_packages = CFC_NO_STD_PACKAGES,
-    extra_packages = CFC_PACKAGES,
+    extra_no_std_packages = TCP_NO_STD_PACKAGES | CFC_NO_STD_PACKAGES,
+    extra_packages = TCP_PACKAGES | CFC_PACKAGES,
 )
 
-# Define a repository with targets that redirect to @oak_crates_index or
-# @oak_no_std_crates_index depending on the platform. @oak_crates_index and
-# @oak_no_std_crates_index are defined by `create_oak_crate_repositories()`.
-alias_crates_repository(
-    name = "crates_index",
-    overrides = {
-        "prost-types,@platforms//os:none": "@oak//third_party/prost-types",
-    },
-    repositories = {
-        "@platforms//os:none": "oak_no_std_crates_index",
-        "//conditions:default": "oak_crates_index",
-    },
-)
+load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 
-load("@oak_crates_index//:defs.bzl", "crate_repositories")
-
-crate_repositories()
-
-load("@oak_no_std_crates_index//:defs.bzl", no_std_crate_repositories = "crate_repositories")
-
-no_std_crate_repositories()
+load_oak_crate_repositories()
 
 http_archive(
     name = "googletest",

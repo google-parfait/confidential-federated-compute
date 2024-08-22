@@ -19,15 +19,15 @@ rust_library(
     srcs = glob(["src/*.rs"]),
     visibility = ["//:__subpackages__"],
     deps = [
-        "@crates_index//:aes-gcm-siv",
-        "@crates_index//:anyhow",
-        "@crates_index//:coset",
-        "@crates_index//:hpke",
+        "@oak_crates_index//:aes-gcm-siv",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:hpke",
     ],
 )
 
 rust_test(
     name = "cfc_crypto_test",
     crate = ":cfc_crypto",
-    deps = ["@crates_index//:googletest"],
+    deps = ["@oak_crates_index//:googletest"],
 )

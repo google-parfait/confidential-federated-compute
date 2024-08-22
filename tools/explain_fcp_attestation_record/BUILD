@@ -20,9 +20,9 @@ rust_binary(
     deps = [
         ":explain_fcp_attestation_record",
         "//third_party/federated_compute",
-        "@crates_index//:anyhow",
-        "@crates_index//:clap",
-        "@crates_index//:prost",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:clap",
+        "@oak_crates_index//:prost",
     ],
 )
 
@@ -34,12 +34,12 @@ rust_library(
     ),
     deps = [
         "//third_party/federated_compute",
-        "@crates_index//:anyhow",
-        "@crates_index//:clap",
-        "@crates_index//:prost",
         "@oak//oak_attestation_explain",
         "@oak//oak_attestation_verification",
         "@oak//oak_proto_rust",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:clap",
+        "@oak_crates_index//:prost",
     ],
 )
 
@@ -56,11 +56,11 @@ rust_test(
     deps = [
         ":explain_fcp_attestation_record",
         "//third_party/federated_compute",
-        "@crates_index//:anyhow",
-        "@crates_index//:assert_cmd",
-        "@crates_index//:insta",
-        "@crates_index//:prost",
-        "@crates_index//:tempfile",
         "@oak//oak_proto_rust",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:assert_cmd",
+        "@oak_crates_index//:insta",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:tempfile",
     ],
 )
