@@ -31,18 +31,34 @@ platform(
     parents = ["@local_config_platform//:host"],
 )
 
-# All artifacts that will be built for release, along with their names in the
+# All release (i.e. production) binaries, along with their names in the
 # destination directory.
-_ALL_BINARIES = {
+_RELEASE_BINARIES = {
     "//containers/agg_core:oci_runtime_bundle.tar": "agg_core/container.tar",
-    "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/sql_server:oci_runtime_bundle.tar": "sql_server/container.tar",
+    "//ledger_enclave_app": "ledger/binary",
+    "//replicated_ledger_enclave_app": "replicated_ledger/binary",
+}
+
+pkg_files(
+    name = "release_binaries",
+    srcs = _RELEASE_BINARIES.keys(),
+    renames = _RELEASE_BINARIES,
+)
+
+pkg_install(
+    name = "install_release_binaries",
+    srcs = [":release_binaries"],
+)
+
+# All release and testing binaries, along with their names in the destination
+# directory.
+_ALL_BINARIES = _RELEASE_BINARIES | {
+    "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
     "//containers/test_concat:oci_runtime_bundle.tar": "test_concat/container.tar",
     "//examples/square_enclave_app": "square_example/binary",
     "//examples/sum_enclave_app": "sum_example/binary",
-    "//ledger_enclave_app": "ledger/binary",
-    "//replicated_ledger_enclave_app": "replicated_ledger/binary",
 }
 
 pkg_files(
@@ -52,6 +68,6 @@ pkg_files(
 )
 
 pkg_install(
-    name = "install_binaries",
+    name = "install_all_binaries",
     srcs = [":all_binaries"],
 )

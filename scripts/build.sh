@@ -46,10 +46,10 @@ elif [ "$1" == "release" ]; then
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-    ${BAZELISK} run -c opt //:install_binaries -- --destdir "${BINARY_OUTPUTS_DIR}"
+    ${BAZELISK} run -c opt //:install_all_binaries -- --destdir "${BINARY_OUTPUTS_DIR}"
   else
     # If unset, verify the binaries can be built with -c opt.
-    ${BAZELISK} build -c opt //:install_binaries
+    ${BAZELISK} build -c opt //:install_all_binaries
   fi
 else
   ${BAZELISK} test //...
