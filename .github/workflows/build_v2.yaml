@@ -1,0 +1,94 @@
+name: Build and attest v2
+
+on:
+  push:
+    branches: [main]
+
+# See https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    outputs:
+      binaries: ${{ steps.list-binaries.outputs.binaries }}
+
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.8.5
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      - name: Build
+        run: |
+          bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
+      - name: List binaries
+        id: list-binaries
+        # Set the "binaries" output to a json-encoded list of the bazel build
+        # outputs, relative to `--destdir`. (e.g.
+        # ["agg_core/container.tar","ledger/binary"])
+        run: |
+          set -euxo pipefail
+          binaries="$(find "${{ runner.temp }}/binaries" -type f -printf '%P\n' | jq -Rsc 'split("\n")[:-1]')"
+          echo "binaries=${binaries}" >> "$GITHUB_OUTPUT"
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: ${{ runner.temp }}/binaries/
+          if-no-files-found: error
+          retention-days: 5
+
+  attest:
+    needs: build
+
+    permissions:
+      id-token: write
+      attestations: write
+
+    runs-on: ubuntu-20.04
+
+    strategy:
+      # Continue attesting other artifacts even if one fails.
+      fail-fast: false
+      matrix:
+        binary: ${{ fromJson(needs.build.outputs.binaries) }}
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+      - name: Attest
+        id: attest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ matrix.binary }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY_JSON }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          skip_install: true
+      - name: Upload provenance
+        run: |
+          set -euxo pipefail
+
+          binary_path="${{ matrix.binary }}"
+          package_name="${binary_path%%/*}"
+          provenance_path="${{ steps.attest.outputs.bundle-path }}"
+          gcs_provenance_path="provenance/${GITHUB_SHA}/${package_name}/attestation-v2.jsonl"
+
+          gsutil cp "${provenance_path}" "gs://oak-bins/${gcs_provenance_path}"
+
