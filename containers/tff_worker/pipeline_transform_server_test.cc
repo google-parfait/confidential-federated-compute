@@ -47,6 +47,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
+#include "tensorflow_federated/cc/core/impl/executors/tensor_serialization.h"
 #include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -119,10 +120,8 @@ tff_proto::Value BuildFederatedIntClientValue(float int_value) {
   tensorflow::Tensor tensor(tensorflow::DT_FLOAT, shape);
   auto flat = tensor.flat<float>();
   flat(0) = int_value;
-  tensorflow::TensorProto tensor_proto;
-  tensor.AsProtoTensorContent(&tensor_proto);
   tensorflow_federated::v0::Value* federated_value = federated->add_value();
-  federated_value->mutable_tensor()->PackFrom(tensor_proto);
+  tensorflow_federated::SerializeTensorValue(tensor, federated_value);
   return value;
 }
 
@@ -344,17 +343,16 @@ TEST_F(TffPipelineTransformTest, TransformExecutesClientWork) {
   EXPECT_TRUE(value.federated().value(0).has_struct_());
   EXPECT_EQ(value.federated().value(0).struct_().element_size(), 1);
   EXPECT_TRUE(
-      value.federated().value(0).struct_().element(0).value().has_tensor());
-  tensorflow::TensorProto output_tensor_proto;
-  value.federated().value(0).struct_().element(0).value().tensor().UnpackTo(
-      &output_tensor_proto);
-  tensorflow::Tensor output_tensor;
-  CHECK(output_tensor.FromProto(output_tensor_proto));
-  EXPECT_EQ(output_tensor.NumElements(), 3);
+      value.federated().value(0).struct_().element(0).value().has_array());
+  absl::StatusOr<tensorflow::Tensor> output_tensor =
+      tensorflow_federated::DeserializeTensorValue(
+          value.federated().value(0).struct_().element(0).value());
+  EXPECT_TRUE(output_tensor.ok());
+  EXPECT_EQ(output_tensor.value().NumElements(), 3);
 
   // Test client work computation adds the broadcasted value to each of the
   // values in the input tensor.
-  auto flat = output_tensor.unaligned_flat<float>();
+  auto flat = output_tensor.value().unaligned_flat<float>();
   EXPECT_EQ(flat(0), 11);
   EXPECT_EQ(flat(1), 12);
   EXPECT_EQ(flat(2), 13);

@@ -35,6 +35,7 @@
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
+#include "tensorflow_federated/cc/core/impl/executors/tensor_serialization.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -149,7 +150,7 @@ absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
   FCP_ASSIGN_OR_RETURN(auto parser,
                        parser_factory.Create(client_stacked_tensor_result));
 
-  // The output is a federated CLIENTS-placed Value with a struct of Tensors
+  // The output is a federated CLIENTS-placed Value with a struct of Arrays
   // given the names from the `fed_sql_tf_checkpoint_spec` and the values in
   // the FCP checkpoint.
   tff::v0::Value_Federated* federated = restored_value.mutable_federated();
@@ -164,11 +165,9 @@ absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
                          parser->GetTensor(column.name()));
     absl::StatusOr<tf::Tensor> tensor =
         ToTfTensor(std::move(tensor_column_values));
-    tf::TensorProto tensor_proto;
-    tensor->AsProtoTensorContent(&tensor_proto);
     tff::v0::Value_Struct_Element* element = value_struct->add_element();
     element->set_name(column.name());
-    element->mutable_value()->mutable_tensor()->PackFrom(tensor_proto);
+    tff::SerializeTensorValue(tensor.value(), element->mutable_value());
   }
   return restored_value;
 }
