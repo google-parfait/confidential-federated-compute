@@ -129,9 +129,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "647054145089d8ff08cfe1033b549fbcce734b8ae6d0bee801d32d6fe598817d",
-    strip_prefix = "trusted-computations-platform-29c119c3c951749fdc321bc6171c04166696ba23",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/29c119c3c951749fdc321bc6171c04166696ba23.tar.gz",
+    sha256 = "e281ca232a893979cfcff80e6d57d340f115eccecd9c64ffc600f8a3ebc4cc4f",
+    strip_prefix = "trusted-computations-platform-750b03d05b2ea77a590a22373ed10511657fe024",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/750b03d05b2ea77a590a22373ed10511657fe024.tar.gz",
 )
 
 http_archive(
@@ -151,9 +151,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    sha256 = "71437c5030a4660ecf1b5fda1231e1aeb9543cc84636f99a2bdf354add099913",
-    strip_prefix = "oak-b78e5f5c4be5d25e4b6c6009099c84edaf1c0b36",
-    url = "https://github.com/project-oak/oak/archive/b78e5f5c4be5d25e4b6c6009099c84edaf1c0b36.tar.gz",
+    sha256 = "14226d2a153516025515c1c963c400db23a5a0238eb15f591995f933ba0b48a2",
+    strip_prefix = "oak-3e9ebf0deca2d4e0445d448ab0b54ea7d2e9522a",
+    url = "https://github.com/project-oak/oak/archive/3e9ebf0deca2d4e0445d448ab0b54ea7d2e9522a.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
@@ -169,7 +169,7 @@ load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 setup_rust_dependencies()
 
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
-load("@trusted_computations_platform//:bazel/crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
+load("@trusted_computations_platform//bazel:crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
 load("//:crates.bzl", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
 
 create_oak_crate_repositories(

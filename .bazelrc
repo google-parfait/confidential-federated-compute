@@ -65,3 +65,6 @@ build:cfc-remote --bes_instance_name=560162532548
 build:cfc-remote --bes_header=X-Goog-User-Project=560162532548
 build:cfc-remote --bes_results_url=http://sponge2/
 build:cfc-remote --grpc_keepalive_time=30s
+
+# Enable CFC remote features when enabled for google-parfait.
+common:parfait-remote --config=cfc-remote

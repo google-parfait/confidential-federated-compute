@@ -1,5 +1,5 @@
 {
-  "checksum": "7a899263121c0eaf185b662602060c41ea0e9d135c4574f171bc5c1bc4cdf2f2",
+  "checksum": "db9e0fed942a516dfebbbc34376fe7159c48e4445fc2731e2c2662e7b12fda5e",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -7069,6 +7069,10 @@
               "target": "insta"
             },
             {
+              "id": "itertools 0.13.0",
+              "target": "itertools"
+            },
+            {
               "id": "lazy_static 1.5.0",
               "target": "lazy_static"
             },
@@ -12916,6 +12920,54 @@
         },
         "edition": "2018",
         "version": "0.12.1"
+      },
+      "license": "MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
+    "itertools 0.13.0": {
+      "name": "itertools",
+      "version": "0.13.0",
+      "package_url": "https://github.com/rust-itertools/itertools",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/itertools/0.13.0/download",
+          "sha256": "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "itertools",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "itertools",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "either 1.13.0",
+              "target": "either"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "version": "0.13.0"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -32106,6 +32158,7 @@
     "hyper-util 0.1.7",
     "ignore 0.4.22",
     "insta 1.39.0",
+    "itertools 0.13.0",
     "lazy_static 1.5.0",
     "libflate 2.1.0",
     "libloading 0.8.5",
