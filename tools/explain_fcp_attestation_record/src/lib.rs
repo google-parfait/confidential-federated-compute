@@ -144,11 +144,6 @@ fn explain_data_access_policy(
         writeln!(buf)?;
         writeln!(buf, ">>>>> Transform #{i} <<<<<",)?;
         writeln!(buf, "Source blob ID: {}", transform.src)?;
-        writeln!(
-            buf,
-            "Destination blob ID: {}",
-            transform.dest.map_or("N/A (terminal transform)".to_string(), |id| id.to_string()),
-        )?;
         writeln!(buf)?;
         explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
         writeln!(buf)?;

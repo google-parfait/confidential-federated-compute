@@ -72,7 +72,6 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
         // This is a transform that processes the initial input data and produces some output data
         // that can only be processed by transform #3.
         src: 0,
-        dest: Some(1),
         application: Some(ApplicationMatcher {
             tag: Some("app2".to_string()),
             reference_values: Some(create_skip_all_amd_sev_reference_values()),
@@ -98,7 +97,6 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
     data_access_policy.transforms.push(Transform {
         // This is a 'terminal' transform that processes the initial input data.
         src: 0,
-        dest: None,
         application: Some(ApplicationMatcher {
             tag: Some("app2".to_string()),
             reference_values: Some(create_skip_all_amd_sev_reference_values()),
@@ -123,7 +121,6 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
     data_access_policy.transforms.push(Transform {
         // This is a 'terminal' transform which uses the output for the first transform.
         src: 1,
-        dest: None,
         application: Some(ApplicationMatcher {
             tag: Some("app3".to_string()),
             // For this last transform we purposely don't specify any reference values nor config

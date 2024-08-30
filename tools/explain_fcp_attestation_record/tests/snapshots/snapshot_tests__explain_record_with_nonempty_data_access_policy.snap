@@ -84,7 +84,6 @@ The data access policy allows 3 data transformations and defines 2 shared access
 
 >>>>> Transform #0 <<<<<
 Source blob ID: 0
-Destination blob ID: 1
 
 Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
 - limited access budget (at most 2 times): the transform may only access its source blob this many times.
@@ -142,7 +141,6 @@ Note: we don't print sigstore.dev links for the binary digests in this list of r
 
 >>>>> Transform #1 <<<<<
 Source blob ID: 0
-Destination blob ID: N/A (terminal transform)
 
 Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
 - limited shared access budget #1 (at most 2 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
@@ -199,7 +197,6 @@ Note: we don't print sigstore.dev links for the binary digests in this list of r
 
 >>>>> Transform #2 <<<<<
 Source blob ID: 1
-Destination blob ID: N/A (terminal transform)
 
 Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
 - limited shared access budget #0 (at most 5 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
