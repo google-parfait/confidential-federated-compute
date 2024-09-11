@@ -129,9 +129,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "e281ca232a893979cfcff80e6d57d340f115eccecd9c64ffc600f8a3ebc4cc4f",
-    strip_prefix = "trusted-computations-platform-750b03d05b2ea77a590a22373ed10511657fe024",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/750b03d05b2ea77a590a22373ed10511657fe024.tar.gz",
+    sha256 = "7432a2363d2ad85c4ac62451699a18027b79b999c15873ce1d50e89464ef7b3f",
+    strip_prefix = "trusted-computations-platform-2c9ce46f253aaf0b152d3716a2b576ee0bdf28b9",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/2c9ce46f253aaf0b152d3716a2b576ee0bdf28b9.tar.gz",
 )
 
 http_archive(
