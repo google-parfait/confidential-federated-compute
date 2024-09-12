@@ -34,11 +34,14 @@ platform(
 # All release (i.e. production) binaries, along with their names in the
 # destination directory.
 _RELEASE_BINARIES = {
+    # keep-sorted start
     "//containers/agg_core:oci_runtime_bundle.tar": "agg_core/container.tar",
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/sql_server:oci_runtime_bundle.tar": "sql_server/container.tar",
+    "//containers/tff_server:oci_runtime_bundle.tar": "tff_server/container.tar",
     "//ledger_enclave_app": "ledger/binary",
     "//replicated_ledger_enclave_app": "replicated_ledger/binary",
+    # keep-sorted end
 }
 
 pkg_files(

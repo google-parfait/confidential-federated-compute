@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+
 cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
@@ -88,4 +92,36 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
+)
+
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":confidential_transform_server",
+        "//containers:oak_orchestrator_client",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@oak//proto/containers:interfaces_cc_grpc",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+    ],
+)
+
+pkg_tar(
+    name = "tar",
+    srcs = [":main"],
+)
+
+oci_image(
+    name = "oci_image",
+    base = "@distroless_cc_debian12",
+    entrypoint = ["/main"],
+    tars = [":tar"],
+)
+
+oci_runtime_bundle(
+    name = "oci_runtime_bundle",
+    image = ":oci_image",
+    visibility = ["//:__pkg__"],
 )
