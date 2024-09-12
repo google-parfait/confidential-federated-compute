@@ -151,9 +151,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    sha256 = "14226d2a153516025515c1c963c400db23a5a0238eb15f591995f933ba0b48a2",
-    strip_prefix = "oak-3e9ebf0deca2d4e0445d448ab0b54ea7d2e9522a",
-    url = "https://github.com/project-oak/oak/archive/3e9ebf0deca2d4e0445d448ab0b54ea7d2e9522a.tar.gz",
+    sha256 = "2b808b4cb8d323975cc349c90359cbd2f2715aedbd5dfc531f28726b62d45e19",
+    strip_prefix = "oak-b3a751bb0aa6e013127c6dfd651ad71d6d5b3727",
+    url = "https://github.com/project-oak/oak/archive/b3a751bb0aa6e013127c6dfd651ad71d6d5b3727.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
