@@ -99,7 +99,7 @@ class TffConfidentialTransform final
   // No transform specific initialization for TFF.
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
-    return absl::OkStatus();
+    return google::protobuf::Struct::default_instance();
   };
 
   virtual absl::StatusOr<

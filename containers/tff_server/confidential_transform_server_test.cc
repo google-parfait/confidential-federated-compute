@@ -37,8 +37,15 @@
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/client_context.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
+#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -58,8 +65,11 @@ namespace {
 
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::FileInfo;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::InitializeRequest;
+using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
@@ -67,6 +77,11 @@ using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::TffSessionWriteConfig;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::grpc::Server;
+using ::grpc::ServerBuilder;
+using ::grpc::ServerContext;
+using ::grpc::StatusCode;
+using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::CreateTestData;
@@ -182,6 +197,32 @@ TffSessionConfig CreateSessionConfiguration(Value function, Value argument,
   *config.mutable_initial_arg() = std::move(argument);
   config.set_num_clients(num_clients);
   return config;
+}
+
+TEST(TffConfidentialTransform, InitializeTransformSuccess) {
+  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
+  TffConfidentialTransform service(&mock_crypto_stub);
+  std::unique_ptr<Server> server;
+  std::unique_ptr<ConfidentialTransform::Stub> stub;
+
+  int port;
+  const std::string server_address = "[::1]:";
+  ServerBuilder builder;
+  builder.AddListeningPort(server_address + "0",
+                           grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&service);
+  server = builder.BuildAndStart();
+  LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
+            << std::endl;
+  stub = ConfidentialTransform::NewStub(
+      grpc::CreateChannel(server_address + std::to_string(port),
+                          grpc::InsecureChannelCredentials()));
+
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  auto status = stub->Initialize(&context, request, &response);
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::OK);
 }
 
 TEST(TffSessionTest, ConfigureSessionSuccess) {
