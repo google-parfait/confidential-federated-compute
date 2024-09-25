@@ -90,5 +90,5 @@ jobs:
           provenance_path="${{ steps.attest.outputs.bundle-path }}"
           gcs_provenance_path="provenance/${GITHUB_SHA}/${package_name}/attestation.jsonl"
 
-          gcloud storage cp "${provenance_path}" "gs://oak-bins/${gcs_provenance_path}"
+          gcloud storage cp --no-clobber "${provenance_path}" "gs://oak-bins/${gcs_provenance_path}"
 
