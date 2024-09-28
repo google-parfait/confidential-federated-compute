@@ -16,6 +16,15 @@
 
 extern crate alloc;
 
+pub mod actor;
+mod attestation;
+mod blobid;
+mod budget;
+mod test_util;
+
+use crate::blobid::BlobId;
+use crate::budget::BudgetTracker;
+
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
 use cfc_crypto::{extract_key_from_cwt, PrivateKey, PUBLIC_KEY_CLAIM};
@@ -35,11 +44,6 @@ use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
-pub mod actor;
-mod attestation;
-mod budget;
-mod test_util;
-
 mod replication {
     include!(concat!(env!("OUT_DIR"), "/replication.rs"));
 }
@@ -53,7 +57,7 @@ struct PerKeyLedger {
     private_key: PrivateKey,
     public_key: Vec<u8>,
     expiration: Duration,
-    budget_tracker: budget::BudgetTracker,
+    budget_tracker: BudgetTracker,
 }
 
 pub struct LedgerService {
@@ -239,7 +243,7 @@ impl LedgerService {
                 private_key,
                 public_key: public_key.clone(),
                 expiration,
-                budget_tracker: budget::BudgetTracker::new(),
+                budget_tracker: BudgetTracker::new(),
             },
         );
 
@@ -309,10 +313,17 @@ impl LedgerService {
             )
         })?;
 
+        let blob_id = BlobId::from_vec(header.blob_id).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("Invalid `blob_id`: {:?}", err),
+            )
+        })?;
+
         // Verify that the access is authorized and that there is still budget
         // remaining.
         let transform_index = per_key_ledger.budget_tracker.find_matching_transform(
-            &header.blob_id,
+            &blob_id,
             header.access_policy_node_id,
             &access_policy,
             &header.access_policy_sha256,
@@ -376,6 +387,13 @@ impl LedgerService {
             )
         })?;
 
+        let blob_id = BlobId::from_vec(header.blob_id).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("Invalid `blob_id`: {:?}", err),
+            )
+        })?;
+
         // Re-wrap the blob's symmetric key. This should be done before budgets are
         // updated in case there are decryption errors (e.g., due to invalid
         // associated data).
@@ -400,7 +418,7 @@ impl LedgerService {
         // the time when the event is applied, which can be a short delay from from the
         // attestation and initially checking the budget.
         per_key_ledger.budget_tracker.update_budget(
-            &header.blob_id,
+            &blob_id,
             event.transform_index.try_into().unwrap(),
             &access_policy,
             &header.access_policy_sha256,
@@ -457,7 +475,7 @@ impl LedgerService {
                         format!("expiration is invalid: {:?}", err),
                     )
                 })?,
-                budget_tracker: budget::BudgetTracker::new(),
+                budget_tracker: BudgetTracker::new(),
             };
             // Load the budgets.
             if per_key_snapshot.budgets.is_some() {
@@ -543,7 +561,14 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        per_key_ledger.budget_tracker.consume_budget(&request.blob_id);
+        let blob_id = BlobId::from_vec(request.blob_id).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("Invalid `blob_id`: {:?}", err),
+            )
+        })?;
+
+        per_key_ledger.budget_tracker.consume_budget(&blob_id);
         Ok(RevokeAccessResponse {})
     }
 }
@@ -1663,7 +1688,8 @@ mod tests {
                         per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
                             budgets: vec![BlobBudgetSnapshot {
-                                blob_id: "blob-id".into(),
+                                // Note: blob-id will be padded with zeros to make it 16 bytes long.
+                                blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
                                 transform_access_budgets: vec![0],
                                 shared_access_budgets: vec![],
                             }]
@@ -1677,6 +1703,8 @@ mod tests {
 
     #[test]
     fn test_load_snapshot() {
+        // Blob IDs have to be 16 byte long in this test to avoid failing the test
+        // due to zero padding when saving the snapshot.
         let (mut ledger, _) = create_ledger_service();
         let (private_key_1, public_key_1) = cfc_crypto::gen_keypair(b"key1");
         let (private_key_2, public_key_2) = cfc_crypto::gen_keypair(b"key2");
@@ -1694,7 +1722,7 @@ mod tests {
                         per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                             access_policy_sha256: b"hash1".to_vec(),
                             budgets: vec![BlobBudgetSnapshot {
-                                blob_id: b"blob1".to_vec(),
+                                blob_id: b"_____blob_____1_".to_vec(),
                                 ..Default::default()
                             }],
                         }],
@@ -1710,7 +1738,7 @@ mod tests {
                     }),
                     budgets: Some(BudgetSnapshot {
                         per_policy_snapshots: vec![],
-                        consumed_budgets: vec![b"blob2".to_vec()],
+                        consumed_budgets: vec![b"_____blob_____2_".to_vec()],
                     }),
                 },
             ],
