@@ -237,6 +237,7 @@ absl::StatusOr<SessionResponse> TffSession::FinalizeSession(
     BlobMetadata result_metadata;
     result_metadata.set_total_size_bytes(unencrypted_result.size());
     result_metadata.mutable_unencrypted();
+    result_metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
     SessionResponse unencrypted_response;
     ReadResponse* unencrypted_read_response =
         unencrypted_response.mutable_read();
