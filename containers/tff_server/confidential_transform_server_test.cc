@@ -435,6 +435,8 @@ TEST(TffSessionTest, FinalizeWithoutArgumentSuccess) {
   FinalizeRequest finalize_request;
   auto result = session.FinalizeSession(finalize_request, metadata).value();
   ReadResponse read_response = result.read();
+  EXPECT_EQ(read_response.first_response_metadata().compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
   Value value;
   value.ParseFromString(read_response.data());
   tensorflow::Tensor output_tensor =
