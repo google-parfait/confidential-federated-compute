@@ -1,5 +1,5 @@
 {
-  "checksum": "db9e0fed942a516dfebbbc34376fe7159c48e4445fc2731e2c2662e7b12fda5e",
+  "checksum": "ffd3ae3ca36d6ab4ec57d405711af80b4b4a54fc5cdaef8503c6db50395cb5cd",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -1328,6 +1328,57 @@
         "MIT"
       ],
       "license_file": "LICENSE-APACHE"
+    },
+    "assert-json-diff 2.0.2": {
+      "name": "assert-json-diff",
+      "version": "2.0.2",
+      "package_url": "https://github.com/davidpdrsn/assert-json-diff.git",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/assert-json-diff/2.0.2/download",
+          "sha256": "47e4f2b81832e72834d7518d8487a0396a28cc408186a2e8854c0f98011faf12"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "assert_json_diff",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "assert_json_diff",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "serde 1.0.204",
+              "target": "serde"
+            },
+            {
+              "id": "serde_json 1.0.120",
+              "target": "serde_json"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "version": "2.0.2"
+      },
+      "license": "MIT",
+      "license_ids": [
+        "MIT"
+      ],
+      "license_file": "LICENSE"
     },
     "assert_cmd 2.0.15": {
       "name": "assert_cmd",
@@ -6555,6 +6606,7 @@
         ],
         "crate_features": {
           "common": [
+            "alloc",
             "default",
             "std"
           ],
@@ -6610,6 +6662,7 @@
         ],
         "crate_features": {
           "common": [
+            "alloc",
             "lib_has_std"
           ],
           "selects": {}
@@ -6676,6 +6729,7 @@
         ],
         "crate_features": {
           "common": [
+            "alloc",
             "lib_has_std"
           ],
           "selects": {}
@@ -6913,6 +6967,10 @@
               "target": "arrayvec"
             },
             {
+              "id": "assert-json-diff 2.0.2",
+              "target": "assert_json_diff"
+            },
+            {
               "id": "assert_cmd 2.0.15",
               "target": "assert_cmd"
             },
@@ -6995,6 +7053,10 @@
             {
               "id": "curve25519-dalek 4.1.1",
               "target": "curve25519_dalek"
+            },
+            {
+              "id": "derive_builder 0.20.0",
+              "target": "derive_builder"
             },
             {
               "id": "ecdsa 0.16.9",
@@ -32115,6 +32177,7 @@
     "aml 0.16.4",
     "anyhow 1.0.86",
     "arrayvec 0.7.4",
+    "assert-json-diff 2.0.2",
     "assert_cmd 2.0.15",
     "assertables 7.0.1",
     "async-recursion 1.1.1",
@@ -32139,6 +32202,7 @@
     "criterion 0.5.1",
     "criterion-macro 0.4.0",
     "curve25519-dalek 4.1.1",
+    "derive_builder 0.20.0",
     "ecdsa 0.16.9",
     "elf 0.7.4",
     "env_logger 0.11.3",
