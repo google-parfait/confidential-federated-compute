@@ -430,6 +430,7 @@ impl LedgerService {
             encapsulated_key,
             encrypted_symmetric_key,
             reencryption_public_key: per_key_ledger.public_key.clone(),
+            ..Default::default()
         })
     }
 

@@ -17,8 +17,8 @@ use crate::LedgerService;
 
 use alloc::boxed::Box;
 use federated_compute::proto::{
-    ledger_request::*, ledger_response, ledger_response::*, Ledger, LedgerConfig, LedgerRequest,
-    LedgerResponse,
+    ledger_request::*, ledger_response::*, Ledger, LedgerConfig, LedgerRequest, LedgerResponse,
+    Status,
 };
 use oak_restricted_kernel_sdk::crypto::Signer;
 use prost::{bytes::Bytes, Message};
@@ -211,7 +211,7 @@ fn event_name(event: &LedgerEvent) -> &'static str {
 
 fn response_with_error(error: micro_rpc::Status) -> LedgerResponse {
     LedgerResponse {
-        response: Some(Response::Error(ledger_response::Status {
+        response: Some(Response::Error(Status {
             code: error.code as i32,
             message: error.message.into(),
         })),
