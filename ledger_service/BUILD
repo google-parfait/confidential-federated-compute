@@ -68,6 +68,7 @@ rust_library(
         "@oak_crates_index//:prost",
         "@oak_crates_index//:prost-types",
         "@oak_crates_index//:rand",
+        "@oak_crates_index//:rangemap",
         "@oak_crates_index//:sha2",
         "@oak_crates_index//:slog",
         "@trusted_computations_platform//runtime:tcp_runtime",

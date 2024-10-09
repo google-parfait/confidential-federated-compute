@@ -37,6 +37,10 @@ _COMMON_PACKAGES = {
         default_features = False,
         version = "2.0.0",
     ),
+    "rangemap": crate.spec(
+        default_features = False,
+        version = "1.5.1",
+    ),
 }
 
 # Crates used for std builds.

@@ -14,15 +14,19 @@
 
 use alloc::vec::Vec;
 use anyhow::{bail, Result};
+use rangemap::StepLite;
 
 const BLOB_ID_SIZE: usize = 16;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BlobId {
     id: u128,
 }
 
 impl BlobId {
+    const MIN: BlobId = BlobId { id: u128::MIN };
+    const MAX: BlobId = BlobId { id: u128::MAX };
+
     pub fn from_bytes(s: &[u8]) -> Result<Self> {
         if s.len() > BLOB_ID_SIZE {
             bail!("Blob ID is longer than {} bytes", BLOB_ID_SIZE);
@@ -42,9 +46,25 @@ impl BlobId {
     }
 }
 
+impl StepLite for BlobId {
+    fn add_one(&self) -> BlobId {
+        BlobId::from(self.id.add_one())
+    }
+
+    fn sub_one(&self) -> BlobId {
+        BlobId::from(self.id.sub_one())
+    }
+}
+
 impl From<u128> for BlobId {
     fn from(id: u128) -> Self {
         BlobId { id }
+    }
+}
+
+impl From<&u128> for BlobId {
+    fn from(id: &u128) -> Self {
+        BlobId::from(*id)
     }
 }
 
@@ -88,5 +108,27 @@ mod tests {
             BlobId::from(12345678).to_vec(),
             vec![78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn test_add_one() {
+        assert_eq!(BlobId::add_one(&BlobId::from(1)), BlobId::from(2));
+    }
+
+    #[test]
+    fn test_sub_one() {
+        assert_eq!(BlobId::sub_one(&BlobId::from(2)), BlobId::from(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_one_panic() {
+        BlobId::add_one(&BlobId::MAX);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_sub_one_panic() {
+        BlobId::sub_one(&BlobId::MIN);
     }
 }

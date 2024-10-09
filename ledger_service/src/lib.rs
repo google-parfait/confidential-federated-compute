@@ -20,6 +20,7 @@ pub mod actor;
 mod attestation;
 mod blobid;
 mod budget;
+mod range_budget;
 mod test_util;
 
 use crate::blobid::BlobId;

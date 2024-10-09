@@ -1,5 +1,5 @@
 {
-  "checksum": "09ffd10feb2089fa1c440ecee7dfc308f2c677e1ed415780b175975941b630b6",
+  "checksum": "9b4600f85835ba0bfc1444a39ad37c9cf6bef15fe59f378314be59d830fd9bec",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -7273,6 +7273,10 @@
             {
               "id": "rand_core 0.6.4",
               "target": "rand_core"
+            },
+            {
+              "id": "rangemap 1.5.1",
+              "target": "rangemap"
             },
             {
               "id": "regex 1.10.5",
@@ -19978,6 +19982,45 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
+    "rangemap 1.5.1": {
+      "name": "rangemap",
+      "version": "1.5.1",
+      "package_url": "https://github.com/jeffparsons/rangemap",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/rangemap/1.5.1/download",
+          "sha256": "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "rangemap",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "rangemap",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2018",
+        "version": "1.5.1"
+      },
+      "license": "MIT/Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
     "raw-cpuid 10.7.0": {
       "name": "raw-cpuid",
       "version": "10.7.0",
@@ -32259,6 +32302,7 @@
     "rand 0.8.5",
     "rand_chacha 0.3.1",
     "rand_core 0.6.4",
+    "rangemap 1.5.1",
     "regex 1.10.5",
     "regex-lite 0.1.6",
     "rlsf 0.2.1",
