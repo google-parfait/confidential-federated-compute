@@ -43,6 +43,14 @@ message CreateKeyEvent {
   google.protobuf.Timestamp expiration = 4;
 }
 
+// Range of records with an inclusive start and exclusive end.
+message Range {
+  // Beginning of the range, inclusive.
+  bytes start = 1;
+  // End of the range, exclusive.
+  bytes end = 2;
+}
+
 // Replication event generated in response to processing AuthorizeAccess
 // request.
 //
@@ -60,18 +68,20 @@ message AuthorizeAccessEvent {
   uint64 transform_index = 3;
 
   // The serialized fcp.confidentialcompute.BlobHeader of the blob being
-  // accessed.
-  bytes blob_header = 4;
+  // accessed. Deprecated, use BlobMetadata.blob_header instead.
+  bytes blob_header = 4 [deprecated = true];
 
   // Encapsulated HPKE secret key used (along with one of the Ledger's private
   // keys) to decrypt `encrypted_symmetric_key`. The encapsulated key will have
   // been produced as part of encrypting the blob's symmetric key using HPKE.
-  bytes encapsulated_key = 5;
+  // Deprecated, use BlobMetadata.encapsulated_key instead.
+  bytes encapsulated_key = 5 [deprecated = true];
 
   // The blob's encrypted symmetric key, used to encrypt the blob data using
   // AEAD. This symmetric key should have been encrypted using the Ledger-owned
   // public key indicated in the blob header.
-  bytes encrypted_symmetric_key = 6;
+  // Deprecated, use BlobMetadata.encrypted_symmetric_key instead.
+  bytes encrypted_symmetric_key = 6 [deprecated = true];
 
   // The public key to use to encrypt the response.
   bytes recipient_public_key = 7;
@@ -79,7 +89,38 @@ message AuthorizeAccessEvent {
   // Nonce used by the recipient to ensure the same AuthorizeAccessResponse
   // cannot be replayed multiple times by an unsealed portion of the stack to
   // cause it to process the same data multiple times.
-  bytes recipient_nonce = 8;
+  // Deprecated, use BlobMetadata.recipient_nonce instead.
+  bytes recipient_nonce = 8 [deprecated = true];
+
+  // Optional. The range of blobs to authorize access to in batches.
+  // If there is only a single blob, this field can be left unset.
+  Range blob_range = 9;
+
+  // The metadata of the blobs pertaining to the given range. This MUST be
+  // provided for range-based batch authorization requests.
+  repeated BlobMetadata blob_metadata = 10;
+
+  message BlobMetadata {
+    // The serialized fcp.confidentialcompute.BlobHeader of the blob being
+    // accessed.
+    bytes blob_header = 1;
+
+    // Encapsulated HPKE secret key used (along with one of the Ledger's private
+    // keys) to decrypt `encrypted_symmetric_key`. The encapsulated key will
+    // have been produced as part of encrypting the blob's symmetric key using
+    // HPKE.
+    bytes encapsulated_key = 2;
+
+    // The blob's encrypted symmetric key, used to encrypt the blob data using
+    // AEAD. This symmetric key should have been encrypted using the
+    // Ledger-owned public key indicated in the blob header.
+    bytes encrypted_symmetric_key = 3;
+
+    // Nonce used by the recipient to ensure the same AuthorizeAccessResponse
+    // cannot be replayed multiple times by an unsealed portion of the stack to
+    // cause it to process the same data multiple times.
+    bytes recipient_nonce = 4;
+  }
 }
 
 // Combined replication event - this is used to propagate the pending command
@@ -110,13 +151,34 @@ message BlobBudgetSnapshot {
   repeated uint32 shared_access_budgets = 3;
 }
 
+// Snapshot of the range budget.
+message RangeBudgetSnapshot {
+  // Beginning of all ranges, inclusive.
+  repeated bytes start = 1;
+  // End (exclusive) of all ranges corresponding to each `start` above.
+  // This list must be the same length as `start`.
+  repeated bytes end = 2;
+  // Remaining budget for each range above. This list must be the same length as
+  // `start` and `end`.
+  repeated uint32 remaining_budget = 3;
+  // Default budget that all entries not covered by any ranges above will use.
+  uint32 default_budget = 4;
+}
+
 // Snapshot of state associated with a single access policy.
 message PerPolicyBudgetSnapshot {
   // Access policy SHA-256 hash
   bytes access_policy_sha256 = 1;
 
-  // Per-blob budgets.
-  repeated BlobBudgetSnapshot budgets = 2;
+  // Per-blob budgets. Deprected, use `transform_access_budgets` and
+  // `shared_access_budgets` instead.
+  repeated BlobBudgetSnapshot budgets = 2 [deprecated = true];
+
+  // Per-transform budgets.
+  repeated RangeBudgetSnapshot transform_access_budgets = 3;
+
+  // Budgets that are shared between transforms.
+  repeated RangeBudgetSnapshot shared_access_budgets = 4;
 }
 
 // Snapshot of budget state.

@@ -866,6 +866,7 @@ mod tests {
                         transform_access_budgets: vec![1],
                         shared_access_budgets: vec![],
                     }],
+                    ..Default::default()
                 }],
                 consumed_budgets: vec![],
             }
@@ -905,6 +906,7 @@ mod tests {
                 per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                     access_policy_sha256: policy_hash.to_vec(),
                     budgets: vec![],
+                    ..Default::default()
                 }],
                 consumed_budgets: vec![blob_id.to_vec()],
             }
@@ -926,6 +928,7 @@ mod tests {
                         transform_access_budgets: vec![1],
                         shared_access_budgets: vec![],
                     }],
+                    ..Default::default()
                 },
                 PerPolicyBudgetSnapshot {
                     access_policy_sha256: b"hash2".to_vec(),
@@ -941,6 +944,7 @@ mod tests {
                             shared_access_budgets: vec![12, 13, 14],
                         },
                     ],
+                    ..Default::default()
                 },
             ],
             consumed_budgets: vec![b"_____blob_____4_".to_vec(), b"_____blob_____5_".to_vec()],
@@ -993,10 +997,12 @@ mod tests {
                     PerPolicyBudgetSnapshot {
                         access_policy_sha256: b"hash1".to_vec(),
                         budgets: vec![],
+                        ..Default::default()
                     },
                     PerPolicyBudgetSnapshot {
                         access_policy_sha256: b"hash1".to_vec(),
                         budgets: vec![],
+                        ..Default::default()
                     }
                 ],
                 consumed_budgets: vec![]
@@ -1017,6 +1023,7 @@ mod tests {
                         BlobBudgetSnapshot { blob_id: b"blob1".to_vec(), ..Default::default() },
                         BlobBudgetSnapshot { blob_id: b"blob1".to_vec(), ..Default::default() },
                     ],
+                    ..Default::default()
                 },],
                 consumed_budgets: vec![]
             }),

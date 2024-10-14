@@ -341,6 +341,7 @@ impl LedgerService {
             encrypted_symmetric_key: request.encrypted_symmetric_key,
             recipient_public_key: request.recipient_public_key,
             recipient_nonce: request.recipient_nonce,
+            ..Default::default()
         })
     }
 
@@ -1694,7 +1695,8 @@ mod tests {
                                 blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
                                 transform_access_budgets: vec![0],
                                 shared_access_budgets: vec![],
-                            }]
+                            }],
+                            ..Default::default()
                         }],
                         consumed_budgets: vec![],
                     }),
@@ -1727,6 +1729,7 @@ mod tests {
                                 blob_id: b"_____blob_____1_".to_vec(),
                                 ..Default::default()
                             }],
+                            ..Default::default()
                         }],
                         consumed_budgets: vec![],
                     }),
@@ -1822,6 +1825,7 @@ mod tests {
                             blob_id: b"blob-id".to_vec(),
                             ..Default::default()
                         }],
+                        ..Default::default()
                     }],
                     consumed_budgets: vec![],
                 }),
