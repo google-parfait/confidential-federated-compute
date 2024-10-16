@@ -27,6 +27,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_worker_configuration_cc_proto",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow//tensorflow/core:tensorflow",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/tensorflow:converters",
@@ -41,7 +42,7 @@ cc_library(
 
 cc_test(
     name = "pipeline_transform_server_test",
-    size = "small",
+    size = "medium",
     srcs = ["pipeline_transform_server_test.cc"],
     data = [
         "//containers/tff_worker:testing/aggregation_computation.txtpb",
