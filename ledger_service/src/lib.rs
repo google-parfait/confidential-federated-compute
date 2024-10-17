@@ -40,7 +40,7 @@ use federated_compute::proto::{
     RevokeAccessRequest, RevokeAccessResponse,
 };
 use hpke::{Deserializable, Serializable};
-use oak_restricted_kernel_sdk::crypto::Signer;
+use oak_crypto::signer::Signer;
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -129,9 +129,7 @@ impl LedgerService {
                 ..Default::default()
             })
             .payload(claims.to_vec().map_err(anyhow::Error::msg)?)
-            .try_create_signature(b"", |msg| {
-                Ok::<Vec<u8>, anyhow::Error>(self.signer.sign(msg)?.signature)
-            })?
+            .try_create_signature(b"", |msg| Ok::<Vec<u8>, anyhow::Error>(self.signer.sign(msg)))?
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
@@ -621,8 +619,8 @@ mod tests {
     fn test_create_key() {
         struct FakeSigner;
         impl Signer for FakeSigner {
-            fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
-                return Ok(Signature { signature: Sha256::digest(message).to_vec() });
+            fn sign(&self, message: &[u8]) -> Vec<u8> {
+                Sha256::digest(message).to_vec()
             }
         }
         let mut ledger = LedgerService::new(Box::new(FakeSigner));
@@ -812,7 +810,7 @@ mod tests {
             .create_signature(b"", |message| {
                 // The MockSigner signs the key with application signing key provided by the
                 // MockEvidenceProvider.
-                MockSigner::create().unwrap().sign(message).unwrap().signature
+                MockSigner::create().unwrap().sign(message)
             })
             .build()
             .to_vec()
@@ -895,7 +893,7 @@ mod tests {
             .create_signature(b"", |message| {
                 // The MockSigner signs the key with application signing key provided by the
                 // MockEvidenceProvider.
-                MockSigner::create().unwrap().sign(message).unwrap().signature
+                MockSigner::create().unwrap().sign(message)
             })
             .build()
             .to_vec()

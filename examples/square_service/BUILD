@@ -22,7 +22,7 @@ rust_library(
         "//pipeline_transforms",
         "//third_party/federated_compute",
         "@oak//micro_rpc",
-        "@oak//oak_restricted_kernel_sdk",
+        "@oak//oak_crypto",
         "@oak_crates_index//:byteorder",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:prost-types",
@@ -35,7 +35,7 @@ rust_test(
     deps = [
         "//cfc_crypto",
         "@oak//oak_attestation",
-        "@oak//oak_proto_rust",
+        "@oak//oak_restricted_kernel_sdk",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:sha2",

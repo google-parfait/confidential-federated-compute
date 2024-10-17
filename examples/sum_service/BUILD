@@ -21,7 +21,7 @@ rust_library(
     deps = [
         "//pipeline_transforms",
         "@oak//micro_rpc",
-        "@oak//oak_restricted_kernel_sdk",
+        "@oak//oak_crypto",
         "@oak_crates_index//:byteorder",
     ],
 )
@@ -31,7 +31,7 @@ rust_test(
     crate = ":sum_service",
     deps = [
         "@oak//oak_attestation",
-        "@oak//oak_proto_rust",
+        "@oak//oak_restricted_kernel_sdk",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:sha2",

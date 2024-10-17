@@ -122,16 +122,16 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "559fa4c4a50b15fb237e11492522e33c7049f9f3c6d673b1243cd1c0d1046a12",
-    strip_prefix = "federated-compute-77d71d481478a98f8abb228b8a0da83b685b0c19",
-    url = "https://github.com/google/federated-compute/archive/77d71d481478a98f8abb228b8a0da83b685b0c19.tar.gz",
+    sha256 = "09af33592f41bacd353c25a9820af141328a676767151d22625fccd6d5807fad",
+    strip_prefix = "federated-compute-9f2706684b91de10f39e5f291847370621d0fce3",
+    url = "https://github.com/google/federated-compute/archive/9f2706684b91de10f39e5f291847370621d0fce3.tar.gz",
 )
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "eacfc7c8ed0895ada31325818007d6be4fc470968015f912d189fa8c2c09e5fe",
-    strip_prefix = "trusted-computations-platform-c3554b1ed8e71b58b119015cdad9526bd8fd7b2e",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/c3554b1ed8e71b58b119015cdad9526bd8fd7b2e.tar.gz",
+    sha256 = "e9953b10c88c25b06bf3716d4311d3a7bedaeae0ab271c9f929864469267ede1",
+    strip_prefix = "trusted-computations-platform-54eeef000dcdcb76ed0703df546d89f717f31c2f",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/54eeef000dcdcb76ed0703df546d89f717f31c2f.tar.gz",
 )
 
 http_archive(
@@ -151,9 +151,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    sha256 = "7523cc1aed9e64b4cd77218b6e823bfcc43914b618a76f3e8ff184659e8a27af",
-    strip_prefix = "oak-d68da7866e8fd06cc058eb9b8840997c4c3b2e6b",
-    url = "https://github.com/project-oak/oak/archive/d68da7866e8fd06cc058eb9b8840997c4c3b2e6b.tar.gz",
+    sha256 = "f8147a4db91c0ca5ffcd71a9fee18c168fc4eaa19ae4796bbee10074b0aa701f",
+    strip_prefix = "oak-caba4e1bc49dd064b3c505bbf380ffc1c400eaa6",
+    url = "https://github.com/project-oak/oak/archive/caba4e1bc49dd064b3c505bbf380ffc1c400eaa6.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")

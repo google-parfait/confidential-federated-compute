@@ -59,6 +59,7 @@ rust_library(
         "//third_party/federated_compute",
         "@oak//micro_rpc",
         "@oak//oak_attestation_verification",
+        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_restricted_kernel_sdk",
         "@oak_crates_index//:anyhow",

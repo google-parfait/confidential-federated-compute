@@ -305,10 +305,11 @@ mod tests {
         value_matcher::string_matcher::Kind as StringMatcherKind,
     };
     use googletest::prelude::*;
+    use oak_crypto::signer::Signer;
     use oak_proto_rust::oak::attestation::v1::{
         endorsements, OakRestrictedKernelEndorsements, ReferenceValues,
     };
-    use oak_restricted_kernel_sdk::{crypto::Signer, testing::MockSigner};
+    use oak_restricted_kernel_sdk::testing::MockSigner;
 
     /// Helper function to create a valid public key.
     fn create_public_key(config_properties: Option<&prost_types::Struct>) -> (Vec<u8>, CoseKey) {
@@ -333,9 +334,7 @@ mod tests {
         let cwt = CoseSign1Builder::new()
             .protected(header.build())
             .payload(claims.build().to_vec().unwrap())
-            .create_signature(b"", |message| {
-                MockSigner::create().unwrap().sign(message).unwrap().signature
-            })
+            .create_signature(b"", |message| MockSigner::create().unwrap().sign(message))
             .build()
             .to_vec()
             .unwrap();

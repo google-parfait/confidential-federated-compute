@@ -19,7 +19,7 @@ extern crate alloc;
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use byteorder::{ByteOrder, LittleEndian};
 use federated_compute::proto::BlobHeader;
-use oak_restricted_kernel_sdk::crypto::Signer;
+use oak_crypto::signer::Signer;
 use pipeline_transforms::{
     io::{DecryptionModeSet, EncryptionMode, RecordDecoder, RecordEncoder},
     proto::{
@@ -103,7 +103,7 @@ impl PipelineTransform for SquareService {
 
         self.record_decoder = Some(
             RecordDecoder::create_with_config_and_modes(
-                |msg| Ok(self.signer.sign(msg)?.signature),
+                |msg| Ok(self.signer.sign(msg)),
                 &config,
                 DecryptionModeSet::all(),
             )
@@ -218,12 +218,12 @@ impl PipelineTransform for SquareService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
     use cfc_crypto::CONFIG_PROPERTIES_CLAIM;
     use coset::{
         cwt::{ClaimName, ClaimsSet},
         CborSerializable, CoseSign1,
     };
-    use oak_proto_rust::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::testing::MockSigner;
     use pipeline_transforms::proto::Record;
     use sha2::{Digest, Sha256};
@@ -242,8 +242,8 @@ mod tests {
     fn test_configure_and_attest() -> Result<(), micro_rpc::Status> {
         struct FakeSigner;
         impl Signer for FakeSigner {
-            fn sign(&self, message: &[u8]) -> anyhow::Result<Signature> {
-                return Ok(Signature { signature: Sha256::digest(message).to_vec() });
+            fn sign(&self, message: &[u8]) -> Vec<u8> {
+                Sha256::digest(message).to_vec()
             }
         }
 

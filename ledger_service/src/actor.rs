@@ -20,7 +20,7 @@ use federated_compute::proto::{
     ledger_request::*, ledger_response::*, Ledger, LedgerConfig, LedgerRequest, LedgerResponse,
     Status,
 };
-use oak_restricted_kernel_sdk::crypto::Signer;
+use oak_crypto::signer::Signer;
 use prost::{bytes::Bytes, Message};
 use slog::{debug, error, warn};
 use tcp_runtime::model::{
