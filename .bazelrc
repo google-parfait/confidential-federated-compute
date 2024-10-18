@@ -6,6 +6,8 @@ build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
+# Build TensorFlow with more optimizations to avoid linker OOM
+build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
 common --experimental_repo_remote_exec
 
 build:asan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux

@@ -39,6 +39,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/tensorflow:converters",
@@ -52,13 +53,14 @@ cc_library(
 
 cc_test(
     name = "confidential_transform_server_test",
-    size = "small",
+    size = "medium",
     srcs = ["confidential_transform_server_test.cc"],
     data = [
         "//containers/tff_server:testing/client_data_function.txtpb",
         "//containers/tff_server:testing/no_argument_function.txtpb",
         "//containers/tff_server:testing/server_data_function.txtpb",
     ],
+    tags = ["noasan"],
     deps = [
         ":confidential_transform_server",
         "//containers:blob_metadata",
@@ -97,6 +99,7 @@ cc_test(
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
+    tags = ["noasan"],
     deps = [
         ":confidential_transform_server",
         "//containers:oak_orchestrator_client",
