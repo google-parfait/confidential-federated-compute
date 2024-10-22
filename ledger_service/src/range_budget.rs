@@ -14,8 +14,18 @@
 
 use crate::blobid::BlobId;
 
-use alloc::vec::Vec;
-use core::cmp::{max, min};
+use crate::attestation::Application;
+use crate::replication::BudgetSnapshot;
+
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
+use core::{
+    cmp::{max, min},
+    time::Duration,
+};
+use federated_compute::proto::DataAccessPolicy;
 use rangemap::map::RangeMap;
 
 type BlobRange = core::ops::Range<BlobId>;
@@ -81,6 +91,131 @@ impl RangeBudget {
 
     fn to_vec(&self) -> Vec<(BlobRange, u32)> {
         self.map.iter().map(|(r, b)| (r.clone(), *b)).collect()
+    }
+}
+
+/// PolicyBudget stores budgets for blobs scoped to a single policy
+/// and a single public encryption key.
+pub struct PolicyBudget {
+    // Budgets for specific transform nodes.
+    transform_access_budgets: Vec<RangeBudget>,
+    // Shared budgets.
+    shared_access_budgets: Vec<RangeBudget>,
+}
+
+impl PolicyBudget {
+    pub fn new(policy: &DataAccessPolicy) -> Self {
+        todo!("not implemented")
+    }
+
+    /// Checks whether there is a remaining budget for the given blob in the
+    /// policy transform at `transform_index` and all corresponding shared
+    /// budgets.
+    ///
+    /// The `policy_hash` is used as a concise, stable identifier for the
+    /// policy; it's the caller's responsibility to ensure that the policy
+    /// hash matches the policy.
+    pub fn has_budget(
+        &self,
+        blob_id: &BlobId,
+        transform_index: usize,
+        policy: &DataAccessPolicy,
+    ) -> bool {
+        todo!("not implemented")
+    }
+
+    /// Updates the budget to reflect a new access for all blobs in the range in
+    /// the policy transform at `transform_index` and all corresponding
+    /// shared budgets.
+    ///
+    /// Please note that this method never fails. If there wasn't a budget in
+    /// the given range or any part of the range, it isn't further reduced below
+    /// zero.  It is the caller responsibility to check each blob individually
+    /// before updating the budget for the entire range.
+    pub fn update_budget(
+        &mut self,
+        range: &BlobRange,
+        transform_index: usize,
+        policy: &DataAccessPolicy,
+    ) {
+        todo!("not implemented")
+    }
+}
+
+/// A BudgetTracker keeps track of the remaining budgets for zero or more blobs
+/// that are scoped to a single public encryption key.
+#[derive(Default)]
+pub struct BudgetTracker {
+    // Per-policy budgets keyed by policy hash.
+    budgets: BTreeMap<Vec<u8>, PolicyBudget>,
+    // Blob ids whose access has been explicitly revoked.
+    revoked_blobs: BTreeSet<BlobId>,
+}
+
+/// A BudgetTracker keeps track of the remaining budgets for zero or more blobs
+/// ranges.
+///
+/// The expected usage pattern is the following:
+/// 1) Determine the transform_index for the given operation - it must be the
+///    same for all blobs in any given range whose budget is being updated.
+/// 2) Call `get_policy_budget` once to get the policy for the specific policy
+///    hash. It is expected that all blobs in the given range must belong to the
+///    same policy.
+/// 3) For every blob_id in the range call `is_revoked` on BudgetTracker and
+///    `has_budget` on PolicyBudget to check whether that blob can be accessed.
+/// 4) Call `update_budget` on PolicyBudget once to record the access.
+impl BudgetTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Finds the matching policy budget and the first matching transform in the
+    /// policy and returns both.
+    ///
+    /// The `policy_hash` is used as a concise, stable identifier for the
+    /// policy; it's the caller's responsibility to ensure that the policy
+    /// hash matches the policy.
+    ///
+    /// If the policy budget doesn't exist, a default one is created and
+    /// returned.
+    pub fn find_matching_transform<'a>(
+        &self,
+        node_id: u32,
+        policy: &'a DataAccessPolicy,
+        policy_hash: &'a [u8],
+        app: &'a Application,
+        now: Duration,
+    ) -> Result<(&'a PolicyBudget, usize), micro_rpc::Status> {
+        todo!("not implemented")
+    }
+
+    /// Finds the policy budget for the given policy hash.
+    pub fn get_policy_budget<'a>(
+        &mut self,
+        policy_hash: &'a [u8],
+    ) -> Result<&'a mut PolicyBudget, micro_rpc::Status> {
+        todo!("not implemented")
+    }
+
+    /// Explicitly revoke access to a specific blob.
+    pub fn revoke(&mut self, blob_id: &BlobId) {
+        todo!("not implemented")
+    }
+
+    pub fn is_revoked(&self, blob_id: BlobId) {
+        todo!("not implemented")
+    }
+
+    /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of
+    /// snapshot replication.
+    pub fn save_snapshot(&self) -> BudgetSnapshot {
+        todo!("not implemented")
+    }
+
+    /// Replaces the entire BudgetTracker state with state loaded from
+    /// BudgetSnapshot as a part of snapshot replication.
+    pub fn load_snapshot(&mut self, snapshot: BudgetSnapshot) -> Result<(), micro_rpc::Status> {
+        todo!("not implemented")
     }
 }
 
