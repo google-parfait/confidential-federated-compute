@@ -34,13 +34,13 @@ type BlobRange = core::ops::Range<BlobId>;
 /// single shared budget index in a DataAccessPolicy.
 /// If there is no entry in the map for any give BlobId, it is
 /// assumed that it has a default budget.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct RangeBudget {
     // Budgets for specific ranges of BlobId.
     map: RangeMap<BlobId, u32>,
     // Default budget that all entries not covered by any ranges
-    // in the map are assumed to have.
-    default_budget: u32,
+    // in the map are assumed to have; None if the budget is unlimited.
+    default_budget: Option<u32>,
 }
 
 fn intersect_ranges(r1: &BlobRange, r2: &BlobRange) -> BlobRange {
@@ -49,14 +49,30 @@ fn intersect_ranges(r1: &BlobRange, r2: &BlobRange) -> BlobRange {
 
 impl RangeBudget {
     fn new(default_budget: u32) -> Self {
-        RangeBudget { map: RangeMap::new(), default_budget }
+        RangeBudget { default_budget: Some(default_budget), ..Default::default() }
+    }
+
+    fn unlimited() -> Self {
+        RangeBudget { default_budget: None, ..Default::default() }
     }
 
     fn has_budget(&self, blob_id: &BlobId) -> bool {
-        *self.map.get(blob_id).unwrap_or(&self.default_budget) > 0u32
+        if self.default_budget.is_none() {
+            // Unlimited budget
+            return true;
+        }
+
+        self.map.get(blob_id).or(self.default_budget.as_ref()).map(|b| *b > 0).unwrap()
     }
 
-    fn update_budget(&mut self, range: &BlobRange) -> Result<(), micro_rpc::Status> {
+    fn update_budget(&mut self, range: &BlobRange) {
+        let default_budget = self.default_budget.unwrap_or(0);
+        if default_budget == 0 {
+            // Either unlimited or zero budget - either way there is nothing
+            // to update.
+            return;
+        }
+
         // Collect existing ranges that intersect with the specified range.
         let intersecting_ranges: Vec<_> = self
             .map
@@ -66,27 +82,19 @@ impl RangeBudget {
             })
             .collect();
 
-        // Verify that all existing ranges have a remaining budget.
-        if self.default_budget == 0 || intersecting_ranges.iter().any(|(_, budget)| *budget == 0) {
-            return Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::PermissionDenied,
-                "no budget remaining",
-            ));
-        }
-
         // Gaps in the range map with no budgets. These are filled with
         // default budget - 1.
         let gaps: Vec<_> = self.map.gaps(range).collect();
         for range in gaps {
-            self.map.insert(range.clone(), self.default_budget - 1);
+            self.map.insert(range.clone(), default_budget - 1);
         }
 
         // Update budget in previously existing ranges.
         for (range, budget) in intersecting_ranges {
-            self.map.insert(range, budget - 1);
+            if budget > 0 {
+                self.map.insert(range, budget - 1);
+            }
         }
-
-        Ok(())
     }
 
     fn to_vec(&self) -> Vec<(BlobRange, u32)> {
@@ -238,9 +246,22 @@ mod tests {
     }
 
     #[test]
+    fn test_zero_default_budget() {
+        let mut budget = RangeBudget::new(0);
+        assert_eq!(budget.has_budget(&1.into()), false);
+    }
+
+    #[test]
+    fn test_unlimited_budget() {
+        let budget = RangeBudget::unlimited();
+        assert_eq!(budget.map.is_empty(), true);
+        assert_eq!(budget.has_budget(&1.into()), true);
+    }
+
+    #[test]
     fn test_partially_consumed_budget() {
         let mut budget = RangeBudget::new(2);
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
+        budget.update_budget(&range(1, 3));
         assert_eq!(budget.has_budget(&0.into()), true);
         assert_eq!(budget.has_budget(&1.into()), true);
         assert_eq!(budget.has_budget(&2.into()), true);
@@ -251,8 +272,8 @@ mod tests {
     #[test]
     fn test_fully_consumed_budget() {
         let mut budget = RangeBudget::new(2);
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
+        budget.update_budget(&range(1, 3));
+        budget.update_budget(&range(1, 3));
         assert_eq!(budget.has_budget(&0.into()), true);
         assert_eq!(budget.has_budget(&1.into()), false);
         assert_eq!(budget.has_budget(&2.into()), false);
@@ -263,23 +284,23 @@ mod tests {
     #[test]
     fn test_update_budget_one_range() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
+        budget.update_budget(&range(1, 2));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 4))));
     }
 
     #[test]
     fn test_update_budget_two_non_overlapping_ranges() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(4, 5)), Ok(()));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(4, 5));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 4)), eq((range(4, 5), 4))));
     }
 
     #[test]
     fn test_update_budget_two_overlapping_ranges() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 4)), Ok(()));
-        assert_eq!(budget.update_budget(&range(3, 5)), Ok(()));
+        budget.update_budget(&range(1, 4));
+        budget.update_budget(&range(3, 5));
         assert_that!(
             budget.to_vec(),
             elements_are!(eq((range(1, 3), 4)), eq((range(3, 4), 3)), eq((range(4, 5), 4)))
@@ -289,8 +310,8 @@ mod tests {
     #[test]
     fn test_update_budget_collapse_adjacent_ranges() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(2, 3)), Ok(()));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(2, 3));
         // Should have just one merged range
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 3), 4))));
     }
@@ -298,37 +319,37 @@ mod tests {
     #[test]
     fn test_update_budget_collapse_ranges() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(4, 5)), Ok(()));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(4, 5));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 4)), eq((range(4, 5), 4))));
         // This should fill the gap and merge ranges
-        assert_eq!(budget.update_budget(&range(2, 4)), Ok(()));
+        budget.update_budget(&range(2, 4));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 5), 4))));
     }
 
     #[test]
     fn test_update_budget_adjacent_ranges_with_different_budget() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(2, 3)), Ok(()));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(2, 3));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 3)), eq((range(2, 3), 4))));
     }
 
     #[test]
     fn test_update_budget_over_multiple_ranges() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
-        assert_eq!(budget.update_budget(&range(5, 7)), Ok(()));
-        assert_eq!(budget.update_budget(&range(8, 10)), Ok(()));
+        budget.update_budget(&range(1, 3));
+        budget.update_budget(&range(1, 3));
+        budget.update_budget(&range(5, 7));
+        budget.update_budget(&range(8, 10));
         assert_that!(
             budget.to_vec(),
             elements_are!(eq((range(1, 3), 3)), eq((range(5, 7), 4)), eq((range(8, 10), 4)))
         );
         // Consume budget over the range that overlaps all ranges and
         // gaps between them.
-        assert_eq!(budget.update_budget(&range(2, 9)), Ok(()));
+        budget.update_budget(&range(2, 9));
         assert_that!(
             budget.to_vec(),
             elements_are!(
@@ -346,15 +367,15 @@ mod tests {
     #[test]
     fn test_update_budget_complex() {
         let mut budget = RangeBudget::new(5);
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
-        assert_eq!(budget.update_budget(&range(1, 3)), Ok(()));
-        assert_eq!(budget.update_budget(&range(4, 6)), Ok(()));
+        budget.update_budget(&range(1, 3));
+        budget.update_budget(&range(1, 3));
+        budget.update_budget(&range(4, 6));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 3), 3)), eq((range(4, 6), 4))));
         // Update budget so that it overlaps with the first range
         // and collapses with the second range. This should partially
         // consume the first range, fill the gap and merge with the second
         // range.
-        assert_eq!(budget.update_budget(&range(2, 4)), Ok(()));
+        budget.update_budget(&range(2, 4));
         assert_that!(
             budget.to_vec(),
             elements_are!(eq((range(1, 2), 3)), eq((range(2, 3), 2)), eq((range(3, 6), 4)))
@@ -364,43 +385,37 @@ mod tests {
     #[test]
     fn test_update_budget_to_zero() {
         let mut budget = RangeBudget::new(1);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
+        budget.update_budget(&range(1, 2));
         assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 0))));
     }
 
     #[test]
     fn test_update_comsumed_budget() {
         let mut budget = RangeBudget::new(1);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_err!(
-            budget.update_budget(&range(1, 2)),
-            micro_rpc::StatusCode::PermissionDenied,
-            "no budget remaining"
-        );
+        budget.update_budget(&range(1, 2));
+        assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 0))));
+        // Updating the same budget again doesn't change anything.
+        budget.update_budget(&range(1, 2));
+        assert_that!(budget.to_vec(), elements_are!(eq((range(1, 2), 0))));
     }
 
     #[test]
-    fn test_update_consumed_budget_comlex() {
+    fn test_update_partially_consumed_budget() {
         let mut budget = RangeBudget::new(2);
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(1, 2)), Ok(()));
-        assert_eq!(budget.update_budget(&range(4, 6)), Ok(()));
-        // Range (1, 2) is consumed.
-        assert_err!(
-            budget.update_budget(&range(0, 5)),
-            micro_rpc::StatusCode::PermissionDenied,
-            "no budget remaining"
-        );
-    }
-
-    #[test]
-    fn test_zero_default_budget() {
-        let mut budget = RangeBudget::new(0);
-        assert_eq!(budget.has_budget(&1.into()), false);
-        assert_err!(
-            budget.update_budget(&range(1, 2)),
-            micro_rpc::StatusCode::PermissionDenied,
-            "no budget remaining"
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(1, 2));
+        budget.update_budget(&range(4, 6));
+        // Range (1, 2) is consumed, but that should be OK.
+        budget.update_budget(&range(0, 5));
+        assert_that!(
+            budget.to_vec(),
+            elements_are!(
+                eq((range(0, 1), 1)),
+                eq((range(1, 2), 0)),
+                eq((range(2, 4), 1)),
+                eq((range(4, 5), 0)),
+                eq((range(5, 6), 1)),
+            )
         );
     }
 }
