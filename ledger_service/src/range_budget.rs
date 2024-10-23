@@ -104,6 +104,7 @@ impl RangeBudget {
 
 /// PolicyBudget stores budgets for blobs scoped to a single policy
 /// and a single public encryption key.
+#[derive(Default)]
 pub struct PolicyBudget {
     // Budgets for specific transform nodes.
     transform_access_budgets: Vec<RangeBudget>,
@@ -177,41 +178,51 @@ impl BudgetTracker {
         Self::default()
     }
 
-    /// Finds the matching policy budget and the first matching transform in the
-    /// policy and returns both.
-    ///
-    /// The `policy_hash` is used as a concise, stable identifier for the
-    /// policy; it's the caller's responsibility to ensure that the policy
-    /// hash matches the policy.
-    ///
-    /// If the policy budget doesn't exist, a default one is created and
-    /// returned.
-    pub fn find_matching_transform<'a>(
-        &self,
+    /// Finds the first matching transform in the policy and returns its index.
+    pub fn find_matching_transform(
         node_id: u32,
-        policy: &'a DataAccessPolicy,
-        policy_hash: &'a [u8],
-        app: &'a Application,
+        policy: &DataAccessPolicy,
+        app: &Application,
         now: Duration,
-    ) -> Result<(&'a PolicyBudget, usize), micro_rpc::Status> {
-        todo!("not implemented")
+    ) -> Result<usize, micro_rpc::Status> {
+        let mut matched_index: Option<usize> = None;
+        for (i, transform) in policy.transforms.iter().enumerate() {
+            if transform.src != node_id || !app.matches(&transform.application, now) {
+                continue;
+            }
+            if matched_index.is_some() {
+                // Multiple matched transforms.
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::FailedPrecondition,
+                    "requesting application matches multiple transforms in the access policy",
+                ));
+            }
+
+            matched_index = Some(i);
+        }
+
+        match matched_index {
+            Some(index) => Ok(index),
+            None => Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::FailedPrecondition,
+                "requesting application does not match the access policy",
+            )),
+        }
     }
 
-    /// Finds the policy budget for the given policy hash.
-    pub fn get_policy_budget<'a>(
-        &mut self,
-        policy_hash: &'a [u8],
-    ) -> Result<&'a mut PolicyBudget, micro_rpc::Status> {
-        todo!("not implemented")
+    /// Returns the policy budget for the given policy hash.
+    pub fn get_policy_budget<'a>(&'a mut self, policy_hash: &[u8]) -> &'a mut PolicyBudget {
+        self.budgets.entry(policy_hash.to_vec()).or_default()
     }
 
-    /// Explicitly revoke access to a specific blob.
+    /// Explicitly revoke access to the blob.
     pub fn revoke(&mut self, blob_id: &BlobId) {
-        todo!("not implemented")
+        self.revoked_blobs.insert(blob_id.clone());
     }
 
-    pub fn is_revoked(&self, blob_id: BlobId) {
-        todo!("not implemented")
+    // Check if access to the blob has been revoked.
+    pub fn is_revoked(&self, blob_id: &BlobId) -> bool {
+        self.revoked_blobs.contains(blob_id)
     }
 
     /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of
@@ -231,7 +242,8 @@ impl BudgetTracker {
 mod tests {
     use super::*;
     use crate::assert_err;
-    use alloc::{boxed::Box, vec};
+    use alloc::{borrow::ToOwned, boxed::Box, vec};
+    use federated_compute::proto::{ApplicationMatcher, data_access_policy::Transform};
     use googletest::prelude::*;
 
     fn range(start: u128, end: u128) -> BlobRange {
@@ -417,5 +429,163 @@ mod tests {
                 eq((range(5, 6), 1)),
             )
         );
+    }
+
+    #[test]
+    fn test_find_matching_transform_success() {
+        let app = Application { tag: "foo", ..Default::default() };
+        let policy = DataAccessPolicy {
+            transforms: vec![
+                // This transform won't match because the src index is wrong.
+                Transform {
+                    src: 0,
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform won't match because the tag is wrong.
+                Transform {
+                    src: 1,
+                    application: Some(ApplicationMatcher {
+                        tag: Some("other".to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform should match.
+                Transform {
+                    src: 1,
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 0,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            Ok(0)
+        );
+        assert_eq!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 1,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            Ok(2)
+        );
+    }
+
+    #[test]
+    fn test_find_matching_transform_multiple_matches() {
+        let app = Application { tag: "foo", ..Default::default() };
+        let policy = DataAccessPolicy {
+            transforms: vec![
+                // This transform won't match because the src index is wrong.
+                Transform {
+                    src: 0,
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform won't match because the tag is wrong.
+                Transform {
+                    src: 1,
+                    application: Some(ApplicationMatcher {
+                        tag: Some("other".to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform should match.
+                Transform {
+                    src: 1,
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform would also match, but the earlier match should take precedence.
+                Transform {
+                    src: 1,
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_err!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 1,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "requesting application matches multiple transforms in the access policy"
+        );
+    }
+
+    #[test]
+    fn test_find_matching_transform_no_match() {
+        let app = Application { tag: "foo", ..Default::default() };
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 1,
+                application: Some(ApplicationMatcher {
+                    tag: Some("other".to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_err!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 0,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "requesting application does not match the access policy"
+        );
+        assert_err!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 1,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "requesting application does not match the access policy"
+        );
+    }
+
+    #[test]
+    fn test_is_revoked() {
+        let mut budget_tracker = BudgetTracker::new();
+        budget_tracker.revoke(&1.into());
+        assert_eq!(budget_tracker.is_revoked(&1.into()), true);
+        assert_eq!(budget_tracker.is_revoked(&2.into()), false);
     }
 }
