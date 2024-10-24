@@ -22,6 +22,7 @@ build:asan --copt=-fsanitize=address
 build:asan --copt=-fno-omit-frame-pointer
 build:asan --linkopt=-fsanitize=address
 build:asan --action_env=ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1
+test:asan --test_tag_filters=-noasan
 
 build:tsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:tsan --compilation_mode=dbg
@@ -35,6 +36,7 @@ build:tsan --copt=-O1
 build:tsan --copt=-fno-omit-frame-pointer
 build:tsan --linkopt=-fsanitize=thread
 build:tsan --action_env TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
+test:tsan --test_tag_filters=-notsan
 
 build:ubsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:ubsan --compilation_mode=dbg
@@ -49,6 +51,7 @@ build:ubsan --linkopt=-fsanitize=undefined
 # work around linker errors.
 build:ubsan --linkopt=-fsanitize-link-c++-runtime
 build:ubsan --action_env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+test:ubsan --test_tag_filters=-noubsan
 
 # Settings for remote build execution.
 build:cfc-remote --experimental_allow_tags_propagation

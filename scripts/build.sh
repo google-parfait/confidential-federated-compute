@@ -35,11 +35,11 @@ set -x
 readonly BAZELISK="${BAZELISK:-bazelisk}"
 
 if [ "$1" == "continuous" ]; then
-  ${BAZELISK} test //... --config=asan --build_tag_filters=-asan --test_tag_filters=-asan
+  ${BAZELISK} test //... --config=asan
 elif [ "$1" == "sanitizers" ]; then
-  ${BAZELISK} test //... --config=asan --build_tag_filters=-asan --test_tag_filters=-asan
-  ${BAZELISK} test //... --config=tsan --build_tag_filters=-tsan --test_tag_filters=-tsan
-  ${BAZELISK} test //... --config=ubsan --build_tag_filters=-noubsan --test_tag_filters=-noubsan
+  ${BAZELISK} test //... --config=asan
+  ${BAZELISK} test //... --config=tsan
+  ${BAZELISK} test //... --config=ubsan
 elif [ "$1" == "release" ]; then
   ${BAZELISK} test //...
 
