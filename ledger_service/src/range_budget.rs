@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::blobid::BlobId;
-
 use crate::attestation::Application;
-use crate::replication::BudgetSnapshot;
+use crate::blobid::BlobId;
+use crate::replication::{BudgetSnapshot, PerPolicyBudgetSnapshot, RangeBudgetSnapshot};
 
 use alloc::{
     collections::{BTreeMap, BTreeSet},
+    format, vec,
     vec::Vec,
 };
 use core::{
@@ -101,6 +101,66 @@ impl RangeBudget {
 
     fn to_vec(&self) -> Vec<(BlobRange, u32)> {
         self.map.iter().map(|(r, b)| (r.clone(), *b)).collect()
+    }
+
+    fn save_snapshot(&self) -> RangeBudgetSnapshot {
+        let mut range_budget_snapshot = RangeBudgetSnapshot::default();
+        range_budget_snapshot.default_budget = self.default_budget;
+
+        for (range, budget) in self.map.iter() {
+            range_budget_snapshot.start.push(range.start.to_vec());
+            range_budget_snapshot.end.push(range.end.to_vec());
+            range_budget_snapshot.remaining_budget.push(*budget);
+        }
+        range_budget_snapshot
+    }
+
+    fn load_snapshot(
+        range_budget_snapshot: RangeBudgetSnapshot,
+    ) -> Result<RangeBudget, micro_rpc::Status> {
+        let all_lengths_equal = range_budget_snapshot.start.len()
+            == range_budget_snapshot.end.len()
+            && range_budget_snapshot.start.len() == range_budget_snapshot.remaining_budget.len();
+        if !all_lengths_equal {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "RangeBudgetSnapshot.start len() must be equal to RangeBudgetSnapshot.end and RangeBudgetSnapshot.remaining_budget len().",
+            ));
+        }
+
+        if range_budget_snapshot.default_budget.is_none() {
+            // Unlimited budget isn't supposed to have any entries, so return straightaway.
+            return Ok(RangeBudget::unlimited());
+        }
+
+        let mut range_budget = RangeBudget::new(range_budget_snapshot.default_budget.unwrap());
+        for i in 0..range_budget_snapshot.start.len() {
+            let start_blob_id = BlobId::from_vec(&range_budget_snapshot.start[i]).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!(
+                        "Invalid `blob_id` in the range_budget_snapshot.start for index: {:?} err:{:?}",
+                        i, err
+                    ),
+                )
+            })?;
+
+            let end_blob_id = BlobId::from_vec(&range_budget_snapshot.end[i]).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!(
+                        "Invalid `blob_id` in the range_budget_snapshot.end for index: {:?} err:{:?}",
+                        i, err
+                    ),
+                )
+            })?;
+
+            range_budget.map.insert(
+                BlobRange { start: start_blob_id, end: end_blob_id },
+                range_budget_snapshot.remaining_budget[i],
+            );
+        }
+        Ok(range_budget)
     }
 }
 
@@ -327,13 +387,74 @@ impl BudgetTracker {
     /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of
     /// snapshot replication.
     pub fn save_snapshot(&self) -> BudgetSnapshot {
-        todo!("not implemented")
+        let mut snapshot = BudgetSnapshot::default();
+
+        for (access_policy_sha256, policy_budget) in &self.budgets {
+            let mut per_policy_snapshot = PerPolicyBudgetSnapshot::default();
+            per_policy_snapshot.access_policy_sha256 = access_policy_sha256.clone();
+
+            for range_budget in &policy_budget.transform_access_budgets {
+                per_policy_snapshot.transform_access_budgets.push(range_budget.save_snapshot());
+            }
+            for range_budget in &policy_budget.shared_access_budgets {
+                per_policy_snapshot.shared_access_budgets.push(range_budget.save_snapshot());
+            }
+            snapshot.per_policy_snapshots.push(per_policy_snapshot);
+        }
+
+        for blob_id in &self.revoked_blobs {
+            snapshot.consumed_budgets.push(blob_id.to_vec());
+        }
+
+        snapshot
     }
 
     /// Replaces the entire BudgetTracker state with state loaded from
     /// BudgetSnapshot as a part of snapshot replication.
     pub fn load_snapshot(&mut self, snapshot: BudgetSnapshot) -> Result<(), micro_rpc::Status> {
-        todo!("not implemented")
+        let mut new_self = BudgetTracker::default();
+
+        for per_policy_snapshot in snapshot.per_policy_snapshots {
+            let mut transform_access_budgets = vec![];
+            let mut shared_access_budgets = vec![];
+            for range_budget_snapshot in per_policy_snapshot.transform_access_budgets {
+                transform_access_budgets.push(RangeBudget::load_snapshot(range_budget_snapshot)?);
+            }
+            for range_budget_snapshot in per_policy_snapshot.shared_access_budgets {
+                shared_access_budgets.push(RangeBudget::load_snapshot(range_budget_snapshot)?);
+            }
+
+            let policy_budget = PolicyBudget { transform_access_budgets, shared_access_budgets };
+            if new_self
+                .budgets
+                .insert(per_policy_snapshot.access_policy_sha256, policy_budget)
+                .is_some()
+            {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "Duplicated `access_policy_sha256` entries in the snapshot",
+                ));
+            }
+        }
+
+        for consumed_blob_id in snapshot.consumed_budgets {
+            let revoked_blob_id = BlobId::from_vec(&consumed_blob_id).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("Invalid `blob_id` in the snapshot: {:?}", err),
+                )
+            })?;
+            if !new_self.revoked_blobs.insert(revoked_blob_id) {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    "Duplicated `consumed_budgets` entries in the snapshot",
+                ));
+            }
+        }
+
+        // Replace the state with the new state.
+        *self = new_self;
+        Ok(())
     }
 }
 
@@ -823,7 +944,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(transform_index2, 1);
-        let mut policy_budget2 =
+        let policy_budget2 =
             tracker.get_policy_budget(b"policy_hash", &policy, transform_index2).unwrap();
         // The range [0, 5) should already be consumed via the shared budget but it
         // should be OK outside of that range.
@@ -876,9 +997,246 @@ mod tests {
             Duration::default(),
         )
         .unwrap();
-        let mut policy_budget2 =
+        let policy_budget2 =
             tracker.get_policy_budget(b"policy_hash2", &policy2, transform_index2).unwrap();
         // Verify that there is budget for a blob in the same range [0, 5)
         assert_eq!(policy_budget2.has_budget(&3.into()), true);
+    }
+
+    #[test]
+    fn test_updated_budget_snapshot() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+
+        let transform_index = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget =
+            tracker.get_policy_budget(policy_hash, &policy, transform_index).unwrap();
+        let start: BlobId = 0.into();
+        let end: BlobId = 5.into();
+        policy_budget.update_budget(&BlobRange { start, end });
+
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
+            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                access_policy_sha256: policy_hash.to_vec(),
+                transform_access_budgets: vec![RangeBudgetSnapshot {
+                    start: vec![start.to_vec()],
+                    end: vec![end.to_vec()],
+                    remaining_budget: vec![1],
+                    default_budget: Some(2),
+                }],
+                ..Default::default()
+            }],
+            consumed_budgets: vec![],
+        });
+    }
+
+    #[test]
+    fn test_revoked_budget_snapshot() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+
+        let transform_index = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget =
+            tracker.get_policy_budget(policy_hash, &policy, transform_index).unwrap();
+        let start: BlobId = 0.into();
+        let end: BlobId = 5.into();
+        policy_budget.update_budget(&BlobRange { start, end });
+        let revoked_blob_id: BlobId = 3.into();
+        tracker.revoke(&3.into());
+
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
+            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                access_policy_sha256: policy_hash.to_vec(),
+                transform_access_budgets: vec![RangeBudgetSnapshot {
+                    start: vec![start.to_vec()],
+                    end: vec![end.to_vec()],
+                    remaining_budget: vec![1],
+                    default_budget: Some(2),
+                }],
+                ..Default::default()
+            }],
+            consumed_budgets: vec![revoked_blob_id.to_vec()],
+        });
+    }
+
+    #[test]
+    fn test_load_snapshot() {
+        // Blob IDs have to be 16 byte long in this test to avoid failing the test
+        // due to zero padding when saving the snapshot.
+        let mut tracker = BudgetTracker::default();
+
+        let snapshot = BudgetSnapshot {
+            per_policy_snapshots: vec![
+                PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash1".to_vec(),
+                    transform_access_budgets: vec![RangeBudgetSnapshot {
+                        start: vec![b"_____blob_____1_".to_vec()],
+                        end: vec![b"_____blob_____2_".to_vec()],
+                        remaining_budget: vec![1],
+                        default_budget: Some(2),
+                    }],
+                    ..Default::default()
+                },
+                PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash2".to_vec(),
+                    transform_access_budgets: vec![
+                        RangeBudgetSnapshot {
+                            start: vec![b"_____blob_____2_".to_vec()],
+                            end: vec![b"_____blob_____3_".to_vec()],
+                            remaining_budget: vec![2],
+                            default_budget: Some(50),
+                        },
+                        RangeBudgetSnapshot {
+                            start: vec![b"_____blob_____2_".to_vec()],
+                            end: vec![b"_____blob_____3_".to_vec()],
+                            remaining_budget: vec![3],
+                            default_budget: Some(50),
+                        },
+                    ],
+                    shared_access_budgets: vec![
+                        RangeBudgetSnapshot {
+                            start: vec![b"_____blob_____2_".to_vec(), b"_____blob_____3_".to_vec()],
+                            end: vec![b"_____blob_____3_".to_vec(), b"_____blob_____4_".to_vec()],
+                            remaining_budget: vec![11, 12],
+                            default_budget: Some(50),
+                        },
+                        RangeBudgetSnapshot {
+                            start: vec![b"_____blob_____3_".to_vec()],
+                            end: vec![b"_____blob_____4_".to_vec()],
+                            remaining_budget: vec![13],
+                            default_budget: Some(50),
+                        },
+                        RangeBudgetSnapshot {
+                            start: vec![b"_____blob_____3_".to_vec()],
+                            end: vec![b"_____blob_____4_".to_vec()],
+                            remaining_budget: vec![14],
+                            default_budget: Some(50),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            consumed_budgets: vec![b"_____blob_____4_".to_vec(), b"_____blob_____5_".to_vec()],
+        };
+
+        // Load the snapshot.
+        assert_eq!(tracker.load_snapshot(snapshot.clone()), Ok(()));
+        // Save the new snapshot and verify that it is the same as the loaded one.
+        assert_eq!(tracker.save_snapshot(), snapshot);
+    }
+
+    #[test]
+    fn test_load_snapshot_replaces_state() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let policy_hash = b"hash";
+
+        let transform_index = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget =
+            tracker.get_policy_budget(policy_hash, &policy, transform_index).unwrap();
+        policy_budget.update_budget(&range(0, 5));
+        assert_ne!(tracker.save_snapshot(), BudgetSnapshot::default());
+
+        // Load an empty snapshot and verify that an empty snapshot is saved.
+        assert_eq!(tracker.load_snapshot(BudgetSnapshot::default()), Ok(()));
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot::default());
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicated_policy_hash() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                per_policy_snapshots: vec![
+                    PerPolicyBudgetSnapshot {
+                        access_policy_sha256: b"hash1".to_vec(),
+                        ..Default::default()
+                    },
+                    PerPolicyBudgetSnapshot {
+                        access_policy_sha256: b"hash1".to_vec(),
+                        ..Default::default()
+                    }
+                ],
+                consumed_budgets: vec![]
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated `access_policy_sha256` entries in the snapshot"
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot_duplicated_revoked_blob() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                consumed_budgets: vec![b"blob1".to_vec(), b"blob1".to_vec()],
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "Duplicated `consumed_budgets` entries in the snapshot"
+        );
+    }
+
+    #[test]
+    fn test_load_snapshot_invalid_range() {
+        let mut tracker = BudgetTracker::default();
+        assert_err!(
+            tracker.load_snapshot(BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: b"hash1".to_vec(),
+                    transform_access_budgets: vec![RangeBudgetSnapshot {
+                        start: vec![b"_____blob_____1_".to_vec(), b"_____blob_____2_".to_vec()],
+                        end: vec![b"_____blob_____2_".to_vec()],
+                        remaining_budget: vec![1],
+                        default_budget: Some(2),
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "RangeBudgetSnapshot.start len() must be equal to RangeBudgetSnapshot.end and RangeBudgetSnapshot.remaining_budget len()."
+        );
     }
 }

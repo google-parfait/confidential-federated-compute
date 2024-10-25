@@ -24,7 +24,7 @@ use alloc::{
 };
 use core::time::Duration;
 use federated_compute::proto::{
-    access_budget::Kind as AccessBudgetKind, AccessBudget, DataAccessPolicy,
+    AccessBudget, DataAccessPolicy, access_budget::Kind as AccessBudgetKind,
 };
 
 /// The remaining privacy budget for an individual blob.
@@ -286,20 +286,17 @@ impl BudgetTracker {
         for per_policy_snapshot in snapshot.per_policy_snapshots {
             let mut per_policy_budgets = BTreeMap::<BlobId, BlobBudget>::new();
             for blob_budget_snapshot in per_policy_snapshot.budgets {
-                let blob_id = BlobId::from_vec(blob_budget_snapshot.blob_id).map_err(|err| {
+                let blob_id = BlobId::from_vec(&blob_budget_snapshot.blob_id).map_err(|err| {
                     micro_rpc::Status::new_with_message(
                         micro_rpc::StatusCode::InvalidArgument,
                         format!("Invalid `blob_id` in the snapshot: {:?}", err),
                     )
                 })?;
                 if per_policy_budgets
-                    .insert(
-                        blob_id,
-                        BlobBudget {
-                            transform_access_budgets: blob_budget_snapshot.transform_access_budgets,
-                            shared_access_budgets: blob_budget_snapshot.shared_access_budgets,
-                        },
-                    )
+                    .insert(blob_id, BlobBudget {
+                        transform_access_budgets: blob_budget_snapshot.transform_access_budgets,
+                        shared_access_budgets: blob_budget_snapshot.shared_access_budgets,
+                    })
                     .is_some()
                 {
                     return Err(micro_rpc::Status::new_with_message(
@@ -321,7 +318,7 @@ impl BudgetTracker {
         }
 
         for consumed_blob_id in snapshot.consumed_budgets {
-            let consumed_blob_id = BlobId::from_vec(consumed_blob_id).map_err(|err| {
+            let consumed_blob_id = BlobId::from_vec(&consumed_blob_id).map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("Invalid `blob_id` in the snapshot: {:?}", err),
@@ -348,8 +345,8 @@ mod tests {
 
     use alloc::{borrow::ToOwned, vec};
     use federated_compute::proto::{
-        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
-        ApplicationMatcher,
+        AccessBudget, ApplicationMatcher, access_budget::Kind as AccessBudgetKind,
+        data_access_policy::Transform,
     };
 
     #[test]
@@ -856,21 +853,18 @@ mod tests {
             .unwrap();
         assert_eq!(tracker.update_budget(&blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
-        assert_eq!(
-            tracker.save_snapshot(),
-            BudgetSnapshot {
-                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                    access_policy_sha256: policy_hash.to_vec(),
-                    budgets: vec![BlobBudgetSnapshot {
-                        blob_id: blob_id.to_vec(),
-                        transform_access_budgets: vec![1],
-                        shared_access_budgets: vec![],
-                    }],
-                    ..Default::default()
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
+            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                access_policy_sha256: policy_hash.to_vec(),
+                budgets: vec![BlobBudgetSnapshot {
+                    blob_id: blob_id.to_vec(),
+                    transform_access_budgets: vec![1],
+                    shared_access_budgets: vec![],
                 }],
-                consumed_budgets: vec![],
-            }
-        );
+                ..Default::default()
+            }],
+            consumed_budgets: vec![],
+        });
     }
 
     #[test]
@@ -900,17 +894,14 @@ mod tests {
         assert_eq!(tracker.update_budget(&blob_id, transform_index, &policy, policy_hash), Ok(()),);
         tracker.consume_budget(&blob_id);
 
-        assert_eq!(
-            tracker.save_snapshot(),
-            BudgetSnapshot {
-                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                    access_policy_sha256: policy_hash.to_vec(),
-                    budgets: vec![],
-                    ..Default::default()
-                }],
-                consumed_budgets: vec![blob_id.to_vec()],
-            }
-        );
+        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
+            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                access_policy_sha256: policy_hash.to_vec(),
+                budgets: vec![],
+                ..Default::default()
+            }],
+            consumed_budgets: vec![blob_id.to_vec()],
+        });
     }
 
     #[test]

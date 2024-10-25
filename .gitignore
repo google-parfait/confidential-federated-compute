@@ -1,3 +1,4 @@
 /.sccache-cache/
-/.vscode/
 /bazel-*
+# Generated project info to support Bazel-only projects in rust-analyzer.
+rust-project.json

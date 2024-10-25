@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use alloc::vec::Vec;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use rangemap::StepLite;
 
 const BLOB_ID_SIZE: usize = 16;
@@ -37,8 +37,8 @@ impl BlobId {
         Ok(BlobId { id: u128::from_le_bytes(ar) })
     }
 
-    pub fn from_vec(v: Vec<u8>) -> Result<Self> {
-        Self::from_bytes(&v)
+    pub fn from_vec(v: &Vec<u8>) -> Result<Self> {
+        Self::from_bytes(v)
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -76,11 +76,11 @@ mod tests {
 
     #[test]
     fn test_vec_to_blob_id() {
-        assert_eq!(BlobId::from_vec(vec![]).unwrap(), BlobId::from(0));
-        assert_eq!(BlobId::from_vec(vec![1]).unwrap(), BlobId::from(1));
-        assert_eq!(BlobId::from_vec(vec![1; 2]).unwrap(), BlobId::from(257));
+        assert_eq!(BlobId::from_vec(&vec![]).unwrap(), BlobId::from(0));
+        assert_eq!(BlobId::from_vec(&vec![1]).unwrap(), BlobId::from(1));
+        assert_eq!(BlobId::from_vec(&vec![1; 2]).unwrap(), BlobId::from(257));
         assert_eq!(
-            BlobId::from_vec(vec![1; 16]).unwrap(),
+            BlobId::from_vec(&vec![1; 16]).unwrap(),
             BlobId::from(1334440654591915542993625911497130241)
         );
     }
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn test_vec_to_blob_id_too_long() {
         assert_that!(
-            BlobId::from_vec(vec![1; 17]),
+            BlobId::from_vec(&vec![1; 17]),
             err(displays_as(contains_substring("longer than 16 bytes")))
         );
     }
@@ -104,10 +104,9 @@ mod tests {
     #[test]
     fn test_blob_id_to_vec() {
         assert_eq!(BlobId::from(0).to_vec(), vec![0; 16]);
-        assert_eq!(
-            BlobId::from(12345678).to_vec(),
-            vec![78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        );
+        assert_eq!(BlobId::from(12345678).to_vec(), vec![
+            78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ]);
     }
 
     #[test]

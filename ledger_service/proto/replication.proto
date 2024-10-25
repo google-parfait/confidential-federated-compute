@@ -162,7 +162,7 @@ message RangeBudgetSnapshot {
   // `start` and `end`.
   repeated uint32 remaining_budget = 3;
   // Default budget that all entries not covered by any ranges above will use.
-  uint32 default_budget = 4;
+  optional uint32 default_budget = 4;
 }
 
 // Snapshot of state associated with a single access policy.

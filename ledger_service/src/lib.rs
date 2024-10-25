@@ -28,11 +28,11 @@ use crate::budget::BudgetTracker;
 
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
-use cfc_crypto::{extract_key_from_cwt, PrivateKey, PUBLIC_KEY_CLAIM};
+use cfc_crypto::{PUBLIC_KEY_CLAIM, PrivateKey, extract_key_from_cwt};
 use core::time::Duration;
 use coset::{
-    cbor::Value, cwt, cwt::ClaimsSetBuilder, iana, Algorithm, CborSerializable, CoseKey,
-    CoseSign1Builder, Header,
+    Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, cbor::Value, cwt,
+    cwt::ClaimsSetBuilder, iana,
 };
 use federated_compute::proto::{
     AuthorizeAccessRequest, AuthorizeAccessResponse, BlobHeader, CreateKeyRequest,
@@ -42,7 +42,7 @@ use federated_compute::proto::{
 use hpke::{Deserializable, Serializable};
 use oak_crypto::signer::Signer;
 use prost::Message;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 
 mod replication {
@@ -236,15 +236,12 @@ impl LedgerService {
         })?;
 
         // Insert keys
-        self.per_key_ledgers.insert(
-            key_id,
-            PerKeyLedger {
-                private_key,
-                public_key: public_key.clone(),
-                expiration,
-                budget_tracker: BudgetTracker::new(),
-            },
-        );
+        self.per_key_ledgers.insert(key_id, PerKeyLedger {
+            private_key,
+            public_key: public_key.clone(),
+            expiration,
+            budget_tracker: BudgetTracker::new(),
+        });
 
         Ok(CreateKeyResponse { public_key, ..Default::default() })
     }
@@ -312,7 +309,7 @@ impl LedgerService {
             )
         })?;
 
-        let blob_id = BlobId::from_vec(header.blob_id).map_err(|err| {
+        let blob_id = BlobId::from_vec(&header.blob_id).map_err(|err| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
                 format!("Invalid `blob_id`: {:?}", err),
@@ -387,7 +384,7 @@ impl LedgerService {
             )
         })?;
 
-        let blob_id = BlobId::from_vec(header.blob_id).map_err(|err| {
+        let blob_id = BlobId::from_vec(&header.blob_id).map_err(|err| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
                 format!("Invalid `blob_id`: {:?}", err),
@@ -562,7 +559,7 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        let blob_id = BlobId::from_vec(request.blob_id).map_err(|err| {
+        let blob_id = BlobId::from_vec(&request.blob_id).map_err(|err| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
                 format!("Invalid `blob_id`: {:?}", err),
@@ -584,14 +581,13 @@ mod tests {
     };
 
     use alloc::{borrow::ToOwned, vec};
-    use coset::{cwt::ClaimsSet, CoseSign1};
+    use coset::{CoseSign1, cwt::ClaimsSet};
     use federated_compute::proto::{
-        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
-        ApplicationMatcher,
+        AccessBudget, ApplicationMatcher, access_budget::Kind as AccessBudgetKind,
+        data_access_policy::Transform,
     };
     use googletest::prelude::*;
     use oak_proto_rust::oak::attestation::v1::Evidence;
-    use oak_proto_rust::oak::crypto::v1::Signature;
     use oak_restricted_kernel_sdk::testing::MockSigner;
 
     /// Helper function to create a LedgerService with one key.
@@ -1674,33 +1670,27 @@ mod tests {
         // Since the private key isn't exposed we have to assume that the one
         // in the snapshot is the right one.
         let private_key = &snapshot.per_key_snapshots[0].private_key;
-        assert_eq!(
-            snapshot,
-            LedgerSnapshot {
-                current_time: Some(now),
-                per_key_snapshots: vec![PerKeySnapshot {
-                    public_key,
-                    private_key: private_key.clone(),
-                    expiration: Some(prost_types::Timestamp {
-                        seconds: 3600,
-                        ..Default::default()
-                    }),
-                    budgets: Some(BudgetSnapshot {
-                        per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
-                            budgets: vec![BlobBudgetSnapshot {
-                                // Note: blob-id will be padded with zeros to make it 16 bytes long.
-                                blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
-                                transform_access_budgets: vec![0],
-                                shared_access_budgets: vec![],
-                            }],
-                            ..Default::default()
+        assert_eq!(snapshot, LedgerSnapshot {
+            current_time: Some(now),
+            per_key_snapshots: vec![PerKeySnapshot {
+                public_key,
+                private_key: private_key.clone(),
+                expiration: Some(prost_types::Timestamp { seconds: 3600, ..Default::default() }),
+                budgets: Some(BudgetSnapshot {
+                    per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                        access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                        budgets: vec![BlobBudgetSnapshot {
+                            // Note: blob-id will be padded with zeros to make it 16 bytes long.
+                            blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
+                            transform_access_budgets: vec![0],
+                            shared_access_budgets: vec![],
                         }],
-                        consumed_budgets: vec![],
-                    }),
-                }],
-            }
-        );
+                        ..Default::default()
+                    }],
+                    consumed_budgets: vec![],
+                }),
+            }],
+        });
     }
 
     #[test]
