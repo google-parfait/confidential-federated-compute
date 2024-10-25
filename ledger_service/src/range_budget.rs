@@ -25,7 +25,9 @@ use core::{
     cmp::{max, min},
     time::Duration,
 };
-use federated_compute::proto::DataAccessPolicy;
+use federated_compute::proto::{
+    AccessBudget, DataAccessPolicy, access_budget::Kind as AccessBudgetKind,
+};
 use rangemap::map::RangeMap;
 
 type BlobRange = core::ops::Range<BlobId>;
@@ -104,8 +106,8 @@ impl RangeBudget {
 
 /// PolicyBudget stores budgets for blobs scoped to a single policy
 /// and a single public encryption key.
-#[derive(Default)]
-pub struct PolicyBudget {
+#[derive(Debug)]
+struct PolicyBudget {
     // Budgets for specific transform nodes.
     transform_access_budgets: Vec<RangeBudget>,
     // Shared budgets.
@@ -113,24 +115,52 @@ pub struct PolicyBudget {
 }
 
 impl PolicyBudget {
-    pub fn new(policy: &DataAccessPolicy) -> Self {
-        todo!("not implemented")
+    fn new(policy: &DataAccessPolicy) -> Self {
+        let mut transform_access_budgets = Vec::with_capacity(policy.transforms.len());
+        for transform in &policy.transforms {
+            transform_access_budgets.push(match transform.access_budget {
+                Some(AccessBudget { kind: Some(AccessBudgetKind::Times(n)), .. }) => {
+                    RangeBudget::new(n)
+                }
+                Some(AccessBudget { kind: None }) => RangeBudget::new(0),
+                None => RangeBudget::unlimited(),
+            });
+        }
+
+        let mut shared_access_budgets = Vec::with_capacity(policy.shared_access_budgets.len());
+        for access_budget in &policy.shared_access_budgets {
+            shared_access_budgets.push(match access_budget.kind {
+                Some(AccessBudgetKind::Times(n)) => RangeBudget::new(n),
+                None => RangeBudget::new(0),
+            })
+        }
+        PolicyBudget { transform_access_budgets, shared_access_budgets }
     }
 
     /// Checks whether there is a remaining budget for the given blob in the
     /// policy transform at `transform_index` and all corresponding shared
     /// budgets.
-    ///
-    /// The `policy_hash` is used as a concise, stable identifier for the
-    /// policy; it's the caller's responsibility to ensure that the policy
-    /// hash matches the policy.
-    pub fn has_budget(
+    fn has_budget(
         &self,
         blob_id: &BlobId,
         transform_index: usize,
-        policy: &DataAccessPolicy,
+        shared_access_budget_indices: &Vec<u32>,
     ) -> bool {
-        todo!("not implemented")
+        // Check if the budget is available for this specific transform.
+        if !self.transform_access_budgets[transform_index].has_budget(blob_id) {
+            return false;
+        }
+
+        // Check corresponding shared budgets.
+        for &shared_index in shared_access_budget_indices {
+            let shared_index = shared_index as usize;
+            if shared_index >= self.shared_access_budgets.len()
+                || !self.shared_access_budgets[shared_index].has_budget(blob_id)
+            {
+                return false;
+            }
+        }
+        true
     }
 
     /// Updates the budget to reflect a new access for all blobs in the range in
@@ -141,13 +171,60 @@ impl PolicyBudget {
     /// the given range or any part of the range, it isn't further reduced below
     /// zero.  It is the caller responsibility to check each blob individually
     /// before updating the budget for the entire range.
-    pub fn update_budget(
+    fn update_budget(
         &mut self,
         range: &BlobRange,
         transform_index: usize,
-        policy: &DataAccessPolicy,
+        shared_access_budget_indices: &Vec<u32>,
     ) {
-        todo!("not implemented")
+        // Update the specific transform budget.
+        self.transform_access_budgets[transform_index].update_budget(range);
+
+        // Update corresponding shared budgets.
+        for &shared_index in shared_access_budget_indices {
+            let shared_index = shared_index as usize;
+            if shared_index < self.shared_access_budgets.len() {
+                self.shared_access_budgets[shared_index].update_budget(range);
+            }
+        }
+    }
+}
+
+/// PolicyBudgetTracker is designed to be used in a scope of a single operation
+/// that tests and updates multiple blobs that match the same policy and the
+/// same transform.
+/// The main purpose of PolicyBudgetTracker is bundle multiple parameters
+/// together and simplify invocation of `has_budget` and `update_budget` on a
+/// policy budget.
+#[derive(Debug)]
+pub struct PolicyBudgetTracker<'a> {
+    policy_budget: &'a mut PolicyBudget,
+    transform_index: usize,
+    shared_access_budget_indices: &'a Vec<u32>,
+    revoked_blobs: &'a BTreeSet<BlobId>,
+}
+
+impl PolicyBudgetTracker<'_> {
+    /// Checks whether there is a remaining budget for the given blob.
+    pub fn has_budget(&self, blob_id: &BlobId) -> bool {
+        // Check if access to the blob has been explicitly revoked.
+        if self.revoked_blobs.contains(blob_id) {
+            return false;
+        }
+        self.policy_budget.has_budget(
+            blob_id,
+            self.transform_index,
+            self.shared_access_budget_indices,
+        )
+    }
+
+    /// Updates the budget to reflect a new access for all blobs in the range.
+    pub fn update_budget(&mut self, range: &BlobRange) {
+        self.policy_budget.update_budget(
+            range,
+            self.transform_index,
+            self.shared_access_budget_indices,
+        )
     }
 }
 
@@ -165,19 +242,16 @@ pub struct BudgetTracker {
 /// ranges.
 ///
 /// The expected usage pattern is the following:
-/// 1) Determine the transform_index for the given operation - it must be the
+/// 1) Determine the `transform_index for the given operation - it must be the
 ///    same for all blobs in any given range whose budget is being updated.
-/// 2) Call `get_policy_budget` once to get the policy for the specific policy
-///    hash. It is expected that all blobs in the given range must belong to the
-///    same policy.
-/// 3) For every blob_id in the range call `is_revoked` on BudgetTracker and
-///    `has_budget` on PolicyBudget to check whether that blob can be accessed.
-/// 4) Call `update_budget` on PolicyBudget once to record the access.
+/// 2) Call `get_policy_budget` once to get the PolicyBudgetTracker for the
+///    specific context, including the policy hash and `transform_index. It is
+///    expected that all blobs in the given range must belong to the same policy
+///    and the same transform.
+/// 3) For every blob_id in the range call `has_budget` on PolicyBudgetTracker
+///    to check whether access to that blob can be authorized.
+/// 4) Call `update_budget` on PolicyBudgetTracker once to record the access.
 impl BudgetTracker {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Finds the first matching transform in the policy and returns its index.
     pub fn find_matching_transform(
         node_id: u32,
@@ -210,19 +284,44 @@ impl BudgetTracker {
         }
     }
 
-    /// Returns the policy budget for the given policy hash.
-    pub fn get_policy_budget<'a>(&'a mut self, policy_hash: &[u8]) -> &'a mut PolicyBudget {
-        self.budgets.entry(policy_hash.to_vec()).or_default()
+    /// Returns the policy budget tracker for the given policy hash and the
+    /// transform index.
+    pub fn get_policy_budget<'a>(
+        &'a mut self,
+        policy_hash: &[u8],
+        policy: &'a DataAccessPolicy,
+        transform_index: usize,
+    ) -> Result<PolicyBudgetTracker<'a>, micro_rpc::Status> {
+        if transform_index >= policy.transforms.len() {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::FailedPrecondition,
+                "transform index does not match the access policy",
+            ));
+        }
+        let shared_access_budget_indices =
+            &policy.transforms[transform_index].shared_access_budget_indices;
+        for &shared_index in shared_access_budget_indices {
+            let shared_index = shared_index as usize;
+            if shared_index >= policy.shared_access_budgets.len() {
+                return Err(micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::FailedPrecondition,
+                    "access policy has invalid shared budgets",
+                ));
+            }
+        }
+        let policy_budget =
+            self.budgets.entry(policy_hash.to_vec()).or_insert_with(|| PolicyBudget::new(policy));
+        Ok(PolicyBudgetTracker {
+            policy_budget,
+            transform_index,
+            shared_access_budget_indices,
+            revoked_blobs: &self.revoked_blobs,
+        })
     }
 
     /// Explicitly revoke access to the blob.
     pub fn revoke(&mut self, blob_id: &BlobId) {
         self.revoked_blobs.insert(blob_id.clone());
-    }
-
-    // Check if access to the blob has been revoked.
-    pub fn is_revoked(&self, blob_id: &BlobId) -> bool {
-        self.revoked_blobs.contains(blob_id)
     }
 
     /// Saves the entire BudgetTracker state in BudgetSnapshot  as a part of
@@ -259,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_zero_default_budget() {
-        let mut budget = RangeBudget::new(0);
+        let budget = RangeBudget::new(0);
         assert_eq!(budget.has_budget(&1.into()), false);
     }
 
@@ -582,10 +681,204 @@ mod tests {
     }
 
     #[test]
-    fn test_is_revoked() {
-        let mut budget_tracker = BudgetTracker::new();
-        budget_tracker.revoke(&1.into());
-        assert_eq!(budget_tracker.is_revoked(&1.into()), true);
-        assert_eq!(budget_tracker.is_revoked(&2.into()), false);
+    fn test_get_policy_budget_with_invalid_transform_index() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_err!(
+            tracker.get_policy_budget(b"policy_hash", &policy, /* transform_index */ 1),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "transform index does not match the access policy"
+        );
+    }
+
+    #[test]
+    fn test_get_policy_budget_with_invalid_shared_budgets() {
+        let mut tracker = BudgetTracker::default();
+        // The second Transform has invalid shared_access_budget_indices.
+        let policy = DataAccessPolicy {
+            transforms: vec![
+                Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
+                Transform {
+                    src: 1,
+                    shared_access_budget_indices: vec![0, 1],
+                    ..Default::default()
+                },
+            ],
+            shared_access_budgets: vec![AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }],
+            ..Default::default()
+        };
+        assert_err!(
+            tracker.get_policy_budget(b"policy_hash", &policy, /* transform_index */ 1),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "access policy has invalid shared budgets"
+        );
+    }
+
+    #[test]
+    fn test_update_budget() {
+        let mut tracker = BudgetTracker::default();
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let transform_index = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget =
+            tracker.get_policy_budget(b"policy_hash", &policy, transform_index).unwrap();
+        assert_eq!(policy_budget.has_budget(&1.into()), true);
+        // Update range [0,5)
+        policy_budget.update_budget(&range(0, 5));
+        // Verify that there is still budget in that range
+        assert_eq!(policy_budget.has_budget(&3.into()), true);
+        // Update range [0,5) again
+        policy_budget.update_budget(&range(0, 5));
+        // Now there shouldn't be a remaining budget in that range but still available
+        // budget outside the range.
+        assert_eq!(policy_budget.has_budget(&2.into()), false);
+        assert_eq!(policy_budget.has_budget(&6.into()), true);
+        // Updating range [0, 5) again is fine even though there isn't any remaining
+        // budget.
+        policy_budget.update_budget(&range(0, 5));
+        assert_eq!(policy_budget.has_budget(&2.into()), false);
+        assert_eq!(policy_budget.has_budget(&6.into()), true);
+    }
+
+    #[test]
+    fn test_update_budget_after_revoked() {
+        let mut tracker = BudgetTracker::default();
+        // Revoke access to one blob.
+        tracker.revoke(&3.into());
+
+        let policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let transform_index = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget =
+            tracker.get_policy_budget(b"policy_hash", &policy, transform_index).unwrap();
+        // Update range [0, 5)
+        policy_budget.update_budget(&range(0, 5));
+        // Access to the revoked blob is no longer possible but other blobs in the same
+        // range are OK.
+        assert_eq!(policy_budget.has_budget(&3.into()), false);
+        assert_eq!(policy_budget.has_budget(&2.into()), true);
+    }
+
+    #[test]
+    fn test_shared_budgets() {
+        let mut tracker = BudgetTracker::default();
+        // Two transforms share the same shared budget.
+        let policy = DataAccessPolicy {
+            transforms: vec![
+                Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
+                Transform { src: 1, shared_access_budget_indices: vec![0], ..Default::default() },
+            ],
+            shared_access_budgets: vec![AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }],
+            ..Default::default()
+        };
+        let transform_index1 = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        assert_eq!(transform_index1, 0);
+        let mut policy_budget1 =
+            tracker.get_policy_budget(b"policy_hash", &policy, transform_index1).unwrap();
+        assert_eq!(policy_budget1.has_budget(&2.into()), true);
+        policy_budget1.update_budget(&range(0, 5));
+
+        let transform_index2 = BudgetTracker::find_matching_transform(
+            /* node_id= */ 1,
+            &policy,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        assert_eq!(transform_index2, 1);
+        let mut policy_budget2 =
+            tracker.get_policy_budget(b"policy_hash", &policy, transform_index2).unwrap();
+        // The range [0, 5) should already be consumed via the shared budget but it
+        // should be OK outside of that range.
+        assert_eq!(policy_budget2.has_budget(&3.into()), false);
+        assert_eq!(policy_budget2.has_budget(&6.into()), true);
+    }
+
+    #[test]
+    fn test_policy_isolation() {
+        let mut tracker = BudgetTracker::default();
+        let policy1 = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(1)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let transform_index1 = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy1,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget1 =
+            tracker.get_policy_budget(b"policy_hash1", &policy1, transform_index1).unwrap();
+        // Update budget for the range [0, 5) and verify that there is no access.
+        policy_budget1.update_budget(&range(0, 5));
+        assert_eq!(policy_budget1.has_budget(&3.into()), false);
+
+        let policy2 = DataAccessPolicy {
+            transforms: vec![Transform {
+                src: 0,
+                access_budget: Some(AccessBudget {
+                    kind: Some(AccessBudgetKind::Times(1)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let transform_index2 = BudgetTracker::find_matching_transform(
+            /* node_id= */ 0,
+            &policy2,
+            &Application::default(),
+            Duration::default(),
+        )
+        .unwrap();
+        let mut policy_budget2 =
+            tracker.get_policy_budget(b"policy_hash2", &policy2, transform_index2).unwrap();
+        // Verify that there is budget for a blob in the same range [0, 5)
+        assert_eq!(policy_budget2.has_budget(&3.into()), true);
     }
 }
