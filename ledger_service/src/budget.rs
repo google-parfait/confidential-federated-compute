@@ -24,7 +24,7 @@ use alloc::{
 };
 use core::time::Duration;
 use federated_compute::proto::{
-    AccessBudget, DataAccessPolicy, access_budget::Kind as AccessBudgetKind,
+    access_budget::Kind as AccessBudgetKind, AccessBudget, DataAccessPolicy,
 };
 
 /// The remaining privacy budget for an individual blob.
@@ -293,10 +293,13 @@ impl BudgetTracker {
                     )
                 })?;
                 if per_policy_budgets
-                    .insert(blob_id, BlobBudget {
-                        transform_access_budgets: blob_budget_snapshot.transform_access_budgets,
-                        shared_access_budgets: blob_budget_snapshot.shared_access_budgets,
-                    })
+                    .insert(
+                        blob_id,
+                        BlobBudget {
+                            transform_access_budgets: blob_budget_snapshot.transform_access_budgets,
+                            shared_access_budgets: blob_budget_snapshot.shared_access_budgets,
+                        },
+                    )
                     .is_some()
                 {
                     return Err(micro_rpc::Status::new_with_message(
@@ -345,8 +348,8 @@ mod tests {
 
     use alloc::{borrow::ToOwned, vec};
     use federated_compute::proto::{
-        AccessBudget, ApplicationMatcher, access_budget::Kind as AccessBudgetKind,
-        data_access_policy::Transform,
+        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
+        ApplicationMatcher,
     };
 
     #[test]
@@ -436,31 +439,27 @@ mod tests {
         let policy_hash = b"hash";
 
         // A transform should not be found if the tag doesn't match.
-        assert!(
-            tracker
-                .find_matching_transform(
-                    &blob_id,
-                    /* node_id= */ 1,
-                    &policy,
-                    policy_hash,
-                    &Application { tag: "no-match", ..Default::default() },
-                    Duration::default()
-                )
-                .is_err()
-        );
+        assert!(tracker
+            .find_matching_transform(
+                &blob_id,
+                /* node_id= */ 1,
+                &policy,
+                policy_hash,
+                &Application { tag: "no-match", ..Default::default() },
+                Duration::default()
+            )
+            .is_err());
         // A transform should not be found if the index doesn't match.
-        assert!(
-            tracker
-                .find_matching_transform(
-                    &blob_id,
-                    /* node_id= */ 10,
-                    &policy,
-                    policy_hash,
-                    &Application { tag: "tag1", ..Default::default() },
-                    Duration::default()
-                )
-                .is_err()
-        );
+        assert!(tracker
+            .find_matching_transform(
+                &blob_id,
+                /* node_id= */ 10,
+                &policy,
+                policy_hash,
+                &Application { tag: "tag1", ..Default::default() },
+                Duration::default()
+            )
+            .is_err());
     }
 
     #[test]
@@ -476,18 +475,16 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(
-            tracker
-                .find_matching_transform(
-                    &BlobId::from(0),
-                    /* node_id= */ 0,
-                    &policy,
-                    b"policy-hash",
-                    &Application::default(),
-                    Duration::default()
-                )
-                .is_err()
-        );
+        assert!(tracker
+            .find_matching_transform(
+                &BlobId::from(0),
+                /* node_id= */ 0,
+                &policy,
+                b"policy-hash",
+                &Application::default(),
+                Duration::default()
+            )
+            .is_err());
     }
 
     #[test]
@@ -623,11 +620,9 @@ mod tests {
         // update_budget shouldn't be called with an invalid policy because
         // find_matching_transforms will have failed. But if it is, it should
         // fail.
-        assert!(
-            tracker
-                .update_budget(&blob_id, /* transform_index= */ 0, &policy, b"policy-hash")
-                .is_err()
-        );
+        assert!(tracker
+            .update_budget(&blob_id, /* transform_index= */ 0, &policy, b"policy-hash")
+            .is_err());
     }
 
     #[test]
@@ -853,18 +848,21 @@ mod tests {
             .unwrap();
         assert_eq!(tracker.update_budget(&blob_id, transform_index, &policy, policy_hash), Ok(()),);
 
-        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
-            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                access_policy_sha256: policy_hash.to_vec(),
-                budgets: vec![BlobBudgetSnapshot {
-                    blob_id: blob_id.to_vec(),
-                    transform_access_budgets: vec![1],
-                    shared_access_budgets: vec![],
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    budgets: vec![BlobBudgetSnapshot {
+                        blob_id: blob_id.to_vec(),
+                        transform_access_budgets: vec![1],
+                        shared_access_budgets: vec![],
+                    }],
+                    ..Default::default()
                 }],
-                ..Default::default()
-            }],
-            consumed_budgets: vec![],
-        });
+                consumed_budgets: vec![],
+            }
+        );
     }
 
     #[test]
@@ -894,14 +892,17 @@ mod tests {
         assert_eq!(tracker.update_budget(&blob_id, transform_index, &policy, policy_hash), Ok(()),);
         tracker.consume_budget(&blob_id);
 
-        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
-            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                access_policy_sha256: policy_hash.to_vec(),
-                budgets: vec![],
-                ..Default::default()
-            }],
-            consumed_budgets: vec![blob_id.to_vec()],
-        });
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    budgets: vec![],
+                    ..Default::default()
+                }],
+                consumed_budgets: vec![blob_id.to_vec()],
+            }
+        );
     }
 
     #[test]

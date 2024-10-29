@@ -26,7 +26,7 @@ use core::{
     time::Duration,
 };
 use federated_compute::proto::{
-    AccessBudget, DataAccessPolicy, access_budget::Kind as AccessBudgetKind,
+    access_budget::Kind as AccessBudgetKind, AccessBudget, DataAccessPolicy,
 };
 use rangemap::map::RangeMap;
 
@@ -463,7 +463,7 @@ mod tests {
     use super::*;
     use crate::assert_err;
     use alloc::{borrow::ToOwned, boxed::Box, vec};
-    use federated_compute::proto::{ApplicationMatcher, data_access_policy::Transform};
+    use federated_compute::proto::{data_access_policy::Transform, ApplicationMatcher};
     use googletest::prelude::*;
 
     fn range(start: u128, end: u128) -> BlobRange {
@@ -1029,19 +1029,22 @@ mod tests {
         let end: BlobId = 5.into();
         policy_budget.update_budget(&BlobRange { start, end });
 
-        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
-            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                access_policy_sha256: policy_hash.to_vec(),
-                transform_access_budgets: vec![RangeBudgetSnapshot {
-                    start: vec![start.to_vec()],
-                    end: vec![end.to_vec()],
-                    remaining_budget: vec![1],
-                    default_budget: Some(2),
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    transform_access_budgets: vec![RangeBudgetSnapshot {
+                        start: vec![start.to_vec()],
+                        end: vec![end.to_vec()],
+                        remaining_budget: vec![1],
+                        default_budget: Some(2),
+                    }],
+                    ..Default::default()
                 }],
-                ..Default::default()
-            }],
-            consumed_budgets: vec![],
-        });
+                consumed_budgets: vec![],
+            }
+        );
     }
 
     #[test]
@@ -1072,19 +1075,22 @@ mod tests {
         let revoked_blob_id: BlobId = 3.into();
         tracker.revoke(&3.into());
 
-        assert_eq!(tracker.save_snapshot(), BudgetSnapshot {
-            per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                access_policy_sha256: policy_hash.to_vec(),
-                transform_access_budgets: vec![RangeBudgetSnapshot {
-                    start: vec![start.to_vec()],
-                    end: vec![end.to_vec()],
-                    remaining_budget: vec![1],
-                    default_budget: Some(2),
+        assert_eq!(
+            tracker.save_snapshot(),
+            BudgetSnapshot {
+                per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                    access_policy_sha256: policy_hash.to_vec(),
+                    transform_access_budgets: vec![RangeBudgetSnapshot {
+                        start: vec![start.to_vec()],
+                        end: vec![end.to_vec()],
+                        remaining_budget: vec![1],
+                        default_budget: Some(2),
+                    }],
+                    ..Default::default()
                 }],
-                ..Default::default()
-            }],
-            consumed_budgets: vec![revoked_blob_id.to_vec()],
-        });
+                consumed_budgets: vec![revoked_blob_id.to_vec()],
+            }
+        );
     }
 
     #[test]

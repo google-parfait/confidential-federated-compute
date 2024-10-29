@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use alloc::vec::Vec;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use rangemap::StepLite;
 
 const BLOB_ID_SIZE: usize = 16;
@@ -104,9 +104,10 @@ mod tests {
     #[test]
     fn test_blob_id_to_vec() {
         assert_eq!(BlobId::from(0).to_vec(), vec![0; 16]);
-        assert_eq!(BlobId::from(12345678).to_vec(), vec![
-            78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        ]);
+        assert_eq!(
+            BlobId::from(12345678).to_vec(),
+            vec![78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
     }
 
     #[test]

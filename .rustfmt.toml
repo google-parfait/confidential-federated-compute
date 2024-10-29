@@ -1,5 +1,5 @@
 edition = "2021"
-version = "Two"
+style_edition = "2021"
 use_small_heuristics = "Max"
 newline_style = "Unix"
 wrap_comments = true

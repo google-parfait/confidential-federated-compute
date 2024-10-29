@@ -28,11 +28,11 @@ use crate::budget::BudgetTracker;
 
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
-use cfc_crypto::{PUBLIC_KEY_CLAIM, PrivateKey, extract_key_from_cwt};
+use cfc_crypto::{extract_key_from_cwt, PrivateKey, PUBLIC_KEY_CLAIM};
 use core::time::Duration;
 use coset::{
-    Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, cbor::Value, cwt,
-    cwt::ClaimsSetBuilder, iana,
+    cbor::Value, cwt, cwt::ClaimsSetBuilder, iana, Algorithm, CborSerializable, CoseKey,
+    CoseSign1Builder, Header,
 };
 use federated_compute::proto::{
     AuthorizeAccessRequest, AuthorizeAccessResponse, BlobHeader, CreateKeyRequest,
@@ -42,7 +42,7 @@ use federated_compute::proto::{
 use hpke::{Deserializable, Serializable};
 use oak_crypto::signer::Signer;
 use prost::Message;
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 mod replication {
@@ -236,12 +236,15 @@ impl LedgerService {
         })?;
 
         // Insert keys
-        self.per_key_ledgers.insert(key_id, PerKeyLedger {
-            private_key,
-            public_key: public_key.clone(),
-            expiration,
-            budget_tracker: BudgetTracker::new(),
-        });
+        self.per_key_ledgers.insert(
+            key_id,
+            PerKeyLedger {
+                private_key,
+                public_key: public_key.clone(),
+                expiration,
+                budget_tracker: BudgetTracker::new(),
+            },
+        );
 
         Ok(CreateKeyResponse { public_key, ..Default::default() })
     }
@@ -581,10 +584,10 @@ mod tests {
     };
 
     use alloc::{borrow::ToOwned, vec};
-    use coset::{CoseSign1, cwt::ClaimsSet};
+    use coset::{cwt::ClaimsSet, CoseSign1};
     use federated_compute::proto::{
-        AccessBudget, ApplicationMatcher, access_budget::Kind as AccessBudgetKind,
-        data_access_policy::Transform,
+        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
+        ApplicationMatcher,
     };
     use googletest::prelude::*;
     use oak_proto_rust::oak::attestation::v1::Evidence;
@@ -1291,22 +1294,18 @@ mod tests {
             cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
 
         // The first access should succeed.
-        assert!(
-            ledger
-                .authorize_access(AuthorizeAccessRequest {
-                    access_policy: access_policy.clone(),
-                    blob_header: blob_header.clone(),
-                    encapsulated_key: encapsulated_key.clone(),
-                    encrypted_symmetric_key: encrypted_symmetric_key.clone(),
-                    recipient_public_key: create_recipient_cwt(
-                        cfc_crypto::gen_keypair(b"key-id").1
-                    ),
-                    recipient_tag: "tag".to_owned(),
-                    recipient_nonce: b"nonce1".to_vec(),
-                    ..Default::default()
-                })
-                .is_ok()
-        );
+        assert!(ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                blob_header: blob_header.clone(),
+                encapsulated_key: encapsulated_key.clone(),
+                encrypted_symmetric_key: encrypted_symmetric_key.clone(),
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce1".to_vec(),
+                ..Default::default()
+            })
+            .is_ok());
 
         // But the second should fail because the budget has been exhausted.
         assert_err!(
@@ -1591,22 +1590,18 @@ mod tests {
 
         // Submit and commit the second request. This one should succeed because the
         // first request hasn't updated the budget yet.
-        assert!(
-            ledger
-                .authorize_access(AuthorizeAccessRequest {
-                    access_policy,
-                    blob_header: blob_header.clone(),
-                    encapsulated_key,
-                    encrypted_symmetric_key,
-                    recipient_public_key: create_recipient_cwt(
-                        cfc_crypto::gen_keypair(b"key-id").1
-                    ),
-                    recipient_tag: "tag".to_owned(),
-                    recipient_nonce: b"nonce2".to_vec(),
-                    ..Default::default()
-                })
-                .is_ok()
-        );
+        assert!(ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce2".to_vec(),
+                ..Default::default()
+            })
+            .is_ok());
 
         // Now applying the event for the first request must fail.
         assert_err!(
@@ -1670,27 +1665,33 @@ mod tests {
         // Since the private key isn't exposed we have to assume that the one
         // in the snapshot is the right one.
         let private_key = &snapshot.per_key_snapshots[0].private_key;
-        assert_eq!(snapshot, LedgerSnapshot {
-            current_time: Some(now),
-            per_key_snapshots: vec![PerKeySnapshot {
-                public_key,
-                private_key: private_key.clone(),
-                expiration: Some(prost_types::Timestamp { seconds: 3600, ..Default::default() }),
-                budgets: Some(BudgetSnapshot {
-                    per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
-                        access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
-                        budgets: vec![BlobBudgetSnapshot {
-                            // Note: blob-id will be padded with zeros to make it 16 bytes long.
-                            blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
-                            transform_access_budgets: vec![0],
-                            shared_access_budgets: vec![],
-                        }],
+        assert_eq!(
+            snapshot,
+            LedgerSnapshot {
+                current_time: Some(now),
+                per_key_snapshots: vec![PerKeySnapshot {
+                    public_key,
+                    private_key: private_key.clone(),
+                    expiration: Some(prost_types::Timestamp {
+                        seconds: 3600,
                         ..Default::default()
-                    }],
-                    consumed_budgets: vec![],
-                }),
-            }],
-        });
+                    }),
+                    budgets: Some(BudgetSnapshot {
+                        per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
+                            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                            budgets: vec![BlobBudgetSnapshot {
+                                // Note: blob-id will be padded with zeros to make it 16 bytes long.
+                                blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
+                                transform_access_budgets: vec![0],
+                                shared_access_budgets: vec![],
+                            }],
+                            ..Default::default()
+                        }],
+                        consumed_budgets: vec![],
+                    }),
+                }],
+            }
+        );
     }
 
     #[test]
