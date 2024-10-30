@@ -35,9 +35,9 @@ use coset::{
     CoseSign1Builder, Header,
 };
 use federated_compute::proto::{
-    AuthorizeAccessRequest, AuthorizeAccessResponse, BlobHeader, CreateKeyRequest,
-    CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest, DeleteKeyResponse, Ledger,
-    RevokeAccessRequest, RevokeAccessResponse,
+    authorize_access_response::AuthorizedBlobKeys, AuthorizeAccessRequest, AuthorizeAccessResponse,
+    BlobHeader, CreateKeyRequest, CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest,
+    DeleteKeyResponse, Ledger, RevokeAccessRequest, RevokeAccessResponse, Status,
 };
 use hpke::{Deserializable, Serializable};
 use oak_crypto::signer::Signer;
@@ -52,7 +52,10 @@ mod replication {
 #[cfg(feature = "testing")]
 pub use attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
-use crate::replication::{AuthorizeAccessEvent, CreateKeyEvent, LedgerSnapshot, PerKeySnapshot};
+use crate::replication::{
+    authorize_access_event::BlobMetadata, AuthorizeAccessEvent, CreateKeyEvent, LedgerSnapshot,
+    PerKeySnapshot, Range,
+};
 
 struct PerKeyLedger {
     private_key: PrivateKey,
@@ -289,13 +292,6 @@ impl LedgerService {
             )
         })?;
 
-        if Sha256::digest(&request.access_policy).as_slice() != header.access_policy_sha256 {
-            return Err(micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                "access policy does not match blob header",
-            ));
-        }
-
         let access_policy =
             DataAccessPolicy::decode(request.access_policy.as_ref()).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -330,6 +326,16 @@ impl LedgerService {
             self.current_time,
         )?;
 
+        let mut blob_metadata: Vec<BlobMetadata> = Vec::with_capacity(request.blob_metadata.len());
+        for blob in request.blob_metadata {
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob.blob_header,
+                encapsulated_key: blob.encapsulated_key,
+                encrypted_symmetric_key: blob.encrypted_symmetric_key,
+                recipient_nonce: blob.recipient_nonce,
+            });
+        }
+
         Ok(AuthorizeAccessEvent {
             event_time: Some(Self::format_timestamp(&self.current_time)?),
             access_policy: request.access_policy,
@@ -339,6 +345,8 @@ impl LedgerService {
             encrypted_symmetric_key: request.encrypted_symmetric_key,
             recipient_public_key: request.recipient_public_key,
             recipient_nonce: request.recipient_nonce,
+            blob_range: request.blob_range.map(|r| Range { start: r.start, end: r.end }),
+            blob_metadata,
             ..Default::default()
         })
     }
@@ -355,6 +363,7 @@ impl LedgerService {
             )
         })?;
 
+        // Extract the recipient public key from the event.
         let recipient_public_key =
             extract_key_from_cwt(&event.recipient_public_key).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -363,14 +372,27 @@ impl LedgerService {
                 )
             })?;
 
-        // Decode the blob header and the access policy.
-        let header = BlobHeader::decode(event.blob_header.as_ref()).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("failed to parse blob header: {:?}", err),
+        // Build the vector of blobs in the batch.
+        // The legacy mode is true when a single blob is specified at the top of the
+        // event as opposed to the repeated blob_metadata field.
+        let (blob_metadata, legacy_mode) = if event.blob_metadata.len() > 0 {
+            (event.blob_metadata, false)
+        } else {
+            (
+                vec![BlobMetadata {
+                    blob_header: event.blob_header,
+                    encapsulated_key: event.encapsulated_key,
+                    encrypted_symmetric_key: event.encrypted_symmetric_key,
+                    recipient_nonce: event.recipient_nonce,
+                }],
+                true,
             )
-        })?;
+        };
 
+        // Compute policy hash.
+        let access_policy_sha256 = Sha256::digest(&event.access_policy).to_vec();
+
+        // Decode the access policy.
         let access_policy =
             DataAccessPolicy::decode(event.access_policy.as_ref()).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -378,6 +400,87 @@ impl LedgerService {
                     format!("failed to parse access policy: {:?}", err),
                 )
             })?;
+
+        // This vector holds per-blob responses.
+        let mut authorized_blob_keys: Vec<AuthorizedBlobKeys> =
+            Vec::with_capacity(blob_metadata.len());
+        let mut reencryption_public_key = Vec::default();
+        let mut reencryption_public_key_expiration: Duration = Duration::MAX;
+
+        // Perform per-blob budget checks and key rewrapping.
+        for blob in blob_metadata {
+            authorized_blob_keys.push(
+                match self.authorize_blob_access(
+                    blob,
+                    &access_policy,
+                    &access_policy_sha256,
+                    event.transform_index.try_into().unwrap(),
+                    &recipient_public_key,
+                ) {
+                    Ok((encapsulated_key, encrypted_symmetric_key, per_key_ledger)) => {
+                        if per_key_ledger.expiration < reencryption_public_key_expiration {
+                            reencryption_public_key_expiration = per_key_ledger.expiration;
+                            reencryption_public_key = per_key_ledger.public_key.clone();
+                        }
+
+                        AuthorizedBlobKeys {
+                            encapsulated_key,
+                            encrypted_symmetric_key,
+                            status: Some(Status { code: 0, ..Default::default() }),
+                            ..Default::default()
+                        }
+                    }
+                    Err(error) => {
+                        if legacy_mode {
+                            return Err(error);
+                        }
+
+                        AuthorizedBlobKeys {
+                            status: Some(Status {
+                                code: error.code as i32,
+                                message: error.message.into(),
+                            }),
+                            ..Default::default()
+                        }
+                    }
+                },
+            );
+        }
+
+        // TODO: b/288282266 - Include the selected transform's destination node id in
+        // the response.
+        if legacy_mode {
+            let first_authorized_blob = authorized_blob_keys.pop().unwrap();
+            Ok(AuthorizeAccessResponse {
+                encapsulated_key: first_authorized_blob.encapsulated_key,
+                encrypted_symmetric_key: first_authorized_blob.encrypted_symmetric_key,
+                reencryption_public_key,
+                ..Default::default()
+            })
+        } else {
+            Ok(AuthorizeAccessResponse {
+                authorized_blob_keys,
+                reencryption_public_key,
+                ..Default::default()
+            })
+        }
+    }
+
+    fn authorize_blob_access(
+        &mut self,
+        blob: BlobMetadata,
+        access_policy: &DataAccessPolicy,
+        access_policy_sha256: &Vec<u8>,
+        transform_index: usize,
+        recipient_public_key: &CoseKey,
+    ) -> Result<(Vec<u8>, Vec<u8>, &mut PerKeyLedger), micro_rpc::Status> {
+        // Decode the blob header.
+        let header = BlobHeader::decode(blob.blob_header.as_ref()).map_err(|err| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                format!("failed to parse blob header: {:?}", err),
+            )
+        })?;
 
         // Find the right per-key ledger.
         let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
@@ -387,6 +490,15 @@ impl LedgerService {
             )
         })?;
 
+        // Verify that all blobs use the same policy.
+        if header.access_policy_sha256 != *access_policy_sha256 {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "access policy does not match blob header",
+            ));
+        }
+
+        // Parse the blob ID.
         let blob_id = BlobId::from_vec(&header.blob_id).map_err(|err| {
             micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
@@ -398,13 +510,13 @@ impl LedgerService {
         // updated in case there are decryption errors (e.g., due to invalid
         // associated data).
         let wrap_associated_data =
-            [&per_key_ledger.public_key[..], &event.recipient_nonce[..]].concat();
+            [&per_key_ledger.public_key[..], &blob.recipient_nonce[..]].concat();
         let (encapsulated_key, encrypted_symmetric_key) = cfc_crypto::rewrap_symmetric_key(
-            &event.encrypted_symmetric_key,
-            &event.encapsulated_key,
+            &blob.encrypted_symmetric_key,
+            &blob.encapsulated_key,
             &per_key_ledger.private_key,
-            /* unwrap_associated_data= */ &event.blob_header,
-            &recipient_public_key,
+            /* unwrap_associated_data= */ &blob.blob_header,
+            recipient_public_key,
             &wrap_associated_data,
         )
         .map_err(|err| {
@@ -419,19 +531,12 @@ impl LedgerService {
         // attestation and initially checking the budget.
         per_key_ledger.budget_tracker.update_budget(
             &blob_id,
-            event.transform_index.try_into().unwrap(),
+            transform_index,
             &access_policy,
-            &header.access_policy_sha256,
+            &access_policy_sha256,
         )?;
 
-        // TODO: b/288282266 - Include the selected transform's destination node id in
-        // the response.
-        Ok(AuthorizeAccessResponse {
-            encapsulated_key,
-            encrypted_symmetric_key,
-            reencryption_public_key: per_key_ledger.public_key.clone(),
-            ..Default::default()
-        })
+        Ok((encapsulated_key, encrypted_symmetric_key, per_key_ledger))
     }
 
     /// Saves the current state into LedgerSnapshot as a part of snapshot
