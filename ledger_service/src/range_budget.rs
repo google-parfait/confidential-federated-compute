@@ -30,7 +30,7 @@ use federated_compute::proto::{
 };
 use rangemap::map::RangeMap;
 
-type BlobRange = core::ops::Range<BlobId>;
+pub type BlobRange = core::ops::Range<BlobId>;
 
 /// Range budget stores u32 budgets for a single policy node or
 /// single shared budget index in a DataAccessPolicy.

@@ -24,8 +24,8 @@ pub struct BlobId {
 }
 
 impl BlobId {
-    const MIN: BlobId = BlobId { id: u128::MIN };
-    const MAX: BlobId = BlobId { id: u128::MAX };
+    pub const MIN: BlobId = BlobId { id: u128::MIN };
+    pub const MAX: BlobId = BlobId { id: u128::MAX - 1 };
 
     pub fn from_bytes(s: &[u8]) -> Result<Self> {
         if s.len() > BLOB_ID_SIZE {
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_add_one_panic() {
-        BlobId::add_one(&BlobId::MAX);
+        BlobId::add_one(&BlobId::MAX.add_one());
     }
 
     #[test]

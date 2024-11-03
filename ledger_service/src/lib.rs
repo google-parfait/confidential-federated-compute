@@ -19,12 +19,11 @@ extern crate alloc;
 pub mod actor;
 mod attestation;
 mod blobid;
-mod budget;
 mod range_budget;
 mod test_util;
 
 use crate::blobid::BlobId;
-use crate::budget::BudgetTracker;
+use crate::range_budget::{BlobRange, BudgetTracker};
 
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use anyhow::anyhow;
@@ -39,10 +38,12 @@ use federated_compute::proto::{
     BlobHeader, CreateKeyRequest, CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest,
     DeleteKeyResponse, Ledger, RevokeAccessRequest, RevokeAccessResponse, Status,
 };
+use hashbrown::HashSet;
 use hpke::{Deserializable, Serializable};
 use oak_crypto::signer::Signer;
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
+use rangemap::StepLite;
 use sha2::{Digest, Sha256};
 
 mod replication {
@@ -245,7 +246,7 @@ impl LedgerService {
                 private_key,
                 public_key: public_key.clone(),
                 expiration,
-                budget_tracker: BudgetTracker::new(),
+                budget_tracker: BudgetTracker::default(),
             },
         );
 
@@ -278,20 +279,7 @@ impl LedgerService {
             )
         })?;
 
-        // Decode the blob header and access policy. Since the access policy was
-        // provided by an untrusted source, we need to verify it by checking the
-        // hash in the header. The header is also unverified at this point, but
-        // will be authenticated later when it's used as the associated data for
-        // re-wrapping the symmetric key. This ensures that any request that
-        // uses a different header or access policy than what was approved by the client
-        // will fail.
-        let header = BlobHeader::decode(request.blob_header.as_ref()).map_err(|err| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::InvalidArgument,
-                format!("failed to parse blob header: {:?}", err),
-            )
-        })?;
-
+        // Decode the access policy.
         let access_policy =
             DataAccessPolicy::decode(request.access_policy.as_ref()).map_err(|err| {
                 micro_rpc::Status::new_with_message(
@@ -300,41 +288,64 @@ impl LedgerService {
                 )
             })?;
 
-        // Find the right per-key ledger.
-        let per_key_ledger = self.per_key_ledgers.get_mut(&header.key_id).ok_or_else(|| {
-            micro_rpc::Status::new_with_message(
-                micro_rpc::StatusCode::NotFound,
-                "public key not found",
-            )
-        })?;
+        // Find the right `access_policy_node_id`.
+        // TODO: Modify AuthorizeAccessRequest to include the `access_policy_node_id` as
+        // a top level field to avoid parsing blob headers below.
+        let mut access_policy_node_id = None;
+        let mut blob_metadata: Vec<BlobMetadata> = Vec::with_capacity(request.blob_metadata.len());
+        let legacy_mode = request.blob_metadata.len() == 0;
+        if legacy_mode {
+            let header = BlobHeader::decode(request.blob_header.as_ref()).map_err(|err| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::InvalidArgument,
+                    format!("failed to parse blob header: {:?}", err),
+                )
+            })?;
+            access_policy_node_id = Some(header.access_policy_node_id);
+        } else {
+            for blob in request.blob_metadata {
+                let node_ids_same = BlobHeader::decode(blob.blob_header.as_ref()).map_or_else(
+                    // Ignore decoding error since it will be dealt with later when applying
+                    // the event.
+                    |_err| true,
+                    |header| {
+                        if access_policy_node_id.is_none() {
+                            access_policy_node_id = Some(header.access_policy_node_id);
+                        }
+                        access_policy_node_id == Some(header.access_policy_node_id)
+                    },
+                );
 
-        let blob_id = BlobId::from_vec(&header.blob_id).map_err(|err| {
-            micro_rpc::Status::new_with_message(
+                if !node_ids_same {
+                    return Err(micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("access_policy_node_id is not same for all blobs in the range"),
+                    ));
+                }
+
+                blob_metadata.push(BlobMetadata {
+                    blob_header: blob.blob_header,
+                    encapsulated_key: blob.encapsulated_key,
+                    encrypted_symmetric_key: blob.encrypted_symmetric_key,
+                    recipient_nonce: blob.recipient_nonce,
+                });
+            }
+        }
+
+        if access_policy_node_id.is_none() {
+            return Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::InvalidArgument,
-                format!("Invalid `blob_id`: {:?}", err),
-            )
-        })?;
+                "no access_policy_node_id found.",
+            ));
+        }
 
-        // Verify that the access is authorized and that there is still budget
-        // remaining.
-        let transform_index = per_key_ledger.budget_tracker.find_matching_transform(
-            &blob_id,
-            header.access_policy_node_id,
+        // Verify that the access is authorized and get the first matching transform.
+        let transform_index = BudgetTracker::find_matching_transform(
+            access_policy_node_id.unwrap(),
             &access_policy,
-            &header.access_policy_sha256,
             &recipient_app,
             self.current_time,
         )?;
-
-        let mut blob_metadata: Vec<BlobMetadata> = Vec::with_capacity(request.blob_metadata.len());
-        for blob in request.blob_metadata {
-            blob_metadata.push(BlobMetadata {
-                blob_header: blob.blob_header,
-                encapsulated_key: blob.encapsulated_key,
-                encrypted_symmetric_key: blob.encrypted_symmetric_key,
-                recipient_nonce: blob.recipient_nonce,
-            });
-        }
 
         Ok(AuthorizeAccessEvent {
             event_time: Some(Self::format_timestamp(&self.current_time)?),
@@ -401,13 +412,64 @@ impl LedgerService {
                 )
             })?;
 
-        // This vector holds per-blob responses.
-        let mut authorized_blob_keys: Vec<AuthorizedBlobKeys> =
-            Vec::with_capacity(blob_metadata.len());
-        let mut reencryption_public_key = Vec::default();
-        let mut reencryption_public_key_expiration: Duration = Duration::MAX;
+        // Parse the blob range or derive it from blob_id if there is exactly one blob.
+        let blob_range = match event.blob_range {
+            Some(range) => {
+                let start = BlobId::from_vec(&range.start).map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("Invalid range start `blob_id` err:{:?}", err),
+                    )
+                })?;
+                let end = BlobId::from_vec(&range.end).map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("Invalid range end `blob_id` err:{:?}", err),
+                    )
+                })?;
+                if start < BlobId::MIN || end > BlobId::MAX {
+                    return Err(micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."),
+                    ));
+                }
+                BlobRange { start, end }
+            }
+            None => {
+                if blob_metadata.len() > 1 {
+                    return Err(micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("the range is required unless there is exactly one input blob"),
+                    ));
+                }
+                let header =
+                    BlobHeader::decode(blob_metadata[0].blob_header.as_ref()).map_err(|err| {
+                        micro_rpc::Status::new_with_message(
+                            micro_rpc::StatusCode::InvalidArgument,
+                            format!("failed to parse blob header: {:?}", err),
+                        )
+                    })?;
+                let blob_id = BlobId::from_vec(&header.blob_id).map_err(|err| {
+                    micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("Invalid `blob_id`: {:?}", err),
+                    )
+                })?;
+                if blob_id < BlobId::MIN || blob_id > BlobId::MAX {
+                    return Err(micro_rpc::Status::new_with_message(
+                        micro_rpc::StatusCode::InvalidArgument,
+                        format!("blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."),
+                    ));
+                }
+                BlobRange { start: blob_id.clone(), end: blob_id.add_one() }
+            }
+        };
 
-        // Perform per-blob budget checks and key rewrapping.
+        // This vector holds per-blob responses with the same ordering as the original
+        // blob_metadata field. For legacy mode, this vector contains exactly one entry.
+        let mut authorized_blob_keys = Vec::with_capacity(blob_metadata.len());
+        let mut ledger_key_ids = HashSet::new();
+        // TODO: Verify all blob ids are unique and fall into the given range.
         for blob in blob_metadata {
             authorized_blob_keys.push(
                 match self.authorize_blob_access(
@@ -417,12 +479,8 @@ impl LedgerService {
                     event.transform_index.try_into().unwrap(),
                     &recipient_public_key,
                 ) {
-                    Ok((encapsulated_key, encrypted_symmetric_key, per_key_ledger)) => {
-                        if per_key_ledger.expiration < reencryption_public_key_expiration {
-                            reencryption_public_key_expiration = per_key_ledger.expiration;
-                            reencryption_public_key = per_key_ledger.public_key.clone();
-                        }
-
+                    Ok((encapsulated_key, encrypted_symmetric_key, ledger_key_id)) => {
+                        ledger_key_ids.insert(ledger_key_id);
                         AuthorizedBlobKeys {
                             encapsulated_key,
                             encrypted_symmetric_key,
@@ -445,6 +503,28 @@ impl LedgerService {
                     }
                 },
             );
+        }
+
+        let mut reencryption_public_key = Vec::default();
+        let mut reencryption_public_key_expiration: Duration = Duration::MAX;
+        for key_id in &ledger_key_ids {
+            let per_key_ledger = self.per_key_ledgers.get_mut(key_id).ok_or_else(|| {
+                micro_rpc::Status::new_with_message(
+                    micro_rpc::StatusCode::NotFound,
+                    "public key not found",
+                )
+            })?;
+            if per_key_ledger.expiration < reencryption_public_key_expiration {
+                reencryption_public_key_expiration = per_key_ledger.expiration;
+                reencryption_public_key = per_key_ledger.public_key.clone();
+            }
+            let mut policy_budget_tracker = per_key_ledger.budget_tracker.get_policy_budget(
+                &access_policy_sha256,
+                &access_policy,
+                event.transform_index.try_into().unwrap(),
+            )?;
+            // Per key, update the budget once for the entire range.
+            policy_budget_tracker.update_budget(&blob_range);
         }
 
         // TODO: b/288282266 - Include the selected transform's destination node id in
@@ -473,7 +553,7 @@ impl LedgerService {
         access_policy_sha256: &Vec<u8>,
         transform_index: usize,
         recipient_public_key: &CoseKey,
-    ) -> Result<(Vec<u8>, Vec<u8>, &mut PerKeyLedger), micro_rpc::Status> {
+    ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), micro_rpc::Status> {
         // Decode the blob header.
         let header = BlobHeader::decode(blob.blob_header.as_ref()).map_err(|err| {
             micro_rpc::Status::new_with_message(
@@ -506,6 +586,21 @@ impl LedgerService {
             )
         })?;
 
+        // Get the policy budget tracker.
+        let policy_budget_tracker = per_key_ledger.budget_tracker.get_policy_budget(
+            &access_policy_sha256,
+            &access_policy,
+            transform_index,
+        )?;
+
+        // Check if there is remaining budget.
+        if !policy_budget_tracker.has_budget(&blob_id) {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::PermissionDenied,
+                "no budget remaining",
+            ));
+        }
+
         // Re-wrap the blob's symmetric key. This should be done before budgets are
         // updated in case there are decryption errors (e.g., due to invalid
         // associated data).
@@ -526,17 +621,7 @@ impl LedgerService {
             )
         })?;
 
-        // Update the budget. This can potentially fail if the budget is insufficient at
-        // the time when the event is applied, which can be a short delay from from the
-        // attestation and initially checking the budget.
-        per_key_ledger.budget_tracker.update_budget(
-            &blob_id,
-            transform_index,
-            &access_policy,
-            &access_policy_sha256,
-        )?;
-
-        Ok((encapsulated_key, encrypted_symmetric_key, per_key_ledger))
+        Ok((encapsulated_key, encrypted_symmetric_key, header.key_id.clone()))
     }
 
     /// Saves the current state into LedgerSnapshot as a part of snapshot
@@ -581,7 +666,7 @@ impl LedgerService {
                         format!("expiration is invalid: {:?}", err),
                     )
                 })?,
-                budget_tracker: BudgetTracker::new(),
+                budget_tracker: BudgetTracker::default(),
             };
             // Load the budgets.
             if per_key_snapshot.budgets.is_some() {
@@ -674,7 +759,7 @@ impl Ledger for LedgerService {
             )
         })?;
 
-        per_key_ledger.budget_tracker.consume_budget(&blob_id);
+        per_key_ledger.budget_tracker.revoke(&blob_id);
         Ok(RevokeAccessResponse {})
     }
 }
@@ -685,13 +770,15 @@ mod tests {
     use crate::assert_err;
     use crate::attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
     use crate::replication::{
-        BlobBudgetSnapshot, BudgetSnapshot, LedgerSnapshot, PerKeySnapshot, PerPolicyBudgetSnapshot,
+        BudgetSnapshot, LedgerSnapshot, PerKeySnapshot, PerPolicyBudgetSnapshot,
+        RangeBudgetSnapshot,
     };
 
     use alloc::{borrow::ToOwned, vec};
     use coset::{cwt::ClaimsSet, CoseSign1};
     use federated_compute::proto::{
-        access_budget::Kind as AccessBudgetKind, data_access_policy::Transform, AccessBudget,
+        access_budget::Kind as AccessBudgetKind, authorize_access_request::BlobMetadata,
+        authorize_access_request::Range, data_access_policy::Transform, AccessBudget,
         ApplicationMatcher,
     };
     use googletest::prelude::*;
@@ -866,6 +953,131 @@ mod tests {
             .unwrap(),
             plaintext
         );
+    }
+
+    #[test]
+    fn test_authorize_access_multiple_blobs() {
+        // Create 2 public keys.
+        let mut ledger_public_key = Vec::with_capacity(2);
+        let (mut ledger, public_key) = create_ledger_service();
+        ledger_public_key.push(public_key);
+        ledger_public_key.push(
+            ledger
+                .create_key(CreateKeyRequest {
+                    ttl: Some(prost_types::Duration { seconds: 7200, ..Default::default() }),
+                    ..Default::default()
+                })
+                .unwrap()
+                .public_key,
+        );
+        let mut cose_key = Vec::with_capacity(2);
+        cose_key.push(extract_key_from_cwt(&ledger_public_key[0]).unwrap());
+        cose_key.push(extract_key_from_cwt(&ledger_public_key[1]).unwrap());
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct 4 client messages, 2 per key.
+        let plaintext = b"plaintext";
+        let mut blob_header = Vec::with_capacity(4);
+        let mut ciphertexts = Vec::with_capacity(4);
+        let mut blob_metadata = Vec::with_capacity(4);
+        let recipient_nonce: &[u8] = b"nonce";
+        for i in 0..4 {
+            blob_header.push(
+                BlobHeader {
+                    blob_id: BlobId::from(i as u128).to_vec(),
+                    key_id: cose_key[i / 2].key_id.clone(),
+                    access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            );
+
+            let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
+                cfc_crypto::encrypt_message(plaintext, &cose_key[i / 2], &blob_header[i]).unwrap();
+
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob_header[i].clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_nonce: recipient_nonce.to_vec(),
+            });
+            ciphertexts.push(ciphertext);
+        }
+        // Add some blobs with invalid header and invalid policy hash.
+        blob_metadata.push(BlobMetadata {
+            blob_header: "invalid".into(),
+            encapsulated_key: "encapsulated_key".into(),
+            encrypted_symmetric_key: "encrypted_symmetric_key".into(),
+            recipient_nonce: recipient_nonce.to_vec(),
+        });
+        blob_metadata.push(BlobMetadata {
+            blob_header: BlobHeader {
+                blob_id: BlobId::from(4).to_vec(),
+                key_id: cose_key[0].key_id.clone(),
+                access_policy_sha256: "invalid".into(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            encapsulated_key: "encapsulated_key".into(),
+            encrypted_symmetric_key: "encrypted_symmetric_key".into(),
+            recipient_nonce: recipient_nonce.to_vec(),
+        });
+
+        // Request access.
+        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let response = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata,
+                blob_range: Some(Range {
+                    start: BlobId::from(0).to_vec(),
+                    end: BlobId::from(6).to_vec(),
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
+        assert_eq!(response.reencryption_public_key, ledger_public_key[0]);
+        assert_eq!(response.authorized_blob_keys.len(), 6);
+        for i in 0..4 {
+            let authorized_blob_key = response.authorized_blob_keys.get(i).unwrap();
+            assert_eq!(
+                cfc_crypto::decrypt_message(
+                    &ciphertexts[i],
+                    &blob_header[i],
+                    &authorized_blob_key.encrypted_symmetric_key,
+                    &[&ledger_public_key[i / 2], recipient_nonce].concat(),
+                    &authorized_blob_key.encapsulated_key,
+                    &recipient_private_key
+                )
+                .unwrap(),
+                plaintext
+            );
+        }
+        // Last 2 responses must correspond to invalid blobs.
+        for i in 4..6 {
+            assert_eq!(
+                response.authorized_blob_keys.get(i).unwrap().status.as_ref().unwrap().code,
+                micro_rpc::StatusCode::InvalidArgument as i32
+            );
+        }
     }
 
     #[test]
@@ -1067,7 +1279,7 @@ mod tests {
     }
 
     #[test]
-    fn test_authorize_access_invalid_header() {
+    fn test_authorize_access_invalid_header_single_blob() {
         let (mut ledger, public_key) = create_ledger_service();
         let cose_key = extract_key_from_cwt(&public_key).unwrap();
 
@@ -1110,6 +1322,260 @@ mod tests {
             }),
             micro_rpc::StatusCode::InvalidArgument,
             "failed to parse blob header"
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_no_range_multiple_blobs_invalid() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct multiple client messages
+        let plaintext = b"plaintext";
+        let mut blob_metadata = Vec::with_capacity(4);
+        let recipient_nonce: &[u8] = b"nonce";
+        for i in 0..4 {
+            let blob_header = BlobHeader {
+                blob_id: BlobId::from(i as u128).to_vec(),
+                key_id: cose_key.key_id.clone(),
+                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec();
+
+            let (_, encapsulated_key, encrypted_symmetric_key) =
+                cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_nonce: recipient_nonce.to_vec(),
+            });
+        }
+
+        // Request access.
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata,
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "the range is required unless there is exactly one input blob"
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_range() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct multiple client messages
+        let plaintext = b"plaintext";
+        let mut blob_metadata = Vec::with_capacity(4);
+        let recipient_nonce: &[u8] = b"nonce";
+        for i in 0..4 {
+            let blob_header = BlobHeader {
+                blob_id: BlobId::from(i as u128).to_vec(),
+                key_id: cose_key.key_id.clone(),
+                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec();
+
+            let (_, encapsulated_key, encrypted_symmetric_key) =
+                cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_nonce: recipient_nonce.to_vec(),
+            });
+        }
+
+        // Request access.
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata,
+                blob_range: Some(Range {
+                    start: BlobId::from(0).to_vec(),
+                    end: BlobId::MAX.add_one().to_vec(),
+                }),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_all_invalid_headers_multiple_blobs() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct client messages.
+        let blob_header_1 = BlobHeader {
+            blob_id: "blob-id-1".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key_1, encrypted_symmetric_key_1) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header_1).unwrap();
+        let blob_header_2 = BlobHeader {
+            blob_id: "blob-id-2".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key_2, encrypted_symmetric_key_2) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header_2).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata: vec![
+                    BlobMetadata {
+                        blob_header: "invalid".into(),
+                        encapsulated_key: encapsulated_key_1,
+                        encrypted_symmetric_key: encrypted_symmetric_key_1,
+                        recipient_nonce: "nonce_1".into()
+                    },
+                    BlobMetadata {
+                        blob_header: "invalid".into(),
+                        encapsulated_key: encapsulated_key_2,
+                        encrypted_symmetric_key: encrypted_symmetric_key_2,
+                        recipient_nonce: "nonce_2".into()
+                    },
+                ],
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "no access_policy_node_id found."
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_access_policy_node_id() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct client messages.
+        let blob_header_1 = BlobHeader {
+            blob_id: "blob-id-1".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            access_policy_node_id: 0,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key_1, encrypted_symmetric_key_1) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header_1).unwrap();
+        let blob_header_2 = BlobHeader {
+            blob_id: "blob-id-2".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            access_policy_node_id: 1,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key_2, encrypted_symmetric_key_2) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header_2).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata: vec![
+                    BlobMetadata {
+                        blob_header: blob_header_1,
+                        encapsulated_key: encapsulated_key_1,
+                        encrypted_symmetric_key: encrypted_symmetric_key_1,
+                        recipient_nonce: "nonce_1".into()
+                    },
+                    BlobMetadata {
+                        blob_header: blob_header_2,
+                        encapsulated_key: encapsulated_key_2,
+                        encrypted_symmetric_key: encrypted_symmetric_key_2,
+                        recipient_nonce: "nonce_2".into()
+                    },
+                ],
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "access_policy_node_id is not same for all blobs in the range"
         );
     }
 
@@ -1376,7 +1842,7 @@ mod tests {
     }
 
     #[test]
-    fn test_authorize_access_updates_budget() {
+    fn test_authorize_access_updates_budget_single_blob() {
         let (mut ledger, public_key) = create_ledger_service();
         let cose_key = extract_key_from_cwt(&public_key).unwrap();
         let access_policy = DataAccessPolicy {
@@ -1427,6 +1893,98 @@ mod tests {
             micro_rpc::StatusCode::PermissionDenied,
             ""
         );
+    }
+
+    #[test]
+    fn test_authorize_access_updates_budget_multiple_blobs() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct multiple client messages
+        let plaintext = b"plaintext";
+        let mut blob_metadata = Vec::with_capacity(4);
+        let recipient_nonce: &[u8] = b"nonce";
+        for i in 0..4 {
+            let blob_header = BlobHeader {
+                blob_id: BlobId::from(i as u128).to_vec(),
+                key_id: cose_key.key_id.clone(),
+                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec();
+
+            let (_, encapsulated_key, encrypted_symmetric_key) =
+                cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_nonce: recipient_nonce.to_vec(),
+            });
+        }
+
+        // Request access.
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+
+        // The first access should succeed.
+        let response_1 = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                recipient_public_key: create_recipient_cwt(recipient_public_key.clone()),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata: blob_metadata.clone(),
+                blob_range: Some(Range {
+                    start: BlobId::from(0).to_vec(),
+                    end: BlobId::from(5).to_vec(),
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response_1.reencryption_public_key, public_key);
+        let authorized_blobs_1 = response_1.authorized_blob_keys;
+        for i in 0..4 {
+            assert_eq!(
+                authorized_blobs_1.get(i).as_ref().unwrap().status.as_ref().unwrap().code,
+                micro_rpc::StatusCode::Ok as i32,
+            );
+        }
+
+        // But the second should fail because the budget has been exhausted.
+        let response_2 = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata,
+                blob_range: Some(Range {
+                    start: BlobId::from(1).to_vec(),
+                    end: BlobId::from(4).to_vec(),
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response_2.reencryption_public_key, Vec::<u8>::new());
+        let authorized_blobs_2 = response_2.authorized_blob_keys;
+        for i in 0..4 {
+            assert_eq!(
+                authorized_blobs_2.get(i).as_ref().unwrap().status.as_ref().unwrap().code,
+                micro_rpc::StatusCode::PermissionDenied as i32,
+            );
+        }
     }
 
     #[test]
@@ -1784,11 +2342,12 @@ mod tests {
                     budgets: Some(BudgetSnapshot {
                         per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                             access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
-                            budgets: vec![BlobBudgetSnapshot {
-                                // Note: blob-id will be padded with zeros to make it 16 bytes long.
-                                blob_id: "blob-id\0\0\0\0\0\0\0\0\0".into(),
-                                transform_access_budgets: vec![0],
-                                shared_access_budgets: vec![],
+                            // Empty `transform_access_budgets` since the budget is unlimited.
+                            transform_access_budgets: vec![RangeBudgetSnapshot {
+                                start: vec![],
+                                end: vec![],
+                                remaining_budget: vec![],
+                                default_budget: None
                             }],
                             ..Default::default()
                         }],
@@ -1819,9 +2378,11 @@ mod tests {
                     budgets: Some(BudgetSnapshot {
                         per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                             access_policy_sha256: b"hash1".to_vec(),
-                            budgets: vec![BlobBudgetSnapshot {
-                                blob_id: b"_____blob_____1_".to_vec(),
-                                ..Default::default()
+                            transform_access_budgets: vec![RangeBudgetSnapshot {
+                                start: vec![b"_____blob_____1_".to_vec()],
+                                end: vec![b"_____blob_____2_".to_vec()],
+                                remaining_budget: vec![2],
+                                default_budget: Some(50),
                             }],
                             ..Default::default()
                         }],
@@ -1837,7 +2398,7 @@ mod tests {
                     }),
                     budgets: Some(BudgetSnapshot {
                         per_policy_snapshots: vec![],
-                        consumed_budgets: vec![b"_____blob_____2_".to_vec()],
+                        consumed_budgets: vec![b"_____blob_____3_".to_vec()],
                     }),
                 },
             ],
@@ -1915,9 +2476,11 @@ mod tests {
                 budgets: Some(BudgetSnapshot {
                     per_policy_snapshots: vec![PerPolicyBudgetSnapshot {
                         access_policy_sha256: access_policy_sha256.clone(),
-                        budgets: vec![BlobBudgetSnapshot {
-                            blob_id: b"blob-id".to_vec(),
-                            ..Default::default()
+                        transform_access_budgets: vec![RangeBudgetSnapshot {
+                            start: vec![],
+                            end: vec![],
+                            remaining_budget: vec![],
+                            default_budget: None,
                         }],
                         ..Default::default()
                     }],

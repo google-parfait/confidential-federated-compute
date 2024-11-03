@@ -64,6 +64,7 @@ rust_library(
         "@oak//oak_restricted_kernel_sdk",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
+        "@oak_crates_index//:hashbrown",
         "@oak_crates_index//:hpke",
         "@oak_crates_index//:p256",
         "@oak_crates_index//:prost",
