@@ -1,5 +1,5 @@
 {
-  "checksum": "9b4600f85835ba0bfc1444a39ad37c9cf6bef15fe59f378314be59d830fd9bec",
+  "checksum": "a8d3ff5a1043b26d1b5c8498b358843da2b5440ddf5874a78e6469e3208d88a2",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -5935,14 +5935,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "curve25519-dalek 4.1.1": {
+    "curve25519-dalek 4.1.3": {
       "name": "curve25519-dalek",
-      "version": "4.1.1",
+      "version": "4.1.3",
       "package_url": "https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/curve25519-dalek/4.1.1/download",
-          "sha256": "e89b8c6a2e4b1f45971ad09761aafb85514a84744b67a95e32c3cc1352d1f65c"
+          "url": "https://static.crates.io/crates/curve25519-dalek/4.1.3/download",
+          "sha256": "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
         }
       },
       "targets": [
@@ -5983,7 +5983,7 @@
               "target": "cfg_if"
             },
             {
-              "id": "curve25519-dalek 4.1.1",
+              "id": "curve25519-dalek 4.1.3",
               "target": "build_script_build"
             },
             {
@@ -6018,7 +6018,7 @@
             ]
           }
         },
-        "version": "4.1.1"
+        "version": "4.1.3"
       },
       "build_script_attrs": {
         "data_glob": [
@@ -6026,10 +6026,6 @@
         ],
         "deps": {
           "common": [
-            {
-              "id": "platforms 3.4.1",
-              "target": "platforms"
-            },
             {
               "id": "rustc_version 0.4.0",
               "target": "rustc_version"
@@ -7051,7 +7047,7 @@
               "target": "criterion"
             },
             {
-              "id": "curve25519-dalek 4.1.1",
+              "id": "curve25519-dalek 4.1.3",
               "target": "curve25519_dalek"
             },
             {
@@ -15184,6 +15180,7 @@
             "default",
             "feature",
             "fs",
+            "mman",
             "mount",
             "process",
             "sched",
@@ -17726,52 +17723,6 @@
         "version": "0.2.3"
       },
       "license": "MIT/Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "platforms 3.4.1": {
-      "name": "platforms",
-      "version": "3.4.1",
-      "package_url": "https://github.com/rustsec/rustsec/tree/main/platforms",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/platforms/3.4.1/download",
-          "sha256": "0e4c7666f2019727f9e8e14bf14456e99c707d780922869f1ba473eee101fa49"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "platforms",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "platforms",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "default",
-            "std"
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "3.4.1"
-      },
-      "license": "Apache-2.0 OR MIT",
       "license_ids": [
         "Apache-2.0",
         "MIT"
@@ -31219,7 +31170,7 @@
         "deps": {
           "common": [
             {
-              "id": "curve25519-dalek 4.1.1",
+              "id": "curve25519-dalek 4.1.3",
               "target": "curve25519_dalek"
             },
             {
@@ -32244,7 +32195,7 @@
     "coset 0.3.7",
     "criterion 0.5.1",
     "criterion-macro 0.4.0",
-    "curve25519-dalek 4.1.1",
+    "curve25519-dalek 4.1.3",
     "derive_builder 0.20.0",
     "ecdsa 0.16.9",
     "elf 0.7.4",

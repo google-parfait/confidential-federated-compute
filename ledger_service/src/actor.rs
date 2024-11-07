@@ -21,6 +21,13 @@ use federated_compute::proto::{
     Status,
 };
 use oak_crypto::signer::Signer;
+use oak_proto_rust::oak::attestation::v1::{
+    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
+    ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
+    KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
+    ReferenceValues, RootLayerReferenceValues, SkipVerification, TeePlatform, TextReferenceValue,
+};
+use oak_restricted_kernel_sdk::Attester;
 use prost::{bytes::Bytes, Message};
 use slog::{debug, error, warn};
 use tcp_runtime::model::{
@@ -31,11 +38,18 @@ use tcp_runtime::model::{
 pub struct LedgerActor {
     context: Option<Box<dyn ActorContext>>,
     ledger: LedgerService,
+    platform_type: i32,
 }
 
 impl LedgerActor {
-    pub fn new(signer: Box<dyn Signer>) -> Self {
-        LedgerActor { context: None, ledger: LedgerService::new(signer) }
+    pub fn create(attester: Box<dyn Attester>, signer: Box<dyn Signer>) -> anyhow::Result<Self> {
+        let evidence = attester.quote()?;
+        let platform_type = match evidence.root_layer {
+            Some(root_layer) => root_layer.platform,
+            None => TeePlatform::None.into(),
+        };
+
+        Ok(LedgerActor { context: None, ledger: LedgerService::new(signer), platform_type })
     }
 
     fn get_context(&mut self) -> &mut dyn ActorContext {
@@ -310,12 +324,57 @@ impl Actor for LedgerActor {
             )))
         })
     }
+
+    fn get_reference_values(&self) -> ReferenceValues {
+        // When running in insecure mode, simply skip all reference values.
+        // This is only used for tests.
+        if self.platform_type == TeePlatform::None as i32 {
+            let skip = BinaryReferenceValue {
+                r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
+            };
+            ReferenceValues {
+                r#type: Some(reference_values::Type::OakRestrictedKernel(
+                    OakRestrictedKernelReferenceValues {
+                        root_layer: Some(RootLayerReferenceValues {
+                            insecure: Some(InsecureReferenceValues::default()),
+                            ..Default::default()
+                        }),
+                        kernel_layer: Some(KernelLayerReferenceValues {
+                            kernel: Some(KernelBinaryReferenceValue {
+                                r#type: Some(kernel_binary_reference_value::Type::Skip(
+                                    SkipVerification::default(),
+                                )),
+                            }),
+                            kernel_cmd_line_text: Some(TextReferenceValue {
+                                r#type: Some(text_reference_value::Type::Skip(
+                                    SkipVerification::default(),
+                                )),
+                            }),
+                            init_ram_fs: Some(skip.clone()),
+                            memory_map: Some(skip.clone()),
+                            acpi: Some(skip.clone()),
+                            ..Default::default()
+                        }),
+                        application_layer: Some(ApplicationLayerReferenceValues {
+                            binary: Some(skip.clone()),
+                            configuration: Some(skip.clone()),
+                        }),
+                    },
+                )),
+            }
+        } else {
+            // TODO: Add real ReferenceValues.
+            ReferenceValues::default()
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oak_proto_rust::oak::attestation::v1::{Evidence, RootLayerEvidence, TeePlatform};
     use oak_restricted_kernel_sdk::testing::MockSigner;
+    use oak_restricted_kernel_sdk::Attester;
     use slog::Logger;
     use tcp_runtime::logger::log::create_logger;
     struct MockActorContext {
@@ -346,9 +405,29 @@ mod tests {
         }
     }
 
+    struct MockAttester {}
+
+    impl Attester for MockAttester {
+        fn extend(&mut self, _encoded_event: &[u8]) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn quote(&self) -> anyhow::Result<Evidence> {
+            Ok(Evidence {
+                root_layer: Some(RootLayerEvidence {
+                    platform: TeePlatform::None.into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+        }
+    }
+
     fn create_actor() -> LedgerActor {
         let mock_context = Box::new(MockActorContext::new());
-        let mut actor = LedgerActor::new(Box::new(MockSigner::create().unwrap()));
+        let mut actor =
+            LedgerActor::create(Box::new(MockAttester {}), Box::new(MockSigner::create().unwrap()))
+                .unwrap();
         assert_eq!(actor.on_init(mock_context), Ok(()));
         actor
     }

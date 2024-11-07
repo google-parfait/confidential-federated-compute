@@ -23,7 +23,7 @@ use federated_compute::proto::{
     value_matcher::Kind as ValueMatcherKind, value_matcher::NumberMatcher,
     value_matcher::StringMatcher, ApplicationMatcher, StructMatcher, ValueMatcher,
 };
-use oak_attestation_verification::verifier::{verify, verify_dice_chain};
+use oak_attestation_verification::verifier::{verify, verify_dice_chain_and_extract_evidence};
 use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
 use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
 use prost::Message;
@@ -186,7 +186,8 @@ pub fn verify_attestation<'a>(
                 cwt.protected.header.alg.unwrap()
             ));
         }
-        let extracted_evidence = verify_dice_chain(evidence).context("invalid DICE chain")?;
+        let extracted_evidence =
+            verify_dice_chain_and_extract_evidence(evidence).context("invalid DICE chain")?;
         let verifying_key =
             VerifyingKey::from_sec1_bytes(&extracted_evidence.signing_public_key)
                 .map_err(|err| anyhow::anyhow!("invalid application signing key: {:?}", err))?;
@@ -225,12 +226,10 @@ pub fn verify_attestation<'a>(
 /// Helper function that returns a test Evidence message.
 #[cfg(feature = "testing")]
 pub fn get_test_evidence() -> Evidence {
-    use oak_restricted_kernel_sdk::{attestation::EvidenceProvider, testing::MockEvidenceProvider};
+    use oak_restricted_kernel_sdk::{testing::MockAttester, Attester};
 
-    oak_attestation::dice::evidence_to_proto(
-        MockEvidenceProvider::create().unwrap().get_evidence().clone(),
-    )
-    .unwrap()
+    let mock_attester = MockAttester::create().expect("failed to create mock attester");
+    mock_attester.quote().expect("couldn't get evidence")
 }
 
 /// Helper function that returns a test Endorsements message.
@@ -245,6 +244,7 @@ pub fn get_test_endorsements() -> Endorsements {
             root_layer: Some(RootLayerEndorsements::default()),
             ..Default::default()
         })),
+        ..Default::default()
     }
 }
 
@@ -527,6 +527,7 @@ mod tests {
             r#type: Some(endorsements::Type::OakRestrictedKernel(
                 OakRestrictedKernelEndorsements::default(),
             )),
+            ..Default::default()
         };
         let tag = "tag";
         let (app, key) = verify_attestation(&cwt, Some(&evidence), Some(&endorsements), tag)?;
