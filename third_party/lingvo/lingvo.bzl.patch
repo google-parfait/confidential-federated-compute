@@ -1,0 +1,42 @@
+# Patch custom_kernel_library to use tf_kernel_library directly. The lingvo
+# implementation replies on a tf_includes repo which is created inside lingvo
+# based on TF 2.13. This patch potentially can be removed once lingvo moves to
+# newer version of TensorFlow.
+diff --git lingvo/lingvo.bzl lingvo/lingvo.bzl
+index 251e25f88..83fd7f2fd 100644
+--- lingvo/lingvo.bzl
++++ lingvo/lingvo.bzl
+@@ -1,4 +1,5 @@
+ """Implements custom rules for Lingvo."""
++load("@org_tensorflow//tensorflow:tensorflow.bzl", "tf_kernel_library")
+
+ def tf_copts():
+     #  "-Wno-sign-compare", "-mavx" removed for compat with aarch64
+@@ -57,15 +58,18 @@ def lingvo_cc_test(name, srcs, deps = [], **kwargs):
+ lingvo_py_binary = native.py_binary
+
+ def custom_kernel_library(name, op_def_lib, srcs, hdrs = [], deps = []):
+-    native.cc_library(
+-        name = name,
+-        srcs = srcs,
+-        hdrs = hdrs,
+-        copts = tf_copts(),
+-        deps = [
+-            "@tensorflow_includes//:includes",
+-        ] + deps + op_def_lib,
+-        alwayslink = 1,
++    tf_deps = [
++       "@org_tensorflow//tensorflow/core:core_cpu",
++       "@org_tensorflow//tensorflow/core:framework",
++       "@org_tensorflow//tensorflow/core:lib",
++    ]
++    tf_kernel_library(
++       name = name,
++       srcs = srcs,
++       hdrs = hdrs,
++       copts = tf_copts(),
++       deps = deps + tf_deps,
++       alwayslink = 1,
+     )
+
+ def gen_op_cclib(name, srcs, deps = [], nonportable_deps = []):

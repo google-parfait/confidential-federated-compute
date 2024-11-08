@@ -38,6 +38,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@lingvo//lingvo/core/ops:assert_kernels",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",

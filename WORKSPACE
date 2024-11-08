@@ -110,6 +110,14 @@ load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
 
+http_archive(
+    name = "lingvo",
+    patches = ["//third_party/lingvo:lingvo.bzl.patch"],
+    sha256 = "6baf671a81ed747f2580eb4f549044093c48173cd88b392510fe6ddf5dce2ba2",
+    strip_prefix = "lingvo-ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39",
+    url = "https://github.com/tensorflow/lingvo/archive/ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39.tar.gz",
+)
+
 load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
 
 rules_proto_dependencies()
