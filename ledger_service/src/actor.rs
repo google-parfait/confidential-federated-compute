@@ -15,7 +15,7 @@
 use crate::replication::{ledger_event, ledger_event::*, LedgerEvent, LedgerSnapshot};
 use crate::LedgerService;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec};
 use federated_compute::proto::{
     ledger_request::*, ledger_response::*, Ledger, LedgerConfig, LedgerRequest, LedgerResponse,
     Status,
@@ -23,9 +23,11 @@ use federated_compute::proto::{
 use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::attestation::v1::{
     binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
-    ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
-    KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
-    ReferenceValues, RootLayerReferenceValues, SkipVerification, TeePlatform, TextReferenceValue,
+    AmdSevReferenceValues, ApplicationLayerReferenceValues, BinaryReferenceValue,
+    EndorsementReferenceValue, InsecureReferenceValues, KernelBinaryReferenceValue,
+    KernelLayerReferenceValues, OakRestrictedKernelReferenceValues, ReferenceValues,
+    RootLayerReferenceValues, SkipVerification, StringLiterals, TcbVersion, TeePlatform,
+    TextReferenceValue,
 };
 use oak_restricted_kernel_sdk::Attester;
 use prost::{bytes::Bytes, Message};
@@ -326,12 +328,12 @@ impl Actor for LedgerActor {
     }
 
     fn get_reference_values(&self) -> ReferenceValues {
+        let skip = BinaryReferenceValue {
+            r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
+        };
         // When running in insecure mode, simply skip all reference values.
         // This is only used for tests.
         if self.platform_type == TeePlatform::None as i32 {
-            let skip = BinaryReferenceValue {
-                r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
-            };
             ReferenceValues {
                 r#type: Some(reference_values::Type::OakRestrictedKernel(
                     OakRestrictedKernelReferenceValues {
@@ -363,8 +365,131 @@ impl Actor for LedgerActor {
                 )),
             }
         } else {
-            // TODO: Add real ReferenceValues.
-            ReferenceValues::default()
+            let rekor_public_key = vec![
+                0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
+                0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0xd8,
+                0x6d, 0x98, 0xfb, 0x6b, 0x5a, 0x6d, 0xd4, 0xd5, 0xe4, 0x17, 0x06, 0x88, 0x12, 0x31,
+                0xd1, 0xaf, 0x5f, 0x00, 0x5c, 0x2b, 0x90, 0x16, 0xe6, 0x2d, 0x21, 0xad, 0x92, 0xce,
+                0x0b, 0xde, 0xa5, 0xfa, 0xc9, 0x86, 0x34, 0xce, 0xe7, 0xc1, 0x9e, 0x10, 0xbc, 0x52,
+                0xbf, 0xe2, 0xcb, 0x9e, 0x46, 0x85, 0x63, 0xff, 0xf4, 0x0f, 0xdb, 0x63, 0x62, 0xe1,
+                0x0b, 0x7d, 0x0c, 0xf7, 0xe4, 0x58, 0xb7,
+            ];
+            ReferenceValues {
+                r#type: Some(reference_values::Type::OakRestrictedKernel(
+                    OakRestrictedKernelReferenceValues {
+                        root_layer: Some(RootLayerReferenceValues {
+                            amd_sev: Some(AmdSevReferenceValues {
+                                min_tcb_version: Some(TcbVersion {
+                                    boot_loader: 3,
+                                    tee: 0,
+                                    snp: 20,
+                                    microcode: 209,
+                                }),
+                                stage0: Some(BinaryReferenceValue {
+                                    r#type: Some(binary_reference_value::Type::Endorsement(
+                                        EndorsementReferenceValue {
+                                            endorser_public_key: vec![
+                                                0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
+                                                0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+                                                0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+                                                0x42, 0x00, 0x04, 0xd3, 0x03, 0x16, 0xa0, 0x7b,
+                                                0xb4, 0xae, 0x53, 0x43, 0x6e, 0x51, 0x77, 0x23,
+                                                0x9f, 0xaf, 0x6e, 0x75, 0xb4, 0x5c, 0xd6, 0xd1,
+                                                0x2f, 0xdd, 0xe7, 0x4e, 0x76, 0xf6, 0xd2, 0xe7,
+                                                0xab, 0x4e, 0x54, 0x3b, 0x6e, 0x84, 0xdb, 0xf5,
+                                                0xc1, 0xf1, 0x9f, 0x2a, 0x36, 0x30, 0xbe, 0x0b,
+                                                0x77, 0x69, 0x87, 0x3e, 0x71, 0xdb, 0xda, 0xd0,
+                                                0xe6, 0x30, 0x18, 0x12, 0x88, 0x29, 0xfd, 0x97,
+                                                0x18, 0x4e, 0x07,
+                                            ],
+                                            rekor_public_key: rekor_public_key.clone(),
+                                            ..Default::default()
+                                        },
+                                    )),
+                                }),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        kernel_layer: Some(KernelLayerReferenceValues {
+                            kernel: Some(KernelBinaryReferenceValue {
+                                r#type: Some(kernel_binary_reference_value::Type::Endorsement(
+                                    EndorsementReferenceValue {
+                                        endorser_public_key: vec![
+                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
+                                            0x2b, 0x3a, 0x56, 0x7f, 0x3f, 0x0d, 0xa3, 0x4e, 0x44,
+                                            0x6c, 0x41, 0xf3, 0x87, 0x4c, 0x95, 0x5e, 0x2e, 0x1b,
+                                            0xa2, 0xb8, 0x86, 0xdd, 0x9b, 0x8e, 0xa2, 0xba, 0xa9,
+                                            0xd6, 0x00, 0xd9, 0xda, 0x1b, 0x35, 0xe7, 0x41, 0x86,
+                                            0x5c, 0x65, 0xb4, 0x0b, 0xd6, 0xdd, 0x19, 0x6d, 0xcd,
+                                            0x85, 0x45, 0x1e, 0x0d, 0xc1, 0x30, 0xa3, 0x49, 0xfe,
+                                            0x60, 0xd7, 0xbe, 0x73, 0x70, 0x5d, 0xb8, 0x23, 0xd1,
+                                            0xb1,
+                                        ],
+                                        rekor_public_key: rekor_public_key.clone(),
+                                        ..Default::default()
+                                    },
+                                )),
+                            }),
+                            kernel_cmd_line_text: Some(TextReferenceValue {
+                                r#type: Some(text_reference_value::Type::StringLiterals(
+                                    StringLiterals { value: vec!["console=ttyS0".into()] },
+                                )),
+                            }),
+                            init_ram_fs: Some(BinaryReferenceValue {
+                                r#type: Some(binary_reference_value::Type::Endorsement(
+                                    EndorsementReferenceValue {
+                                        endorser_public_key: vec![
+                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
+                                            0x4e, 0x30, 0x6d, 0x9d, 0x7a, 0x06, 0xf7, 0x21, 0x48,
+                                            0x30, 0x5a, 0xf7, 0xcb, 0x77, 0x92, 0xf0, 0x56, 0x7b,
+                                            0x39, 0xf2, 0x01, 0x7f, 0x49, 0x43, 0x8e, 0xef, 0x67,
+                                            0xb0, 0xd6, 0xdb, 0x79, 0xaf, 0xce, 0x67, 0x9f, 0xf2,
+                                            0x0b, 0x6c, 0x04, 0xba, 0x63, 0xef, 0xb7, 0xd1, 0x68,
+                                            0xc4, 0x2e, 0x30, 0x8f, 0x05, 0xa1, 0x36, 0x77, 0x40,
+                                            0x69, 0x4c, 0x85, 0x5b, 0xf6, 0xbd, 0xf4, 0xe5, 0x7d,
+                                            0xd9,
+                                        ],
+                                        rekor_public_key: rekor_public_key.clone(),
+                                        ..Default::default()
+                                    },
+                                )),
+                            }),
+                            memory_map: Some(skip.clone()),
+                            acpi: Some(skip.clone()),
+                            ..Default::default()
+                        }),
+                        application_layer: Some(ApplicationLayerReferenceValues {
+                            binary: Some(BinaryReferenceValue {
+                                r#type: Some(binary_reference_value::Type::Endorsement(
+                                    EndorsementReferenceValue {
+                                        endorser_public_key: vec![
+                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
+                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
+                                            0x35, 0xf1, 0xaf, 0x6e, 0x75, 0x5a, 0x6b, 0x7a, 0x80,
+                                            0xd4, 0xdc, 0x13, 0xcb, 0xd6, 0x97, 0xf0, 0xc6, 0x2e,
+                                            0x25, 0x24, 0xa7, 0xe2, 0x36, 0x60, 0x72, 0x68, 0x1e,
+                                            0xd4, 0x49, 0xf9, 0x2f, 0x38, 0xf6, 0xa8, 0xc8, 0x53,
+                                            0x0e, 0x4e, 0x7e, 0x4c, 0x14, 0x3e, 0xa1, 0x38, 0x36,
+                                            0xdb, 0x81, 0xba, 0x7b, 0xe8, 0xb6, 0xdd, 0xdc, 0xbb,
+                                            0x9c, 0xd1, 0x25, 0x77, 0xd6, 0xb8, 0xb5, 0x84, 0xd1,
+                                            0x06,
+                                        ],
+                                        rekor_public_key: rekor_public_key.clone(),
+                                        ..Default::default()
+                                    },
+                                )),
+                            }),
+                            configuration: Some(skip.clone()),
+                        }),
+                    },
+                )),
+            }
         }
     }
 }
