@@ -18,7 +18,7 @@ use rangemap::StepLite;
 
 const BLOB_ID_SIZE: usize = 16;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlobId {
     id: u128,
 }
