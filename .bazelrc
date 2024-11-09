@@ -53,6 +53,12 @@ build:ubsan --linkopt=-fsanitize-link-c++-runtime
 build:ubsan --action_env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
 test:ubsan --test_tag_filters=-noubsan
 
+# rules_rust 0.48 doesn't work with rust's experimental lld linking and clang
+# (https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html).
+build:asan --@rules_rust//:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//:extra_exec_rustc_flag=-Zlinker-features=-lld
+build:tsan --@rules_rust//:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//:extra_exec_rustc_flag=-Zlinker-features=-lld
+build:ubsan --@rules_rust//:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//:extra_exec_rustc_flag=-Zlinker-features=-lld
+
 # Settings for remote build execution.
 build:cfc-remote --experimental_allow_tags_propagation
 build:cfc-remote --define=EXECUTOR=remote
