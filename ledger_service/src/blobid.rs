@@ -34,7 +34,7 @@ impl BlobId {
 
         let mut ar = [0; BLOB_ID_SIZE];
         ar[..s.len()].copy_from_slice(s);
-        Ok(BlobId { id: u128::from_le_bytes(ar) })
+        Ok(BlobId { id: u128::from_be_bytes(ar) })
     }
 
     pub fn from_vec(v: &Vec<u8>) -> Result<Self> {
@@ -42,7 +42,7 @@ impl BlobId {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        self.id.to_le_bytes().to_vec()
+        self.id.to_be_bytes().to_vec()
     }
 }
 
@@ -77,8 +77,14 @@ mod tests {
     #[test]
     fn test_vec_to_blob_id() {
         assert_eq!(BlobId::from_vec(&vec![]).unwrap(), BlobId::from(0));
-        assert_eq!(BlobId::from_vec(&vec![1]).unwrap(), BlobId::from(1));
-        assert_eq!(BlobId::from_vec(&vec![1; 2]).unwrap(), BlobId::from(257));
+        assert_eq!(
+            BlobId::from_vec(&vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]).unwrap(),
+            BlobId::from(1)
+        );
+        assert_eq!(
+            BlobId::from_vec(&vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]).unwrap(),
+            BlobId::from(257)
+        );
         assert_eq!(
             BlobId::from_vec(&vec![1; 16]).unwrap(),
             BlobId::from(1334440654591915542993625911497130241)
@@ -89,7 +95,7 @@ mod tests {
     fn test_bytes_to_blob_id() {
         assert_eq!(
             BlobId::from_bytes(b"abc").unwrap(),
-            BlobId::from(97 + 98 * 256 + 99 * 256 * 256)
+            BlobId::from(129445968641824014294637244265334308864)
         );
     }
 
@@ -106,7 +112,7 @@ mod tests {
         assert_eq!(BlobId::from(0).to_vec(), vec![0; 16]);
         assert_eq!(
             BlobId::from(12345678).to_vec(),
-            vec![78, 97, 188, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 188, 97, 78]
         );
     }
 
