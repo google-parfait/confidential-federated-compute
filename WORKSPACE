@@ -40,6 +40,17 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_cc",
+    sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
+    strip_prefix = "rules_cc-0.0.9",
+    # We intentionally chose an older version of rules_cc here because the newer
+    # versions get cc_proto rule from protobuf, but the version of protobuf we use
+    # doesn't have cc_proto rule. We can't easily update the version of protobuf
+    # because we need to use a version compatible with TensorFlow.
+    urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
+)
+
 # Initialize hermetic python prior to loading Tensorflow deps. See
 # https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L6
 http_archive(
@@ -64,9 +75,13 @@ python_register_toolchains(
 
 http_archive(
     name = "org_tensorflow_federated",
-    sha256 = "5a514838ea601056da299ad8946cc40db2024131b1260a3454fb161317b1edf8",
-    strip_prefix = "tensorflow-federated-a7af3c978771c2a9ebd1bc3588597e65bc78249d",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/a7af3c978771c2a9ebd1bc3588597e65bc78249d.tar.gz",
+    patches = [
+        # Patch to make TFF v0.88 compatible with TF 2.18.
+        "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
+    ],
+    sha256 = "f34970933f368ef77edabcedc8d00a52845e399412249f0895db06cf98f51455",
+    strip_prefix = "tensorflow-federated-0.88.0",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/v0.88.0.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
@@ -85,10 +100,10 @@ http_archive(
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
     ],
-    sha256 = "6b31ed347ed7a03c45b906aa41628ac91c3db7c84cb816971400d470e58ba494",
-    strip_prefix = "tensorflow-2.14.1",
+    sha256 = "d7876f4bb0235cac60eb6316392a7c48676729860da1ab659fb440379ad5186d",
+    strip_prefix = "tensorflow-2.18.0",
     urls = [
-        "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.1.tar.gz",
+        "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.18.0.tar.gz",
     ],
 )
 
@@ -109,6 +124,53 @@ tf_workspace1()
 load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
+
+load(
+    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "cuda_json_init_repository",
+)
+
+cuda_json_init_repository()
+
+load(
+    "@cuda_redist_json//:distributions.bzl",
+    "CUDA_REDISTRIBUTIONS",
+    "CUDNN_REDISTRIBUTIONS",
+)
+load(
+    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "cuda_redist_init_repositories",
+    "cudnn_redist_init_repository",
+)
+
+cuda_redist_init_repositories(
+    cuda_redistributions = CUDA_REDISTRIBUTIONS,
+)
+
+cudnn_redist_init_repository(
+    cudnn_redistributions = CUDNN_REDISTRIBUTIONS,
+)
+
+load(
+    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "cuda_configure",
+)
+
+cuda_configure(name = "local_config_cuda")
+
+load(
+    "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "nccl_redist_init_repository",
+)
+
+nccl_redist_init_repository()
+
+load(
+    "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
+    "nccl_configure",
+)
+
+nccl_configure(name = "local_config_nccl")
 
 http_archive(
     name = "lingvo",
