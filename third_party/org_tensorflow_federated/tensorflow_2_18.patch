@@ -1,0 +1,353 @@
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
+index d5b3eb12b..cb271235a 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
+@@ -29,10 +29,10 @@ cc_library(
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
++        "@local_tsl//tsl/platform:refcount",
+         "@org_tensorflow//tensorflow/core:framework",
+         "@org_tensorflow//tensorflow/core:protos_all_cc",
+         "@org_tensorflow//tensorflow/core/platform:tstring",
+-        "@org_tensorflow//tensorflow/tsl/platform:refcount",
+     ],
+ )
+
+@@ -130,8 +130,8 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
++        "@local_tsl//tsl/platform:env",
+         "@org_tensorflow//tensorflow/core/platform:env",
+-        "@org_tensorflow//tensorflow/tsl/platform:env",
+     ],
+ )
+
+@@ -165,8 +165,8 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
++        "@local_tsl//tsl/platform:env",
+         "@org_tensorflow//tensorflow/core/platform:env",
+-        "@org_tensorflow//tensorflow/tsl/platform:env",
+     ],
+ )
+
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
+index 3db0cab4f..098bae0c5 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
+@@ -29,7 +29,7 @@
+ #include "tensorflow/core/framework/tensor_shape.h"
+ #include "tensorflow/core/framework/tensor_shape.pb.h"
+ #include "tensorflow/core/platform/tstring.h"
+-#include "tensorflow/tsl/platform/refcount.h"
++#include "tsl/platform/refcount.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/datatype.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
+index 3903a74d3..1febef402 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
+@@ -29,7 +29,7 @@
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "tensorflow/core/platform/file_system.h"
+-#include "tensorflow/tsl/platform/env.h"
++#include "tsl/platform/env.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_builder.h"
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
+index dd2195773..ce736d63b 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
+@@ -29,7 +29,7 @@
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "tensorflow/core/platform/file_system.h"
+-#include "tensorflow/tsl/platform/env.h"
++#include "tsl/platform/env.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
+diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
+index 57f1c05d7..05bdcd907 100644
+--- tensorflow_federated/cc/core/impl/executors/BUILD
++++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -1142,20 +1142,20 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/types:span",
++        "@local_xla//xla:literal",
++        "@local_xla//xla:shape_util",
++        "@local_xla//xla:xla_data_proto_cc",
++        "@local_xla//xla:xla_proto_cc",
++        "@local_xla//xla/client",
++        "@local_xla//xla/client:client_library",
++        "@local_xla//xla/client:xla_computation",
++        "@local_xla//xla/service",
++        "@local_xla//xla/service:hlo_proto_cc",
++        "@local_xla//xla/stream_executor",
++        "@local_xla//xla/stream_executor:multi_platform_manager",
++        "@local_xla//xla/stream_executor/host:host_platform",  # buildcleaner: keep # Linking in the host platform here ensures that the stream executor can execute on CPU.
+         "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",  # buildcleaner: keep # Linking in this dependency ensures that XLA can compile its code for the CPU host.
+         "@org_tensorflow//tensorflow/compiler/tf2xla:common",
+-        "@org_tensorflow//tensorflow/compiler/xla:literal",
+-        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto_cc",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_proto_cc",
+-        "@org_tensorflow//tensorflow/compiler/xla/client",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:client_library",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:xla_computation",
+-        "@org_tensorflow//tensorflow/compiler/xla/service",
+-        "@org_tensorflow//tensorflow/compiler/xla/service:hlo_proto_cc",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor/host:host_platform",  # buildcleaner: keep # Linking in the host platform here ensures that the stream executor can execute on CPU.
+         "@org_tensorflow//tensorflow/core:framework",
+         "@org_tensorflow//tensorflow/core:protos_all_cc",
+     ],
+@@ -1184,13 +1184,13 @@ tff_cc_cpu_gpu_test(
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
++        "@local_xla//xla:shape_util",
++        "@local_xla//xla:xla_data_proto_cc",
++        "@local_xla//xla/client:xla_builder",
++        "@local_xla//xla/client:xla_computation",
++        "@local_xla//xla/service:platform_util",
++        "@local_xla//xla/stream_executor",
+         "@org_tensorflow//tensorflow/compiler/tf2xla:common",
+-        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto_cc",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:xla_builder",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:xla_computation",
+-        "@org_tensorflow//tensorflow/compiler/xla/service:platform_util",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor",
+         "@org_tensorflow//tensorflow/core:framework",
+         "@org_tensorflow//tensorflow/core:protos_all_cc",
+         "@org_tensorflow//tensorflow/core/platform:statusor",
+@@ -1221,15 +1221,15 @@ cc_test(
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
++        "@local_xla//xla:shape_util",
++        "@local_xla//xla:xla_data_proto_cc",
++        "@local_xla//xla/client:xla_builder",
++        "@local_xla//xla/client:xla_computation",
++        "@local_xla//xla/service:platform_util",
++        "@local_xla//xla/stream_executor",
++        "@local_xla//xla/stream_executor/cuda:cuda_platform",  # buildcleaner: keep # Linking in the host platform here ensures that the stream executor can execute on GPU.
+         "@org_tensorflow//tensorflow/compiler/jit:xla_gpu_jit",  # buildcleaner: keep # Linking in this dependency ensures that XLA can compile its code for the GPU.
+         "@org_tensorflow//tensorflow/compiler/tf2xla:common",
+-        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto_cc",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:xla_builder",
+-        "@org_tensorflow//tensorflow/compiler/xla/client:xla_computation",
+-        "@org_tensorflow//tensorflow/compiler/xla/service:platform_util",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor",
+-        "@org_tensorflow//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",  # buildcleaner: keep # Linking in the host platform here ensures that the stream executor can execute on GPU.
+         "@org_tensorflow//tensorflow/core:framework",
+         "@org_tensorflow//tensorflow/core:protos_all_cc",
+         "@org_tensorflow//tensorflow/core/platform:statusor",
+@@ -1248,10 +1248,10 @@ cc_library(
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+-        "@org_tensorflow//tensorflow/compiler/xla:literal",
+-        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:types",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto_cc",
++        "@local_xla//xla:literal",
++        "@local_xla//xla:shape_util",
++        "@local_xla//xla:types",
++        "@local_xla//xla:xla_data_proto_cc",
+     ],
+ )
+
+@@ -1270,10 +1270,10 @@ cc_test(
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+         "@eigen_archive//:eigen3",
+-        "@org_tensorflow//tensorflow/compiler/xla:literal",
+-        "@org_tensorflow//tensorflow/compiler/xla:literal_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
+-        "@org_tensorflow//tensorflow/compiler/xla:types",
+-        "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto_cc",
++        "@local_xla//xla:literal",
++        "@local_xla//xla:literal_util",
++        "@local_xla//xla:shape_util",
++        "@local_xla//xla:types",
++        "@local_xla//xla:xla_data_proto_cc",
+     ],
+ )
+diff --git tensorflow_federated/cc/core/impl/executors/array_test_utils.h tensorflow_federated/cc/core/impl/executors/array_test_utils.h
+index f368fcb02..b8e230ac0 100644
+--- tensorflow_federated/cc/core/impl/executors/array_test_utils.h
++++ tensorflow_federated/cc/core/impl/executors/array_test_utils.h
+@@ -25,7 +25,7 @@ limitations under the License
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+ #include "absl/strings/str_cat.h"
+-#include "third_party/eigen3/Eigen/Core"
++#include "Eigen/Core"
+ #include "tensorflow_federated/proto/v0/array.pb.h"
+ #include "tensorflow_federated/proto/v0/data_type.pb.h"
+
+diff --git tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc
+index 94ec5669f..82643ad59 100644
+--- tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc
++++ tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc
+@@ -27,7 +27,7 @@ limitations under the License
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "absl/types/span.h"
+-#include "third_party/eigen3/Eigen/Core"
++#include "Eigen/Core"
+ #include "tensorflow/core/framework/attr_value.pb.h"
+ #include "tensorflow/core/framework/graph.pb.h"
+ #include "tensorflow/core/framework/node_def.pb.h"
+diff --git tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
+index 97de35207..2525a8c7e 100644
+--- tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
++++ tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
+@@ -25,7 +25,7 @@ limitations under the License
+ #include "absl/log/log.h"
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+-#include "third_party/eigen3/Eigen/Core"
++#include "Eigen/Core"
+ #include "tensorflow/core/framework/numeric_types.h"
+ #include "tensorflow/core/framework/tensor.h"
+ #include "tensorflow/core/framework/tensor.pb.h"
+diff --git tensorflow_federated/cc/core/impl/executors/xla_executor.cc tensorflow_federated/cc/core/impl/executors/xla_executor.cc
+index 757c8e8d3..eb502f9e1 100644
+--- tensorflow_federated/cc/core/impl/executors/xla_executor.cc
++++ tensorflow_federated/cc/core/impl/executors/xla_executor.cc
+@@ -33,16 +33,16 @@ limitations under the License
+ #include "absl/types/span.h"
+ #include "tensorflow/compiler/tf2xla/literal_util.h"
+ #include "tensorflow/compiler/tf2xla/type_util.h"
+-#include "tensorflow/compiler/xla/client/client.h"
+-#include "tensorflow/compiler/xla/client/client_library.h"
+-#include "tensorflow/compiler/xla/client/xla_computation.h"
+-#include "tensorflow/compiler/xla/literal.h"
+-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+-#include "tensorflow/compiler/xla/service/service.h"
+-#include "tensorflow/compiler/xla/shape.h"
+-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+-#include "tensorflow/compiler/xla/xla.pb.h"
+-#include "tensorflow/compiler/xla/xla_data.pb.h"
++#include "xla/client/client.h"
++#include "xla/client/client_library.h"
++#include "xla/client/xla_computation.h"
++#include "xla/literal.h"
++#include "xla/service/hlo.pb.h"
++#include "xla/service/service.h"
++#include "xla/shape.h"
++#include "xla/stream_executor/platform.h"
++#include "xla/xla.pb.h"
++#include "xla/xla_data.pb.h"
+ #include "tensorflow/core/framework/tensor.h"
+ #include "tensorflow/core/framework/tensor.pb.h"
+ #include "tensorflow/core/framework/tensor_shape.h"
+@@ -58,7 +58,7 @@ limitations under the License
+ // clang-format off
+ // In TF 2.17 MultiPlatformManager was renamed to PlatformManager. Remove
+ // this code when the OSS build gets updated to TF 2.17+.
+-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
++#include "xla/stream_executor/multi_platform_manager.h"
+ namespace stream_executor {
+ using PlatformManager = MultiPlatformManager;
+ } // namespace stream_executor
+diff --git tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc
+index 7150bad17..9b2cee8fe 100644
+--- tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc
++++ tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc
+@@ -32,13 +32,13 @@ limitations under the License
+ #include "absl/status/statusor.h"
+ #include "tensorflow/compiler/tf2xla/shape_util.h"
+ #include "tensorflow/compiler/tf2xla/type_util.h"
+-#include "tensorflow/compiler/xla/client/xla_builder.h"
+-#include "tensorflow/compiler/xla/client/xla_computation.h"
+-#include "tensorflow/compiler/xla/service/platform_util.h"
+-#include "tensorflow/compiler/xla/shape.h"
+-#include "tensorflow/compiler/xla/shape_util.h"
+-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+-#include "tensorflow/compiler/xla/xla_data.pb.h"
++#include "xla/client/xla_builder.h"
++#include "xla/client/xla_computation.h"
++#include "xla/service/platform_util.h"
++#include "xla/shape.h"
++#include "xla/shape_util.h"
++#include "xla/stream_executor/platform.h"
++#include "xla/xla_data.pb.h"
+ #include "tensorflow/core/framework/tensor_shape.h"
+ #include "tensorflow/core/framework/types.pb.h"
+ #include "tensorflow/core/platform/statusor.h"
+diff --git tensorflow_federated/cc/core/impl/executors/xla_utils.cc tensorflow_federated/cc/core/impl/executors/xla_utils.cc
+index 06da07e10..2be6c8c70 100644
+--- tensorflow_federated/cc/core/impl/executors/xla_utils.cc
++++ tensorflow_federated/cc/core/impl/executors/xla_utils.cc
+@@ -22,11 +22,11 @@ limitations under the License
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+ #include "absl/strings/str_cat.h"
+-#include "tensorflow/compiler/xla/literal.h"
+-#include "tensorflow/compiler/xla/shape.h"
+-#include "tensorflow/compiler/xla/shape_util.h"
+-#include "tensorflow/compiler/xla/types.h"
+-#include "tensorflow/compiler/xla/xla_data.pb.h"
++#include "xla/literal.h"
++#include "xla/shape.h"
++#include "xla/shape_util.h"
++#include "xla/types.h"
++#include "xla/xla_data.pb.h"
+ #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
+ #include "tensorflow_federated/proto/v0/array.pb.h"
+ #include "tensorflow_federated/proto/v0/computation.pb.h"
+diff --git tensorflow_federated/cc/core/impl/executors/xla_utils.h tensorflow_federated/cc/core/impl/executors/xla_utils.h
+index 7a77b9005..80ea387a6 100644
+--- tensorflow_federated/cc/core/impl/executors/xla_utils.h
++++ tensorflow_federated/cc/core/impl/executors/xla_utils.h
+@@ -17,8 +17,8 @@ limitations under the License
+ #define THIRD_PARTY_TENSORFLOW_FEDERATED_CC_CORE_IMPL_EXECUTORS_XLA_UTILS_H_
+
+ #include "absl/status/statusor.h"
+-#include "tensorflow/compiler/xla/literal.h"
+-#include "tensorflow/compiler/xla/shape.h"
++#include "xla/literal.h"
++#include "xla/shape.h"
+ #include "tensorflow_federated/proto/v0/array.pb.h"
+ #include "tensorflow_federated/proto/v0/computation.pb.h"
+ #include "tensorflow_federated/proto/v0/data_type.pb.h"
+diff --git tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
+index f9b00096f..5a34339b0 100644
+--- tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
++++ tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
+@@ -21,14 +21,14 @@ limitations under the License
+ #include "googletest/include/gtest/gtest.h"
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+-#include "third_party/eigen3/Eigen/Core"
+-#include "tensorflow/compiler/xla/literal.h"
+-#include "tensorflow/compiler/xla/literal_util.h"
+-#include "tensorflow/compiler/xla/primitive_util.h"
+-#include "tensorflow/compiler/xla/shape.h"
+-#include "tensorflow/compiler/xla/shape_util.h"
+-#include "tensorflow/compiler/xla/types.h"
+-#include "tensorflow/compiler/xla/xla_data.pb.h"
++#include "Eigen/Core"
++#include "xla/literal.h"
++#include "xla/literal_util.h"
++#include "xla/primitive_util.h"
++#include "xla/shape.h"
++#include "xla/shape_util.h"
++#include "xla/types.h"
++#include "xla/xla_data.pb.h"
+ #include "tensorflow_federated/cc/core/impl/executors/array_shape_test_utils.h"
+ #include "tensorflow_federated/cc/core/impl/executors/array_test_utils.h"
+ #include "tensorflow_federated/cc/testing/status_matchers.h"
