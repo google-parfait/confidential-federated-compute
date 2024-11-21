@@ -76,12 +76,12 @@ python_register_toolchains(
 http_archive(
     name = "org_tensorflow_federated",
     patches = [
-        # Patch to make TFF v0.88 compatible with TF 2.18.
+        # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    sha256 = "f34970933f368ef77edabcedc8d00a52845e399412249f0895db06cf98f51455",
-    strip_prefix = "tensorflow-federated-0.88.0",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/v0.88.0.tar.gz",
+    sha256 = "391dea2c6f3ec1279d802d36703c1cec690c4a1642cc8cd19a078f440b3e7fa8",
+    strip_prefix = "tensorflow-federated-03b32cfbd38b58bb9c09f2649632c3376cb95163",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/03b32cfbd38b58bb9c09f2649632c3376cb95163.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
@@ -192,9 +192,9 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "09af33592f41bacd353c25a9820af141328a676767151d22625fccd6d5807fad",
-    strip_prefix = "federated-compute-9f2706684b91de10f39e5f291847370621d0fce3",
-    url = "https://github.com/google/federated-compute/archive/9f2706684b91de10f39e5f291847370621d0fce3.tar.gz",
+    sha256 = "cf811d94df68ccf39123a6782fb237c0eb896bdd679516509d4fb701f577b6fa",
+    strip_prefix = "federated-compute-57bec0884b2c8a231b10c274e93aadb57a5cde1c",
+    url = "https://github.com/google/federated-compute/archive/57bec0884b2c8a231b10c274e93aadb57a5cde1c.tar.gz",
 )
 
 http_archive(
