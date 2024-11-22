@@ -82,6 +82,7 @@ rust_library(
 
 rust_test(
     name = "ledger_service_test",
+    compile_data = glob(["testdata/**"]),
     crate = ":ledger_service",
     crate_features = ["testing"],
     deps = [

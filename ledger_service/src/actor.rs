@@ -23,11 +23,12 @@ use federated_compute::proto::{
 use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::attestation::v1::{
     binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
-    AmdSevReferenceValues, ApplicationLayerReferenceValues, BinaryReferenceValue,
-    EndorsementReferenceValue, InsecureReferenceValues, KernelBinaryReferenceValue,
-    KernelLayerReferenceValues, OakRestrictedKernelReferenceValues, ReferenceValues,
-    RootLayerReferenceValues, SkipVerification, StringLiterals, TcbVersion, TeePlatform,
-    TextReferenceValue,
+    verifying_key_reference_value, AmdSevReferenceValues, ApplicationLayerReferenceValues,
+    BinaryReferenceValue, ClaimReferenceValue, EndorsementReferenceValue, InsecureReferenceValues,
+    KernelBinaryReferenceValue, KernelLayerReferenceValues, KeyType,
+    OakRestrictedKernelReferenceValues, ReferenceValues, RootLayerReferenceValues,
+    SkipVerification, StringLiterals, TcbVersion, TeePlatform, TextReferenceValue, VerifyingKey,
+    VerifyingKeyReferenceValue, VerifyingKeySet,
 };
 use oak_restricted_kernel_sdk::Attester;
 use prost::{bytes::Bytes, Message};
@@ -365,15 +366,24 @@ impl Actor for LedgerActor {
                 )),
             }
         } else {
-            let rekor_public_key = vec![
-                0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
-                0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0xd8,
-                0x6d, 0x98, 0xfb, 0x6b, 0x5a, 0x6d, 0xd4, 0xd5, 0xe4, 0x17, 0x06, 0x88, 0x12, 0x31,
-                0xd1, 0xaf, 0x5f, 0x00, 0x5c, 0x2b, 0x90, 0x16, 0xe6, 0x2d, 0x21, 0xad, 0x92, 0xce,
-                0x0b, 0xde, 0xa5, 0xfa, 0xc9, 0x86, 0x34, 0xce, 0xe7, 0xc1, 0x9e, 0x10, 0xbc, 0x52,
-                0xbf, 0xe2, 0xcb, 0x9e, 0x46, 0x85, 0x63, 0xff, 0xf4, 0x0f, 0xdb, 0x63, 0x62, 0xe1,
-                0x0b, 0x7d, 0x0c, 0xf7, 0xe4, 0x58, 0xb7,
-            ];
+            let rekor_reference_value = VerifyingKeyReferenceValue {
+                r#type: Some(verifying_key_reference_value::Type::Verify(VerifyingKeySet {
+                    keys: vec![VerifyingKey {
+                        r#type: KeyType::EcdsaP256Sha256.into(),
+                        key_id: 1,
+                        raw: vec![
+                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
+                            0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+                            0x42, 0x00, 0x04, 0xd8, 0x6d, 0x98, 0xfb, 0x6b, 0x5a, 0x6d, 0xd4, 0xd5,
+                            0xe4, 0x17, 0x06, 0x88, 0x12, 0x31, 0xd1, 0xaf, 0x5f, 0x00, 0x5c, 0x2b,
+                            0x90, 0x16, 0xe6, 0x2d, 0x21, 0xad, 0x92, 0xce, 0x0b, 0xde, 0xa5, 0xfa,
+                            0xc9, 0x86, 0x34, 0xce, 0xe7, 0xc1, 0x9e, 0x10, 0xbc, 0x52, 0xbf, 0xe2,
+                            0xcb, 0x9e, 0x46, 0x85, 0x63, 0xff, 0xf4, 0x0f, 0xdb, 0x63, 0x62, 0xe1,
+                            0x0b, 0x7d, 0x0c, 0xf7, 0xe4, 0x58, 0xb7,
+                        ],
+                    }],
+                })),
+            };
             ReferenceValues {
                 r#type: Some(reference_values::Type::OakRestrictedKernel(
                     OakRestrictedKernelReferenceValues {
@@ -388,21 +398,34 @@ impl Actor for LedgerActor {
                                 stage0: Some(BinaryReferenceValue {
                                     r#type: Some(binary_reference_value::Type::Endorsement(
                                         EndorsementReferenceValue {
-                                            endorser_public_key: vec![
-                                                0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
-                                                0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
-                                                0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
-                                                0x42, 0x00, 0x04, 0xd3, 0x03, 0x16, 0xa0, 0x7b,
-                                                0xb4, 0xae, 0x53, 0x43, 0x6e, 0x51, 0x77, 0x23,
-                                                0x9f, 0xaf, 0x6e, 0x75, 0xb4, 0x5c, 0xd6, 0xd1,
-                                                0x2f, 0xdd, 0xe7, 0x4e, 0x76, 0xf6, 0xd2, 0xe7,
-                                                0xab, 0x4e, 0x54, 0x3b, 0x6e, 0x84, 0xdb, 0xf5,
-                                                0xc1, 0xf1, 0x9f, 0x2a, 0x36, 0x30, 0xbe, 0x0b,
-                                                0x77, 0x69, 0x87, 0x3e, 0x71, 0xdb, 0xda, 0xd0,
-                                                0xe6, 0x30, 0x18, 0x12, 0x88, 0x29, 0xfd, 0x97,
-                                                0x18, 0x4e, 0x07,
-                                            ],
-                                            rekor_public_key: rekor_public_key.clone(),
+                                            endorser: Some(VerifyingKeySet {
+                                                keys: vec![VerifyingKey {
+                                                    r#type: KeyType::EcdsaP256Sha256.into(),
+                                                    key_id: 1,
+                                                    raw: vec![
+                                                        0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a,
+                                                        0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
+                                                        0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03,
+                                                        0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0xd3,
+                                                        0x03, 0x16, 0xa0, 0x7b, 0xb4, 0xae, 0x53,
+                                                        0x43, 0x6e, 0x51, 0x77, 0x23, 0x9f, 0xaf,
+                                                        0x6e, 0x75, 0xb4, 0x5c, 0xd6, 0xd1, 0x2f,
+                                                        0xdd, 0xe7, 0x4e, 0x76, 0xf6, 0xd2, 0xe7,
+                                                        0xab, 0x4e, 0x54, 0x3b, 0x6e, 0x84, 0xdb,
+                                                        0xf5, 0xc1, 0xf1, 0x9f, 0x2a, 0x36, 0x30,
+                                                        0xbe, 0x0b, 0x77, 0x69, 0x87, 0x3e, 0x71,
+                                                        0xdb, 0xda, 0xd0, 0xe6, 0x30, 0x18, 0x12,
+                                                        0x88, 0x29, 0xfd, 0x97, 0x18, 0x4e, 0x07,
+                                                    ],
+                                                }],
+                                            }),
+                                            required_claims: Some(ClaimReferenceValue {
+                                                claim_types: vec![
+                                                    "https://github.com/project-oak/oak/blob/main/docs/tr/claim/66738.md".into(),
+                                                    "https://github.com/project-oak/oak/blob/main/docs/tr/claim/10271.md".into(),
+                                                ],
+                                            }),
+                                            rekor: Some(rekor_reference_value.clone()),
                                             ..Default::default()
                                         },
                                     )),
@@ -415,20 +438,33 @@ impl Actor for LedgerActor {
                             kernel: Some(KernelBinaryReferenceValue {
                                 r#type: Some(kernel_binary_reference_value::Type::Endorsement(
                                     EndorsementReferenceValue {
-                                        endorser_public_key: vec![
-                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
-                                            0x2b, 0x3a, 0x56, 0x7f, 0x3f, 0x0d, 0xa3, 0x4e, 0x44,
-                                            0x6c, 0x41, 0xf3, 0x87, 0x4c, 0x95, 0x5e, 0x2e, 0x1b,
-                                            0xa2, 0xb8, 0x86, 0xdd, 0x9b, 0x8e, 0xa2, 0xba, 0xa9,
-                                            0xd6, 0x00, 0xd9, 0xda, 0x1b, 0x35, 0xe7, 0x41, 0x86,
-                                            0x5c, 0x65, 0xb4, 0x0b, 0xd6, 0xdd, 0x19, 0x6d, 0xcd,
-                                            0x85, 0x45, 0x1e, 0x0d, 0xc1, 0x30, 0xa3, 0x49, 0xfe,
-                                            0x60, 0xd7, 0xbe, 0x73, 0x70, 0x5d, 0xb8, 0x23, 0xd1,
-                                            0xb1,
-                                        ],
-                                        rekor_public_key: rekor_public_key.clone(),
+                                        endorser: Some(VerifyingKeySet {
+                                            keys: vec![VerifyingKey {
+                                                r#type: KeyType::EcdsaP256Sha256.into(),
+                                                key_id: 1,
+                                                raw: vec![
+                                                    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
+                                                    0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+                                                    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+                                                    0x42, 0x00, 0x04, 0x2b, 0x3a, 0x56, 0x7f, 0x3f,
+                                                    0x0d, 0xa3, 0x4e, 0x44, 0x6c, 0x41, 0xf3, 0x87,
+                                                    0x4c, 0x95, 0x5e, 0x2e, 0x1b, 0xa2, 0xb8, 0x86,
+                                                    0xdd, 0x9b, 0x8e, 0xa2, 0xba, 0xa9, 0xd6, 0x00,
+                                                    0xd9, 0xda, 0x1b, 0x35, 0xe7, 0x41, 0x86, 0x5c,
+                                                    0x65, 0xb4, 0x0b, 0xd6, 0xdd, 0x19, 0x6d, 0xcd,
+                                                    0x85, 0x45, 0x1e, 0x0d, 0xc1, 0x30, 0xa3, 0x49,
+                                                    0xfe, 0x60, 0xd7, 0xbe, 0x73, 0x70, 0x5d, 0xb8,
+                                                    0x23, 0xd1, 0xb1,
+                                                ],
+                                            }],
+                                        }),
+                                        required_claims: Some(ClaimReferenceValue {
+                                            claim_types: vec![
+                                                "https://github.com/project-oak/oak/blob/main/docs/tr/claim/36746.md".into(),
+                                                "https://github.com/project-oak/oak/blob/main/docs/tr/claim/98982.md".into(),
+                                            ],
+                                        }),
+                                        rekor: Some(rekor_reference_value.clone()),
                                         ..Default::default()
                                     },
                                 )),
@@ -441,20 +477,32 @@ impl Actor for LedgerActor {
                             init_ram_fs: Some(BinaryReferenceValue {
                                 r#type: Some(binary_reference_value::Type::Endorsement(
                                     EndorsementReferenceValue {
-                                        endorser_public_key: vec![
-                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
-                                            0x4e, 0x30, 0x6d, 0x9d, 0x7a, 0x06, 0xf7, 0x21, 0x48,
-                                            0x30, 0x5a, 0xf7, 0xcb, 0x77, 0x92, 0xf0, 0x56, 0x7b,
-                                            0x39, 0xf2, 0x01, 0x7f, 0x49, 0x43, 0x8e, 0xef, 0x67,
-                                            0xb0, 0xd6, 0xdb, 0x79, 0xaf, 0xce, 0x67, 0x9f, 0xf2,
-                                            0x0b, 0x6c, 0x04, 0xba, 0x63, 0xef, 0xb7, 0xd1, 0x68,
-                                            0xc4, 0x2e, 0x30, 0x8f, 0x05, 0xa1, 0x36, 0x77, 0x40,
-                                            0x69, 0x4c, 0x85, 0x5b, 0xf6, 0xbd, 0xf4, 0xe5, 0x7d,
-                                            0xd9,
-                                        ],
-                                        rekor_public_key: rekor_public_key.clone(),
+                                        endorser: Some(VerifyingKeySet {
+                                            keys: vec![VerifyingKey {
+                                                r#type: KeyType::EcdsaP256Sha256.into(),
+                                                key_id: 1,
+                                                raw: vec![
+                                                    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
+                                                    0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+                                                    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+                                                    0x42, 0x00, 0x04, 0x4e, 0x30, 0x6d, 0x9d, 0x7a,
+                                                    0x06, 0xf7, 0x21, 0x48, 0x30, 0x5a, 0xf7, 0xcb,
+                                                    0x77, 0x92, 0xf0, 0x56, 0x7b, 0x39, 0xf2, 0x01,
+                                                    0x7f, 0x49, 0x43, 0x8e, 0xef, 0x67, 0xb0, 0xd6,
+                                                    0xdb, 0x79, 0xaf, 0xce, 0x67, 0x9f, 0xf2, 0x0b,
+                                                    0x6c, 0x04, 0xba, 0x63, 0xef, 0xb7, 0xd1, 0x68,
+                                                    0xc4, 0x2e, 0x30, 0x8f, 0x05, 0xa1, 0x36, 0x77,
+                                                    0x40, 0x69, 0x4c, 0x85, 0x5b, 0xf6, 0xbd, 0xf4,
+                                                    0xe5, 0x7d, 0xd9,
+                                                ],
+                                            }],
+                                        }),
+                                        required_claims: Some(ClaimReferenceValue {
+                                            claim_types: vec![
+                                                "https://github.com/project-oak/oak/blob/main/docs/tr/claim/87425.md".into(),
+                                            ],
+                                        }),
+                                        rekor: Some(rekor_reference_value.clone()),
                                         ..Default::default()
                                     },
                                 )),
@@ -467,20 +515,28 @@ impl Actor for LedgerActor {
                             binary: Some(BinaryReferenceValue {
                                 r#type: Some(binary_reference_value::Type::Endorsement(
                                     EndorsementReferenceValue {
-                                        endorser_public_key: vec![
-                                            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48,
-                                            0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
-                                            0x67, 0xcc, 0xec, 0x5a, 0x09, 0xdc, 0x93, 0x9c, 0x0b,
-                                            0x77, 0x24, 0x82, 0xdc, 0x01, 0xd9, 0x54, 0x67, 0xc6,
-                                            0x59, 0xac, 0x61, 0x90, 0x96, 0x2a, 0x9a, 0xa6, 0xea,
-                                            0xd6, 0x9a, 0xad, 0xb0, 0x9c, 0x12, 0x6d, 0xee, 0x65,
-                                            0x26, 0x77, 0x52, 0xd3, 0x3c, 0x68, 0x14, 0xfa, 0xa6,
-                                            0x32, 0x9b, 0xee, 0x88, 0xc2, 0xee, 0x62, 0x06, 0xc7,
-                                            0xa7, 0x94, 0xfd, 0x7b, 0x1f, 0x71, 0x39, 0x8c, 0x86,
-                                            0xf4,
-                                        ],
-                                        rekor_public_key: rekor_public_key.clone(),
+                                        endorser: Some(VerifyingKeySet {
+                                            keys: vec![VerifyingKey {
+                                                r#type: KeyType::EcdsaP256Sha256.into(),
+                                                key_id: 8,
+                                                raw: vec![
+                                                    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
+                                                    0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+                                                    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+                                                    0x42, 0x00, 0x04, 0x67, 0xcc, 0xec, 0x5a, 0x09,
+                                                    0xdc, 0x93, 0x9c, 0x0b, 0x77, 0x24, 0x82, 0xdc,
+                                                    0x01, 0xd9, 0x54, 0x67, 0xc6, 0x59, 0xac, 0x61,
+                                                    0x90, 0x96, 0x2a, 0x9a, 0xa6, 0xea, 0xd6, 0x9a,
+                                                    0xad, 0xb0, 0x9c, 0x12, 0x6d, 0xee, 0x65, 0x26,
+                                                    0x77, 0x52, 0xd3, 0x3c, 0x68, 0x14, 0xfa, 0xa6,
+                                                    0x32, 0x9b, 0xee, 0x88, 0xc2, 0xee, 0x62, 0x06,
+                                                    0xc7, 0xa7, 0x94, 0xfd, 0x7b, 0x1f, 0x71, 0x39,
+                                                    0x8c, 0x86, 0xf4,
+                                                ],
+                                            }],
+                                        }),
+                                        required_claims: Some(ClaimReferenceValue::default()),
+                                        rekor: Some(rekor_reference_value.clone()),
                                         ..Default::default()
                                     },
                                 )),
@@ -497,11 +553,15 @@ impl Actor for LedgerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oak_proto_rust::oak::attestation::v1::{Evidence, RootLayerEvidence, TeePlatform};
+    use googletest::prelude::*;
+    use oak_proto_rust::oak::attestation::v1::{
+        Endorsements, Evidence, RootLayerEvidence, TeePlatform,
+    };
     use oak_restricted_kernel_sdk::testing::MockSigner;
     use oak_restricted_kernel_sdk::Attester;
     use slog::Logger;
     use tcp_runtime::logger::log::create_logger;
+
     struct MockActorContext {
         logger: Logger,
     }
@@ -530,7 +590,9 @@ mod tests {
         }
     }
 
-    struct MockAttester {}
+    struct MockAttester {
+        platform: TeePlatform,
+    }
 
     impl Attester for MockAttester {
         fn extend(&mut self, _encoded_event: &[u8]) -> anyhow::Result<()> {
@@ -540,7 +602,7 @@ mod tests {
         fn quote(&self) -> anyhow::Result<Evidence> {
             Ok(Evidence {
                 root_layer: Some(RootLayerEvidence {
-                    platform: TeePlatform::None.into(),
+                    platform: self.platform.into(),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -549,10 +611,16 @@ mod tests {
     }
 
     fn create_actor() -> LedgerActor {
+        create_actor_with_platform(TeePlatform::None)
+    }
+
+    fn create_actor_with_platform(platform: TeePlatform) -> LedgerActor {
         let mock_context = Box::new(MockActorContext::new());
-        let mut actor =
-            LedgerActor::create(Box::new(MockAttester {}), Box::new(MockSigner::create().unwrap()))
-                .unwrap();
+        let mut actor = LedgerActor::create(
+            Box::new(MockAttester { platform }),
+            Box::new(MockSigner::create().unwrap()),
+        )
+        .unwrap();
         assert_eq!(actor.on_init(mock_context), Ok(()));
         actor
     }
@@ -584,5 +652,27 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(actor.on_load_snapshot(snapshot.encode_to_vec().into()), Ok(()));
+    }
+
+    #[test]
+    fn test_reference_values() -> anyhow::Result<()> {
+        let actor = create_actor_with_platform(TeePlatform::AmdSevSnp);
+        let reference_values = actor.get_reference_values();
+
+        let evidence =
+            Evidence::decode(include_bytes!("../testdata/evidence_20241121.binarypb").as_slice())?;
+        let endorsements = Endorsements::decode(
+            include_bytes!("../testdata/endorsements_20241121.binarypb").as_slice(),
+        )?;
+        assert_that!(
+            oak_attestation_verification::verifier::verify(
+                1732147200000,
+                &evidence,
+                &endorsements,
+                &reference_values
+            ),
+            ok(anything())
+        );
+        Ok(())
     }
 }
