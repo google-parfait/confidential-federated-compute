@@ -26,6 +26,7 @@
 #include "absl/status/statusor.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
+#include "containers/fed_sql/sensitive_columns.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
@@ -170,6 +171,7 @@ FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
   if (contents.size() > 0) {
     int num_rows = contents.at(0).tensor_.num_elements();
+    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
     FCP_RETURN_IF_ERROR(
         sqlite->AddTableContents(std::move(contents), num_rows));
   }
@@ -417,10 +419,10 @@ FedSqlConfidentialTransform::CreateSession() {
     intrinsics = &*intrinsics_;
   }
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  return std::make_unique<FedSqlSession>(
-      FedSqlSession(std::move(aggregator), *intrinsics,
-                    serialize_output_access_policy_node_id_,
-                    report_output_access_policy_node_id_));
+  return std::make_unique<FedSqlSession>(FedSqlSession(
+      std::move(aggregator), *intrinsics,
+      serialize_output_access_policy_node_id_,
+      report_output_access_policy_node_id_, sensitive_values_key_));
 }
 
 absl::Status FedSqlSession::ConfigureSession(

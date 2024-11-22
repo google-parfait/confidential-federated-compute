@@ -51,6 +51,42 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
 
+TEST(CryptoTest, KeyedHashSuccess) {
+  absl::string_view input = "The quick brown fox jumps over the lazy dog";
+  absl::string_view key = "key";
+  absl::StatusOr<std::string> result = KeyedHash(input, key);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->size(), 32);
+  EXPECT_TRUE(*result != input);
+}
+
+TEST(CryptoTest, KeyedHashEmptyInput) {
+  absl::string_view input = "";
+  absl::string_view key = "key";
+  absl::StatusOr<std::string> result = KeyedHash(input, key);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->size(), 32);
+  EXPECT_TRUE(*result != input);
+}
+
+TEST(CryptoTest, KeyedHashEmptyKey) {
+  absl::string_view input = "foo";
+  absl::string_view key = "";
+  absl::StatusOr<std::string> result = KeyedHash(input, key);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->size(), 32);
+  EXPECT_TRUE(*result != input);
+}
+
+TEST(CryptoTest, KeyedHashBothEmpty) {
+  absl::string_view input = "";
+  absl::string_view key = "";
+  absl::StatusOr<std::string> result = KeyedHash(input, key);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->size(), 32);
+  EXPECT_TRUE(*result != input);
+}
+
 TEST(CryptoTest, EncryptAndDecrypt) {
   std::string message = "some plaintext message";
   std::string reencryption_public_key = "reencryption_public_key";

@@ -88,6 +88,8 @@ using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -105,7 +107,10 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
+using testing::AnyOf;
+using testing::Contains;
 using ::testing::HasSubstr;
+using testing::Not;
 using ::testing::SizeIs;
 using ::testing::Test;
 using testing::UnorderedElementsAre;
@@ -668,6 +673,32 @@ std::string BuildFedSqlGroupByCheckpoint(
   return checkpoint_string;
 }
 
+std::string BuildSensitiveGroupByCheckpoint(
+    std::initializer_list<absl::string_view> key_col_values,
+    std::initializer_list<uint64_t> val_col_values) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  absl::StatusOr<Tensor> key =
+      Tensor::Create(DataType::DT_STRING,
+                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
+                     CreateTestData<absl::string_view>(key_col_values));
+  absl::StatusOr<Tensor> val =
+      Tensor::Create(DataType::DT_INT64,
+                     TensorShape({static_cast<int64_t>(val_col_values.size())}),
+                     CreateTestData<uint64_t>(val_col_values));
+  CHECK_OK(key);
+  CHECK_OK(val);
+  CHECK_OK(ckpt_builder->Add("SENSITIVE_key", *key));
+  CHECK_OK(ckpt_builder->Add("val", *val));
+  auto checkpoint = ckpt_builder->Build();
+  CHECK_OK(checkpoint.status());
+
+  std::string checkpoint_string;
+  absl::CopyCordToString(*checkpoint, &checkpoint_string);
+  return checkpoint_string;
+}
+
 TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   grpc::ClientContext init_context;
   InitializeRequest request;
@@ -877,6 +908,99 @@ TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
   ASSERT_EQ(col_values->num_elements(), 3);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
+}
+
+TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
+  grpc::ClientContext init_context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_group_by"
+        intrinsic_args {
+          input_tensor {
+            name: "SENSITIVE_key"
+            dtype: DT_STRING
+            shape { dim_sizes: -1 }
+          }
+        }
+        output_tensors {
+          name: "SENSITIVE_key_out"
+          dtype: DT_STRING
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  TableSchema schema = CreateTableSchema(
+      "input", "CREATE TABLE input (SENSITIVE_key STRING, val INTEGER)",
+      {CreateColumnSchema("SENSITIVE_key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  SqlQuery query = CreateSqlQuery(
+      schema, "SELECT SENSITIVE_key, val * 2 AS val FROM input",
+      {CreateColumnSchema("SENSITIVE_key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
+      query);
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE,
+      BuildSensitiveGroupByCheckpoint({"k1", "k1", "k2"}, {1, 2, 5}));
+  SessionResponse write_response_1;
+
+  ASSERT_TRUE(stream->Write(write_request_1));
+  EXPECT_TRUE(stream->Read(&write_response_1));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::Cord wire_format_result(finalize_response.read().data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("SENSITIVE_key_out");
+  const absl::Span<const absl::string_view> output_keys =
+      col_values->AsSpan<absl::string_view>();
+  // The sensitive column has been hashed.
+  EXPECT_THAT(output_keys, Not(AnyOf(Contains("k1"), Contains("k2"))));
 }
 
 TEST_F(FedSqlServerTest, SerializeEncryptedInputsWithoutOutputNodeIdFails) {

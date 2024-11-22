@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
@@ -32,6 +33,9 @@
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "grpcpp/client_context.h"
+#include "openssl/err.h"
+#include "openssl/evp.h"
+#include "openssl/hmac.h"
 #include "openssl/rand.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 #include "proto/containers/orchestrator_crypto.pb.h"
@@ -258,6 +262,23 @@ absl::StatusOr<std::string> RecordDecryptor::DecryptRecord(
           associated_data,
           record.hpke_plus_aead_data().encapsulated_public_key()));
   return Decompress(decrypted, record.compression_type());
+}
+
+absl::StatusOr<std::string> KeyedHash(absl::string_view input,
+                                      absl::string_view key) {
+  // Calculate the HMAC-SHA256 hash using BoringSSL.
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int hash_len;
+  if (HMAC(EVP_sha256(), reinterpret_cast<const unsigned char*>(key.data()),
+           key.size(), reinterpret_cast<const unsigned char*>(input.data()),
+           input.size(), hash, &hash_len) == nullptr) {
+    unsigned long err = ERR_get_error();
+    return absl::InternalError(
+        absl::StrFormat("HMAC failed: %s", ERR_error_string(err, nullptr)));
+  }
+
+  // Return the hash as a std::string.
+  return std::string(reinterpret_cast<char*>(hash), hash_len);
 }
 
 }  // namespace confidential_federated_compute

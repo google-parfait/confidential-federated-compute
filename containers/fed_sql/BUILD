@@ -21,6 +21,7 @@ cc_library(
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     deps = [
+        ":sensitive_columns",
         "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
@@ -47,6 +48,51 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_library(
+    name = "sensitive_columns",
+    srcs = ["sensitive_columns.cc"],
+    hdrs = ["sensitive_columns.h"],
+    deps = [
+        "//containers:blob_metadata",
+        "//containers:confidential_transform_server_base",
+        "//containers:crypto",
+        "//containers:session",
+        "//containers/sql:sqlite_adapter",
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/base:status_converters",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+    ],
+)
+
+cc_test(
+    name = "sensitive_columns_test",
+    size = "small",
+    srcs = ["sensitive_columns_test.cc"],
+    deps = [
+        ":sensitive_columns",
+        "//containers:blob_metadata",
+        "//containers:crypto",
+        "//containers:crypto_test_utils",
+        "//containers/sql:sqlite_adapter",
+        "//testing:parse_text_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
 
