@@ -32,6 +32,7 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
+#include "openssl/rand.h"
 #include "proto/containers/orchestrator_crypto.grpc.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
@@ -48,6 +49,11 @@ class FedSqlConfidentialTransform final
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
       : ConfidentialTransformBase(crypto_stub) {
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+    std::string key(32, '\0');
+    // Generate a random key using BoringSSL. BoringSSL documentation says
+    // RAND_bytes always returns 1, so we don't check the return value.
+    RAND_bytes(reinterpret_cast<unsigned char*>(key.data()), key.size());
+    sensitive_values_key_ = std::move(key);
   };
 
  protected:
@@ -63,6 +69,9 @@ class FedSqlConfidentialTransform final
       intrinsics_ ABSL_GUARDED_BY(mutex_);
   std::optional<uint32_t> serialize_output_access_policy_node_id_;
   std::optional<uint32_t> report_output_access_policy_node_id_;
+  // Key used to hash sensitive values. Once we start partitioning the join
+  // data, we likely want this to be held by the FedSqlSession instead.
+  std::string sensitive_values_key_;
 };
 
 // FedSql implementation of Session interface. Not threadsafe.
@@ -74,13 +83,15 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
       const std::optional<uint32_t> serialize_output_access_policy_node_id,
-      const std::optional<uint32_t> report_output_access_policy_node_id)
+      const std::optional<uint32_t> report_output_access_policy_node_id,
+      absl::string_view sensitive_values_key)
       : aggregator_(std::move(aggregator)),
         intrinsics_(intrinsics),
         serialize_output_access_policy_node_id_(
             serialize_output_access_policy_node_id),
         report_output_access_policy_node_id_(
-            report_output_access_policy_node_id) {};
+            report_output_access_policy_node_id),
+        sensitive_values_key_(sensitive_values_key) {};
 
   // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
@@ -121,6 +132,9 @@ class FedSqlSession final : public confidential_federated_compute::Session {
   std::optional<const SqlConfiguration> sql_configuration_;
   const std::optional<uint32_t> serialize_output_access_policy_node_id_;
   const std::optional<uint32_t> report_output_access_policy_node_id_;
+  // Key used to hash sensitive values. In the future we could instead hold an
+  // HMAC_CTX to reuse, which might improve performance.
+  absl::string_view sensitive_values_key_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

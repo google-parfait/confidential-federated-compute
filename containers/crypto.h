@@ -137,6 +137,10 @@ class RecordDecryptor {
   absl::StatusOr<std::string> signed_public_key_;
 };
 
+// Wraps BoringSSL's HMAC-SHA256.
+absl::StatusOr<std::string> KeyedHash(absl::string_view input,
+                                      absl::string_view key);
+
 }  // namespace confidential_federated_compute
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_H_
