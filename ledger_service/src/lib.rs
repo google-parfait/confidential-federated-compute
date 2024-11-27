@@ -427,12 +427,6 @@ impl LedgerService {
                         format!("Invalid range end `blob_id` err:{:?}", err),
                     )
                 })?;
-                if start < BlobId::MIN || end > BlobId::MAX {
-                    return Err(micro_rpc::Status::new_with_message(
-                        micro_rpc::StatusCode::InvalidArgument,
-                        format!("blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."),
-                    ));
-                }
                 BlobRange { start, end }
             }
             None => {
@@ -455,10 +449,10 @@ impl LedgerService {
                         format!("Invalid `blob_id`: {:?}", err),
                     )
                 })?;
-                if blob_id < BlobId::MIN || blob_id > BlobId::MAX {
+                if blob_id == BlobId::MAX {
                     return Err(micro_rpc::Status::new_with_message(
                         micro_rpc::StatusCode::InvalidArgument,
-                        format!("blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."),
+                        format!("blob_id must be strictly between [BlobId::MIN, BlobId::MAX)."),
                     ));
                 }
                 BlobRange { start: blob_id.clone(), end: blob_id.add_one() }
@@ -1401,68 +1395,6 @@ mod tests {
             }),
             micro_rpc::StatusCode::InvalidArgument,
             "the range is required unless there is exactly one input blob"
-        );
-    }
-
-    #[test]
-    fn test_authorize_access_invalid_range() {
-        let (mut ledger, public_key) = create_ledger_service();
-        let cose_key = extract_key_from_cwt(&public_key).unwrap();
-
-        // Define an access policy that grants access.
-        let recipient_tag = "tag";
-        let access_policy = DataAccessPolicy {
-            transforms: vec![Transform {
-                application: Some(ApplicationMatcher {
-                    tag: Some(recipient_tag.to_owned()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }
-        .encode_to_vec();
-
-        // Construct multiple client messages
-        let plaintext = b"plaintext";
-        let mut blob_metadata = Vec::with_capacity(4);
-        let recipient_nonce: &[u8] = b"nonce";
-        for i in 0..4 {
-            let blob_header = BlobHeader {
-                blob_id: BlobId::from(i as u128).to_vec(),
-                key_id: cose_key.key_id.clone(),
-                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
-                ..Default::default()
-            }
-            .encode_to_vec();
-
-            let (_, encapsulated_key, encrypted_symmetric_key) =
-                cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
-
-            blob_metadata.push(BlobMetadata {
-                blob_header: blob_header.clone(),
-                encapsulated_key,
-                encrypted_symmetric_key,
-                recipient_nonce: recipient_nonce.to_vec(),
-            });
-        }
-
-        // Request access.
-        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
-        assert_err!(
-            ledger.authorize_access(AuthorizeAccessRequest {
-                access_policy,
-                recipient_public_key: create_recipient_cwt(recipient_public_key),
-                recipient_tag: recipient_tag.to_owned(),
-                blob_metadata,
-                blob_range: Some(Range {
-                    start: BlobId::from(0).to_vec(),
-                    end: BlobId::MAX.add_one().to_vec(),
-                }),
-                ..Default::default()
-            }),
-            micro_rpc::StatusCode::InvalidArgument,
-            "blob_range must be strictly between [BlobId::MIN, BlobId::MAX)."
         );
     }
 

@@ -25,7 +25,7 @@ pub struct BlobId {
 
 impl BlobId {
     pub const MIN: BlobId = BlobId { id: u128::MIN };
-    pub const MAX: BlobId = BlobId { id: u128::MAX - 1 };
+    pub const MAX: BlobId = BlobId { id: u128::MAX };
 
     pub fn from_bytes(s: &[u8]) -> Result<Self> {
         if s.len() > BLOB_ID_SIZE {
