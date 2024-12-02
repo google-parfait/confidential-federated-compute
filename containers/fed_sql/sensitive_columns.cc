@@ -48,7 +48,8 @@ absl::Status HashColumn(TensorColumn& column, absl::string_view key) {
 
   FCP_ASSIGN_OR_RETURN(
       Tensor hashed_tensor,
-      Tensor::Create(column.tensor_.dtype(), {column.tensor_.num_elements()},
+      Tensor::Create(column.tensor_.dtype(),
+                     {static_cast<int64_t>(column.tensor_.num_elements())},
                      std::move(hashed_column)));
   column.tensor_ = std::move(hashed_tensor);
   return absl::OkStatus();
