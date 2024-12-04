@@ -27,6 +27,7 @@
 #include "fcp/protos/confidentialcompute/pipeline_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
+#include "federated_language/proto/computation.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/text_format.h"
 #include "grpcpp/channel.h"
@@ -48,7 +49,6 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensor_serialization.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::tff_worker {
@@ -88,7 +88,7 @@ constexpr absl::string_view kAggregationComputationPath =
 constexpr absl::string_view kClientWorkComputationPath =
     "containers/tff_worker/testing/client_work_computation.txtpb";
 
-absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
+absl::StatusOr<federated_language::Computation> LoadFileAsTffComputation(
     absl::string_view path) {
   // Before creating the std::ifstream, convert the absl::string_view to
   // std::string.
@@ -99,7 +99,7 @@ absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
   }
   std::stringstream file_stream;
   file_stream << file_istream.rdbuf();
-  tff_proto::Computation computation;
+  federated_language::Computation computation;
   if (!google::protobuf::TextFormat::ParseFromString(
           std::move(file_stream.str()), &computation)) {
     return absl::InvalidArgumentError(
@@ -111,8 +111,7 @@ absl::StatusOr<tff_proto::Computation> LoadFileAsTffComputation(
 tff_proto::Value BuildFederatedIntClientValue(float int_value) {
   tff_proto::Value value;
   tff_proto::Value_Federated* federated = value.mutable_federated();
-  tensorflow_federated::v0::FederatedType* type_proto =
-      federated->mutable_type();
+  federated_language::FederatedType* type_proto = federated->mutable_type();
   type_proto->set_all_equal(true);
   *type_proto->mutable_placement()->mutable_value()->mutable_uri() =
       kClientsUri;
@@ -205,7 +204,7 @@ TEST_F(TffPipelineTransformTest, ConfigureAndAttestMoreThanOnce) {
   TffWorkerConfiguration tff_worker_configuration;
   TffWorkerConfiguration_ClientWork* client_work =
       tff_worker_configuration.mutable_client_work();
-  absl::StatusOr<tff_proto::Computation> computation_proto =
+  absl::StatusOr<federated_language::Computation> computation_proto =
       LoadFileAsTffComputation(kClientWorkComputationPath);
   ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
   std::string serialized_computation;
@@ -234,7 +233,7 @@ TEST_F(TffPipelineTransformTest, ValidConfigureAndAttest) {
   TffWorkerConfiguration tff_worker_configuration;
   TffWorkerConfiguration_ClientWork* client_work =
       tff_worker_configuration.mutable_client_work();
-  absl::StatusOr<tff_proto::Computation> computation_proto =
+  absl::StatusOr<federated_language::Computation> computation_proto =
       LoadFileAsTffComputation(kClientWorkComputationPath);
   ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
   std::string serialized_computation;
@@ -267,7 +266,7 @@ TEST_F(TffPipelineTransformTest, TransformCannotExecuteAggregation) {
   // aggregation work.
   TffWorkerConfiguration_Aggregation* aggregation =
       tff_worker_configuration.mutable_aggregation();
-  absl::StatusOr<tff_proto::Computation> computation_proto =
+  absl::StatusOr<federated_language::Computation> computation_proto =
       LoadFileAsTffComputation(kAggregationComputationPath);
   ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
   std::string serialized_computation;
@@ -301,7 +300,7 @@ TEST_F(TffPipelineTransformTest, TransformExecutesClientWork) {
   // work.
   TffWorkerConfiguration_ClientWork* client_work =
       tff_worker_configuration.mutable_client_work();
-  absl::StatusOr<tff_proto::Computation> computation_proto =
+  absl::StatusOr<federated_language::Computation> computation_proto =
       LoadFileAsTffComputation(kClientWorkComputationPath);
   ASSERT_TRUE(computation_proto.ok()) << computation_proto.status();
   std::string serialized_computation;

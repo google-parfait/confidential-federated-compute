@@ -79,9 +79,24 @@ http_archive(
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    sha256 = "391dea2c6f3ec1279d802d36703c1cec690c4a1642cc8cd19a078f440b3e7fa8",
-    strip_prefix = "tensorflow-federated-03b32cfbd38b58bb9c09f2649632c3376cb95163",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/03b32cfbd38b58bb9c09f2649632c3376cb95163.tar.gz",
+    sha256 = "bc5297068936a1c04a5e5a90373007cf69e041e8fb69d544096b8ac4c5436cd9",
+    strip_prefix = "tensorflow-federated-3782a88fc4651b59ecff95ca600fd83972547875",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/3782a88fc4651b59ecff95ca600fd83972547875.tar.gz",
+)
+
+http_archive(
+    name = "federated_language",
+    patches = [
+        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
+        "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
+        "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
+    ],
+    repo_mapping = {
+        "@protobuf": "@com_google_protobuf",
+    },
+    sha256 = "07fad8cb743caac8f9afeebf06ef767471713f23a15b2e6713fcc0a17967747b",
+    strip_prefix = "federated-language-2ec477bcd8ecfa7e5422b806450f101d1eed7ecb",
+    url = "https://github.com/google-parfait/federated-language/archive/2ec477bcd8ecfa7e5422b806450f101d1eed7ecb.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
@@ -192,9 +207,9 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "cf811d94df68ccf39123a6782fb237c0eb896bdd679516509d4fb701f577b6fa",
-    strip_prefix = "federated-compute-57bec0884b2c8a231b10c274e93aadb57a5cde1c",
-    url = "https://github.com/google/federated-compute/archive/57bec0884b2c8a231b10c274e93aadb57a5cde1c.tar.gz",
+    sha256 = "801b08bbc5cb19fc24ba81028dc847a41d9eb5bd51218e4a3dd18edce68a7a6e",
+    strip_prefix = "federated-compute-33a0495a0c4462001a8ca67eac8e65c2e414478a",
+    url = "https://github.com/google/federated-compute/archive/33a0495a0c4462001a8ca67eac8e65c2e414478a.tar.gz",
 )
 
 http_archive(

@@ -78,9 +78,9 @@ index 57f1c05d7..05bdcd907 100644
 --- tensorflow_federated/cc/core/impl/executors/BUILD
 +++ tensorflow_federated/cc/core/impl/executors/BUILD
 @@ -1142,20 +1142,20 @@ cc_library(
-         "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings",
          "@com_google_absl//absl/types:span",
+         "@federated_language//federated_language/proto:computation_cc_proto",
 +        "@local_xla//xla:literal",
 +        "@local_xla//xla:shape_util",
 +        "@local_xla//xla:xla_data_proto_cc",
@@ -111,9 +111,9 @@ index 57f1c05d7..05bdcd907 100644
          "@org_tensorflow//tensorflow/core:protos_all_cc",
      ],
 @@ -1184,13 +1184,13 @@ tff_cc_cpu_gpu_test(
-         "@com_google_absl//absl/log:check",
-         "@com_google_absl//absl/status",
-         "@com_google_absl//absl/status:statusor",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
 +        "@local_xla//xla:shape_util",
 +        "@local_xla//xla:xla_data_proto_cc",
 +        "@local_xla//xla/client:xla_builder",
@@ -131,9 +131,9 @@ index 57f1c05d7..05bdcd907 100644
          "@org_tensorflow//tensorflow/core:protos_all_cc",
          "@org_tensorflow//tensorflow/core/platform:statusor",
 @@ -1221,15 +1221,15 @@ cc_test(
-         "@com_google_absl//absl/log:check",
-         "@com_google_absl//absl/status",
-         "@com_google_absl//absl/status:statusor",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
 +        "@local_xla//xla:shape_util",
 +        "@local_xla//xla:xla_data_proto_cc",
 +        "@local_xla//xla/client:xla_builder",
@@ -154,9 +154,9 @@ index 57f1c05d7..05bdcd907 100644
          "@org_tensorflow//tensorflow/core:protos_all_cc",
          "@org_tensorflow//tensorflow/core/platform:statusor",
 @@ -1248,10 +1248,10 @@ cc_library(
-         "@com_google_absl//absl/status",
-         "@com_google_absl//absl/status:statusor",
-         "@com_google_absl//absl/strings",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
 -        "@org_tensorflow//tensorflow/compiler/xla:literal",
 -        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
 -        "@org_tensorflow//tensorflow/compiler/xla:types",
@@ -169,9 +169,9 @@ index 57f1c05d7..05bdcd907 100644
  )
 
 @@ -1270,10 +1270,10 @@ cc_test(
-         "@com_google_absl//absl/status",
-         "@com_google_absl//absl/status:statusor",
-         "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
 -        "@org_tensorflow//tensorflow/compiler/xla:literal",
 -        "@org_tensorflow//tensorflow/compiler/xla:literal_util",
 -        "@org_tensorflow//tensorflow/compiler/xla:shape_util",
@@ -194,8 +194,8 @@ index f368fcb02..b8e230ac0 100644
  #include "absl/strings/str_cat.h"
 -#include "third_party/eigen3/Eigen/Core"
 +#include "Eigen/Core"
- #include "tensorflow_federated/proto/v0/array.pb.h"
- #include "tensorflow_federated/proto/v0/data_type.pb.h"
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/data_type.pb.h"
 
 diff --git tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc tensorflow_federated/cc/core/impl/executors/tensorflow_utils.cc
 index 94ec5669f..82643ad59 100644
@@ -207,9 +207,9 @@ index 94ec5669f..82643ad59 100644
  #include "absl/types/span.h"
 -#include "third_party/eigen3/Eigen/Core"
 +#include "Eigen/Core"
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/data_type.pb.h"
  #include "tensorflow/core/framework/attr_value.pb.h"
- #include "tensorflow/core/framework/graph.pb.h"
- #include "tensorflow/core/framework/node_def.pb.h"
 diff --git tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
 index 97de35207..2525a8c7e 100644
 --- tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
@@ -220,15 +220,15 @@ index 97de35207..2525a8c7e 100644
  #include "absl/status/statusor.h"
 -#include "third_party/eigen3/Eigen/Core"
 +#include "Eigen/Core"
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/computation.pb.h"
  #include "tensorflow/core/framework/numeric_types.h"
- #include "tensorflow/core/framework/tensor.h"
- #include "tensorflow/core/framework/tensor.pb.h"
 diff --git tensorflow_federated/cc/core/impl/executors/xla_executor.cc tensorflow_federated/cc/core/impl/executors/xla_executor.cc
 index 757c8e8d3..eb502f9e1 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_executor.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_executor.cc
-@@ -33,16 +33,16 @@ limitations under the License
- #include "absl/types/span.h"
+@@ -34,16 +34,16 @@ limitations under the License
+ #include "federated_language/proto/computation.pb.h"
  #include "tensorflow/compiler/tf2xla/literal_util.h"
  #include "tensorflow/compiler/tf2xla/type_util.h"
 -#include "tensorflow/compiler/xla/client/client.h"
@@ -267,8 +267,8 @@ diff --git tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc tens
 index 7150bad17..9b2cee8fe 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_executor_test.cc
-@@ -32,13 +32,13 @@ limitations under the License
- #include "absl/status/statusor.h"
+@@ -35,13 +35,13 @@ limitations under the License
+ #include "federated_language/proto/data_type.pb.h"
  #include "tensorflow/compiler/tf2xla/shape_util.h"
  #include "tensorflow/compiler/tf2xla/type_util.h"
 -#include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -292,10 +292,10 @@ diff --git tensorflow_federated/cc/core/impl/executors/xla_utils.cc tensorflow_f
 index 06da07e10..2be6c8c70 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_utils.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_utils.cc
-@@ -22,11 +22,11 @@ limitations under the License
- #include "absl/status/status.h"
- #include "absl/status/statusor.h"
- #include "absl/strings/str_cat.h"
+@@ -25,11 +25,11 @@ limitations under the License
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/computation.pb.h"
+ #include "federated_language/proto/data_type.pb.h"
 -#include "tensorflow/compiler/xla/literal.h"
 -#include "tensorflow/compiler/xla/shape.h"
 -#include "tensorflow/compiler/xla/shape_util.h"
@@ -307,32 +307,31 @@ index 06da07e10..2be6c8c70 100644
 +#include "xla/types.h"
 +#include "xla/xla_data.pb.h"
  #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
- #include "tensorflow_federated/proto/v0/array.pb.h"
- #include "tensorflow_federated/proto/v0/computation.pb.h"
+
+ namespace tensorflow_federated {
 diff --git tensorflow_federated/cc/core/impl/executors/xla_utils.h tensorflow_federated/cc/core/impl/executors/xla_utils.h
 index 7a77b9005..80ea387a6 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_utils.h
 +++ tensorflow_federated/cc/core/impl/executors/xla_utils.h
-@@ -17,8 +17,8 @@ limitations under the License
- #define THIRD_PARTY_TENSORFLOW_FEDERATED_CC_CORE_IMPL_EXECUTORS_XLA_UTILS_H_
-
- #include "absl/status/statusor.h"
+@@ -20,8 +20,8 @@ limitations under the License
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/computation.pb.h"
+ #include "federated_language/proto/data_type.pb.h"
 -#include "tensorflow/compiler/xla/literal.h"
 -#include "tensorflow/compiler/xla/shape.h"
 +#include "xla/literal.h"
 +#include "xla/shape.h"
- #include "tensorflow_federated/proto/v0/array.pb.h"
- #include "tensorflow_federated/proto/v0/computation.pb.h"
- #include "tensorflow_federated/proto/v0/data_type.pb.h"
+
+ namespace tensorflow_federated {
+
 diff --git tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
 index f9b00096f..5a34339b0 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
-@@ -21,14 +21,14 @@ limitations under the License
- #include "googletest/include/gtest/gtest.h"
- #include "absl/status/status.h"
- #include "absl/status/statusor.h"
--#include "third_party/eigen3/Eigen/Core"
+@@ -25,13 +25,13 @@ limitations under the License
+ #include "federated_language/proto/array.pb.h"
+ #include "federated_language/proto/computation.pb.h"
+ #include "federated_language/proto/data_type.pb.h"
 -#include "tensorflow/compiler/xla/literal.h"
 -#include "tensorflow/compiler/xla/literal_util.h"
 -#include "tensorflow/compiler/xla/primitive_util.h"
@@ -340,7 +339,6 @@ index f9b00096f..5a34339b0 100644
 -#include "tensorflow/compiler/xla/shape_util.h"
 -#include "tensorflow/compiler/xla/types.h"
 -#include "tensorflow/compiler/xla/xla_data.pb.h"
-+#include "Eigen/Core"
 +#include "xla/literal.h"
 +#include "xla/literal_util.h"
 +#include "xla/primitive_util.h"

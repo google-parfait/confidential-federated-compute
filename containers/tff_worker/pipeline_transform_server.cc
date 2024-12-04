@@ -25,6 +25,7 @@
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tff_worker_configuration.pb.h"
+#include "federated_language/proto/computation.pb.h"
 #include "grpcpp/server_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -45,7 +46,7 @@ namespace tf = ::tensorflow;
 namespace tff = ::tensorflow_federated;
 
 struct ComputationAndInput {
-  tff::v0::Computation computation;
+  federated_language::Computation computation;
   tff::v0::Value input;
 };
 
@@ -154,7 +155,7 @@ absl::StatusOr<tff::v0::Value> RestoreClientCheckpointToDict(
   // given the names from the `fed_sql_tf_checkpoint_spec` and the values in
   // the FCP checkpoint.
   tff::v0::Value_Federated* federated = restored_value.mutable_federated();
-  tff::v0::FederatedType* type_proto = federated->mutable_type();
+  federated_language::FederatedType* type_proto = federated->mutable_type();
   type_proto->set_all_equal(true);
   *type_proto->mutable_placement()->mutable_value()->mutable_uri() =
       tff::kClientsUri;
@@ -205,7 +206,7 @@ absl::StatusOr<ComputationAndInput> GetClientComputationAndInput(
   ComputationAndInput computation_and_input;
 
   // Read in TFF computation from the TffWorkerConfiguration.
-  tff::v0::Computation client_work_computation;
+  federated_language::Computation client_work_computation;
   if (!computation_and_input.computation.ParseFromString(
           client_work.serialized_client_work_computation())) {
     return absl::InvalidArgumentError(
