@@ -79,9 +79,9 @@ http_archive(
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    sha256 = "bc5297068936a1c04a5e5a90373007cf69e041e8fb69d544096b8ac4c5436cd9",
-    strip_prefix = "tensorflow-federated-3782a88fc4651b59ecff95ca600fd83972547875",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/3782a88fc4651b59ecff95ca600fd83972547875.tar.gz",
+    sha256 = "5d3bed31d7a734586e58789dd014d024a4ec95f274ec10a821d3e2ec9c4b0176",
+    strip_prefix = "tensorflow-federated-e8920e2d3e1f02762f8a996fed7bfeb08ec7cd75",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/e8920e2d3e1f02762f8a996fed7bfeb08ec7cd75.tar.gz",
 )
 
 http_archive(

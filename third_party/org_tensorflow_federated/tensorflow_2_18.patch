@@ -77,8 +77,8 @@ diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federate
 index 57f1c05d7..05bdcd907 100644
 --- tensorflow_federated/cc/core/impl/executors/BUILD
 +++ tensorflow_federated/cc/core/impl/executors/BUILD
-@@ -1142,20 +1142,20 @@ cc_library(
-         "@com_google_absl//absl/strings",
+@@ -1168,20 +1168,20 @@ cc_library(
+         "@com_google_absl//absl/strings:string_view",
          "@com_google_absl//absl/types:span",
          "@federated_language//federated_language/proto:computation_cc_proto",
 +        "@local_xla//xla:literal",
@@ -189,9 +189,9 @@ index f368fcb02..b8e230ac0 100644
 --- tensorflow_federated/cc/core/impl/executors/array_test_utils.h
 +++ tensorflow_federated/cc/core/impl/executors/array_test_utils.h
 @@ -25,7 +25,7 @@ limitations under the License
- #include "absl/status/status.h"
  #include "absl/status/statusor.h"
  #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
 -#include "third_party/eigen3/Eigen/Core"
 +#include "Eigen/Core"
  #include "federated_language/proto/array.pb.h"
@@ -215,9 +215,9 @@ index 97de35207..2525a8c7e 100644
 --- tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
 +++ tensorflow_federated/cc/core/impl/executors/tensorflow_utils_test.cc
 @@ -25,7 +25,7 @@ limitations under the License
- #include "absl/log/log.h"
  #include "absl/status/status.h"
  #include "absl/status/statusor.h"
+ #include "absl/strings/string_view.h"
 -#include "third_party/eigen3/Eigen/Core"
 +#include "Eigen/Core"
  #include "federated_language/proto/array.pb.h"
