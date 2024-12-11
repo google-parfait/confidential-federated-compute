@@ -2,10 +2,10 @@ diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD tensor
 index d5b3eb12b..cb271235a 100644
 --- tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
 +++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
-@@ -29,10 +29,10 @@ cc_library(
-         "@com_google_absl//absl/status",
+@@ -30,10 +30,10 @@ cc_library(
          "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:string_view",
 +        "@local_tsl//tsl/platform:refcount",
          "@org_tensorflow//tensorflow/core:framework",
          "@org_tensorflow//tensorflow/core:protos_all_cc",
@@ -14,7 +14,7 @@ index d5b3eb12b..cb271235a 100644
      ],
  )
 
-@@ -130,8 +130,8 @@ cc_library(
+@@ -132,8 +132,8 @@ cc_library(
          "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings",
          "@com_google_absl//absl/strings:cord",
@@ -24,7 +24,7 @@ index d5b3eb12b..cb271235a 100644
      ],
  )
 
-@@ -165,8 +165,8 @@ cc_library(
+@@ -167,8 +167,8 @@ cc_library(
          "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings",
          "@com_google_absl//absl/strings:cord",
