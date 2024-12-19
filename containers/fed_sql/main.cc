@@ -35,6 +35,9 @@ using ::grpc::ServerBuilder;
 using ::oak::containers::Orchestrator;
 using ::oak::containers::v1::OrchestratorCrypto;
 
+// Increase gRPC message size limit to 2GB.
+static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
+
 void RunServer() {
   std::string server_address("[::]:8080");
   std::shared_ptr<grpc::Channel> orchestrator_channel =
@@ -43,6 +46,8 @@ void RunServer() {
   OrchestratorCrypto::Stub orchestrator_crypto_stub(orchestrator_channel);
   FedSqlConfidentialTransform service(&orchestrator_crypto_stub);
   ServerBuilder builder;
+  builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
+  builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server = builder.BuildAndStart();
