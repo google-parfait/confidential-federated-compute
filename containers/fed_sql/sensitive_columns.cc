@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/status/status.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
@@ -60,7 +60,10 @@ absl::Status HashColumn(TensorColumn& column, absl::string_view key) {
 absl::Status HashSensitiveColumns(std::vector<TensorColumn>& contents,
                                   absl::string_view key) {
   for (TensorColumn& column : contents) {
-    if (absl::StartsWith(column.column_schema_.name(), "SENSITIVE_")) {
+    // Client upload columns are prefixed by <query_name>/ while server-side
+    // data isn't.
+    if (absl::StartsWith(column.column_schema_.name(), "SENSITIVE_") ||
+        absl::StrContains(column.column_schema_.name(), "/SENSITIVE_")) {
       if (column.column_schema_.type() !=
               ExampleQuerySpec_OutputVectorSpec_DataType_STRING &&
           column.column_schema_.type() !=
