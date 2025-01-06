@@ -51,6 +51,7 @@ using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -90,6 +91,19 @@ TEST_F(TestConcatServerTest, ValidInitialize) {
   InitializeResponse response;
 
   ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
+}
+
+TEST_F(TestConcatServerTest, ValidStreamInitialize) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+  request.mutable_initialize_request()->set_max_num_sessions(8);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  ASSERT_TRUE(writer->Finish().ok());
 }
 
 TEST_F(TestConcatServerTest, SessionConfigureGeneratesNonce) {

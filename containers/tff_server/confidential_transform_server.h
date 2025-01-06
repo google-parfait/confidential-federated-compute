@@ -96,11 +96,22 @@ class TffConfidentialTransform final
       : ConfidentialTransformBase(crypto_stub) {};
 
  protected:
-  // No transform specific initialization for TFF.
+  // No transform specific initialization and stream initialization for TFF.
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
     return google::protobuf::Struct::default_instance();
   };
+  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+      fcp::confidentialcompute::StreamInitializeRequest* request) override {
+    return google::protobuf::Struct::default_instance();
+  }
+  // For TFF, ReadWriteConfigurationRequest is a no-op because there is no
+  // initialization.
+  virtual absl::Status ReadWriteConfigurationRequest(
+      const fcp::confidentialcompute::WriteConfigurationRequest&
+          write_configuration) override {
+    return absl::OkStatus();
+  }
 
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>

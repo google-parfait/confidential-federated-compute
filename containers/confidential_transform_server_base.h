@@ -41,6 +41,12 @@ class ConfidentialTransformBase
       const fcp::confidentialcompute::InitializeRequest* request,
       fcp::confidentialcompute::InitializeResponse* response) override;
 
+  grpc::Status StreamInitialize(
+      grpc::ServerContext* context,
+      grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
+          reader,
+      fcp::confidentialcompute::InitializeResponse* response) override;
+
   grpc::Status Session(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
@@ -54,6 +60,15 @@ class ConfidentialTransformBase
 
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) = 0;
+  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+      fcp::confidentialcompute::StreamInitializeRequest* request) = 0;
+  // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
+  // blob used for container initialization. Must be implemented by a subclass.
+  // The first WriteConfigurationRequest for each blob must contain the metadata
+  // for the blob, while the last must have `commit` set to True.
+  virtual absl::Status ReadWriteConfigurationRequest(
+      const fcp::confidentialcompute::WriteConfigurationRequest&
+          write_configuration) = 0;
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() = 0;
@@ -61,6 +76,11 @@ class ConfidentialTransformBase
  private:
   absl::Status InitializeInternal(
       const fcp::confidentialcompute::InitializeRequest* request,
+      fcp::confidentialcompute::InitializeResponse* response);
+
+  absl::Status StreamInitializeInternal(
+      grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
+          reader,
       fcp::confidentialcompute::InitializeResponse* response);
 
   absl::Status SessionInternal(
