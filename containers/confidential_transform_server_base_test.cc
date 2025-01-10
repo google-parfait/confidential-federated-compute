@@ -138,7 +138,7 @@ class FakeConfidentialTransform final
     return google::protobuf::Struct();
   }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      fcp::confidentialcompute::StreamInitializeRequest* request) {
+      const fcp::confidentialcompute::StreamInitializeRequest* request) {
     google::rpc::Status config_status;
     if (!request->initialize_request().configuration().UnpackTo(
             &config_status)) {
