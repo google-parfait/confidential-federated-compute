@@ -89,7 +89,8 @@ class TestConcatConfidentialTransform final
     return config_properties;
   }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      fcp::confidentialcompute::StreamInitializeRequest* request) override {
+      const fcp::confidentialcompute::StreamInitializeRequest* request)
+      override {
     google::protobuf::Struct config_properties;
     return config_properties;
   }

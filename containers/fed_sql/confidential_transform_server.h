@@ -60,7 +60,8 @@ class FedSqlConfidentialTransform final
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      fcp::confidentialcompute::StreamInitializeRequest* request) override {
+      const fcp::confidentialcompute::StreamInitializeRequest* request)
+      override {
     return google::protobuf::Struct::default_instance();
   }
   virtual absl::Status ReadWriteConfigurationRequest(

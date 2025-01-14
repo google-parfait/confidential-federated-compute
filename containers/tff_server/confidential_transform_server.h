@@ -102,7 +102,8 @@ class TffConfidentialTransform final
     return google::protobuf::Struct::default_instance();
   };
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      fcp::confidentialcompute::StreamInitializeRequest* request) override {
+      const fcp::confidentialcompute::StreamInitializeRequest* request)
+      override {
     return google::protobuf::Struct::default_instance();
   }
   // For TFF, ReadWriteConfigurationRequest is a no-op because there is no
