@@ -320,11 +320,17 @@ impl Actor for LedgerActor {
         event: ActorEvent,
     ) -> Result<EventOutcome, ActorError> {
         let correlation_id: u64 = event.correlation_id;
+        let owned = context.owned;
         self.handle_event(context, event).or_else(|err| {
-            Ok(EventOutcome::with_command(ActorCommand::with_header(
-                correlation_id,
-                &response_with_error(err),
-            )))
+            // Return the error only if this actor originally produced this event.
+            if owned {
+                Ok(EventOutcome::with_command(ActorCommand::with_header(
+                    correlation_id,
+                    &response_with_error(err),
+                )))
+            } else {
+                Ok(EventOutcome::with_none())
+            }
         })
     }
 
