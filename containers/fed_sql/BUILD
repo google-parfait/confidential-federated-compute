@@ -170,6 +170,25 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "interval_set",
+    hdrs = ["interval_set.h"],
+    deps = [
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_test(
+    name = "interval_set_test",
+    size = "small",
+    srcs = ["interval_set_test.cc"],
+    deps = [
+        ":interval_set",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
