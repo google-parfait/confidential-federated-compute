@@ -53,8 +53,6 @@ acpi:
   sha2_256: dbaccae7bfbf006e2b8623a82f1a5fcda2ea0392233c26b18356b3bcfac231eb
 init_ram_fs:
   sha2_256: 51534334403d87176dc66406a07b5108d51f46a8534497c21f2769d1217c51b8
-kernel_cmd_line:
-  sha2_256: 2b98586d9905a605c295d77c61e8cfd2027ae5b8a04eefa9018436f6ad114297
 kernel_image:
   sha2_256: 4b1e70ad0ad326f3ee6f8f45f77358f0b8bb5df05321a5abc34c66022e27450b
 kernel_raw_cmd_line: console=ttyS0

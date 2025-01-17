@@ -29,6 +29,7 @@ fn main() {
                 .unwrap()
                 .strip_suffix("/google/protobuf/descriptor.proto")
                 .unwrap(),
+            std::env::var("VARIANT_PROTO").unwrap().strip_suffix("/proto/variant.proto").unwrap(),
         ],
         micro_rpc_build::CompileOptions {
             extern_paths: vec![

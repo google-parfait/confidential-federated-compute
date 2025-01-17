@@ -9,6 +9,7 @@ cargo_build_script(
         "DESCRIPTOR_PROTO": "$(location @com_google_protobuf//:descriptor_proto_srcs)",
         "EVIDENCE_PROTO": "$(location @oak//proto/attestation:evidence.proto)",
         "LEDGER_PROTO": "$(location @federated-compute//fcp/protos/confidentialcompute:ledger.proto)",
+        "VARIANT_PROTO": "$(location @oak//proto:variant.proto)",
     },
     data = [
         "@com_google_protobuf//:descriptor_proto_srcs",
@@ -19,6 +20,7 @@ cargo_build_script(
         "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform.proto",
         "@federated-compute//fcp/protos/confidentialcompute:verification_record.proto",
         "@oak//proto:digest.proto",
+        "@oak//proto:variant.proto",
         "@oak//proto/attestation:endorsement.proto",
         "@oak//proto/attestation:eventlog.proto",
         "@oak//proto/attestation:evidence.proto",
