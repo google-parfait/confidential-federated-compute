@@ -23,7 +23,6 @@ cargo_build_script(
         "DESCRIPTOR_PROTO": "$(location @com_google_protobuf//:descriptor_proto_srcs)",
         "EVIDENCE_PROTO": "$(location @oak//proto/attestation:evidence.proto)",
         "LEDGER_PROTO": "$(location @federated-compute//fcp/protos/confidentialcompute:ledger.proto)",
-        "VARIANT_PROTO": "$(location @oak//proto:variant.proto)",
     },
     data = glob(["proto/**"]) + [
         "@com_google_protobuf//:descriptor_proto_srcs",
