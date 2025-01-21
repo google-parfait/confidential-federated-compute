@@ -130,9 +130,11 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
               "Expect one of the StreamInitializeRequests to be "
               "configured with a InitializeRequest, found more than one.");
         }
-        max_num_sessions = request.initialize_request().max_num_sessions();
+        const InitializeRequest& initialize_request =
+            request.initialize_request();
+        max_num_sessions = initialize_request.max_num_sessions();
         FCP_ASSIGN_OR_RETURN(config_properties,
-                             StreamInitializeTransform(&request));
+                             StreamInitializeTransform(&initialize_request));
         contain_initialize_request = true;
         break;
       }

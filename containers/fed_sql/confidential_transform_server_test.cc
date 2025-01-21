@@ -27,6 +27,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -70,6 +71,7 @@ using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
@@ -77,6 +79,7 @@ using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
@@ -446,6 +449,304 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
             42);
   ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
             7);
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
+  grpc::ClientContext context;
+  google::protobuf::Value value;
+  StreamInitializeRequest request;
+  InitializeResponse response;
+  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      value);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Configuration cannot be unpacked."));
+}
+
+TEST_F(FedSqlServerTest, ValidStreamInitialize) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      init_config);
+  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  ASSERT_TRUE(writer->Finish().ok());
+
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
+  ASSERT_TRUE(cwt.ok());
+  ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
+            "fedsql_dp_group_by");
+  ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
+  ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
+            42);
+  ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
+            7);
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+    }
+  )pb");
+  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      init_config);
+  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("model_init_config must be set."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      init_config);
+  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(), HasSubstr("model_config must be set."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      init_config);
+  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("inference_task.inference_logic must be set for all "
+                        "inference tasks."));
 }
 
 TEST_F(FedSqlServerTest, InvalidConfigureRequest) {

@@ -138,13 +138,10 @@ class FakeConfidentialTransform final
     return google::protobuf::Struct();
   }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::StreamInitializeRequest* request) {
-    google::rpc::Status config_status;
-    if (!request->initialize_request().configuration().UnpackTo(
-            &config_status)) {
-      return absl::InvalidArgumentError("Config cannot be unpacked.");
-    }
-    return google::protobuf::Struct();
+      const fcp::confidentialcompute::InitializeRequest* request) {
+    FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
+                         InitializeTransform(request));
+    return config_properties;
   }
 
   virtual absl::Status ReadWriteConfigurationRequest(

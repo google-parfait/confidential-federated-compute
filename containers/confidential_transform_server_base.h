@@ -61,7 +61,7 @@ class ConfidentialTransformBase
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) = 0;
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::StreamInitializeRequest* request) = 0;
+      const fcp::confidentialcompute::InitializeRequest* request) = 0;
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
   // blob used for container initialization. Must be implemented by a subclass.
   // The first WriteConfigurationRequest for each blob must contain the metadata

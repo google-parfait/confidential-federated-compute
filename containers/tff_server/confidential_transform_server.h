@@ -99,12 +99,11 @@ class TffConfidentialTransform final
   // No transform specific initialization and stream initialization for TFF.
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
-    return google::protobuf::Struct::default_instance();
+    return google::protobuf::Struct();
   };
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::StreamInitializeRequest* request)
-      override {
-    return google::protobuf::Struct::default_instance();
+      const fcp::confidentialcompute::InitializeRequest* request) override {
+    return google::protobuf::Struct();
   }
   // For TFF, ReadWriteConfigurationRequest is a no-op because there is no
   // initialization.

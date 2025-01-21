@@ -28,6 +28,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
@@ -60,10 +61,7 @@ class FedSqlConfidentialTransform final
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::StreamInitializeRequest* request)
-      override {
-    return google::protobuf::Struct::default_instance();
-  }
+      const fcp::confidentialcompute::InitializeRequest* request) override;
   virtual absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {
@@ -74,6 +72,13 @@ class FedSqlConfidentialTransform final
   CreateSession() override;
 
  private:
+  // Configuration of the per-client inference step, occurring before the
+  // per-client query step.
+  struct InferenceConfiguration {
+    fcp::confidentialcompute::InferenceInitializeConfiguration
+        initialize_configuration;
+    // TODO: Add Gemma model weight and tokenizer.
+  };
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
@@ -82,6 +87,7 @@ class FedSqlConfidentialTransform final
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
+  std::optional<const InferenceConfiguration> inference_configuration_;
 };
 
 // FedSql implementation of Session interface. Not threadsafe.

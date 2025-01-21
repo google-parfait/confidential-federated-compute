@@ -85,14 +85,11 @@ class TestConcatConfidentialTransform final
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
-    google::protobuf::Struct config_properties;
-    return config_properties;
+    return google::protobuf::Struct();
   }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::StreamInitializeRequest* request)
-      override {
-    google::protobuf::Struct config_properties;
-    return config_properties;
+      const fcp::confidentialcompute::InitializeRequest* request) override {
+    return google::protobuf::Struct();
   }
   virtual absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&

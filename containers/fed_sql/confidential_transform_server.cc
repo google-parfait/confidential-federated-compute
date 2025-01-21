@@ -34,6 +34,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
@@ -60,11 +61,13 @@ using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
@@ -349,7 +352,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
 
 absl::StatusOr<google::protobuf::Struct>
 FedSqlConfidentialTransform::InitializeTransform(
-    const fcp::confidentialcompute::InitializeRequest* request) {
+    const InitializeRequest* request) {
   FedSqlContainerInitializeConfiguration config;
   if (!request->configuration().UnpackTo(&config)) {
     return absl::InvalidArgumentError(
@@ -399,6 +402,54 @@ FedSqlConfidentialTransform::InitializeTransform(
     intrinsics_.emplace(std::move(intrinsics));
     return config_properties;
   }
+}
+
+absl::StatusOr<google::protobuf::Struct>
+FedSqlConfidentialTransform::StreamInitializeTransform(
+    const InitializeRequest* request) {
+  FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
+                       InitializeTransform(request));
+
+  FedSqlContainerInitializeConfiguration config;
+  request->configuration().UnpackTo(&config);
+
+  if (config.has_inference_init_config()) {
+    if (inference_configuration_ != std::nullopt) {
+      return absl::FailedPreconditionError("Not null error.");
+    }
+    const InferenceInitializeConfiguration& inference_init_config =
+        config.inference_init_config();
+    // TODO: initialize inference_configuration_ in
+    // ReadWriteConfigurationRequest instead once it's implemented.
+    inference_configuration_.emplace(InferenceConfiguration{
+        .initialize_configuration = inference_init_config});
+    if (inference_init_config.model_init_config_case() ==
+        InferenceInitializeConfiguration::MODEL_INIT_CONFIG_NOT_SET) {
+      return absl::FailedPreconditionError(
+          "When FedSqlContainerInitializeConfiguration.inference_init_config "
+          "is set, InferenceInitializeConfiguration.model_init_config must be "
+          "set.");
+    }
+    if (inference_init_config.inference_config().model_config_case() ==
+        fcp::confidentialcompute::InferenceConfiguration::
+            MODEL_CONFIG_NOT_SET) {
+      return absl::FailedPreconditionError(
+          "When FedSqlContainerInitializeConfiguration.inference_init_config "
+          "is set, InferenceConfiguration.model_config must be set.");
+    }
+    for (const fcp::confidentialcompute::InferenceTask& inference_task :
+         inference_init_config.inference_config().inference_task()) {
+      if (inference_task.inference_logic_case() ==
+          fcp::confidentialcompute::InferenceTask::INFERENCE_LOGIC_NOT_SET) {
+        return absl::FailedPreconditionError(
+            "When FedSqlContainerInitializeConfiguration.inference_init_config "
+            "is set, InferenceConfiguration.inference_task.inference_logic "
+            "must be set for all inference tasks.");
+      }
+    }
+  }
+
+  return config_properties;
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
