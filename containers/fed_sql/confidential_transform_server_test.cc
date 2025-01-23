@@ -944,8 +944,10 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
       stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_FALSE(stream->Read(&configure_response));
-  ASSERT_EQ(stream->Finish().error_code(),
-            grpc::StatusCode::FAILED_PRECONDITION);
+  auto status = stream->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Initialize must be called before Session"));
 }
 
 std::string BuildFedSqlGroupByCheckpoint(

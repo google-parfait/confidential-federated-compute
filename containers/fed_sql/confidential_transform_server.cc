@@ -414,9 +414,6 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
   request->configuration().UnpackTo(&config);
 
   if (config.has_inference_init_config()) {
-    if (inference_configuration_ != std::nullopt) {
-      return absl::FailedPreconditionError("Not null error.");
-    }
     const InferenceInitializeConfiguration& inference_init_config =
         config.inference_init_config();
     // TODO: initialize inference_configuration_ in
