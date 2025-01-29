@@ -26,14 +26,14 @@ use core::{
     time::Duration,
 };
 use federated_compute::proto::{
-    access_budget::Kind as AccessBudgetKind, AccessBudget, DataAccessPolicy,
+    access_budget::Kind as AccessBudgetKind, AccessBudget, PipelineVariantPolicy,
 };
 use rangemap::map::RangeMap;
 
 pub type BlobRange = core::ops::Range<BlobId>;
 
 /// Range budget stores u32 budgets for a single policy node or
-/// single shared budget index in a DataAccessPolicy.
+/// single shared budget index in a PipelineVariantPolicy.
 /// If there is no entry in the map for any give BlobId, it is
 /// assumed that it has a default budget.
 #[derive(Debug, Default)]
@@ -175,7 +175,7 @@ struct PolicyBudget {
 }
 
 impl PolicyBudget {
-    fn new(policy: &DataAccessPolicy) -> Self {
+    fn new(policy: &PipelineVariantPolicy) -> Self {
         let mut transform_access_budgets = Vec::with_capacity(policy.transforms.len());
         for transform in &policy.transforms {
             transform_access_budgets.push(match transform.access_budget {
@@ -315,7 +315,7 @@ impl BudgetTracker {
     /// Finds the first matching transform in the policy and returns its index.
     pub fn find_matching_transform(
         node_id: u32,
-        policy: &DataAccessPolicy,
+        policy: &PipelineVariantPolicy,
         app: &Application,
         now: Duration,
     ) -> Result<usize, micro_rpc::Status> {
@@ -349,7 +349,7 @@ impl BudgetTracker {
     pub fn get_policy_budget<'a>(
         &'a mut self,
         policy_hash: &[u8],
-        policy: &'a DataAccessPolicy,
+        policy: &'a PipelineVariantPolicy,
         transform_index: usize,
     ) -> Result<PolicyBudgetTracker<'a>, micro_rpc::Status> {
         if transform_index >= policy.transforms.len() {
@@ -463,7 +463,7 @@ mod tests {
     use super::*;
     use crate::assert_err;
     use alloc::{borrow::ToOwned, boxed::Box, vec};
-    use federated_compute::proto::{data_access_policy::Transform, ApplicationMatcher};
+    use federated_compute::proto::{pipeline_variant_policy::Transform, ApplicationMatcher};
     use googletest::prelude::*;
 
     fn range(start: u128, end: u128) -> BlobRange {
@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn test_find_matching_transform_success() {
         let app = Application { tag: "foo", ..Default::default() };
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![
                 // This transform won't match because the src index is wrong.
                 Transform {
@@ -710,7 +710,7 @@ mod tests {
     #[test]
     fn test_find_matching_transform_multiple_matches() {
         let app = Application { tag: "foo", ..Default::default() };
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![
                 // This transform won't match because the src index is wrong.
                 Transform {
@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn test_find_matching_transform_no_match() {
         let app = Application { tag: "foo", ..Default::default() };
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 1,
                 application: Some(ApplicationMatcher {
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn test_get_policy_budget_with_invalid_transform_index() {
         let mut tracker = BudgetTracker::default();
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
@@ -823,7 +823,7 @@ mod tests {
     fn test_get_policy_budget_with_invalid_shared_budgets() {
         let mut tracker = BudgetTracker::default();
         // The second Transform has invalid shared_access_budget_indices.
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![
                 Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
                 Transform {
@@ -845,7 +845,7 @@ mod tests {
     #[test]
     fn test_update_budget() {
         let mut tracker = BudgetTracker::default();
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
@@ -886,7 +886,7 @@ mod tests {
         // Revoke access to one blob.
         tracker.revoke(&3.into());
 
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
@@ -915,7 +915,7 @@ mod tests {
     fn test_shared_budgets() {
         let mut tracker = BudgetTracker::default();
         // Two transforms share the same shared budget.
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![
                 Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
                 Transform { src: 1, shared_access_budget_indices: vec![0], ..Default::default() },
@@ -955,7 +955,7 @@ mod tests {
     #[test]
     fn test_policy_isolation() {
         let mut tracker = BudgetTracker::default();
-        let policy1 = DataAccessPolicy {
+        let policy1 = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget {
@@ -979,7 +979,7 @@ mod tests {
         policy_budget1.update_budget(&range(0, 5));
         assert_eq!(policy_budget1.has_budget(&3.into()), false);
 
-        let policy2 = DataAccessPolicy {
+        let policy2 = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget {
@@ -1006,7 +1006,7 @@ mod tests {
     #[test]
     fn test_updated_budget_snapshot() {
         let mut tracker = BudgetTracker::default();
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
@@ -1050,7 +1050,7 @@ mod tests {
     #[test]
     fn test_revoked_budget_snapshot() {
         let mut tracker = BudgetTracker::default();
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
@@ -1162,7 +1162,7 @@ mod tests {
     #[test]
     fn test_load_snapshot_replaces_state() {
         let mut tracker = BudgetTracker::default();
-        let policy = DataAccessPolicy {
+        let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
                 src: 0,
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),

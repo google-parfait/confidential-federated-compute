@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #![no_std]
+// TODO: b/392802991 - Remove this once usage of the deprecated DataAccessPolicy
+// fields are removed.
+#![allow(deprecated)]
 
 extern crate alloc;
 
@@ -34,9 +37,10 @@ use coset::{
     CoseSign1Builder, Header,
 };
 use federated_compute::proto::{
-    authorize_access_response::AuthorizedBlobKeys, AuthorizeAccessRequest, AuthorizeAccessResponse,
-    BlobHeader, CreateKeyRequest, CreateKeyResponse, DataAccessPolicy, DeleteKeyRequest,
-    DeleteKeyResponse, Ledger, RevokeAccessRequest, RevokeAccessResponse, Status,
+    authorize_access_response::AuthorizedBlobKeys, pipeline_variant_policy, AuthorizeAccessRequest,
+    AuthorizeAccessResponse, BlobHeader, CreateKeyRequest, CreateKeyResponse, DataAccessPolicy,
+    DeleteKeyRequest, DeleteKeyResponse, Ledger, LogicalPipelinePolicy, PipelineVariantPolicy,
+    RevokeAccessRequest, RevokeAccessResponse, Status,
 };
 use hashbrown::HashSet;
 use hpke::{Deserializable, Serializable};
@@ -137,6 +141,79 @@ impl LedgerService {
             .build()
             .to_vec()
             .map_err(anyhow::Error::msg)
+    }
+
+    /// Converts a legacy DataAccessPolicy with root-level Transforms to a
+    /// modern DataAccessPolicy with a single LogicalPipelinePolicy containing a
+    /// single PipelineVariantPolicy.
+    fn convert_legacy_policy_to_modern(legacy_policy: DataAccessPolicy) -> DataAccessPolicy {
+        // Create a new PipelineVariantPolicy from the legacy fields.
+        let new_pipeline_variant = PipelineVariantPolicy {
+            transforms: legacy_policy
+                .transforms
+                .into_iter()
+                .map(|legacy_transform| {
+                    // Convert legacy DataAccessPolicy::Transform to
+                    // PipelineVariantPolicy::Transform.
+                    pipeline_variant_policy::Transform {
+                        src: legacy_transform.src,
+                        application: legacy_transform.application,
+                        access_budget: legacy_transform.access_budget,
+                        shared_access_budget_indices: legacy_transform.shared_access_budget_indices,
+                    }
+                })
+                .collect(),
+            shared_access_budgets: legacy_policy.shared_access_budgets,
+        };
+
+        // Create a new LogicalPipelinePolicy with the new PipelineVariantPolicy.
+        let new_logical_pipeline = LogicalPipelinePolicy { instances: vec![new_pipeline_variant] };
+
+        // Create a new DataAccessPolicy with the new LogicalPipelinePolicy.
+        DataAccessPolicy {
+            pipelines: BTreeMap::from([("LOGICAL_PIPELINE".into(), new_logical_pipeline)]),
+            ..Default::default()
+        }
+    }
+
+    /// Given a modern DataAccessPolicy, extract the PipelineVariantPolicy.
+    /// The ledger currently only supports DataAccessPolicies with a single
+    /// LogicalPipelinePolicy with a single PipelineVariantPolicy.
+    fn extract_pipeline_variant(
+        policy: &DataAccessPolicy,
+    ) -> Result<&PipelineVariantPolicy, micro_rpc::Status> {
+        // Ensure there's exactly one LogicalPipelinePolicy.
+        if policy.pipelines.len() != 1 {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "DataAccessPolicy must have a single LogicalPipelinePolicy.",
+            ));
+        }
+
+        // Get the first LogicalPipelinePolicy in the map.
+        let logical_pipeline = policy.pipelines.values().next().ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::Internal,
+                "Failed to get the first LogicalPipelinePolicy.",
+            )
+        })?;
+
+        // Ensure there's exactly one PipelineVariantPolicy.
+        if logical_pipeline.instances.len() != 1 {
+            return Err(micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::InvalidArgument,
+                "The LogicalPipelinePolicy must have a single PipelineVariantPolicy.",
+            ));
+        }
+
+        // Get the first (and only) PipelineVariantPolicy.
+        // Clone the PipelineVariantPolicy to return an owned value.
+        logical_pipeline.instances.first().ok_or_else(|| {
+            micro_rpc::Status::new_with_message(
+                micro_rpc::StatusCode::Internal,
+                "Failed to get the first PipelineVariantPolicy.",
+            )
+        })
     }
 
     /// Initiates handling of CreateKeyRequest and produces CreateKeyEvent that
@@ -280,13 +357,22 @@ impl LedgerService {
         })?;
 
         // Decode the access policy.
-        let access_policy =
-            DataAccessPolicy::decode(request.access_policy.as_ref()).map_err(|err| {
+        let mut decoded_access_policy = DataAccessPolicy::decode(request.access_policy.as_ref())
+            .map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("failed to parse access policy: {:?}", err),
                 )
             })?;
+
+        // If it's still a legacy policy, convert it to a modern policy. From this point
+        // onward, we'll only consider the decoded_access_policy.pipelines field, and
+        // ignore all of the deprecated DataAccessPolicy fields.
+        if decoded_access_policy.pipelines.is_empty() {
+            decoded_access_policy = Self::convert_legacy_policy_to_modern(decoded_access_policy);
+        }
+
+        let access_policy = decoded_access_policy;
 
         // Find the right `access_policy_node_id`.
         // TODO: Modify AuthorizeAccessRequest to include the `access_policy_node_id` as
@@ -339,10 +425,12 @@ impl LedgerService {
             ));
         }
 
+        let pipeline_variant_policy = Self::extract_pipeline_variant(&access_policy)?;
+
         // Verify that the access is authorized and get the first matching transform.
         let transform_index = BudgetTracker::find_matching_transform(
             access_policy_node_id.unwrap(),
-            &access_policy,
+            &pipeline_variant_policy,
             &recipient_app,
             self.current_time,
         )?;
@@ -404,13 +492,21 @@ impl LedgerService {
         let access_policy_sha256 = Sha256::digest(&event.access_policy).to_vec();
 
         // Decode the access policy.
-        let access_policy =
-            DataAccessPolicy::decode(event.access_policy.as_ref()).map_err(|err| {
+        let mut decoded_access_policy = DataAccessPolicy::decode(event.access_policy.as_ref())
+            .map_err(|err| {
                 micro_rpc::Status::new_with_message(
                     micro_rpc::StatusCode::InvalidArgument,
                     format!("failed to parse access policy: {:?}", err),
                 )
             })?;
+
+        // If it's still a legacy policy, convert it to a modern policy. From this point
+        // onward, we'll only consider the decoded_access_policy.pipelines field, and
+        // ignore all of the deprecated DataAccessPolicy fields.
+        if decoded_access_policy.pipelines.is_empty() {
+            decoded_access_policy = Self::convert_legacy_policy_to_modern(decoded_access_policy);
+        }
+        let pipeline_variant_policy = Self::extract_pipeline_variant(&decoded_access_policy)?;
 
         // Parse the blob range or derive it from blob_id if there is exactly one blob.
         let blob_range = match event.blob_range {
@@ -474,7 +570,7 @@ impl LedgerService {
         for i in 0..blob_metadata.len() {
             match self.authorize_blob_access(
                 &blob_metadata[i],
-                &access_policy,
+                &pipeline_variant_policy,
                 &access_policy_sha256,
                 event.transform_index.try_into().unwrap(),
                 &mut blob_ids,
@@ -538,14 +634,14 @@ impl LedgerService {
             }
             let mut policy_budget_tracker = per_key_ledger.budget_tracker.get_policy_budget(
                 &access_policy_sha256,
-                &access_policy,
+                &pipeline_variant_policy,
                 event.transform_index.try_into().unwrap(),
             )?;
             // Per key, update the budget once for the entire range.
             policy_budget_tracker.update_budget(&blob_range);
         }
 
-        if (num_authorized_blobs != blob_metadata.len()) {
+        if num_authorized_blobs != blob_metadata.len() {
             return Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::FailedPrecondition,
                 "num_authorized_blobs must match blob_metadata.len(). This is likely an internal bug.",
@@ -585,7 +681,7 @@ impl LedgerService {
     fn authorize_blob_access(
         &mut self,
         blob: &BlobMetadata,
-        access_policy: &DataAccessPolicy,
+        access_policy: &PipelineVariantPolicy,
         access_policy_sha256: &Vec<u8>,
         transform_index: usize,
         blob_ids: &mut HashSet<BlobId>,
@@ -1254,6 +1350,82 @@ mod tests {
         );
     }
 
+    // Uses the new schema for DataAccessPolicies
+    #[test]
+    fn test_authorize_access_authorized_logical_pipelines() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        // Define an access policy that grants access.
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            pipelines: {
+                BTreeMap::from([(
+                    "LOGICAL_PIPELINE".into(),
+                    LogicalPipelinePolicy {
+                        instances: vec![PipelineVariantPolicy {
+                            transforms: vec![pipeline_variant_policy::Transform {
+                                application: Some(ApplicationMatcher {
+                                    tag: Some(recipient_tag.to_owned()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let recipient_nonce: &[u8] = b"nonce";
+        let response = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: recipient_tag.to_owned(),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
+        assert_eq!(response.reencryption_public_key, public_key);
+        assert_eq!(
+            cfc_crypto::decrypt_message(
+                &ciphertext,
+                &blob_header,
+                &response.encrypted_symmetric_key,
+                &[&response.reencryption_public_key, recipient_nonce].concat(),
+                &response.encapsulated_key,
+                &recipient_private_key
+            )
+            .unwrap(),
+            plaintext
+        );
+    }
+
     #[test]
     fn test_authorize_access_invalid_evidence() {
         let (mut ledger, public_key) = create_ledger_service();
@@ -1852,6 +2024,353 @@ mod tests {
             }),
             micro_rpc::StatusCode::InvalidArgument,
             "failed to parse access policy"
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_access_policy_more_than_one_logical_pipeline() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        let recipient_tag_1 = "tag1";
+        let recipient_tag_2 = "tag2";
+
+        let access_policy = DataAccessPolicy {
+            pipelines: {
+                BTreeMap::from([
+                    (
+                        "LOGICAL_PIPELINE_1".into(),
+                        LogicalPipelinePolicy {
+                            instances: vec![PipelineVariantPolicy {
+                                transforms: vec![pipeline_variant_policy::Transform {
+                                    application: Some(ApplicationMatcher {
+                                        tag: Some(recipient_tag_1.to_owned()),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        "LOGICAL_PIPELINE_2".into(),
+                        LogicalPipelinePolicy {
+                            instances: vec![PipelineVariantPolicy {
+                                transforms: vec![pipeline_variant_policy::Transform {
+                                    application: Some(ApplicationMatcher {
+                                        tag: Some(recipient_tag_2.to_owned()),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        },
+                    ),
+                ])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.to_vec(),
+                blob_header: blob_header,
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".into(),
+                recipient_nonce: "nonce".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "DataAccessPolicy must have a single LogicalPipelinePolicy."
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_access_policy_more_than_one_pipeline_variant() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        let recipient_tag_1 = "tag1";
+        let recipient_tag_2 = "tag2";
+
+        let access_policy = DataAccessPolicy {
+            pipelines: {
+                BTreeMap::from([(
+                    "LOGICAL_PIPELINE".into(),
+                    LogicalPipelinePolicy {
+                        instances: vec![
+                            PipelineVariantPolicy {
+                                transforms: vec![pipeline_variant_policy::Transform {
+                                    application: Some(ApplicationMatcher {
+                                        tag: Some(recipient_tag_1.to_owned()),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            },
+                            PipelineVariantPolicy {
+                                transforms: vec![pipeline_variant_policy::Transform {
+                                    application: Some(ApplicationMatcher {
+                                        tag: Some(recipient_tag_2.to_owned()),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                )])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.to_vec(),
+                blob_header: blob_header,
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".into(),
+                recipient_nonce: "nonce".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "The LogicalPipelinePolicy must have a single PipelineVariantPolicy."
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_invalid_access_policy_no_pipeline_variants() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        let access_policy = DataAccessPolicy {
+            pipelines: {
+                BTreeMap::from([(
+                    "LOGICAL_PIPELINE".to_owned(),
+                    LogicalPipelinePolicy {
+                        instances: vec![], // Empty vector for no variants
+                        ..Default::default()
+                    },
+                )])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(b"plaintext", &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.to_vec(),
+                blob_header: blob_header,
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".into(),
+                recipient_nonce: "nonce".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::InvalidArgument,
+            "The LogicalPipelinePolicy must have a single PipelineVariantPolicy."
+        );
+    }
+
+    #[test]
+    fn test_legacy_authorizes_access_but_pipline_does_not_is_disallowed() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        let legacy_policy_tag = "should_fail";
+        let modern_policy_tag = "should_succeed";
+        // Legacy fields in access policy grants access to the used tag, but
+        // the modern policy does not so we should fail.
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(legacy_policy_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            pipelines: {
+                BTreeMap::from([(
+                    "LOGICAL_PIPELINE".into(),
+                    LogicalPipelinePolicy {
+                        instances: vec![PipelineVariantPolicy {
+                            transforms: vec![pipeline_variant_policy::Transform {
+                                application: Some(ApplicationMatcher {
+                                    tag: Some(modern_policy_tag.to_owned()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_ciphertext, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        assert_err!(
+            ledger.authorize_access(AuthorizeAccessRequest {
+                access_policy: access_policy.to_vec(),
+                blob_header: blob_header,
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: legacy_policy_tag.into(),
+                recipient_nonce: "nonce".into(),
+                ..Default::default()
+            }),
+            micro_rpc::StatusCode::FailedPrecondition,
+            "requesting application does not match the access policy"
+        );
+    }
+
+    #[test]
+    fn test_legacy_does_not_authorize_access_but_pipline_does_is_allowed() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+
+        let legacy_policy_tag = "should_fail";
+        let modern_policy_tag = "should_succeed";
+        // Legacy fields in access policy does not grant access to the used tag,
+        // but the modern policy does so we should pass.
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(legacy_policy_tag.to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            pipelines: {
+                BTreeMap::from([(
+                    "LOGICAL_PIPELINE".into(),
+                    LogicalPipelinePolicy {
+                        instances: vec![PipelineVariantPolicy {
+                            transforms: vec![pipeline_variant_policy::Transform {
+                                application: Some(ApplicationMatcher {
+                                    tag: Some(modern_policy_tag.to_owned()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )])
+            },
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct a client message.
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: "blob-id".into(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (ciphertext, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Request access.
+        let (recipient_private_key, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+        let recipient_nonce: &[u8] = b"nonce";
+        let response = ledger
+            .authorize_access(AuthorizeAccessRequest {
+                access_policy,
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_public_key: create_recipient_cwt(recipient_public_key),
+                recipient_tag: modern_policy_tag.into(),
+                recipient_nonce: recipient_nonce.to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Verify that the response contains the right public key and allows the message
+        // to be read.
+        assert_eq!(response.reencryption_public_key, public_key);
+        assert_eq!(
+            cfc_crypto::decrypt_message(
+                &ciphertext,
+                &blob_header,
+                &response.encrypted_symmetric_key,
+                &[&response.reencryption_public_key, recipient_nonce].concat(),
+                &response.encapsulated_key,
+                &recipient_private_key
+            )
+            .unwrap(),
+            plaintext
         );
     }
 
