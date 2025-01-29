@@ -333,44 +333,79 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
   StatementFinalizer finalizer(stmt);
 
   FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
+  table_schema_.emplace(std::move(schema));
+  return absl::OkStatus();
+}
 
-  std::vector<std::string> column_names(schema.column_size());
-  for (int i = 0; i < schema.column_size(); ++i) {
-    column_names[i] = schema.column(i).name();
+absl::Status SqliteAdapter::InsertRows(
+    const std::vector<TensorColumn>& contents, int start_row_index,
+    int end_row_index, absl::string_view insert_stmt) {
+  sqlite3_stmt* stmt;
+  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
+      db_, insert_stmt.data(), insert_stmt.size(), &stmt, nullptr)));
+  StatementFinalizer finalizer(stmt);
+
+  int ordinal = 1;
+  for (int row_num = start_row_index; row_num < end_row_index; ++row_num) {
+    for (int col_num = 0; col_num < contents.size(); ++col_num) {
+      FCP_RETURN_IF_ERROR(BindSqliteParameter(
+          stmt, ordinal, row_num, contents.at(col_num), result_handler_));
+      ordinal++;
+    }
   }
-
-  insert_stmt_ = absl::StrFormat(
-      "INSERT INTO %s (%s) VALUES (%s);", schema.name(),
-      absl::StrJoin(column_names, ", ", &EscapeSqlColumnName),
-      absl::StrJoin(std::vector<std::string>(schema.column_size(), "?"), ", "));
+  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
+  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_reset(stmt)));
+  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_clear_bindings(stmt)));
 
   return absl::OkStatus();
 }
 
-absl::Status SqliteAdapter::AddTableContents(std::vector<TensorColumn> contents,
-                                             int num_rows) {
-  if (!insert_stmt_.has_value()) {
+absl::Status SqliteAdapter::AddTableContents(
+    const std::vector<TensorColumn>& contents, int num_rows) {
+  if (!table_schema_.has_value()) {
     return absl::InvalidArgumentError(
         "`DefineTable` must be called before adding to the table contents.");
   }
-  FCP_RETURN_IF_ERROR(ValidateInputColumns(contents, num_rows));
-  // Insert each row into the table, using parameterized query syntax:
-  // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ?);
-  sqlite3_stmt* stmt;
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(
-      sqlite3_prepare_v2(db_, insert_stmt_.value().data(),
-                         insert_stmt_.value().size(), &stmt, nullptr)));
-  StatementFinalizer finalizer(stmt);
-
-  for (int row_num = 0; row_num < num_rows; ++row_num) {
-    for (int col_num = 0; col_num < contents.size(); ++col_num) {
-      FCP_RETURN_IF_ERROR(BindSqliteParameter(
-          stmt, col_num + 1, row_num, contents.at(col_num), result_handler_));
-    }
-    FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
-    FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_reset(stmt)));
-    FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_clear_bindings(stmt)));
+  if (num_rows == 0) {
+    return absl::OkStatus();
   }
+  FCP_RETURN_IF_ERROR(ValidateInputColumns(contents, num_rows));
+
+  // Insert each row into the table, using parameterized query syntax:
+  // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ...), (?, ?, ...), ...;
+  std::vector<std::string> column_names(table_schema_->column_size());
+  for (int i = 0; i < table_schema_->column_size(); ++i) {
+    column_names[i] = table_schema_->column(i).name();
+  }
+  std::string row_template = absl::StrFormat(
+      "(%s)",
+      absl::StrJoin(std::vector<std::string>(table_schema_->column_size(), "?"),
+                    ", "));
+  std::string insert_stmt_prefix =
+      absl::StrFormat("INSERT INTO %s (%s) VALUES ", table_schema_->name(),
+                      absl::StrJoin(column_names, ", ", &EscapeSqlColumnName));
+
+  // Determine how many rows we can insert at once without exceeding the
+  // limit on the number of variables in a SQLite statement
+  int full_batch_size = kSqliteVariableLimit / column_names.size();
+
+  std::string insert_stmt;
+  int current_row = 0;
+  int batch_size = 0;
+  while (current_row < num_rows) {
+    int next_batch_size = std::min(full_batch_size, num_rows - current_row);
+    if (next_batch_size != batch_size) {
+      batch_size = next_batch_size;
+      insert_stmt = absl::StrCat(
+          insert_stmt_prefix,
+          absl::StrJoin(
+              std::vector<absl::string_view>(batch_size, row_template), ", "));
+    }
+    FCP_RETURN_IF_ERROR(InsertRows(contents, current_row,
+                                   current_row + batch_size, insert_stmt));
+    current_row += batch_size;
+  }
+
   return absl::OkStatus();
 }
 

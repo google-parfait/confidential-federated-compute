@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
 package(default_visibility = ["//:__subpackages__"])
 
 cc_library(
@@ -43,9 +45,28 @@ cc_test(
         "@com_google_absl//absl/log:check",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+        "@sqlite",
+    ],
+)
+
+cc_test(
+    name = "sqlite_adapter_bm",
+    size = "small",
+    srcs = ["sqlite_adapter_bm.cc"],
+    tags = ["manual"],
+    deps = [
+        ":sqlite_adapter",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@google_benchmark//:benchmark",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@sqlite",
     ],
 )
