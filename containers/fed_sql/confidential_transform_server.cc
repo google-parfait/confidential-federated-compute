@@ -36,6 +36,7 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "gemma/gemma.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
