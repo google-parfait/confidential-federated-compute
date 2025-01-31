@@ -412,3 +412,51 @@ http_archive(
     strip_prefix = "differential-privacy-3.0.0",
     url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
 )
+
+# The following enables the use of the library functions in the gemma.cpp
+# github repo.
+
+http_archive(
+    name = "darts_clone",
+    build_file_content = """
+licenses(["notice"])
+exports_files(["LICENSE"])
+package(default_visibility = ["//visibility:public"])
+cc_library(
+    name = "darts_clone",
+    hdrs = [
+        "include/darts.h",
+    ],
+)
+""",
+    sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
+    strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
+    urls = [
+        "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
+    ],
+)
+
+http_archive(
+    name = "com_google_sentencepiece",
+    build_file = "@gemma//bazel:sentencepiece.bazel",
+    patch_args = ["-p1"],
+    patches = ["@gemma//bazel:sentencepiece.patch"],
+    repo_mapping = {"@abseil-cpp": "@com_google_absl"},
+    sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
+    strip_prefix = "sentencepiece-0.1.96",
+    urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],
+)
+
+http_archive(
+    name = "highway",
+    sha256 = "eb07b6c8b9fc23cca4e2e166e30937ff4a13811d48f59ba87f2d2499470d4a63",
+    strip_prefix = "highway-2b565e87d50b151660494624af532ac0b6076c79",
+    urls = ["https://github.com/google/highway/archive/2b565e87d50b151660494624af532ac0b6076c79.tar.gz"],
+)
+
+http_archive(
+    name = "gemma",
+    sha256 = "7214b55ad0a5555f8e1f5ed29aeee5488419ca0e9dff800ffdfd59fea4a5a1ca",
+    strip_prefix = "gemma.cpp-9dfe2a76be63bcfe679b94335f171674420f92e8",
+    url = "https://github.com/google/gemma.cpp/archive/9dfe2a76be63bcfe679b94335f171674420f92e8.tar.gz",
+)
