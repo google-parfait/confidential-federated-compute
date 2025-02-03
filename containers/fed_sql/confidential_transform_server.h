@@ -18,6 +18,7 @@
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
@@ -39,6 +40,18 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 
 namespace confidential_federated_compute::fed_sql {
+
+// Configuration of the per-client inference step, occurring before the
+// per-client query step.
+struct GemmaConfiguration {
+  std::string tokenizer_path;
+  std::string model_weight_path;
+};
+struct InferenceConfiguration {
+  fcp::confidentialcompute::InferenceInitializeConfiguration
+      initialize_configuration;
+  std::optional<GemmaConfiguration> gemma_configuration;
+};
 
 // ConfidentialTransform service for Federated SQL. Executes the aggregation
 // step of FedSQL.
@@ -64,21 +77,12 @@ class FedSqlConfidentialTransform final
       const fcp::confidentialcompute::InitializeRequest* request) override;
   virtual absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
-          write_configuration) override {
-    return absl::OkStatus();
-  }
+          write_configuration) override;
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
 
  private:
-  // Configuration of the per-client inference step, occurring before the
-  // per-client query step.
-  struct InferenceConfiguration {
-    fcp::confidentialcompute::InferenceInitializeConfiguration
-        initialize_configuration;
-    // TODO: Add Gemma model weight and tokenizer.
-  };
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
@@ -87,7 +91,18 @@ class FedSqlConfidentialTransform final
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
-  std::optional<const InferenceConfiguration> inference_configuration_;
+  std::optional<InferenceConfiguration> inference_configuration_;
+  // Track the configuration ID of the current data blob passed to container
+  // through `ReadWriteConfigurationRequest`.
+  std::string current_configuration_id_;
+  // Tracking data passed into the container through WriteConfigurationRequest.
+  struct WriteConfigurationMetadata {
+    std::string file_path;
+    uint64_t total_size_bytes;
+    bool commit;
+  };
+  absl::flat_hash_map<std::string, WriteConfigurationMetadata>
+      write_configuration_map_;
 };
 
 // FedSql implementation of Session interface. Not threadsafe.

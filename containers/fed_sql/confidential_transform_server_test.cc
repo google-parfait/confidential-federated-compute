@@ -13,11 +13,14 @@
 // limitations under the License.
 #include "containers/fed_sql/confidential_transform_server.h"
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
@@ -62,6 +65,7 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::ConfigurationMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::DatabaseSchema;
@@ -196,6 +200,14 @@ SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
   write_request->set_commit(true);
   write_request->set_data(data);
   return request;
+}
+
+std::string ReadFileContent(std::string file_path) {
+  std::ifstream temp_file(file_path);
+  std::stringstream buffer;
+  buffer << temp_file.rdbuf();
+  temp_file.close();
+  return buffer.str();
 }
 
 class FedSqlServerTest : public Test {
@@ -472,7 +484,7 @@ TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
 TEST_F(FedSqlServerTest, ValidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
+  StreamInitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -526,15 +538,81 @@ TEST_F(FedSqlServerTest, ValidStreamInitialize) {
       }
     }
   )pb");
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      init_config);
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  // Set tokenizer data blob.
+  std::string expected_tokenizer_content = "test tokenizer content";
+  StreamInitializeRequest tokenizer_write_config;
+  ConfigurationMetadata* tokenizer_metadata =
+      tokenizer_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
+  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
+  // tokenizer_content is 22 bytes in size.
+  absl::Cord tokenizer_content(expected_tokenizer_content);
+  tokenizer_metadata->set_total_size_bytes(tokenizer_content.size());
+  std::string tokenizer_content_string;
+  absl::CopyCordToString(tokenizer_content, &tokenizer_content_string);
+  tokenizer_write_config.mutable_write_configuration()->set_data(
+      tokenizer_content_string);
+
+  // Set up model weight data blob.
+  // Reuse data for the first and second WriteConfigurationRequest for the model
+  // weight blob.
+  std::string expected_model_weight_content = "test first model weight content";
+  absl::Cord model_weight_content(expected_model_weight_content);
+  std::string model_weight_content_string;
+  absl::CopyCordToString(model_weight_content, &model_weight_content_string);
+
+  // Set the first WriteConfigurationRequest for the model weight data blob.
+  StreamInitializeRequest first_model_weight_write_config;
+  ConfigurationMetadata* first_model_weight_metadata =
+      first_model_weight_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  // model_weight_content is sent twice. Each model_weight_content is 31 bytes
+  // in size. Total size is 62 bytes.
+  first_model_weight_metadata->set_total_size_bytes(
+      model_weight_content.size() * 2);
+  first_model_weight_metadata->set_configuration_id("gemma_model_weight_id");
+
+  first_model_weight_write_config.mutable_write_configuration()->set_data(
+      model_weight_content_string);
+
+  // Set the second WriteConfigurationRequest for the model weight data blob.
+  StreamInitializeRequest second_model_weight_write_config;
+  second_model_weight_write_config.mutable_write_configuration()->set_commit(
+      true);
+  second_model_weight_write_config.mutable_write_configuration()->set_data(
+      model_weight_content_string);
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(first_model_weight_write_config));
+  ASSERT_TRUE(writer->Write(second_model_weight_write_config));
+  ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
   ASSERT_TRUE(writer->Finish().ok());
+
+  // Assert inference files are written to /tmp/ directory.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  std::string tokenizer_file_content =
+      ReadFileContent("/tmp/write_configuration_1");
+  ASSERT_EQ(expected_tokenizer_content, tokenizer_file_content);
+
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_2"));
+  std::string model_weight_file_content =
+      ReadFileContent("/tmp/write_configuration_2");
+  ASSERT_EQ(absl::StrCat(expected_model_weight_content,
+                         expected_model_weight_content),
+            model_weight_file_content);
+  // Remove inference files after assertions.
+  std::filesystem::remove("/tmp/write_configuration_1");
+  std::filesystem::remove("/tmp/write_configuration_2");
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_TRUE(cwt.ok());
@@ -747,6 +825,447 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
   ASSERT_THAT(status.error_message(),
               HasSubstr("inference_task.inference_logic must be set for all "
                         "inference tasks."));
+}
+
+TEST_F(FedSqlServerTest,
+       StreamInitializeWriteConfigurationRequestNotCommitted) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  StreamInitializeRequest write_configuration;
+  ConfigurationMetadata* metadata =
+      write_configuration.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  metadata->set_configuration_id("gemma_tokenizer_id");
+  metadata->set_total_size_bytes(0);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(write_configuration));
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
+                        "not committed."));
+}
+
+TEST_F(FedSqlServerTest,
+       StreamInitializeInvalidGemmaToekenizerConfigurationId) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  StreamInitializeRequest write_configuration;
+  ConfigurationMetadata* metadata =
+      write_configuration.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  metadata->set_configuration_id("invalid_configuration_id");
+  metadata->set_total_size_bytes(0);
+  write_configuration.mutable_write_configuration()->set_commit(true);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(write_configuration));
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr("Expected Gemma tokenizer configuration id "
+                "gemma_tokenizer_id is missing in WriteConfigurationRequest."));
+}
+
+TEST_F(FedSqlServerTest,
+       StreamInitializeInvalidGemmaModelWeightConfigurationId) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  StreamInitializeRequest tokenizer_write_config;
+  ConfigurationMetadata* tokenizer_metadata =
+      tokenizer_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
+  tokenizer_metadata->set_total_size_bytes(0);
+  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
+
+  StreamInitializeRequest model_weight_write_config;
+  ConfigurationMetadata* model_weight_metadata =
+      model_weight_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  model_weight_metadata->set_configuration_id("invalid_gemma_model_weight_id");
+  model_weight_metadata->set_total_size_bytes(0);
+  model_weight_write_config.mutable_write_configuration()->set_commit(true);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(model_weight_write_config));
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Expected Gemma model weight configuration id "
+          "gemma_model_weight_id is missing in WriteConfigurationRequest."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  StreamInitializeRequest tokenizer_write_config;
+  ConfigurationMetadata* tokenizer_metadata =
+      tokenizer_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
+  tokenizer_metadata->set_total_size_bytes(0);
+  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Duplicated configuration_id found in WriteConfigurationRequest"));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+    inference_init_config {
+      inference_config {
+        inference_task: {
+          column_config {
+            input_column_name: "transcript"
+            output_column_name: "topic"
+          }
+          prompt { prompt_template: "Hello, {{transcript}}" }
+        }
+        gemma_config {
+          tokenizer_file: "/path/to/tokenizer"
+          model_weight_file: "/path/to/model_weight"
+          model: GEMMA_2B
+          model_training: GEMMA_IT
+          tensor_type: GEMMA_SFP
+        }
+      }
+      gemma_init_config {
+        tokenizer_configuration_id: "gemma_tokenizer_id"
+        model_weight_configuration_id: "gemma_model_weight_id"
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  // Set tokenizer data blob.
+  StreamInitializeRequest write_configuration;
+  ConfigurationMetadata* metadata =
+      write_configuration.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  metadata->set_configuration_id("gemma_tokenizer_id");
+  write_configuration.mutable_write_configuration()->set_commit(true);
+  // The size of this cord should be 22.
+  absl::Cord tokenizer_content("fake tokenizer content");
+  metadata->set_total_size_bytes(100);
+  std::string tokenizer_content_string;
+  absl::CopyCordToString(tokenizer_content, &tokenizer_content_string);
+  write_configuration.mutable_write_configuration()->set_data(
+      tokenizer_content_string);
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(write_configuration));
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("The total size of the data blob does not match "
+                        "expected size. Expecting 100, got 22"));
+  // Assert inference files are written to /tmp/ directory.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  // Remove inference files after assertions.
+  std::filesystem::remove("/tmp/write_configuration_1");
 }
 
 TEST_F(FedSqlServerTest, InvalidConfigureRequest) {

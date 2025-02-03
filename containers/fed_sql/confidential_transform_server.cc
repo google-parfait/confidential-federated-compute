@@ -14,6 +14,8 @@
 #include "containers/fed_sql/confidential_transform_server.h"
 
 #include <execution>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,6 +26,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/sensitive_columns.h"
@@ -161,6 +164,30 @@ absl::StatusOr<Record> EncryptSessionResult(
                                      .reencryption_public_key(),
                                  previous_header.access_policy_sha256(),
                                  output_access_policy_node_id);
+}
+
+std::string CreateTempFilePath(std::string directory,
+                               std::string basename_prefix,
+                               uint32_t basename_id) {
+  // Created temp file will be in <directory>/<basename_prefix>_<basename_id>.
+  return absl::StrCat(directory, "/", basename_prefix, "_",
+                      std::to_string(basename_id));
+}
+
+absl::Status AppendBytesToTempFile(std::string& file_path,
+                                   std::ios_base::openmode mode,
+                                   const char* data,
+                                   std::streamsize data_size) {
+  // Write or append binary content to file depending on mode.
+  std::ofstream temp_file(file_path, mode);
+  if (!temp_file.is_open()) {
+    return absl::DataLossError(
+        absl::StrCat("Failed to open temp file for writing: ", file_path));
+  }
+  temp_file.write(data, data_size);
+  LOG(INFO) << "Wrote " << data_size << " bytes to " << file_path;
+  temp_file.close();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -414,40 +441,155 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
   FedSqlContainerInitializeConfiguration config;
   request->configuration().UnpackTo(&config);
 
-  if (config.has_inference_init_config()) {
-    const InferenceInitializeConfiguration& inference_init_config =
-        config.inference_init_config();
-    // TODO: initialize inference_configuration_ in
-    // ReadWriteConfigurationRequest instead once it's implemented.
-    inference_configuration_.emplace(InferenceConfiguration{
-        .initialize_configuration = inference_init_config});
-    if (inference_init_config.model_init_config_case() ==
-        InferenceInitializeConfiguration::MODEL_INIT_CONFIG_NOT_SET) {
-      return absl::FailedPreconditionError(
-          "When FedSqlContainerInitializeConfiguration.inference_init_config "
-          "is set, InferenceInitializeConfiguration.model_init_config must be "
-          "set.");
-    }
-    if (inference_init_config.inference_config().model_config_case() ==
-        fcp::confidentialcompute::InferenceConfiguration::
-            MODEL_CONFIG_NOT_SET) {
-      return absl::FailedPreconditionError(
-          "When FedSqlContainerInitializeConfiguration.inference_init_config "
-          "is set, InferenceConfiguration.model_config must be set.");
-    }
-    for (const fcp::confidentialcompute::InferenceTask& inference_task :
-         inference_init_config.inference_config().inference_task()) {
-      if (inference_task.inference_logic_case() ==
-          fcp::confidentialcompute::InferenceTask::INFERENCE_LOGIC_NOT_SET) {
-        return absl::FailedPreconditionError(
-            "When FedSqlContainerInitializeConfiguration.inference_init_config "
-            "is set, InferenceConfiguration.inference_task.inference_logic "
-            "must be set for all inference tasks.");
-      }
+  // Check that all data blobs passed in through WriteConfigurationRequest are
+  // committed.
+  for (const auto& [config_id, config_metadata] : write_configuration_map_) {
+    if (!config_metadata.commit) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Data blob with configuration_id ", config_id, " is not committed."));
     }
   }
 
+  // Early return if there is no inference configuration.
+  if (!config.has_inference_init_config()) {
+    return config_properties;
+  }
+
+  const InferenceInitializeConfiguration& inference_init_config =
+      config.inference_init_config();
+
+  if (inference_init_config.model_init_config_case() ==
+      InferenceInitializeConfiguration::MODEL_INIT_CONFIG_NOT_SET) {
+    return absl::FailedPreconditionError(
+        "When FedSqlContainerInitializeConfiguration.inference_init_config is "
+        "set, InferenceInitializeConfiguration.model_init_config must be set.");
+  }
+  if (inference_init_config.inference_config().model_config_case() ==
+      fcp::confidentialcompute::InferenceConfiguration::MODEL_CONFIG_NOT_SET) {
+    return absl::FailedPreconditionError(
+        "When FedSqlContainerInitializeConfiguration.inference_init_config is "
+        "set, InferenceConfiguration.model_config must be set.");
+  }
+  for (const fcp::confidentialcompute::InferenceTask& inference_task :
+       inference_init_config.inference_config().inference_task()) {
+    if (inference_task.inference_logic_case() ==
+        fcp::confidentialcompute::InferenceTask::INFERENCE_LOGIC_NOT_SET) {
+      return absl::FailedPreconditionError(
+          "When FedSqlContainerInitializeConfiguration.inference_init_config "
+          "is set, InferenceConfiguration.inference_task.inference_logic must "
+          "be set for all inference tasks.");
+    }
+  }
+
+  // Populate inference_configuration_.initialize_configuration.
+  inference_configuration_.emplace();
+  inference_configuration_->initialize_configuration = inference_init_config;
+
+  switch (inference_configuration_->initialize_configuration
+              .model_init_config_case()) {
+    case fcp::confidentialcompute::InferenceInitializeConfiguration::
+        kGemmaInitConfig: {
+      const fcp::confidentialcompute::GemmaInitializeConfiguration&
+          gemma_init_config = inference_configuration_->initialize_configuration
+                                  .gemma_init_config();
+      if (write_configuration_map_.find(
+              gemma_init_config.tokenizer_configuration_id()) ==
+          write_configuration_map_.end()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected Gemma tokenizer configuration id ",
+                         gemma_init_config.tokenizer_configuration_id(),
+                         " is missing in WriteConfigurationRequest."));
+      }
+      if (write_configuration_map_.find(
+              gemma_init_config.model_weight_configuration_id()) ==
+          write_configuration_map_.end()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected Gemma model weight configuration id ",
+                         gemma_init_config.model_weight_configuration_id(),
+                         " is missing in WriteConfigurationRequest."));
+      }
+      // Populate inference_configuration_.gemma_configuration.
+      GemmaConfiguration gemma_config;
+      gemma_config.tokenizer_path =
+          write_configuration_map_[gemma_init_config
+                                       .tokenizer_configuration_id()]
+              .file_path;
+      gemma_config.model_weight_path =
+          write_configuration_map_[gemma_init_config
+                                       .model_weight_configuration_id()]
+              .file_path;
+      inference_configuration_->gemma_configuration = std::move(gemma_config);
+      break;
+    }
+    default:
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported model_init_config_case: ",
+                       inference_configuration_->initialize_configuration
+                           .model_init_config_case()));
+  }
+
   return config_properties;
+}
+
+absl::Status FedSqlConfidentialTransform::ReadWriteConfigurationRequest(
+    const fcp::confidentialcompute::WriteConfigurationRequest&
+        write_configuration) {
+  std::ios_base::openmode file_open_mode;
+  // First request metadata is set for the first WriteConfigurationRequest of a
+  // new data blob.
+  if (write_configuration.has_first_request_metadata()) {
+    // Create a new file.
+    file_open_mode = std::ios::binary;
+    current_configuration_id_ =
+        write_configuration.first_request_metadata().configuration_id();
+    if (write_configuration_map_.find(current_configuration_id_) !=
+        write_configuration_map_.end()) {
+      return absl::InvalidArgumentError(
+          "Duplicated configuration_id found in WriteConfigurationRequest.");
+    }
+    // Create a new temp files. Temp files are saved as
+    // /tmp/write_configuration_1, /tmp/write_configuration_2, etc. Use
+    // `write_configuration_map_.size() + 1` to distinguish different temp file
+    // names.
+    std::string temp_file_path = CreateTempFilePath(
+        "/tmp", "write_configuration", write_configuration_map_.size() + 1);
+    write_configuration_map_[current_configuration_id_] =
+        WriteConfigurationMetadata{
+            .file_path = std::move(temp_file_path),
+            .total_size_bytes = static_cast<uint64_t>(
+                write_configuration.first_request_metadata()
+                    .total_size_bytes()),
+            .commit = write_configuration.commit()};
+  } else {
+    // If the current write_configuration is not the first
+    // WriteConfigurationRequest of a data blob, append to existing file.
+    file_open_mode = std::ios::binary | std::ios::app;
+  }
+
+  auto& [current_file_path, current_total_size_bytes, commit] =
+      write_configuration_map_[current_configuration_id_];
+  FCP_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
+                                            write_configuration.data().data(),
+                                            write_configuration.data().size()));
+  // Update the commit status of the data blob in write_configuration_map_.
+  commit = write_configuration.commit();
+
+  // When it's the last WriteConfigurationRequest of a blob, check the size of
+  // the file matches the expectation.
+  if (commit) {
+    if (std::filesystem::file_size(current_file_path) !=
+        current_total_size_bytes) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("The total size of the data blob does not match "
+                       "expected size. Expecting ",
+                       current_total_size_bytes, ", got ",
+                       std::filesystem::file_size(current_file_path)));
+    }
+    LOG(INFO) << "Successfully wrote all " << current_total_size_bytes
+              << " bytes to " << current_file_path;
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>

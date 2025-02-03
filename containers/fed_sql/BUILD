@@ -29,6 +29,7 @@ cc_library(
         "//containers:session",
         "//containers/sql:sqlite_adapter",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
