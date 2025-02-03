@@ -233,6 +233,15 @@ TEST(TffSessionTest, ConfigureSessionSuccess) {
   ASSERT_TRUE(session.ConfigureSession(request).ok());
 }
 
+TEST(TffSessionTest, ConfigureSessionSuccessWithMaxConcurrentComp) {
+  TffSession session;
+  SessionRequest request;
+  TffSessionConfig config = DefaultSessionConfiguration();
+  config.set_max_concurrent_computation_calls(2);
+  request.mutable_configure()->mutable_configuration()->PackFrom(config);
+  ASSERT_TRUE(session.ConfigureSession(request).ok());
+}
+
 TEST(TffSessionTest, SessionAlreadyConfiguredFailure) {
   TffSession session;
   SessionRequest request;

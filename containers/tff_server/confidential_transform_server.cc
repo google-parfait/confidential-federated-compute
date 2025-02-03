@@ -72,9 +72,12 @@ absl::Status TffSession::ConfigureSession(
     return absl::InvalidArgumentError("TffSessionConfig invalid.");
   }
 
-  auto leaf_executor_fn = []() {
+  int32_t max_concurrent_computation_calls =
+      session_config.max_concurrent_computation_calls();
+  auto leaf_executor_fn = [max_concurrent_computation_calls]() {
     return tensorflow_federated::CreateReferenceResolvingExecutor(
-        tensorflow_federated::CreateTensorFlowExecutor());
+        tensorflow_federated::CreateTensorFlowExecutor(
+            max_concurrent_computation_calls));
   };
   tensorflow_federated::CardinalityMap cardinality_map;
   cardinality_map[tensorflow_federated::kClientsUri] =
