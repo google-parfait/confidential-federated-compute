@@ -39,6 +39,8 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "gemma/common.h"
+#include "gemma/configs.h"
 #include "gemma/gemma.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
@@ -192,11 +194,58 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 }  // namespace
 
+absl::Status FedSqlSession::ExecuteGemmaInferenceQuery(
+    std::vector<TensorColumn>& columns) {
+  gcpp::ModelInfo model_info;
+  const fcp::confidentialcompute::GemmaConfiguration& gemma_config =
+      inference_configuration_->initialize_configuration.inference_config()
+          .gemma_config();
+  switch (gemma_config.model()) {
+    case fcp::confidentialcompute::GEMMA_TINY: {
+      model_info.model = gcpp::Model::GEMMA_TINY;
+      break;
+    }
+    case fcp::confidentialcompute::GEMMA_2B: {
+      model_info.model = gcpp::Model::GEMMA_2B;
+      break;
+    }
+    case fcp::confidentialcompute::GEMMA2_2B: {
+      model_info.model = gcpp::Model::GEMMA2_2B;
+      break;
+    }
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Found invalid InferenceConfiguration.gemma_config.model: ",
+          gemma_config.model()));
+  }
+  // TODO: populate model_info with other parameters.
+  // TODO: Call Gemma
+  // gcpp::Gemma model();
+  // TODO: call model.Generate() to produce inference results.
+
+  return absl::OkStatus();
+}
+
+absl::Status FedSqlSession::ExecuteInferenceQuery(
+    std::vector<TensorColumn>& columns) {
+  if (inference_configuration_->gemma_configuration.has_value()) {
+    FCP_RETURN_IF_ERROR(ExecuteGemmaInferenceQuery(columns));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
+  // TODO: update configuration.input_schema to deserialize the correct columns
+  // for inference.
   FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> contents,
                        Deserialize(configuration.input_schema, parser));
+  // If the inference config is set, fill a Tensor with the inference results.
+  if (inference_configuration_.has_value()) {
+    FCP_RETURN_IF_ERROR(ExecuteInferenceQuery(contents));
+  }
+
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
@@ -611,7 +660,7 @@ FedSqlConfidentialTransform::CreateSession() {
   }
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   return std::make_unique<FedSqlSession>(FedSqlSession(
-      std::move(aggregator), *intrinsics,
+      std::move(aggregator), *intrinsics, inference_configuration_,
       serialize_output_access_policy_node_id_,
       report_output_access_policy_node_id_, sensitive_values_key_));
 }

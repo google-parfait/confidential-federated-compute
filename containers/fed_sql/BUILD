@@ -43,6 +43,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@gemma//:common",
         "@gemma//:gemma_lib",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
