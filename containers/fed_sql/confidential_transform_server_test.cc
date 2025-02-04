@@ -908,10 +908,16 @@ TEST_F(FedSqlServerTest,
   ASSERT_THAT(status.error_message(),
               HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
                         "not committed."));
+
+  // Check the test created write_configuration_1.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  // Check the test did not create write_configuration_2.
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_2"));
+  // Clean up the test created write_configuration_1.
+  std::filesystem::remove("/tmp/write_configuration_1");
 }
 
-TEST_F(FedSqlServerTest,
-       StreamInitializeInvalidGemmaToekenizerConfigurationId) {
+TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
   grpc::ClientContext context;
   InitializeResponse response;
   StreamInitializeRequest initialize_request;
@@ -993,6 +999,13 @@ TEST_F(FedSqlServerTest,
       status.error_message(),
       HasSubstr("Expected Gemma tokenizer configuration id "
                 "gemma_tokenizer_id is missing in WriteConfigurationRequest."));
+
+  // Check the test created write_configuration_1.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  // Check the test did not create write_configuration_2.
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_2"));
+  // Clean up the test created write_configuration_1.
+  std::filesystem::remove("/tmp/write_configuration_1");
 }
 
 TEST_F(FedSqlServerTest,
@@ -1088,6 +1101,13 @@ TEST_F(FedSqlServerTest,
       HasSubstr(
           "Expected Gemma model weight configuration id "
           "gemma_model_weight_id is missing in WriteConfigurationRequest."));
+
+  // Check the test created write_configuration_1 and write_configuration_2.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_2"));
+  // Clean up the test created write_configuration_1 and write_configuration_2.
+  std::filesystem::remove("/tmp/write_configuration_1");
+  std::filesystem::remove("/tmp/write_configuration_2");
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
@@ -1173,6 +1193,13 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
       status.error_message(),
       HasSubstr(
           "Duplicated configuration_id found in WriteConfigurationRequest"));
+
+  // Check the test created write_configuration_1.
+  ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
+  // Check the test didn't create write_configuration_2.
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_2"));
+  // Clean up the test created write_configuration_1.
+  std::filesystem::remove("/tmp/write_configuration_1");
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
@@ -1262,9 +1289,12 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
   ASSERT_THAT(status.error_message(),
               HasSubstr("The total size of the data blob does not match "
                         "expected size. Expecting 100, got 22"));
-  // Assert inference files are written to /tmp/ directory.
+
+  // Check the test created write_configuration_1.
   ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
-  // Remove inference files after assertions.
+  // Check the test didn't create write_configuration_2.
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_2"));
+  // Clean up the test created write_configuration_1.
   std::filesystem::remove("/tmp/write_configuration_1");
 }
 
@@ -2704,6 +2734,131 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithSqlQuerySession) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest initialize_request;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_group_by"
+        intrinsic_args {
+          input_tensor {
+            name: "key"
+            dtype: DT_INT64
+            shape { dim_sizes: -1 }
+          }
+        }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+  )pb");
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(init_config);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  ASSERT_TRUE(writer->Finish().ok());
+
+  // Set up Session.
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  TableSchema schema = CreateTableSchema(
+      "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  SqlQuery query = CreateSqlQuery(
+      schema, "SELECT key, val * 2 AS val FROM input",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
+      query);
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE,
+      BuildFedSqlGroupByCheckpoint({1, 1, 2}, {1, 2, 5}));
+  SessionResponse write_response_1;
+
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_TRUE(stream->Read(&write_response_1));
+
+  SessionRequest write_request_2 =
+      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
+                                BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}));
+  SessionResponse write_response_2;
+  ASSERT_TRUE(stream->Write(write_request_2));
+  ASSERT_TRUE(stream->Read(&write_response_2));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(
+      finalize_response.read().first_response_metadata().has_unencrypted());
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::Cord wire_format_result(finalize_response.read().data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto key_values = (*parser)->GetTensor("key_out");
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The SQL query doubles each `val`, and the aggregation sums the val
+  // column, grouping by key.
+  ASSERT_EQ(col_values->num_elements(), 3);
+  ASSERT_EQ(key_values->num_elements(), 3);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(key_values->dtype(), DataType::DT_INT64);
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
+  EXPECT_THAT(key_values->AsSpan<int64_t>(), UnorderedElementsAre(1, 2, 3));
+
+  // Check temp inference files don't exist because no write_configuration is
+  // provided.
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_1"));
+  ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_2"));
 }
 
 }  // namespace
