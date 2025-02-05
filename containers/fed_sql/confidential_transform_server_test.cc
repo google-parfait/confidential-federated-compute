@@ -3072,11 +3072,10 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
   ASSERT_EQ(key_values->num_elements(), 3);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(key_values->dtype(), DataType::DT_STRING);
-  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(3, 1, 1));
-  // TODO: need to make Gemma create "one", "two", "three" instead of "1", "2",
-  // "3".
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(2, 2, 2));
+  // This is the hard-coded inference output from two write requests.
   EXPECT_THAT(key_values->AsSpan<absl::string_view>(),
-              UnorderedElementsAre("1", "2", "3"));
+              UnorderedElementsAre("one", "two", "three"));
 
   // Remove inference files after assertions.
   std::filesystem::remove("/tmp/write_configuration_1");

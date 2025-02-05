@@ -46,6 +46,8 @@
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
@@ -61,6 +63,8 @@ using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::ColumnConfiguration;
+using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -76,16 +80,23 @@ using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
+using ::google::internal::federated::plan::
+    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
+using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::DT_DOUBLE;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
 
 constexpr char kFedSqlDpGroupByUri[] = "fedsql_dp_group_by";
 
@@ -231,21 +242,44 @@ absl::Status FedSqlSession::ExecuteInferenceQuery(
   if (inference_configuration_->gemma_configuration.has_value()) {
     FCP_RETURN_IF_ERROR(ExecuteGemmaInferenceQuery(columns));
   }
+  // TODO: Check that a specific column has been set to run inference over.
+  std::string key_column_name = "topic";
+
+  // TODO: remove hard-coded values for testing, should come from inference.
+  std::initializer_list<absl::string_view> string_keys = {"one", "two",
+                                                          "three"};
+  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(string_keys.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(string_keys));
+  CHECK_OK(key_tensor);
+
+  ColumnSchema key_col_schema;
+  key_col_schema.set_name(key_column_name);
+  key_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+  FCP_ASSIGN_OR_RETURN(
+      TensorColumn key_column,
+      TensorColumn::Create(key_col_schema, std::move(key_tensor.value())));
+  columns.push_back(std::move(key_column));
+
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
-  // TODO: update configuration.input_schema to deserialize the correct columns
-  // for inference.
-  FCP_ASSIGN_OR_RETURN(std::vector<TensorColumn> contents,
-                       Deserialize(configuration.input_schema, parser));
-  // If the inference config is set, fill a Tensor with the inference results.
+  std::vector<TensorColumn> contents;
   if (inference_configuration_.has_value()) {
+    // If the inference config is set, fill a Tensor with the inference results.
     FCP_RETURN_IF_ERROR(ExecuteInferenceQuery(contents));
+  } else {
+    // TODO: remove this else block and run deserialization in all cases, once
+    // we implement removal of the existing columns for overriding by inference.
+    FCP_ASSIGN_OR_RETURN(contents,
+                         // TODO: update configuration.input_schema to
+                         // deserialize the correct columns for inference.
+                         Deserialize(configuration.input_schema, parser));
   }
-
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));

@@ -47,6 +47,7 @@ cc_library(
         "@gemma//:gemma_lib",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
