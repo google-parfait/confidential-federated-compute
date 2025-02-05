@@ -198,7 +198,6 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
         absl::StrCat("Failed to open temp file for writing: ", file_path));
   }
   temp_file.write(data, data_size);
-  LOG(INFO) << "Wrote " << data_size << " bytes to " << file_path;
   temp_file.close();
   return absl::OkStatus();
 }
@@ -636,6 +635,10 @@ absl::Status FedSqlConfidentialTransform::ReadWriteConfigurationRequest(
     // names.
     std::string temp_file_path = CreateTempFilePath(
         "/tmp", "write_configuration", write_configuration_map_.size() + 1);
+
+    LOG(INFO) << "Start writing bytes for configuration_id: "
+              << current_configuration_id_ << " to " << temp_file_path;
+
     write_configuration_map_[current_configuration_id_] =
         WriteConfigurationMetadata{
             .file_path = std::move(temp_file_path),
