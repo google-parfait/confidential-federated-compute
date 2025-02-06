@@ -51,6 +51,13 @@ http_archive(
     urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
 )
 
+http_archive(
+    name = "rules_proto",
+    sha256 = "6fb6767d1bef535310547e03247f7518b03487740c11b6c6adb7952033fe1295",
+    strip_prefix = "rules_proto-6.0.2",
+    url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
+)
+
 # Initialize hermetic python prior to loading Tensorflow deps. See
 # https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L6
 http_archive(
@@ -195,9 +202,15 @@ http_archive(
     url = "https://github.com/tensorflow/lingvo/archive/ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39.tar.gz",
 )
 
-load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
+load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
 
 rules_proto_dependencies()
+
+load("@rules_proto//proto:setup.bzl", "rules_proto_setup")
+
+rules_proto_setup()
+
+load("@rules_proto//proto:toolchains.bzl", "rules_proto_toolchains")
 
 rules_proto_toolchains()
 
@@ -214,9 +227,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "ad54d841b42a80075596338e6690cc26df3c2982e024cf73a89091589bcb9a25",
-    strip_prefix = "trusted-computations-platform-3ec990bdb85e6c4d2a0d68f0a8ef51cb252c9fb1",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/3ec990bdb85e6c4d2a0d68f0a8ef51cb252c9fb1.tar.gz",
+    sha256 = "d15f95b2fe7e48e28efb638cb8612ff37c797ab71fe23d0b45629568c2923473",
+    strip_prefix = "trusted-computations-platform-46b0666a06673aeb752793c84e7d67cfc47a923b",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/46b0666a06673aeb752793c84e7d67cfc47a923b.tar.gz",
 )
 
 http_archive(
@@ -236,9 +249,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    sha256 = "8ceb2beae1f3e736e1d72448c8e823875ebd43c711cfd36590697fa702f338c9",
-    strip_prefix = "oak-42fcfac698abdd11aecf81362eb24ef412e40123",
-    url = "https://github.com/project-oak/oak/archive/42fcfac698abdd11aecf81362eb24ef412e40123.tar.gz",
+    sha256 = "3a8c15b9b4e1b292e4e471abbfc20431e31eb29bc3048bc440044a36e1de06ce",
+    strip_prefix = "oak-1d022f22cf7817eb99ba050a7ae3b16bfa349bac",
+    url = "https://github.com/project-oak/oak/archive/1d022f22cf7817eb99ba050a7ae3b16bfa349bac.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
@@ -253,11 +266,22 @@ load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 
 setup_rust_dependencies()
 
+load("@rules_rust//proto/prost:repositories.bzl", "rust_prost_dependencies")
+
+rust_prost_dependencies()
+
+load("@rules_rust//proto/prost:transitive_repositories.bzl", "rust_prost_transitive_repositories")
+
+rust_prost_transitive_repositories()
+
+register_toolchains("//toolchains:prost_toolchain")
+
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
 load("@trusted_computations_platform//bazel:crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
-load("//:crates.bzl", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
+load("//:crates.bzl", "CFC_ANNOTATIONS", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
 
 create_oak_crate_repositories(
+    extra_annotations = CFC_ANNOTATIONS,
     extra_no_std_packages = TCP_NO_STD_PACKAGES | CFC_NO_STD_PACKAGES,
     extra_packages = TCP_PACKAGES | CFC_PACKAGES,
 )

@@ -1,0 +1,74 @@
+// Copyright 2025 The Trusted Computations Platform Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// The storage service provides a simple key-value store that's backed by TCP.
+// TODO: b/393146003 - Add support for expiration.
+
+syntax = "proto3";
+
+package confidential_federated_compute.kms;
+
+import "google/protobuf/timestamp.proto";
+
+// A request to read entries from the storage service.
+message ReadRequest {
+  repeated Range ranges = 1;
+
+  message Range {
+    // The first key to retrieve. Keys must be 16 bytes.
+    bytes start = 1;
+
+    // The last key to retrieve (16 bytes). If unset, only `start` is retrieved.
+    optional bytes end = 2;
+  }
+}
+
+// The response to a ReadRequest.
+message ReadResponse {
+  // The storage service's notion of the current time.
+  google.protobuf.Timestamp now = 1;
+
+  // The requested entries. Any entries that do not exist are silently omitted.
+  repeated Entry entries = 2;
+
+  message Entry {
+    // The entry's key (16 bytes).
+    bytes key = 1;
+
+    // The entry's value.
+    bytes value = 2;
+  }
+}
+
+// A request to modify the storage service's state.
+message UpdateRequest {
+  // The current time, used to remove expired entries. The storage service's
+  // clock monotonically increasing, so a value in the past will have no effect.
+  google.protobuf.Timestamp now = 1;
+
+  // Zero or more updates to apply in the same transaction. The update only
+  // succeeds if all updates can be applied.
+  repeated Update updates = 2;
+
+  message Update {
+    // The key to update (16 bytes).
+    bytes key = 1;
+    // The desired value for the entry. If unset, the entry is removed.
+    optional bytes value = 2;
+    // TODO: b/393146003 - Add support for update preconditions.
+  }
+}
+
+// The response to an UpdateRequest.
+message UpdateResponse {}

@@ -44,12 +44,30 @@ _COMMON_PACKAGES = {
 }
 
 # Crates used for std builds.
+CFC_ANNOTATIONS = {
+    "protoc-gen-prost": [crate.annotation(
+        gen_binaries = ["protoc-gen-prost"],
+    )],
+    "protoc-gen-tonic": [crate.annotation(
+        gen_binaries = ["protoc-gen-tonic"],
+    )],
+}
 CFC_PACKAGES = _COMMON_PACKAGES | {
     "assert_cmd": crate.spec(
         version = "2.0.14",
     ),
     "insta": crate.spec(
         version = "1.38.0",
+    ),
+    "protoc-gen-prost": crate.spec(
+        version = "0.3.1",
+    ),
+    "protoc-gen-tonic": crate.spec(
+        # 0.4.1 requires tonic 0.12.
+        version = "=0.4.0",
+    ),
+    "test-log": crate.spec(
+        version = "0.2.17",
     ),
 }
 
