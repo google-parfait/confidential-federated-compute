@@ -1,0 +1,127 @@
+# Copyright 2025 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+oak_restricted_kernel {
+  root_layer {
+    amd_sev {
+      stage0 {
+        endorsement {
+          endorser {
+            keys {
+              type: 1
+              key_id: 1
+              raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD3\x03\x16\xA0{\xB4\xAESCnQw#\x9F\xAFnu\xB4\\\xD6\xD1/\xDD\xE7Nv\xF6\xD2\xE7\xABNT;n\x84\xDB\xF5\xC1\xF1\x9F*60\xBE\x0Bwi\x87>q\xDB\xDA\xD0\xE6\x30\x18\x12\x88)\xFD\x97\x18N\x07"
+            }
+          }
+          required_claims {
+            claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/66738.md"
+            claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/10271.md"
+          }
+          rekor {
+            verify {
+              keys {
+                type: 1
+                key_id: 1
+                raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+              }
+            }
+          }
+        }
+      }
+      min_tcb_version {
+        boot_loader: 3
+        snp: 20
+        microcode: 209
+      }
+    }
+  }
+  kernel_layer {
+    kernel {
+      endorsement {
+        endorser {
+          keys {
+            type: 1
+            key_id: 1
+            raw : "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04+:V\x7F?\r\xA3NDlA\xF3\x87L\x95^.\x1B\xA2\xB8\x86ݛ\x8E\xA2\xBA\xA9\xD6\x00\xD9\xDA\x1B\x35\xE7\x41\x86\\\x65\xB4\x0B\xD6\xDD\x19mͅE\x1E\r\xC1\x30\xA3I\xFE`׾sp]\xB8#ѱ"
+          }
+        }
+        required_claims {
+          claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/36746.md"
+          claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/98982.md"
+        }
+        rekor {
+          verify {
+            keys {
+              type: 1
+              key_id: 1
+              raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+            }
+          }
+        }
+      }
+    }
+    init_ram_fs {
+      endorsement {
+        endorser {
+          keys {
+            type: 1
+            key_id: 1
+            raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04N0m\x9Dz\x06\xF7!H0Z\xF7\xCBw\x92\xF0V{9\xF2\x01\x7FIC\x8E\xEFg\xB0\xD6\xDBy\xAF\xCEg\x9F\xF2\x0Bl\x04\xBA\x63\xEF\xB7\xD1h\xC4.0\x8F\x05\xA1\x36w@iL\x85[\xF6\xBD\xF4\xE5}\xD9"
+          }
+        }
+        required_claims {
+          claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/87425.md"
+        }
+        rekor {
+          verify {
+            keys {
+              type: 1
+              key_id: 1
+              raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+            }
+          }
+        }
+      }
+    }
+    memory_map { skip {} }
+    acpi { skip {} }
+    kernel_cmd_line_text {
+      string_literals { value: "console=ttyS0" }
+    }
+  }
+  application_layer {
+    binary {
+      endorsement {
+        endorser {
+          keys {
+            type: 1
+            key_id: 8
+            raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04g\xCC\xECZ\tܓ\x9C\x0Bw$\x82\xDC\x01\xD9Tg\xC6Y\xAC\x61\x90\x96*\x9A\xA6\xEA֚\xAD\xB0\x9C\x12m\xEE\x65&wR\xD3<h\x14\xFA\xA6\x32\x9B\xEE\x88\xC2\xEE\x62\x06ǧ\x94\xFD{\x1Fq9\x8C\x86\xF4"
+          }
+        }
+        required_claims {}
+        rekor {
+          verify {
+            keys {
+              type: 1
+              key_id: 1
+              raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+            }
+          }
+        }
+      }
+    }
+    configuration { skip {} }
+  }
+}
