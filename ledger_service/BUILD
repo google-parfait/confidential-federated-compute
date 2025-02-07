@@ -14,6 +14,7 @@
 
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//:proto_data.bzl", "proto_data")
 
 cargo_build_script(
     name = "build",
@@ -42,14 +43,30 @@ cargo_build_script(
     ],
 )
 
+proto_data(
+    name = "insecure_reference_values",
+    src = "insecure_reference_values.txtpb",
+    out = "insecure_reference_values.binarypb",
+    proto_deps = ["@oak//proto/attestation:reference_value_proto"],
+    proto_name = "oak.attestation.v1.ReferenceValues",
+)
+
 rust_library(
     name = "ledger_service",
     srcs = glob(["src/*.rs"]),
+    compile_data = [
+        ":insecure_reference_values",
+        "//reference_values/ledger:reference_values",
+    ],
     crate_features = select({
         "@platforms//os:linux": ["testing"],
         "//conditions:default": [],
     }),
     proc_macro_deps = ["@oak_crates_index//:prost-derive"],
+    rustc_env = {
+        "REFERENCE_VALUES": "$(execpath //reference_values/ledger:reference_values)",
+        "INSECURE_REFERENCE_VALUES": "$(execpath :insecure_reference_values)",
+    },
     visibility = [
         "//ledger_enclave_app:__pkg__",
         "//replicated_ledger_enclave_app:__pkg__",
