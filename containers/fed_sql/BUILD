@@ -22,6 +22,7 @@ cc_library(
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     deps = [
+        ":inference_model",
         ":sensitive_columns",
         "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
@@ -43,8 +44,6 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
-        "@gemma//:common",
-        "@gemma//:gemma_lib",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
@@ -54,6 +53,41 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_library(
+    name = "inference_model",
+    srcs = ["inference_model.cc"],
+    hdrs = ["inference_model.h"],
+    deps = [
+        "//containers/sql:sqlite_adapter",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@gemma//:common",
+        "@gemma//:gemma_lib",
+        "@gemma//:threading",
+        "@gemma//compression:io",
+        "@gemma//compression:sfp",
+    ],
+)
+
+cc_test(
+    name = "inference_model_test",
+    size = "small",
+    srcs = ["inference_model_test.cc"],
+    deps = [
+        ":inference_model",
+        "//containers/sql:sqlite_adapter",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@googletest//:gtest_main",
     ],
 )
 

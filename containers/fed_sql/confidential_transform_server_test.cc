@@ -3200,44 +3200,10 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
-
-  // Set up Session.
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  TableSchema schema = CreateTableSchema(
-      "per_client_database", "CREATE TABLE per_client_database (topic STRING)",
-      {
-          CreateColumnSchema("topic",
-                             ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-      });
-  SqlQuery query = CreateSqlQuery(
-      schema,
-      "SELECT topic, COUNT(topic) AS topic_count FROM per_client_database "
-      "GROUP BY topic",
-      {CreateColumnSchema("topic",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-       CreateColumnSchema("topic_count",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
-  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
-      query);
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_TRUE(stream->Read(&configure_response));
-
-  SessionRequest write_request = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      // TODO: need to change the input column to "transcript".
-      BuildFedSqlGroupByStringKeyCheckpoint({"1", "1", "2"}, "topic"));
-  SessionResponse write_response;
-
-  ASSERT_TRUE(stream->Write(write_request));
-  ASSERT_TRUE(stream->Read(&write_response));
-
+  auto status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
-      write_response.write().status().message(),
+      status.error_message(),
       HasSubstr("Found invalid InferenceConfiguration.gemma_config.model: 0"));
 
   // Remove inference files after assertions.

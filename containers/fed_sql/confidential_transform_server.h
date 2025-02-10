@@ -25,6 +25,7 @@
 #include "absl/synchronization/mutex.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
+#include "containers/fed_sql/inference_model.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -40,18 +41,6 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 
 namespace confidential_federated_compute::fed_sql {
-
-// Configuration of the per-client inference step, occurring before the
-// per-client query step.
-struct GemmaConfiguration {
-  std::string tokenizer_path;
-  std::string model_weight_path;
-};
-struct InferenceConfiguration {
-  fcp::confidentialcompute::InferenceInitializeConfiguration
-      initialize_configuration;
-  std::optional<GemmaConfiguration> gemma_configuration;
-};
 
 // ConfidentialTransform service for Federated SQL. Executes the aggregation
 // step of FedSQL.
@@ -91,7 +80,8 @@ class FedSqlConfidentialTransform final
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
-  std::optional<InferenceConfiguration> inference_configuration_;
+  std::optional<SessionInferenceConfiguration> inference_configuration_;
+  InferenceModel inference_model_;
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
   std::string current_configuration_id_;
@@ -113,13 +103,15 @@ class FedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      const std::optional<InferenceConfiguration> inference_configuration,
+      // The model is shared across multiple sessions, and is owned by
+      // FedSqlConfidentialTransform, guaranteed to outlive the sessions.
+      InferenceModel& inference_model,
       const std::optional<uint32_t> serialize_output_access_policy_node_id,
       const std::optional<uint32_t> report_output_access_policy_node_id,
       absl::string_view sensitive_values_key)
       : aggregator_(std::move(aggregator)),
         intrinsics_(intrinsics),
-        inference_configuration_(inference_configuration),
+        inference_model_(inference_model),
         serialize_output_access_policy_node_id_(
             serialize_output_access_policy_node_id),
         report_output_access_policy_node_id_(
@@ -151,8 +143,6 @@ class FedSqlSession final : public confidential_federated_compute::Session {
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
   };
-  absl::Status ExecuteGemmaInferenceQuery(
-      std::vector<confidential_federated_compute::sql::TensorColumn>& columns);
   absl::Status ExecuteInferenceQuery(
       std::vector<confidential_federated_compute::sql::TensorColumn>& columns);
   absl::StatusOr<
@@ -166,9 +156,7 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
-  // Configuration of the per-client inference step. Passed in from
-  // FedSqlConfidentialTransform.
-  const std::optional<const InferenceConfiguration> inference_configuration_;
+  InferenceModel& inference_model_;
   const std::optional<uint32_t> serialize_output_access_policy_node_id_;
   const std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. In the future we could instead hold an

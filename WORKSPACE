@@ -480,7 +480,7 @@ http_archive(
 
 http_archive(
     name = "gemma",
-    sha256 = "7214b55ad0a5555f8e1f5ed29aeee5488419ca0e9dff800ffdfd59fea4a5a1ca",
-    strip_prefix = "gemma.cpp-9dfe2a76be63bcfe679b94335f171674420f92e8",
-    url = "https://github.com/google/gemma.cpp/archive/9dfe2a76be63bcfe679b94335f171674420f92e8.tar.gz",
+    sha256 = "ee01ac7165fbacddc5509e8384900165b72f349c1421efdd5b6f9391c3c1729e",
+    strip_prefix = "gemma.cpp-9f5159ff683d99a7d852a0e66782e718588937df",
+    url = "https://github.com/google/gemma.cpp/archive/9f5159ff683d99a7d852a0e66782e718588937df.tar.gz",
 )

@@ -39,9 +39,6 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
-#include "gemma/common.h"
-#include "gemma/configs.h"
-#include "gemma/gemma.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -71,6 +68,7 @@ using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
@@ -204,43 +202,9 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 }  // namespace
 
-absl::Status FedSqlSession::ExecuteGemmaInferenceQuery(
-    std::vector<TensorColumn>& columns) {
-  gcpp::ModelInfo model_info;
-  const fcp::confidentialcompute::GemmaConfiguration& gemma_config =
-      inference_configuration_->initialize_configuration.inference_config()
-          .gemma_config();
-  switch (gemma_config.model()) {
-    case fcp::confidentialcompute::GEMMA_TINY: {
-      model_info.model = gcpp::Model::GEMMA_TINY;
-      break;
-    }
-    case fcp::confidentialcompute::GEMMA_2B: {
-      model_info.model = gcpp::Model::GEMMA_2B;
-      break;
-    }
-    case fcp::confidentialcompute::GEMMA2_2B: {
-      model_info.model = gcpp::Model::GEMMA2_2B;
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Found invalid InferenceConfiguration.gemma_config.model: ",
-          gemma_config.model()));
-  }
-  // TODO: populate model_info with other parameters.
-  // TODO: Call Gemma
-  // gcpp::Gemma model();
-  // TODO: call model.Generate() to produce inference results.
-
-  return absl::OkStatus();
-}
-
 absl::Status FedSqlSession::ExecuteInferenceQuery(
     std::vector<TensorColumn>& columns) {
-  if (inference_configuration_->gemma_configuration.has_value()) {
-    FCP_RETURN_IF_ERROR(ExecuteGemmaInferenceQuery(columns));
-  }
+  inference_model_.RunInference(columns);
   // TODO: Check that a specific column has been set to run inference over.
   std::string key_column_name = "topic";
 
@@ -268,7 +232,7 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
   std::vector<TensorColumn> contents;
-  if (inference_configuration_.has_value()) {
+  if (inference_model_.HasModel()) {
     // If the inference config is set, fill a Tensor with the inference results.
     FCP_RETURN_IF_ERROR(ExecuteInferenceQuery(contents));
   } else {
@@ -569,11 +533,10 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
 
   switch (inference_configuration_->initialize_configuration
               .model_init_config_case()) {
-    case fcp::confidentialcompute::InferenceInitializeConfiguration::
-        kGemmaInitConfig: {
-      const fcp::confidentialcompute::GemmaInitializeConfiguration&
-          gemma_init_config = inference_configuration_->initialize_configuration
-                                  .gemma_init_config();
+    case InferenceInitializeConfiguration::kGemmaInitConfig: {
+      const GemmaInitializeConfiguration& gemma_init_config =
+          inference_configuration_->initialize_configuration
+              .gemma_init_config();
       if (write_configuration_map_.find(
               gemma_init_config.tokenizer_configuration_id()) ==
           write_configuration_map_.end()) {
@@ -591,7 +554,7 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
                          " is missing in WriteConfigurationRequest."));
       }
       // Populate inference_configuration_.gemma_configuration.
-      GemmaConfiguration gemma_config;
+      SessionGemmaConfiguration gemma_config;
       gemma_config.tokenizer_path =
           write_configuration_map_[gemma_init_config
                                        .tokenizer_configuration_id()]
@@ -610,6 +573,7 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
                            .model_init_config_case()));
   }
 
+  FCP_RETURN_IF_ERROR(inference_model_.BuildModel(*inference_configuration_));
   return config_properties;
 }
 
@@ -697,7 +661,7 @@ FedSqlConfidentialTransform::CreateSession() {
   }
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   return std::make_unique<FedSqlSession>(FedSqlSession(
-      std::move(aggregator), *intrinsics, inference_configuration_,
+      std::move(aggregator), *intrinsics, inference_model_,
       serialize_output_access_policy_node_id_,
       report_output_access_policy_node_id_, sensitive_values_key_));
 }
