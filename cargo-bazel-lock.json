@@ -1,5 +1,5 @@
 {
-  "checksum": "67894368a6ac379a4aac3b080adb6e323d4eb9c8f3d24cf0690103e891e570e4",
+  "checksum": "039bc19b65b380ed68025f253c0611a359ca8ab2b33bd8a34a906952a2336308",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -1301,6 +1301,45 @@
         ],
         "edition": "2021",
         "version": "1.3.2"
+      },
+      "license": "MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
+    "arc-swap 1.7.1": {
+      "name": "arc-swap",
+      "version": "1.7.1",
+      "package_url": "https://github.com/vorner/arc-swap",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/arc-swap/1.7.1/download",
+          "sha256": "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "arc_swap",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "arc_swap",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2018",
+        "version": "1.7.1"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -7529,6 +7568,10 @@
             {
               "id": "slog 2.7.0",
               "target": "slog"
+            },
+            {
+              "id": "slog-stdlog 4.1.1",
+              "target": "slog_stdlog"
             },
             {
               "id": "slog-term 2.9.1",
@@ -23788,6 +23831,126 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
+    "slog-scope 4.4.0": {
+      "name": "slog-scope",
+      "version": "4.4.0",
+      "package_url": "https://github.com/slog-rs/scope",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/slog-scope/4.4.0/download",
+          "sha256": "2f95a4b4c3274cd2869549da82b57ccc930859bdbf5bcea0424bc5f140b3c786"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "slog_scope",
+            "crate_root": "lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "slog_scope",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "arc-swap 1.7.1",
+              "target": "arc_swap"
+            },
+            {
+              "id": "lazy_static 1.5.0",
+              "target": "lazy_static"
+            },
+            {
+              "id": "slog 2.7.0",
+              "target": "slog"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2015",
+        "version": "4.4.0"
+      },
+      "license": "MPL-2.0/MIT/Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT",
+        "MPL-2.0"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
+    "slog-stdlog 4.1.1": {
+      "name": "slog-stdlog",
+      "version": "4.1.1",
+      "package_url": "https://github.com/slog-rs/stdlog",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/slog-stdlog/4.1.1/download",
+          "sha256": "6706b2ace5bbae7291d3f8d2473e2bfab073ccd7d03670946197aec98471fa3e"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "slog_stdlog",
+            "crate_root": "lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "slog_stdlog",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "default"
+          ],
+          "selects": {}
+        },
+        "deps": {
+          "common": [
+            {
+              "id": "log 0.4.22",
+              "target": "log"
+            },
+            {
+              "id": "slog 2.7.0",
+              "target": "slog"
+            },
+            {
+              "id": "slog-scope 4.4.0",
+              "target": "slog_scope"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "version": "4.1.1"
+      },
+      "license": "MPL-2.0 OR MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT",
+        "MPL-2.0"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
     "slog-term 2.9.1": {
       "name": "slog-term",
       "version": "2.9.1",
@@ -34503,6 +34666,7 @@
     "signal-hook-tokio 0.3.1",
     "simple_logger 4.3.3",
     "slog 2.7.0",
+    "slog-stdlog 4.1.1",
     "slog-term 2.9.1",
     "snafu 0.8.4",
     "spin 0.9.8",

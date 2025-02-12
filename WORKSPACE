@@ -421,6 +421,11 @@ stub_repo(
     ]},
 )
 
+stub_repo(
+    name = "com_github_grpc_grpc_kotlin",
+    rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
+)
+
 # The following enables the use of the library functions in the differential-
 # privacy github repo
 http_archive(
