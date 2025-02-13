@@ -25,6 +25,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "containers/fed_sql/inference_model.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -32,6 +33,7 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -89,6 +91,8 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::gcpp::Gemma;
+using ::gcpp::ModelInfo;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::internal::federated::plan::
@@ -114,17 +118,28 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
-using testing::AnyOf;
-using testing::Contains;
+using ::testing::AnyOf;
+using ::testing::ByMove;
+using ::testing::Contains;
 using ::testing::HasSubstr;
-using testing::Not;
+using ::testing::NiceMock;
+using ::testing::Not;
+using ::testing::Return;
 using ::testing::SizeIs;
 using ::testing::Test;
-using testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAre;
 
 inline constexpr int kMaxNumSessions = 8;
 inline constexpr int kSerializeOutputNodeId = 1;
 inline constexpr int kReportOutputNodeId = 2;
+
+class MockInferenceModel : public InferenceModel {
+ public:
+  MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
+              (const ModelInfo& model_info,
+               const SessionGemmaConfiguration& gemma_config),
+              (override));
+};
 
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               std::vector<ColumnSchema> columns) {
@@ -215,10 +230,16 @@ class FedSqlServerTest : public Test {
   FedSqlServerTest() {
     int port;
     const std::string server_address = "[::1]:";
+
+    ON_CALL(*mock_inference_model_, BuildGemmaModel)
+        .WillByDefault(Return(ByMove(nullptr)));
+    service_ = std::make_unique<FedSqlConfidentialTransform>(
+        &mock_crypto_stub_, mock_inference_model_);
+
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(&service_);
+    builder.RegisterService(service_.get());
     server_ = builder.BuildAndStart();
     LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
               << std::endl;
@@ -236,8 +257,10 @@ class FedSqlServerTest : public Test {
   // Returns the default BlobMetadata
   BlobMetadata DefaultBlobMetadata() const;
 
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  FedSqlConfidentialTransform service_{&mock_crypto_stub_};
+  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
+  std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
+      std::make_shared<NiceMock<MockInferenceModel>>();
+  std::unique_ptr<FedSqlConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };

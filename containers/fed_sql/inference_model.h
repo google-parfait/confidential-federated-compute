@@ -39,7 +39,7 @@ struct SessionInferenceConfiguration {
 
 // An LLM model that can be invoked to run inference before the per-client query
 // step.
-class InferenceModel final {
+class InferenceModel {
  public:
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
@@ -53,6 +53,11 @@ class InferenceModel final {
     kNone,
     kGemma,
   };
+
+  virtual std::unique_ptr<::gcpp::Gemma> BuildGemmaModel(
+      const ::gcpp::ModelInfo& gemma_model,
+      const SessionGemmaConfiguration& gemma_config);
+
   ModelType model_type_ = ModelType::kNone;
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::unique_ptr<::gcpp::Gemma> gemma_model_;

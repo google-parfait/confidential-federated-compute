@@ -32,7 +32,6 @@ using ::fcp::confidentialcompute::GEMMA_2B;
 using ::fcp::confidentialcompute::GEMMA_TINY;
 using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
-
 using ::gcpp::Gemma;
 using ::gcpp::Model;
 using ::gcpp::ModelInfo;
@@ -41,12 +40,9 @@ using ::gcpp::Path;
 using ::gcpp::PromptWrapping;
 using ::gcpp::Type;
 
-absl::StatusOr<std::unique_ptr<Gemma>> BuildGemmaModel(
-    const SessionInferenceConfiguration& inference_configuration) {
+absl::StatusOr<ModelInfo> GetGemmaModelInfo(
+    const GemmaConfiguration& gemma_config) {
   ModelInfo model_info;
-  const GemmaConfiguration& gemma_config =
-      inference_configuration.initialize_configuration.inference_config()
-          .gemma_config();
   switch (gemma_config.model()) {
     case GEMMA_TINY: {
       model_info.model = Model::GEMMA_TINY;
@@ -67,23 +63,20 @@ absl::StatusOr<std::unique_ptr<Gemma>> BuildGemmaModel(
   }
   model_info.wrapping = PromptWrapping::GEMMA_IT;
   model_info.weight = Type::kSFP;
-  NestedPools pools(0);
-  if (!inference_configuration.gemma_configuration.has_value()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Missing session Gemma configuration in the model: ",
-                     gemma_config.model()));
-  }
-  const SessionGemmaConfiguration& session_gemma_config =
-      inference_configuration.gemma_configuration.value();
-  Path tokenizer_path = Path(session_gemma_config.tokenizer_path);
-  Path weights_path = Path(session_gemma_config.model_weight_path);
-  // TODO: Return
-  // std::make_unique<Gemma>(tokenizer_path, weights_path, model_info, pools)
-  // once tokenizer and weights are populated in GemmaConfiguration.
-  return nullptr;
+  return model_info;
 }
 
 }  // namespace
+
+std::unique_ptr<Gemma> InferenceModel::BuildGemmaModel(
+    const ModelInfo& model_info,
+    const SessionGemmaConfiguration& gemma_config) {
+  NestedPools pools(0);
+  Path tokenizer_path = Path(gemma_config.tokenizer_path);
+  Path weights_path = Path(gemma_config.model_weight_path);
+  return std::make_unique<Gemma>(tokenizer_path, weights_path, model_info,
+                                 pools);
+}
 
 absl::Status InferenceModel::BuildModel(
     const SessionInferenceConfiguration& inference_configuration) {
@@ -92,8 +85,19 @@ absl::Status InferenceModel::BuildModel(
               .model_init_config_case()) {
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
       model_type_ = ModelType::kGemma;
-      FCP_ASSIGN_OR_RETURN(gemma_model_,
-                           BuildGemmaModel(inference_configuration));
+      const GemmaConfiguration& gemma_config =
+          inference_configuration.initialize_configuration.inference_config()
+              .gemma_config();
+      if (!inference_configuration.gemma_configuration.has_value()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Missing session Gemma configuration in the model: ",
+                         gemma_config.model()));
+      }
+      FCP_ASSIGN_OR_RETURN(ModelInfo model_info,
+                           GetGemmaModelInfo(gemma_config));
+      SessionGemmaConfiguration session_gemma_config =
+          inference_configuration.gemma_configuration.value();
+      gemma_model_ = BuildGemmaModel(model_info, session_gemma_config);
       break;
     }
     default:

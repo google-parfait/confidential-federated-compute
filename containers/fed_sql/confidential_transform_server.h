@@ -49,8 +49,11 @@ class FedSqlConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   FedSqlConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : ConfidentialTransformBase(crypto_stub) {
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::shared_ptr<InferenceModel> inference_model =
+          std::make_shared<InferenceModel>())
+      : ConfidentialTransformBase(crypto_stub),
+        inference_model_(inference_model) {
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
     std::string key(32, '\0');
     // Generate a random key using BoringSSL. BoringSSL documentation says
@@ -81,7 +84,7 @@ class FedSqlConfidentialTransform final
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  InferenceModel inference_model_;
+  std::shared_ptr<InferenceModel> inference_model_;
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
   std::string current_configuration_id_;
@@ -103,9 +106,7 @@ class FedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      // The model is shared across multiple sessions, and is owned by
-      // FedSqlConfidentialTransform, guaranteed to outlive the sessions.
-      InferenceModel& inference_model,
+      std::shared_ptr<InferenceModel> inference_model,
       const std::optional<uint32_t> serialize_output_access_policy_node_id,
       const std::optional<uint32_t> report_output_access_policy_node_id,
       absl::string_view sensitive_values_key)
@@ -156,7 +157,7 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
-  InferenceModel& inference_model_;
+  std::shared_ptr<InferenceModel> inference_model_;
   const std::optional<uint32_t> serialize_output_access_policy_node_id_;
   const std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. In the future we could instead hold an
