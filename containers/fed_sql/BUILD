@@ -87,6 +87,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@gemma//:gemma_lib",
         "@googletest//:gtest_main",
     ],
 )
@@ -142,6 +143,7 @@ cc_test(
     srcs = ["confidential_transform_server_test.cc"],
     deps = [
         ":confidential_transform_server",
+        ":inference_model",
         "//containers:blob_metadata",
         "//containers:crypto",
         "//containers:crypto_test_utils",
@@ -154,6 +156,7 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@gemma//:gemma_lib",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",

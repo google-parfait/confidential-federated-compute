@@ -204,7 +204,7 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 absl::Status FedSqlSession::ExecuteInferenceQuery(
     std::vector<TensorColumn>& columns) {
-  inference_model_.RunInference(columns);
+  inference_model_->RunInference(columns);
   // TODO: Check that a specific column has been set to run inference over.
   std::string key_column_name = "topic";
 
@@ -232,7 +232,7 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
   std::vector<TensorColumn> contents;
-  if (inference_model_.HasModel()) {
+  if (inference_model_->HasModel()) {
     // If the inference config is set, fill a Tensor with the inference results.
     FCP_RETURN_IF_ERROR(ExecuteInferenceQuery(contents));
   } else {
@@ -573,7 +573,7 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
                            .model_init_config_case()));
   }
 
-  FCP_RETURN_IF_ERROR(inference_model_.BuildModel(*inference_configuration_));
+  FCP_RETURN_IF_ERROR(inference_model_->BuildModel(*inference_configuration_));
   return config_properties;
 }
 

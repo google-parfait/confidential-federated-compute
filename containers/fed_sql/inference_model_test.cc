@@ -15,6 +15,7 @@
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "testing/parse_text_proto.h"
@@ -23,7 +24,19 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
+using ::gcpp::Gemma;
+using ::gcpp::ModelInfo;
+using ::testing::ByMove;
 using ::testing::HasSubstr;
+using ::testing::Return;
+
+class MockInferenceModel : public InferenceModel {
+ public:
+  MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
+              (const ModelInfo& model_info,
+               const SessionGemmaConfiguration& gemma_config),
+              (override));
+};
 
 TEST(InferenceModelTest, HasModelNone) {
   InferenceModel inference_model = InferenceModel();
@@ -31,7 +44,7 @@ TEST(InferenceModelTest, HasModelNone) {
 }
 
 TEST(InferenceModelTest, HasModelGemma) {
-  InferenceModel inference_model = InferenceModel();
+  MockInferenceModel inference_model = MockInferenceModel();
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
     inference_config {
@@ -54,12 +67,14 @@ TEST(InferenceModelTest, HasModelGemma) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
+  ON_CALL(inference_model, BuildGemmaModel)
+      .WillByDefault(Return(ByMove(nullptr)));
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   ASSERT_TRUE(inference_model.HasModel());
 }
 
 TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
-  InferenceModel inference_model = InferenceModel();
+  MockInferenceModel inference_model = MockInferenceModel();
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
     inference_config {
@@ -87,6 +102,8 @@ TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
+  ON_CALL(inference_model, BuildGemmaModel)
+      .WillByDefault(Return(ByMove(nullptr)));
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
 }
 
