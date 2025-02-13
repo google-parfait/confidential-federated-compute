@@ -25,10 +25,13 @@ use prost::{bytes::Bytes, Message};
 use session_config::create_session_config;
 use slog::{debug, error, warn};
 use storage::Storage;
-use storage_proto::confidential_federated_compute::kms::{
-    read_request, storage_event, storage_request, storage_response, update_request, ReadRequest,
-    ReadResponse, SessionResponseWithStatus, StorageEvent, StorageRequest, StorageResponse,
-    UpdateRequest,
+use storage_proto::{
+    confidential_federated_compute::kms::{
+        read_request, storage_event, storage_request, storage_response, update_request,
+        ReadRequest, ReadResponse, SessionResponseWithStatus, StorageEvent, StorageRequest,
+        StorageResponse, UpdateRequest,
+    },
+    duration_proto::google::protobuf::Duration,
 };
 use tcp_runtime::model::{
     Actor, ActorCommand, ActorContext, ActorError, ActorEvent, ActorEventContext, CommandOutcome,
@@ -203,7 +206,7 @@ impl StorageActor {
             Some(storage_request::Kind::Update(msg)) => {
                 // Convert the update into an event to be propagated to followers.
                 Ok(HandleStorageRequestOutcome::Event(StorageEvent {
-                    session_id: session_id,
+                    session_id,
                     correlation_id: request.correlation_id,
                     kind: Some(storage_event::Kind::Update(msg)),
                 }))
@@ -306,18 +309,26 @@ impl Actor for StorageActor {
             error!(self.logger(), "Failed to decode snapshot: {}", err);
             ActorError::SnapshotLoading
         })?;
+        if snapshot.now.is_none() {
+            error!(self.logger(), "Invalid snapshot: snapshot is missing `now`");
+            return Err(ActorError::SnapshotLoading);
+        }
 
         // Load the entries from the snapshot.
         self.storage = Storage::default();
         self.storage
             .update(UpdateRequest {
-                now: snapshot.now,
+                now: snapshot.now.clone(),
                 updates: snapshot
                     .entries
                     .into_iter()
                     .map(|entry| update_request::Update {
                         key: entry.key,
                         value: Some(entry.value),
+                        ttl: entry.expiration.map(|expiration| Duration {
+                            seconds: expiration.seconds - snapshot.now.as_ref().unwrap().seconds,
+                            ..Default::default()
+                        }),
                     })
                     .collect(),
             })

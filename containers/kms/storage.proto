@@ -13,12 +13,12 @@
 // limitations under the License.
 
 // The storage service provides a simple key-value store that's backed by TCP.
-// TODO: b/393146003 - Add support for expiration.
 
 syntax = "proto3";
 
 package confidential_federated_compute.kms;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 import "proto/session/session.proto";
@@ -73,6 +73,9 @@ message ReadResponse {
 
     // The entry's value.
     bytes value = 2;
+
+    // The entry's expiration time. If unset, the entry never expires.
+    optional google.protobuf.Timestamp expiration = 3;
   }
 }
 
@@ -91,6 +94,8 @@ message UpdateRequest {
     bytes key = 1;
     // The desired value for the entry. If unset, the entry is removed.
     optional bytes value = 2;
+    // The entry's TTL. If unset, the entry will never expire.
+    google.protobuf.Duration ttl = 3;
     // TODO: b/393146003 - Add support for update preconditions.
   }
 }

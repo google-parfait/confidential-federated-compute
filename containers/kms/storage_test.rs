@@ -19,6 +19,7 @@ use storage_proto::{
     confidential_federated_compute::kms::{
         read_request, read_response, update_request, ReadRequest, ReadResponse, UpdateRequest,
     },
+    duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
 };
 use tonic::Code;
@@ -52,14 +53,17 @@ fn read_single_entry() {
                 update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
                     value: Some(b"value 4".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
                     value: Some(b"value 6".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 8u128.to_be_bytes().to_vec(),
                     value: Some(b"value 8".into()),
+                    ..Default::default()
                 },
             ],
         }),
@@ -70,12 +74,12 @@ fn read_single_entry() {
         storage.read(&ReadRequest {
             ranges: vec![read_request::Range { start: 6u128.to_be_bytes().to_vec(), end: None }],
         }),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            entries: vec![read_response::Entry {
-                key: 6u128.to_be_bytes().to_vec(),
-                value: b"value 6".into(),
-            }],
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(6u128.to_be_bytes()),
+                value: eq(b"value 6"),
+            })],
         }))
     );
 }
@@ -90,18 +94,22 @@ fn read_range() {
                 update_request::Update {
                     key: 5u128.to_be_bytes().to_vec(),
                     value: Some(b"value 5".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
                     value: Some(b"value 6".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 8u128.to_be_bytes().to_vec(),
                     value: Some(b"value 8".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 9u128.to_be_bytes().to_vec(),
                     value: Some(b"value 9".into()),
+                    ..Default::default()
                 },
             ],
         }),
@@ -115,17 +123,17 @@ fn read_range() {
                 end: Some(8u128.to_be_bytes().to_vec()),
             }],
         }),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            entries: vec![
-                read_response::Entry {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: b"value 6".into(),
-                },
-                read_response::Entry {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: b"value 8".into(),
-                },
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![
+                matches_pattern!(read_response::Entry {
+                    key: eq(6u128.to_be_bytes()),
+                    value: eq(b"value 6"),
+                }),
+                matches_pattern!(read_response::Entry {
+                    key: eq(8u128.to_be_bytes()),
+                    value: eq(b"value 8"),
+                }),
             ],
         }))
     );
@@ -141,14 +149,17 @@ fn read_multiple_values() {
                 update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
                     value: Some(b"value 4".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
                     value: Some(b"value 6".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 8u128.to_be_bytes().to_vec(),
                     value: Some(b"value 8".into()),
+                    ..Default::default()
                 },
             ],
         }),
@@ -162,18 +173,92 @@ fn read_multiple_values() {
                 read_request::Range { start: 8u128.to_be_bytes().to_vec(), end: None },
             ],
         }),
-        ok(eq(ReadResponse {
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![
+                matches_pattern!(read_response::Entry {
+                    key: eq(4u128.to_be_bytes()),
+                    value: eq(b"value 4"),
+                }),
+                matches_pattern!(read_response::Entry {
+                    key: eq(8u128.to_be_bytes()),
+                    value: eq(b"value 8"),
+                }),
+            ],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn read_entry_multiple_times() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
             now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            entries: vec![
-                read_response::Entry {
+            updates: vec![
+                update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
-                    value: b"value 4".into(),
+                    value: Some(b"value 4".into()),
+                    ..Default::default()
                 },
-                read_response::Entry {
+                update_request::Update {
+                    key: 6u128.to_be_bytes().to_vec(),
+                    value: Some(b"value 6".into()),
+                    ..Default::default()
+                },
+                update_request::Update {
                     key: 8u128.to_be_bytes().to_vec(),
-                    value: b"value 8".into(),
+                    value: Some(b"value 8".into()),
+                    ..Default::default()
                 },
             ],
+        }),
+        ok(anything())
+    );
+
+    // If the same entry matches multiple ranges, it may be returned multiple times.
+    expect_that!(
+        storage.read(&ReadRequest {
+            ranges: vec![
+                read_request::Range {
+                    start: 4u128.to_be_bytes().to_vec(),
+                    end: Some(6u128.to_be_bytes().to_vec())
+                },
+                read_request::Range { start: 6u128.to_be_bytes().to_vec(), end: None },
+                read_request::Range {
+                    start: 6u128.to_be_bytes().to_vec(),
+                    end: Some(8u128.to_be_bytes().to_vec())
+                },
+            ],
+        }),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: all!(
+                contains(matches_pattern!(read_response::Entry {
+                    key: eq(4u128.to_be_bytes()),
+                    value: eq(b"value 4"),
+                }))
+                .times(eq(1)),
+                contains(matches_pattern!(read_response::Entry {
+                    key: eq(6u128.to_be_bytes()),
+                    value: eq(b"value 6"),
+                }))
+                .times(any!(eq(1), eq(3))),
+                contains(matches_pattern!(read_response::Entry {
+                    key: eq(8u128.to_be_bytes()),
+                    value: eq(b"value 8"),
+                }))
+                .times(eq(1)),
+                // The response should not contain any other entries.
+                contains(matches_pattern!(read_response::Entry {
+                    key: not(any!(
+                        eq(4u128.to_be_bytes()),
+                        eq(6u128.to_be_bytes()),
+                        eq(8u128.to_be_bytes())
+                    )),
+                }))
+                .times(eq(0)),
+            ),
         }))
     );
 }
@@ -187,6 +272,7 @@ fn empty_read() {
             updates: vec![update_request::Update {
                 key: 4u128.to_be_bytes().to_vec(),
                 value: Some(b"value 4".into()),
+                ..Default::default()
             }],
         }),
         ok(anything())
@@ -194,9 +280,9 @@ fn empty_read() {
 
     expect_that!(
         storage.read(&ReadRequest::default()),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            entries: vec![],
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![],
         }))
     );
 }
@@ -231,6 +317,41 @@ fn read_invalid_range() {
 }
 
 #[test_log::test(googletest::test)]
+fn multiple_writes_to_same_key() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![
+                update_request::Update {
+                    key: 4u128.to_be_bytes().to_vec(),
+                    value: Some(b"value 4a".into()),
+                    ..Default::default()
+                },
+                update_request::Update {
+                    key: 4u128.to_be_bytes().to_vec(),
+                    value: Some(b"value 4b".into()),
+                    ..Default::default()
+                },
+            ],
+        }),
+        ok(anything())
+    );
+
+    // One of the two writes should be applied, but it's unspecified which.
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(4u128.to_be_bytes()),
+                value: any!(eq(b"value 4a"), eq(b"value 4b")),
+            }),],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
 fn empty_write() {
     let mut storage = Storage::default();
     assert_that!(
@@ -243,9 +364,9 @@ fn empty_write() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            entries: vec![],
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            entries: elements_are![],
         }))
     );
 }
@@ -259,6 +380,7 @@ fn write_invalid_entry() {
             updates: vec![update_request::Update {
                 key: 2u128.to_be_bytes().to_vec(),
                 value: Some(b"value".into()),
+                ..Default::default()
             }],
         }),
         err(all!(code(Code::InvalidArgument), has_context(eq("UpdateRequest missing now"))))
@@ -269,6 +391,7 @@ fn write_invalid_entry() {
             updates: vec![update_request::Update {
                 key: b"invalid".into(),
                 value: Some(b"value".into()),
+                ..Default::default()
             }],
         }),
         err(all!(code(Code::InvalidArgument), has_context(eq("invalid key"))))
@@ -315,10 +438,12 @@ fn delete_entry() {
                 update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
                     value: Some(b"value 4".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
                     value: Some(b"value 6".into()),
+                    ..Default::default()
                 },
             ],
         }),
@@ -332,6 +457,7 @@ fn delete_entry() {
             updates: vec![update_request::Update {
                 key: 4u128.to_be_bytes().to_vec(),
                 value: None,
+                ..Default::default()
             },],
         }),
         ok(anything())
@@ -339,12 +465,12 @@ fn delete_entry() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            entries: vec![read_response::Entry {
-                key: 6u128.to_be_bytes().to_vec(),
-                value: b"value 6".into(),
-            },],
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(6u128.to_be_bytes()),
+                value: eq(b"value 6"),
+            })],
         }))
     );
 }
@@ -359,10 +485,12 @@ fn delete_missing_entry() {
                 update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
                     value: Some(b"value 4".into()),
+                    ..Default::default()
                 },
                 update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
                     value: Some(b"value 6".into()),
+                    ..Default::default()
                 },
             ],
         }),
@@ -376,6 +504,7 @@ fn delete_missing_entry() {
             updates: vec![update_request::Update {
                 key: 5u128.to_be_bytes().to_vec(),
                 value: None,
+                ..Default::default()
             },],
         }),
         ok(anything())
@@ -384,18 +513,323 @@ fn delete_missing_entry() {
     // The state should be unchanged (except for the current time).
     expect_that!(
         storage.read(&full_read_request()),
-        ok(eq(ReadResponse {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            entries: vec![
-                read_response::Entry {
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+            entries: elements_are![
+                matches_pattern!(read_response::Entry {
+                    key: eq(4u128.to_be_bytes()),
+                    value: eq(b"value 4"),
+                }),
+                matches_pattern!(read_response::Entry {
+                    key: eq(6u128.to_be_bytes()),
+                    value: eq(b"value 6"),
+                }),
+            ],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn expired_entry_is_removed() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![
+                update_request::Update {
                     key: 4u128.to_be_bytes().to_vec(),
-                    value: b"value 4".into(),
+                    value: Some(b"value 4".into()),
+                    ttl: None, // never expires
                 },
-                read_response::Entry {
+                update_request::Update {
                     key: 6u128.to_be_bytes().to_vec(),
-                    value: b"value 6".into(),
+                    value: Some(b"value 6".into()),
+                    ttl: Some(Duration { seconds: 10, ..Default::default() }),
+                },
+                update_request::Update {
+                    key: 8u128.to_be_bytes().to_vec(),
+                    value: Some(b"value 8".into()),
+                    ttl: Some(Duration { seconds: 20, ..Default::default() }),
                 },
             ],
+        }),
+        ok(anything())
+    );
+
+    // Advance the clock so that one entry expires.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 110, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+            entries: elements_are![
+                matches_pattern!(read_response::Entry {
+                    key: eq(4u128.to_be_bytes()),
+                    value: eq(b"value 4"),
+                    expiration: none(),
+                }),
+                matches_pattern!(read_response::Entry {
+                    key: eq(8u128.to_be_bytes()),
+                    value: eq(b"value 8"),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                }),
+            ],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn expiration_uses_latest_time() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 200, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+
+    // Insert an entry with a `now` value in the past. The entry should use the
+    // Storage's maximum time (200), not the request's time (100).
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value".into()),
+                ttl: Some(Duration { seconds: 10, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value"),
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+            })],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn ttl_can_be_shortened() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value A".into()),
+                ttl: Some(Duration { seconds: 100, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+
+    // Shorten the entry's TTL (200 -> 160).
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 110, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value B".into()),
+                ttl: Some(Duration { seconds: 50, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value B"),
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(160) })),
+            })],
+        }))
+    );
+
+    // Advance the clock so that the entry expires.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 170, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(170) })),
+            entries: elements_are![],
+        }))
+    );
+
+    // Advance the clock to the original expiration time. Nothing should break.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 200, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+            entries: elements_are![],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn ttl_can_be_extended() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value A".into()),
+                ttl: Some(Duration { seconds: 20, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+
+    // Extend the entry's TTL (120 -> 210).
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 110, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value B".into()),
+                ttl: Some(Duration { seconds: 100, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value B"),
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+            })],
+        }))
+    );
+
+    // Advance the clock to the original expiration time. The entry should not be
+    // removed.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 120, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value B"),
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+            })],
+        }))
+    );
+
+    // Advance the clock to the updated expiration time. The entry should be
+    // removed.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 210, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+            entries: elements_are![],
+        }))
+    );
+}
+
+#[test_log::test(googletest::test)]
+fn ttl_can_be_removed() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 100, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value A".into()),
+                ttl: Some(Duration { seconds: 20, ..Default::default() }),
+            }],
+        }),
+        ok(anything())
+    );
+
+    // Remove the entry's TTL.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 110, ..Default::default() }),
+            updates: vec![update_request::Update {
+                key: 5u128.to_be_bytes().to_vec(),
+                value: Some(b"value B".into()),
+                ttl: None,
+            }],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value B"),
+                expiration: none(),
+            })],
+        }))
+    );
+
+    // Advance the clock to the original expiration time. The entry should not be
+    // removed.
+    assert_that!(
+        storage.update(UpdateRequest {
+            now: Some(Timestamp { seconds: 120, ..Default::default() }),
+            updates: vec![],
+        }),
+        ok(anything())
+    );
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+            entries: elements_are![matches_pattern!(read_response::Entry {
+                key: eq(5u128.to_be_bytes()),
+                value: eq(b"value B"),
+                expiration: none(),
+            })],
         }))
     );
 }

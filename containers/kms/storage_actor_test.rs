@@ -34,6 +34,7 @@ use storage_proto::{
         ReadRequest, ReadResponse, SessionResponseWithStatus, StorageRequest, StorageResponse,
         UpdateRequest, UpdateResponse,
     },
+    duration_proto::google::protobuf::Duration,
     status_proto::google::rpc::Status,
     timestamp_proto::google::protobuf::Timestamp,
 };
@@ -346,6 +347,7 @@ fn write_and_read_succeeds() {
                     updates: vec![update_request::Update {
                         key: 5u128.to_be_bytes().into(),
                         value: Some(b"value".into()),
+                        ..Default::default()
                     }],
                 })),
             },
@@ -458,6 +460,7 @@ fn save_and_load_snapshot_succeeds() {
                     updates: vec![update_request::Update {
                         key: 5u128.to_be_bytes().into(),
                         value: Some(b"value".into()),
+                        ttl: Some(Duration { seconds: 1000, ..Default::default() }),
                     }],
                 })),
             },
@@ -542,6 +545,7 @@ fn save_and_load_snapshot_succeeds() {
                     entries: elements_are![matches_pattern!(read_response::Entry {
                         key: eq(5u128.to_be_bytes()),
                         value: eq(b"value"),
+                        expiration: some(matches_pattern!(Timestamp { seconds: eq(1100) })),
                     })]
                 }
             )))),

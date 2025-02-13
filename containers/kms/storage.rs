@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use std::{
-    collections::BTreeMap,
+    cmp::Reverse,
+    collections::{btree_map, BTreeMap, BinaryHeap},
     ops::Bound::Included,
     sync::{
         atomic::{AtomicI64, Ordering},
@@ -33,7 +34,7 @@ use tonic::Code;
 
 /// The underlying storage for the KMS: a key-value store with an associated
 /// clock.
-// TODO: b/393146003 - Add support for update preconditions and entry expiration.
+// TODO: b/393146003 - Add support for update preconditions.
 #[derive(Default)]
 pub struct Storage {
     /// The monotonically increasing current time in seconds since the epoch.
@@ -41,11 +42,22 @@ pub struct Storage {
 
     /// The stored data.
     data: BTreeMap<u128, StorageEntry>,
+
+    /// A collection of entries that have not yet expired, ordered by ascending
+    /// expiration time.
+    expirations: BinaryHeap<Reverse<ExpirationEntry>>,
 }
 
 #[derive(Debug)]
 struct StorageEntry {
     value: Vec<u8>,
+    expiration_seconds: i64, // 0 if the entry never expires.
+}
+
+#[derive(Eq, Ord, PartialEq, PartialOrd)]
+struct ExpirationEntry {
+    expiration_seconds: i64,
+    key: u128,
 }
 
 impl Storage {
@@ -64,9 +76,14 @@ impl Storage {
             }
 
             for (&key, value) in self.data.range((Included(start), Included(end))) {
+                let expiration = match value.expiration_seconds {
+                    s if s > 0 => Some(Timestamp { seconds: s, ..Default::default() }),
+                    _ => None,
+                };
                 entries.push(read_response::Entry {
                     key: key.to_be_bytes().to_vec(),
                     value: value.value.clone(),
+                    expiration,
                 });
             }
         }
@@ -91,16 +108,41 @@ impl Storage {
         }
 
         // If we've reached this point, all updates can be successfully applied.
-        self.clock.update(now_seconds);
+        let now_seconds = self.clock.update(now_seconds);
         for update in request.updates {
             let key = Self::parse_key(&update.key)?;
             if let Some(value) = update.value {
-                let entry = StorageEntry { value };
+                let expiration_seconds =
+                    update.ttl.as_ref().map(|ttl| now_seconds.saturating_add(ttl.seconds));
+                let entry =
+                    StorageEntry { value, expiration_seconds: expiration_seconds.unwrap_or(0) };
                 debug!("setting entry {:?} = {:?}", key, entry);
                 self.data.insert(key, entry);
+                if let Some(expiration_seconds) = expiration_seconds {
+                    self.expirations.push(Reverse(ExpirationEntry { expiration_seconds, key }));
+                }
             } else {
                 debug!("removing entry {:?}", key);
                 self.data.remove(&key);
+            }
+        }
+
+        // Remove expired entries.
+        while let Some(Reverse(exp)) = self.expirations.peek() {
+            if exp.expiration_seconds > now_seconds {
+                break;
+            }
+
+            // Since existing expiration entries in the heap aren't updated if
+            // an expiration time is changed or a StorageEntry is removed, we
+            // must also check that the entry exists and is actually expired.
+            let exp = self.expirations.pop().unwrap().0;
+            if let btree_map::Entry::Occupied(entry) = self.data.entry(exp.key) {
+                let expiration_seconds = entry.get().expiration_seconds;
+                if expiration_seconds > 0 && expiration_seconds <= now_seconds {
+                    debug!("expiring entry {:?}", entry.key());
+                    entry.remove_entry();
+                }
             }
         }
 

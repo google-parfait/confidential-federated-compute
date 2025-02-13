@@ -134,6 +134,7 @@ proto_library(
     data = [":storage_transform"],
     deps = [
         "@com_google_googleapis//google/rpc:status_proto",
+        "@com_google_protobuf//:duration_proto",
         "@com_google_protobuf//:timestamp_proto",
         "@oak//proto/session:session_proto",
     ],
