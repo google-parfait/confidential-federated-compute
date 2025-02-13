@@ -22,11 +22,11 @@ use std::{
     },
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use log::debug;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_response, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
+        read_response, update_request, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
     },
     timestamp_proto::google::protobuf::Timestamp,
 };
@@ -34,7 +34,6 @@ use tonic::Code;
 
 /// The underlying storage for the KMS: a key-value store with an associated
 /// clock.
-// TODO: b/393146003 - Add support for update preconditions.
 #[derive(Default)]
 pub struct Storage {
     /// The monotonically increasing current time in seconds since the epoch.
@@ -104,7 +103,12 @@ impl Storage {
             .map(|t| t.seconds)
             .ok_or_else(|| anyhow!("UpdateRequest missing now").context(Code::InvalidArgument))?;
         for update in &request.updates {
-            Self::parse_key(&update.key)?;
+            let entry = self.data.get(&Self::parse_key(&update.key)?);
+            if let Some(preconditions) = &update.preconditions {
+                Self::check_preconditions(entry, preconditions)
+                    .context(format!("preconditions not satisfied for key {:?}", update.key))
+                    .context(Code::FailedPrecondition)?;
+            }
         }
 
         // If we've reached this point, all updates can be successfully applied.
@@ -153,6 +157,28 @@ impl Storage {
     fn parse_key(key: &[u8]) -> Result<u128> {
         let key: [u8; 16] = key.try_into().context("invalid key").context(Code::InvalidArgument)?;
         Ok(u128::from_be_bytes(key))
+    }
+
+    /// Verifies preconditions for a single update entry.
+    fn check_preconditions(
+        entry: Option<&StorageEntry>,
+        preconditions: &update_request::Preconditions,
+    ) -> Result<()> {
+        // Check the existence precondition.
+        match (preconditions.exists, entry) {
+            (Some(true), None) => bail!("exists=true not satisfied"),
+            (Some(false), Some(_)) => bail!("exists=false not satisfied"),
+            _ => {}
+        }
+
+        // Check the value precondition.
+        match (&preconditions.value, entry) {
+            (Some(value), Some(e)) if *value != e.value => bail!("value not satisfied"),
+            (Some(_), None) => bail!("value not satisfied (entry doesn't exist)"),
+            _ => {}
+        }
+
+        Ok(())
     }
 }
 

@@ -96,7 +96,16 @@ message UpdateRequest {
     optional bytes value = 2;
     // The entry's TTL. If unset, the entry will never expire.
     google.protobuf.Duration ttl = 3;
-    // TODO: b/393146003 - Add support for update preconditions.
+    // Preconditions that must be met for the update to succeed.
+    Preconditions preconditions = 4;
+  }
+
+  message Preconditions {
+    // If set, the entry must already exist (true) or not exist (false).
+    optional bool exists = 1;
+
+    // If set, the entry must currently have the specified value.
+    optional bytes value = 2;
   }
 }
 

@@ -461,6 +461,7 @@ fn save_and_load_snapshot_succeeds() {
                         key: 5u128.to_be_bytes().into(),
                         value: Some(b"value".into()),
                         ttl: Some(Duration { seconds: 1000, ..Default::default() }),
+                        ..Default::default()
                     }],
                 })),
             },

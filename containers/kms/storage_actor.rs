@@ -329,6 +329,7 @@ impl Actor for StorageActor {
                             seconds: expiration.seconds - snapshot.now.as_ref().unwrap().seconds,
                             ..Default::default()
                         }),
+                        ..Default::default()
                     })
                     .collect(),
             })
