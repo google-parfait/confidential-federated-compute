@@ -66,6 +66,9 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
         # 0.4.1 requires tonic 0.12.
         version = "=0.4.0",
     ),
+    "slog-stdlog": crate.spec(
+        version = "4.1.1",
+    ),
     "test-log": crate.spec(
         version = "0.2.17",
     ),

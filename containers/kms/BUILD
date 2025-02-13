@@ -32,6 +32,32 @@ rust_test(
 )
 
 rust_library(
+    name = "session_config",
+    srcs = ["session_config.rs"],
+    deps = [
+        "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification_types",
+        "@oak//oak_crypto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
+    ],
+)
+
+rust_library(
+    name = "session_test_utils",
+    testonly = True,
+    srcs = ["session_test_utils.rs"],
+    deps = [
+        "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification_types",
+        "@oak//oak_proto_rust",
+        "@oak//oak_restricted_kernel_sdk",
+        "@oak_crates_index//:anyhow",
+    ],
+)
+
+rust_library(
     name = "storage",
     srcs = ["storage.rs"],
     deps = [
@@ -58,13 +84,58 @@ rust_test(
     ],
 )
 
+rust_library(
+    name = "storage_actor",
+    srcs = ["storage_actor.rs"],
+    deps = [
+        ":session_config",
+        ":storage",
+        ":storage_prost_proto",
+        "@oak//oak_attestation_types",
+        "@oak//oak_crypto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:hashbrown",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:slog",
+        "@oak_crates_index//:tonic",
+        "@trusted_computations_platform//runtime:tcp_runtime",
+    ],
+)
+
+rust_test(
+    name = "storage_actor_test",
+    srcs = ["storage_actor_test.rs"],
+    env = {"RUST_LOG": "debug"},
+    deps = [
+        ":session_config",
+        ":session_test_utils",
+        ":storage_actor",
+        ":storage_prost_proto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:googletest",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:rand",
+        "@oak_crates_index//:slog",
+        "@oak_crates_index//:slog-stdlog",
+        "@oak_crates_index//:test-log",
+        "@oak_crates_index//:tonic",
+        "@trusted_computations_platform//runtime:tcp_runtime",
+    ],
+)
+
 # buildifier: disable=native-proto
 proto_library(
     name = "storage_proto",
     srcs = ["storage.proto"],
     data = [":storage_transform"],
     deps = [
+        "@com_google_googleapis//google/rpc:status_proto",
         "@com_google_protobuf//:timestamp_proto",
+        "@oak//proto/session:session_proto",
     ],
 )
 
