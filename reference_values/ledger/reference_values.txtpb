@@ -41,8 +41,8 @@ oak_restricted_kernel {
       }
       min_tcb_version {
         boot_loader: 3
-        snp: 20
-        microcode: 209
+        snp: 0x18
+        microcode: 0xDB
       }
     }
   }

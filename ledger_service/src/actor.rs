@@ -450,13 +450,13 @@ mod tests {
         let reference_values = actor.get_reference_values();
 
         let evidence =
-            Evidence::decode(include_bytes!("../testdata/evidence_20241121.binarypb").as_slice())?;
+            Evidence::decode(include_bytes!("../testdata/evidence_20250213.binarypb").as_slice())?;
         let endorsements = Endorsements::decode(
-            include_bytes!("../testdata/endorsements_20241121.binarypb").as_slice(),
+            include_bytes!("../testdata/endorsements_20250213.binarypb").as_slice(),
         )?;
         assert_that!(
             oak_attestation_verification::verifier::verify(
-                1732147200000,
+                1739404800000,
                 &evidence,
                 &endorsements,
                 &reference_values
