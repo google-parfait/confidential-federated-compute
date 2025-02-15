@@ -36,31 +36,34 @@ struct SessionInferenceConfiguration {
       initialize_configuration;
   std::optional<SessionGemmaConfiguration> gemma_configuration;
 };
-
+enum class ModelType : int {
+  kNone = 0,
+  kGemma = 1,
+};
 // An LLM model that can be invoked to run inference before the per-client query
 // step.
 class InferenceModel {
  public:
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
-  void RunInference(
+  absl::Status RunInference(
       std::vector<::confidential_federated_compute::sql::TensorColumn>&
           columns);
   bool HasModel() const;
 
  private:
-  enum class ModelType {
-    kNone,
-    kGemma,
-  };
+  struct NoModel {};
 
   virtual std::unique_ptr<::gcpp::Gemma> BuildGemmaModel(
-      const ::gcpp::ModelInfo& gemma_model,
+      const ::gcpp::ModelInfo& model_info,
       const SessionGemmaConfiguration& gemma_config);
 
-  ModelType model_type_ = ModelType::kNone;
+  virtual absl::StatusOr<std::string> RunGemmaInference(
+      const std::string& prompt, const absl::string_view& input_value);
+  ModelType GetModelType() const;
+
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::unique_ptr<::gcpp::Gemma> gemma_model_;
+  std::variant<NoModel, std::unique_ptr<::gcpp::Gemma>> model_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

@@ -204,7 +204,6 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 absl::Status FedSqlSession::ExecuteInferenceQuery(
     std::vector<TensorColumn>& columns) {
-  inference_model_->RunInference(columns);
   // TODO: Check that a specific column has been set to run inference over.
   std::string key_column_name = "topic";
 
