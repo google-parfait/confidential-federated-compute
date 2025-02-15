@@ -86,9 +86,9 @@ http_archive(
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    sha256 = "d5534b565fce0fcdca5359d50e4891979e470a35f8e4099a548639b495728280",
-    strip_prefix = "tensorflow-federated-9337518db67abed51a3044dca511ba47514e36fb",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/9337518db67abed51a3044dca511ba47514e36fb.tar.gz",
+    sha256 = "7ffd51dd5cdba8ebe7f2ec58d47b71ec4499e1c2a5980de7ad37940f9c7a7cf8",
+    strip_prefix = "tensorflow-federated-b35e8d3eac8536534b6c56996001cf756d953b27",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/b35e8d3eac8536534b6c56996001cf756d953b27.tar.gz",
 )
 
 http_archive(
@@ -101,9 +101,9 @@ http_archive(
     repo_mapping = {
         "@protobuf": "@com_google_protobuf",
     },
-    sha256 = "07fad8cb743caac8f9afeebf06ef767471713f23a15b2e6713fcc0a17967747b",
-    strip_prefix = "federated-language-2ec477bcd8ecfa7e5422b806450f101d1eed7ecb",
-    url = "https://github.com/google-parfait/federated-language/archive/2ec477bcd8ecfa7e5422b806450f101d1eed7ecb.tar.gz",
+    sha256 = "d1500db4e6dc7403c3da121cf98ec03693b48384ec7cccae6fdc8ac3df182be0",
+    strip_prefix = "federated-language-be055feb0137577e0d27fe7c78aab87fbcb70b6d",
+    url = "https://github.com/google-parfait/federated-language/archive/be055feb0137577e0d27fe7c78aab87fbcb70b6d.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
@@ -220,16 +220,16 @@ http_archive(
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    sha256 = "b53a42ee92bd25d6fed6752ee2b079831a041fe7a5f9f43b50b48479e4e72356",
-    strip_prefix = "federated-compute-26c6e299445b8837efb3e4072cfc2a23b7ee9cf7",
-    url = "https://github.com/google/federated-compute/archive/26c6e299445b8837efb3e4072cfc2a23b7ee9cf7.tar.gz",
+    sha256 = "9519f72f24a0e1ed33ac348999f38ac87d5a871a9eb137743ee30200b338b090",
+    strip_prefix = "federated-compute-2cb0edb3327da4ca1720cc50103fb832cb368a9a",
+    url = "https://github.com/google/federated-compute/archive/2cb0edb3327da4ca1720cc50103fb832cb368a9a.tar.gz",
 )
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "d15f95b2fe7e48e28efb638cb8612ff37c797ab71fe23d0b45629568c2923473",
-    strip_prefix = "trusted-computations-platform-46b0666a06673aeb752793c84e7d67cfc47a923b",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/46b0666a06673aeb752793c84e7d67cfc47a923b.tar.gz",
+    sha256 = "3ec3a9a97ae126b67beefcdaacc821e18032c56ae4e1925e6125e3fabf1a34bf",
+    strip_prefix = "trusted-computations-platform-9168e37dc34d667edcc7aaa77b78508c56343a52",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/9168e37dc34d667edcc7aaa77b78508c56343a52.tar.gz",
 )
 
 http_archive(

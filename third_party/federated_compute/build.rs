@@ -20,11 +20,13 @@ fn main() {
         .into();
     micro_rpc_build::compile(
         &[
+            proto_dir.join("fcp/client/event_time_range.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/access_policy.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/blob_header.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/ledger.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/pipeline_transform.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/verification_record.proto"),
+            std::env::var("DATETIME_PROTO").unwrap().into(),
         ],
         &[
             proto_dir.into_os_string().to_str().unwrap(),
@@ -35,6 +37,10 @@ fn main() {
             std::env::var("DESCRIPTOR_PROTO")
                 .unwrap()
                 .strip_suffix("/google/protobuf/descriptor.proto")
+                .unwrap(),
+            std::env::var("DATETIME_PROTO")
+                .unwrap()
+                .strip_suffix("/google/type/datetime.proto")
                 .unwrap(),
         ],
         micro_rpc_build::CompileOptions {

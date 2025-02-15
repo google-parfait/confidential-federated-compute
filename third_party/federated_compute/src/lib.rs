@@ -19,6 +19,20 @@ extern crate alloc;
 
 pub mod proto {
     #![allow(dead_code)]
-    use prost::Message;
-    include!(concat!(env!("OUT_DIR"), "/fcp.confidentialcompute.rs"));
+    pub(crate) mod fcp {
+        pub(crate) mod client {
+            include!(concat!(env!("OUT_DIR"), "/fcp.client.rs"));
+        }
+        pub(crate) mod confidentialcompute {
+            use prost::Message;
+            include!(concat!(env!("OUT_DIR"), "/fcp.confidentialcompute.rs"));
+        }
+    }
+    pub(crate) mod google {
+        pub(crate) mod r#type {
+            include!(concat!(env!("OUT_DIR"), "/google.r#type.rs"));
+        }
+    }
+
+    pub use fcp::confidentialcompute::*;
 }

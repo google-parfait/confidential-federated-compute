@@ -6,3 +6,10 @@
  cc_library(
      name = "compression",
 +    visibility = ["@//:__subpackages__"],
+
+# Make event_time_range.proto public
+--- fcp/client/BUILD
++++ fcp/client/BUILD
+@@ -25,1 +25,2 @@
+ )
++exports_files(["event_time_range.proto"])

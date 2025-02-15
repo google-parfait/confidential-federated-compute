@@ -9,10 +9,13 @@ cargo_build_script(
         "DESCRIPTOR_PROTO": "$(location @com_google_protobuf//:descriptor_proto_srcs)",
         "EVIDENCE_PROTO": "$(location @oak//proto/attestation:evidence.proto)",
         "LEDGER_PROTO": "$(location @federated-compute//fcp/protos/confidentialcompute:ledger.proto)",
+        "DATETIME_PROTO": "$(location @com_google_googleapis//google/type:datetime.proto)",
     },
     data = [
+        "@com_google_googleapis//google/type:datetime.proto",
         "@com_google_protobuf//:descriptor_proto_srcs",
         "@com_google_protobuf//:well_known_type_protos",
+        "@federated-compute//fcp/client:event_time_range.proto",
         "@federated-compute//fcp/protos/confidentialcompute:access_policy.proto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header.proto",
         "@federated-compute//fcp/protos/confidentialcompute:ledger.proto",
