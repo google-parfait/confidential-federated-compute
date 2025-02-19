@@ -175,22 +175,129 @@ fn get_reference_values_succeeds() {
         FakeEndorser::default(),
         FakeSigner::create().unwrap(),
         reference_values.clone(),
+        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
 
     expect_that!(actor.get_reference_values(), eq(reference_values));
 }
 
 #[test_log::test(googletest::test)]
-fn empty_command_ignored() {
+fn empty_command_ignored_on_follower() {
     let mut actor = StorageActor::new(
         FakeAttester::create().unwrap(),
         FakeEndorser::default(),
         FakeSigner::create().unwrap(),
         test_reference_values(),
+        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
-    assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
+    assert_that!(actor.on_init(create_actor_context(/* leader= */ false)), ok(anything()));
 
     expect_that!(actor.on_process_command(None), ok(eq(CommandOutcome::with_none())));
+}
+
+#[test_log::test(googletest::test)]
+fn empty_command_causes_periodic_clock_update() {
+    let attester = FakeAttester::create().unwrap();
+    let endorser = FakeEndorser::default();
+    let signer = FakeSigner::create().unwrap();
+    let reference_values = test_reference_values();
+    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 12345_000 });
+    let mut actor = StorageActor::new(
+        attester.clone(),
+        endorser.clone(),
+        signer.clone(),
+        reference_values.clone(),
+        clock.clone(),
+    );
+    let mut seq = mockall::Sequence::new();
+    let mut context = create_actor_context(true);
+    context.expect_instant().times(1).in_sequence(&mut seq).return_const(100_000u64);
+    context.expect_instant().times(1).in_sequence(&mut seq).return_const(150_000u64);
+    context.expect_instant().times(1).in_sequence(&mut seq).return_const(160_000u64);
+    assert_that!(actor.on_init(context), ok(anything()));
+
+    let session_id = b"session-id";
+    let mut session = create_client_session(
+        &mut actor,
+        session_id,
+        attester,
+        endorser,
+        signer,
+        reference_values,
+        clock,
+    );
+
+    // The time should start at 0.
+    let outcome = actor.on_process_command(Some(ActorCommand::with_header(
+        1,
+        &encode_request(
+            &mut session,
+            session_id,
+            &StorageRequest {
+                correlation_id: 123,
+                kind: Some(storage_request::Kind::Read(ReadRequest::default())),
+            },
+        ),
+    )));
+    assert_that!(outcome, ok(matches_pattern!(CommandOutcome { commands: len(eq(1)) })));
+    assert_that!(
+        decode_response(&mut session, &outcome.unwrap().commands[0]),
+        ok(matches_pattern!(StorageResponse {
+            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
+                ReadResponse { now: some(matches_pattern!(Timestamp { seconds: eq(0) })) }
+            )))),
+        }))
+    );
+
+    // When the first empty command is sent, an event to update the time should
+    // be generated since it's been more than a minute since the start time (0).
+    let outcome = actor.on_process_command(None);
+    assert_that!(
+        outcome,
+        ok(matches_pattern!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
+    );
+    // When the event is applied, no response should be generated but the time
+    // should be updated.
+    let outcome = actor
+        .on_apply_event(
+            ActorEventContext { owned: true, ..Default::default() },
+            outcome.unwrap().event.unwrap(),
+        )
+        .expect("on_apply_event failed");
+    expect_that!(outcome.commands, elements_are![]);
+
+    // The time should now be 12345 seconds.
+    let outcome = actor.on_process_command(Some(ActorCommand::with_header(
+        2,
+        &encode_request(
+            &mut session,
+            session_id,
+            &StorageRequest {
+                correlation_id: 456,
+                kind: Some(storage_request::Kind::Read(ReadRequest::default())),
+            },
+        ),
+    )));
+    assert_that!(outcome, ok(matches_pattern!(CommandOutcome { commands: len(eq(1)) })));
+    expect_that!(
+        decode_response(&mut session, &outcome.unwrap().commands[0]),
+        ok(matches_pattern!(StorageResponse {
+            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
+                ReadResponse { now: some(matches_pattern!(Timestamp { seconds: eq(12345) })) }
+            )))),
+        }))
+    );
+
+    // On the next call, time will have advanced 50 seconds. A new event should
+    // not be generated.
+    expect_that!(actor.on_process_command(None), ok(eq(CommandOutcome::with_none())));
+
+    // On the third call, time will have advanced 10 seconds. Since 60 seconds
+    // have elapsed since the last event, a new one should be generated.
+    expect_that!(
+        actor.on_process_command(None),
+        ok(matches_pattern!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
+    );
 }
 
 #[test_log::test(googletest::test)]
@@ -200,6 +307,7 @@ fn invalid_request_fails() {
         FakeEndorser::default(),
         FakeSigner::create().unwrap(),
         test_reference_values(),
+        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -228,15 +336,12 @@ fn invalid_request_fails() {
 
 #[test_log::test(googletest::test)]
 fn request_to_follower_fails() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let signer = FakeSigner::create().unwrap();
-    let reference_values = test_reference_values();
     let mut actor = StorageActor::new(
-        attester.clone(),
-        endorser.clone(),
-        signer.clone(),
-        reference_values.clone(),
+        FakeAttester::create().unwrap(),
+        FakeEndorser::default(),
+        FakeSigner::create().unwrap(),
+        test_reference_values(),
+        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
     assert_that!(actor.on_init(create_actor_context(/* leader= */ false)), ok(anything()));
 
@@ -269,11 +374,13 @@ fn empty_storage_request_fails() {
     let endorser = FakeEndorser::default();
     let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
+    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -285,7 +392,7 @@ fn empty_storage_request_fails() {
         endorser,
         signer,
         reference_values,
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        clock,
     );
 
     // Run an invalid command.
@@ -315,11 +422,13 @@ fn write_and_read_succeeds() {
     let endorser = FakeEndorser::default();
     let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
+    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -331,7 +440,7 @@ fn write_and_read_succeeds() {
         endorser,
         signer,
         reference_values,
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        clock,
     );
 
     // Run an update command (5 -> "value").
@@ -343,7 +452,6 @@ fn write_and_read_succeeds() {
             &StorageRequest {
                 correlation_id: 123,
                 kind: Some(storage_request::Kind::Update(UpdateRequest {
-                    now: Some(Timestamp { seconds: 100, ..Default::default() }),
                     updates: vec![update_request::Update {
                         key: 5u128.to_be_bytes().into(),
                         value: Some(b"value".into()),
@@ -427,12 +535,13 @@ fn save_and_load_snapshot_succeeds() {
     let endorser = FakeEndorser::default();
     let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
+    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -456,7 +565,6 @@ fn save_and_load_snapshot_succeeds() {
             &StorageRequest {
                 correlation_id: 123,
                 kind: Some(storage_request::Kind::Update(UpdateRequest {
-                    now: Some(Timestamp { seconds: 100, ..Default::default() }),
                     updates: vec![update_request::Update {
                         key: 5u128.to_be_bytes().into(),
                         value: Some(b"value".into()),
@@ -499,6 +607,8 @@ fn save_and_load_snapshot_succeeds() {
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        // This clock shouldn't affect the loaded snapshot.
+        Arc::new(FakeClock { milliseconds_since_epoch: 200_000 }),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
     assert_that!(actor.on_load_snapshot(snapshot.unwrap()), ok(anything()));
@@ -566,6 +676,7 @@ fn session_reuse_fails() {
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -630,6 +741,7 @@ fn session_reuse_after_close_succeeds() {
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -685,6 +797,7 @@ fn multiple_sessions_succeeds() {
         endorser.clone(),
         signer.clone(),
         reference_values.clone(),
+        clock.clone(),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 

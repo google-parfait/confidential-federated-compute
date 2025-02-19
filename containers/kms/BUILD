@@ -62,7 +62,6 @@ rust_library(
     srcs = ["storage.rs"],
     deps = [
         ":storage_prost_proto",
-        "@oak//oak_attestation_verification_types",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:log",
         "@oak_crates_index//:tonic",
@@ -92,6 +91,7 @@ rust_library(
         ":storage",
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification_types",
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
@@ -117,6 +117,7 @@ rust_test(
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:googletest",
+        "@oak_crates_index//:mockall",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:rand",
         "@oak_crates_index//:slog",

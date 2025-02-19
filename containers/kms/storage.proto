@@ -81,10 +81,6 @@ message ReadResponse {
 
 // A request to modify the storage service's state.
 message UpdateRequest {
-  // The current time, used to remove expired entries. The storage service's
-  // clock monotonically increasing, so a value in the past will have no effect.
-  google.protobuf.Timestamp now = 1;
-
   // Zero or more updates to apply in the same transaction. The update only
   // succeeds if all updates can be applied.
   repeated Update updates = 2;
@@ -107,6 +103,8 @@ message UpdateRequest {
     // If set, the entry must currently have the specified value.
     optional bytes value = 2;
   }
+
+  reserved 1;
 }
 
 // The response to an UpdateRequest.
@@ -123,6 +121,10 @@ message StorageEvent {
 
   // The request's correlation ID.
   uint64 correlation_id = 2;
+
+  // The current time, used to remove expired entries. The storage service's
+  // clock monotonically increasing, so a value in the past will have no effect.
+  google.protobuf.Timestamp now = 4;
 
   oneof kind {
     UpdateRequest update = 3;

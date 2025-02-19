@@ -16,10 +16,7 @@ use std::{
     cmp::Reverse,
     collections::{btree_map, BTreeMap, BinaryHeap},
     ops::Bound::Included,
-    sync::{
-        atomic::{AtomicI64, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicI64, Ordering},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -37,7 +34,9 @@ use tonic::Code;
 #[derive(Default)]
 pub struct Storage {
     /// The monotonically increasing current time in seconds since the epoch.
-    clock: Arc<Clock>,
+    /// This value is only used for entry expiration, so higher resolution is
+    /// unnecessary.
+    seconds_since_epoch: AtomicI64,
 
     /// The stored data.
     data: BTreeMap<u128, StorageEntry>,
@@ -60,10 +59,6 @@ struct ExpirationEntry {
 }
 
 impl Storage {
-    pub fn clock(&self) -> Arc<dyn oak_attestation_verification_types::util::Clock> {
-        self.clock.clone()
-    }
-
     /// Returns stored entries.
     pub fn read(&self, request: &ReadRequest) -> Result<ReadResponse> {
         let mut entries = Vec::new();
@@ -88,7 +83,7 @@ impl Storage {
         }
         Ok(ReadResponse {
             now: Some(Timestamp {
-                seconds: self.clock.seconds_since_epoch(),
+                seconds: self.seconds_since_epoch.load(Ordering::Relaxed),
                 ..Default::default()
             }),
             entries,
@@ -96,12 +91,8 @@ impl Storage {
     }
 
     /// Adds, updates, or removes stored entries.
-    pub fn update(&mut self, request: UpdateRequest) -> Result<UpdateResponse> {
+    pub fn update(&mut self, now: &Timestamp, request: UpdateRequest) -> Result<UpdateResponse> {
         // Validate the request before applying any updates.
-        let now_seconds = request
-            .now
-            .map(|t| t.seconds)
-            .ok_or_else(|| anyhow!("UpdateRequest missing now").context(Code::InvalidArgument))?;
         for update in &request.updates {
             let entry = self.data.get(&Self::parse_key(&update.key)?);
             if let Some(preconditions) = &update.preconditions {
@@ -112,7 +103,9 @@ impl Storage {
         }
 
         // If we've reached this point, all updates can be successfully applied.
-        let now_seconds = self.clock.update(now_seconds);
+        // Update the clock, but don't allow it to go backwards.
+        let now_seconds =
+            self.seconds_since_epoch.fetch_max(now.seconds, Ordering::Relaxed).max(now.seconds);
         for update in request.updates {
             let key = Self::parse_key(&update.key)?;
             if let Some(value) = update.value {
@@ -179,32 +172,5 @@ impl Storage {
         }
 
         Ok(())
-    }
-}
-
-#[derive(Default)]
-struct Clock {
-    /// The monotonically increasing current time in seconds since the epoch.
-    /// This value is used for entry expiration and verifying the time
-    /// ranges in Oak endorsements, so higher resolution is unnecessary.
-    seconds_since_epoch: AtomicI64,
-}
-
-impl Clock {
-    fn seconds_since_epoch(&self) -> i64 {
-        self.seconds_since_epoch.load(Ordering::Relaxed)
-    }
-
-    fn update(&self, seconds_since_epoch: i64) -> i64 {
-        // Don't allow the clock to go backwards.
-        self.seconds_since_epoch
-            .fetch_max(seconds_since_epoch, Ordering::Relaxed)
-            .max(seconds_since_epoch)
-    }
-}
-
-impl oak_attestation_verification_types::util::Clock for Clock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        self.seconds_since_epoch().saturating_mul(1000)
     }
 }

@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
 use anyhow::{anyhow, ensure, Context};
 use hashbrown::{hash_map, HashMap};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
+use oak_attestation_verification_types::util::Clock;
 use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
@@ -32,6 +35,7 @@ use storage_proto::{
         StorageResponse, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
+    timestamp_proto::google::protobuf::Timestamp,
 };
 use tcp_runtime::model::{
     Actor, ActorCommand, ActorContext, ActorError, ActorEvent, ActorEventContext, CommandOutcome,
@@ -54,6 +58,13 @@ pub struct StorageActor {
     sessions: HashMap<Vec<u8>, ServerSession>,
     // The actor's context, populated during initialization.
     context: Option<Box<dyn ActorContext>>,
+    // The clock used for attestation and updating the Storage's time.
+    clock: Arc<dyn Clock>,
+    /// The last time the Storage clock was automatically updated (i.e., not due
+    /// to an UpdateRequest). Since this is only updated on the leader, a clock
+    /// update will occur on leadership change. This value should only be
+    /// compared against `ActorContext::instant`.
+    last_clock_update_instant: u64,
 }
 
 /// The outcome of a `StorageActor::handle_session_request` call.
@@ -69,12 +80,17 @@ enum HandleStorageRequestOutcome {
     Event(StorageEvent),
 }
 
+/// The interval between automatic clock updates, in milliseconds. These updates
+/// are sent independently of whether any UpdateRequests have been received.
+const CLOCK_UPDATE_INTERVAL_MS: u64 = 60_000;
+
 impl StorageActor {
     pub fn new<A, E, S>(
         attester: A,
         endorser: E,
         signer: S,
         reference_values: ReferenceValues,
+        clock: Arc<dyn Clock>,
     ) -> Self
     where
         A: Attester + Clone + 'static,
@@ -84,14 +100,14 @@ impl StorageActor {
         let storage = Storage::default();
 
         let rv_copy = reference_values.clone();
-        let clock = storage.clock();
+        let clock_copy = clock.clone();
         let session_config_factory = Box::new(move || {
             create_session_config(
                 Box::new(attester.clone()),
                 Box::new(endorser.clone()),
                 Box::new(signer.clone()),
                 rv_copy.clone(),
-                clock.clone(),
+                clock_copy.clone(),
             )
         });
 
@@ -101,6 +117,8 @@ impl StorageActor {
             reference_values,
             sessions: HashMap::new(),
             context: None,
+            clock,
+            last_clock_update_instant: 0,
         }
     }
 
@@ -157,6 +175,7 @@ impl StorageActor {
                 &mut self.storage,
                 session_request.session_id,
                 request,
+                &self.clock,
             )? {
                 HandleStorageRequestOutcome::Response(response) => {
                     // Encrypt the response by adding it back to the session. It'll be retrieved by
@@ -189,10 +208,14 @@ impl StorageActor {
     }
 
     /// Handles the processing of a StorageRequest message.
+    ///
+    /// This method does not take `&self` so that it can be called in contexts
+    /// where it's not possible to borrow all of `self`.
     fn handle_storage_request(
         storage: &mut Storage,
         session_id: Vec<u8>,
         request: StorageRequest,
+        clock: &Arc<dyn Clock>,
     ) -> anyhow::Result<HandleStorageRequestOutcome> {
         match request.kind {
             Some(storage_request::Kind::Read(msg)) => {
@@ -208,6 +231,10 @@ impl StorageActor {
                 Ok(HandleStorageRequestOutcome::Event(StorageEvent {
                     session_id,
                     correlation_id: request.correlation_id,
+                    now: Some(Timestamp {
+                        seconds: clock.get_milliseconds_since_epoch() / 1_000,
+                        ..Default::default()
+                    }),
                     kind: Some(storage_event::Kind::Update(msg)),
                 }))
             }
@@ -219,21 +246,24 @@ impl StorageActor {
         &mut self,
         context: &ActorEventContext,
         event: StorageEvent,
-    ) -> anyhow::Result<SessionResponse> {
+    ) -> anyhow::Result<Option<SessionResponse>> {
         // Apply the event.
         let response_kind = match event.kind {
             Some(storage_event::Kind::Update(update)) => {
-                self.storage.update(update).map(storage_response::Kind::Update)
+                let now = event
+                    .now
+                    .ok_or_else(|| anyhow!("StorageEvent.now is required"))
+                    .context(ActorError::Internal)?;
+                self.storage.update(&now, update).map(storage_response::Kind::Update)
             }
             _ => return Err(anyhow!("unsupported StorageEvent.kind").context(ActorError::Internal)),
         }
         .unwrap_or_else(|err| storage_response::Kind::Error(Self::convert_error(err)));
 
-        // Only send a response if this actor generated the event. The actual
-        // SessionResponse returned doesn't matter because `on_apply_event` will
-        // return `EventOutcome::with_none()` in this case.
-        if !context.owned {
-            return Ok(SessionResponse::default());
+        // Only send a response if this actor generated the event and the event
+        // belongs to a session. (Internal clock updates do not have a session.)
+        if !context.owned || event.session_id.is_empty() {
+            return Ok(None);
         }
 
         // Write the response to the session.
@@ -250,7 +280,7 @@ impl StorageActor {
 
         if let Some(msg) = session.get_outgoing_message()? {
             ensure!(session.get_outgoing_message()?.is_none(), "unexpected extra outgoing message");
-            Ok(msg)
+            Ok(Some(msg))
         } else {
             Err(anyhow!("missing outgoing message"))
         }
@@ -309,30 +339,32 @@ impl Actor for StorageActor {
             error!(self.logger(), "Failed to decode snapshot: {}", err);
             ActorError::SnapshotLoading
         })?;
-        if snapshot.now.is_none() {
+        let now = snapshot.now.ok_or_else(|| {
             error!(self.logger(), "Invalid snapshot: snapshot is missing `now`");
-            return Err(ActorError::SnapshotLoading);
-        }
+            ActorError::SnapshotLoading
+        })?;
 
         // Load the entries from the snapshot.
         self.storage = Storage::default();
         self.storage
-            .update(UpdateRequest {
-                now: snapshot.now.clone(),
-                updates: snapshot
-                    .entries
-                    .into_iter()
-                    .map(|entry| update_request::Update {
-                        key: entry.key,
-                        value: Some(entry.value),
-                        ttl: entry.expiration.map(|expiration| Duration {
-                            seconds: expiration.seconds - snapshot.now.as_ref().unwrap().seconds,
+            .update(
+                &now,
+                UpdateRequest {
+                    updates: snapshot
+                        .entries
+                        .into_iter()
+                        .map(|entry| update_request::Update {
+                            key: entry.key,
+                            value: Some(entry.value),
+                            ttl: entry.expiration.map(|expiration| Duration {
+                                seconds: expiration.seconds - now.seconds,
+                                ..Default::default()
+                            }),
                             ..Default::default()
-                        }),
-                        ..Default::default()
-                    })
-                    .collect(),
-            })
+                        })
+                        .collect(),
+                },
+            )
             .map_err(|err| {
                 error!(self.logger(), "Failed to load snapshot: {:?}", err);
                 ActorError::SnapshotLoading
@@ -344,13 +376,39 @@ impl Actor for StorageActor {
         &mut self,
         command: Option<ActorCommand>,
     ) -> Result<CommandOutcome, ActorError> {
-        if command.is_none() {
-            // TODO: b/393146003 - Periodically send an empty UpdateRequest to
-            // ensure that the clock is regularly advanced.
+        debug!(
+            self.logger(),
+            "StorageActor::on_process_command: {:?}",
+            command.as_ref().map(|c| c.correlation_id)
+        );
+
+        // The leader makes a best-effort attempt to periodically send an empty
+        // UpdateRequest to advance the clock and trigger expiration. The clock
+        // is untrusted and its possible for this update to be skipped if the
+        // Actor always receives some other command, but these updates aren't
+        // critical -- they just make the system more predictable because the
+        // clock won't lag behind during periods of infrequent UpdateRequests.
+        if command.is_none() && self.context.as_ref().unwrap().leader() {
+            let instant = self.context.as_ref().unwrap().instant();
+            if instant >= self.last_clock_update_instant + CLOCK_UPDATE_INTERVAL_MS {
+                self.last_clock_update_instant = instant;
+                return Ok(CommandOutcome::with_event(ActorEvent::with_proto(
+                    0,
+                    &StorageEvent {
+                        now: Some(Timestamp {
+                            seconds: self.clock.get_milliseconds_since_epoch() / 1_000,
+                            ..Default::default()
+                        }),
+                        kind: Some(storage_event::Kind::Update(UpdateRequest::default())),
+                        ..Default::default()
+                    },
+                )));
+            }
+            return Ok(CommandOutcome::with_none());
+        } else if command.is_none() {
             return Ok(CommandOutcome::with_none());
         }
         let command = command.unwrap();
-        debug!(self.logger(), "StorageActor::on_process_command: {}", command.correlation_id);
 
         let outcome = || -> anyhow::Result<CommandOutcome> {
             let request = SessionRequestWithSessionId::decode(command.header)
@@ -413,17 +471,14 @@ impl Actor for StorageActor {
                 .context(ActorError::Internal)?;
 
             let response = self.handle_storage_event(&context, storage_event)?;
-
-            // A response should only be returned if this actor originally produced the
-            // event.
-            if !context.owned {
+            if response.is_none() {
                 return Ok(EventOutcome::with_none());
             }
 
             // Until Oak uses `rust_prost_library`, the types in `oak_proto_rust` are not
             // the same as the types in `storage_proto`.
             use storage_proto::session_proto::oak::session::v1::SessionResponse;
-            let response = SessionResponse::decode(response.encode_to_vec().as_slice())?;
+            let response = SessionResponse::decode(response.unwrap().encode_to_vec().as_slice())?;
             Ok(EventOutcome::with_command(ActorCommand::with_header(
                 event.correlation_id,
                 &SessionResponseWithStatus { response: Some(response), ..Default::default() },

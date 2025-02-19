@@ -47,26 +47,28 @@ fn default_is_empty() {
 fn read_single_entry() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 8".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 8u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 8".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
@@ -88,31 +90,33 @@ fn read_single_entry() {
 fn read_range() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 5u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 5".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 8".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 9u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 9".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 5u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 5".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 8u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 8".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 9u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 9".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
@@ -143,26 +147,28 @@ fn read_range() {
 fn read_multiple_values() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 8".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 8u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 8".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
@@ -193,26 +199,28 @@ fn read_multiple_values() {
 fn read_entry_multiple_times() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 8".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 8u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 8".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
@@ -267,14 +275,16 @@ fn read_entry_multiple_times() {
 fn empty_read() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 4u128.to_be_bytes().to_vec(),
-                value: Some(b"value 4".into()),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 4u128.to_be_bytes().to_vec(),
+                    value: Some(b"value 4".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
@@ -320,21 +330,23 @@ fn read_invalid_range() {
 fn multiple_writes_to_same_key() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4a".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4b".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4a".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4b".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
@@ -355,10 +367,7 @@ fn multiple_writes_to_same_key() {
 fn empty_write() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 100, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
 
@@ -375,25 +384,16 @@ fn empty_write() {
 fn write_invalid_entry() {
     let mut storage = Storage::default();
     expect_that!(
-        storage.update(UpdateRequest {
-            now: None, // now is required.
-            updates: vec![update_request::Update {
-                key: 2u128.to_be_bytes().to_vec(),
-                value: Some(b"value".into()),
-                ..Default::default()
-            }],
-        }),
-        err(all!(code(Code::InvalidArgument), has_context(eq("UpdateRequest missing now"))))
-    );
-    expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: b"invalid".into(),
-                value: Some(b"value".into()),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: b"invalid".into(),
+                    value: Some(b"value".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
         err(all!(code(Code::InvalidArgument), has_context(eq("invalid key"))))
     );
 
@@ -408,58 +408,60 @@ fn write_invalid_entry() {
 fn clock_is_monotonic() {
     let mut storage = Storage::default();
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 200, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
-    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(200_000));
 
-    // Set a time in the past. The request should succeed, but the clock should not
+    // Set a time in the past. The request should succeed, but the time should not
     // advance backwards.
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 100, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
-    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(200_000));
+    expect_that!(
+        storage.read(&ReadRequest::default()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+        }))
+    )
 }
 
 #[test_log::test(googletest::test)]
 fn delete_entry() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
     // Remove an entry by setting its value to None.
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 4u128.to_be_bytes().to_vec(),
-                value: None,
-                ..Default::default()
-            },],
-        }),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 4u128.to_be_bytes().to_vec(),
+                    value: None,
+                    ..Default::default()
+                },],
+            }
+        ),
         ok(anything())
     );
 
@@ -479,34 +481,38 @@ fn delete_entry() {
 fn delete_missing_entry() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
     // Remove an entry that doesn't exist.
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: None,
-                ..Default::default()
-            },],
-        }),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: None,
+                    ..Default::default()
+                },],
+            }
+        ),
         ok(anything())
     );
 
@@ -533,38 +539,37 @@ fn delete_missing_entry() {
 fn expired_entry_is_removed() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 4u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 4".into()),
-                    ttl: None, // never expires
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    ttl: Some(Duration { seconds: 10, ..Default::default() }),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 8u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 8".into()),
-                    ttl: Some(Duration { seconds: 20, ..Default::default() }),
-                    ..Default::default()
-                },
-            ],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 4u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 4".into()),
+                        ttl: None, // never expires
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        ttl: Some(Duration { seconds: 10, ..Default::default() }),
+                        ..Default::default()
+                    },
+                    update_request::Update {
+                        key: 8u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 8".into()),
+                        ttl: Some(Duration { seconds: 20, ..Default::default() }),
+                        ..Default::default()
+                    },
+                ],
+            }
+        ),
         ok(anything())
     );
 
     // Advance the clock so that one entry expires.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 110, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 110, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
 
@@ -592,25 +597,24 @@ fn expired_entry_is_removed() {
 fn expiration_uses_latest_time() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 200, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
 
     // Insert an entry with a `now` value in the past. The entry should use the
     // Storage's maximum time (200), not the request's time (100).
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value".into()),
-                ttl: Some(Duration { seconds: 10, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value".into()),
+                    ttl: Some(Duration { seconds: 10, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
@@ -631,29 +635,33 @@ fn expiration_uses_latest_time() {
 fn ttl_can_be_shortened() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ttl: Some(Duration { seconds: 100, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ttl: Some(Duration { seconds: 100, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Shorten the entry's TTL (200 -> 160).
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 110, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                ttl: Some(Duration { seconds: 50, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 110, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    ttl: Some(Duration { seconds: 50, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -670,10 +678,7 @@ fn ttl_can_be_shortened() {
 
     // Advance the clock so that the entry expires.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 170, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 170, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
     expect_that!(
@@ -686,10 +691,7 @@ fn ttl_can_be_shortened() {
 
     // Advance the clock to the original expiration time. Nothing should break.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 200, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
     expect_that!(
@@ -705,29 +707,33 @@ fn ttl_can_be_shortened() {
 fn ttl_can_be_extended() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ttl: Some(Duration { seconds: 20, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ttl: Some(Duration { seconds: 20, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Extend the entry's TTL (120 -> 210).
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 110, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                ttl: Some(Duration { seconds: 100, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 110, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    ttl: Some(Duration { seconds: 100, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -745,10 +751,7 @@ fn ttl_can_be_extended() {
     // Advance the clock to the original expiration time. The entry should not be
     // removed.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 120, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 120, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
     expect_that!(
@@ -766,10 +769,7 @@ fn ttl_can_be_extended() {
     // Advance the clock to the updated expiration time. The entry should be
     // removed.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 210, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 210, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
     expect_that!(
@@ -785,29 +785,33 @@ fn ttl_can_be_extended() {
 fn ttl_can_be_removed() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ttl: Some(Duration { seconds: 20, ..Default::default() }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ttl: Some(Duration { seconds: 20, ..Default::default() }),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Remove the entry's TTL.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 110, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                ttl: None,
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 110, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    ttl: None,
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -825,10 +829,7 @@ fn ttl_can_be_removed() {
     // Advance the clock to the original expiration time. The entry should not be
     // removed.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 120, ..Default::default() }),
-            updates: vec![],
-        }),
+        storage.update(&Timestamp { seconds: 120, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
     expect_that!(
@@ -850,18 +851,20 @@ fn exists_precondition_is_met() {
 
     // Apply an update with `exists=false`.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                preconditions: Some(update_request::Preconditions {
-                    exists: Some(false),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(false),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -877,18 +880,20 @@ fn exists_precondition_is_met() {
 
     // Apply an update with `exists=true`.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    exists: Some(true),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(true),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -907,31 +912,35 @@ fn exists_precondition_is_met() {
 fn exists_precondition_is_not_met() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Attempt an update with `exists=false`.
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    exists: Some(false),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(false),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         err(all!(code(Code::FailedPrecondition), has_context(eq("exists=false not satisfied"))))
     );
     expect_that!(
@@ -947,18 +956,20 @@ fn exists_precondition_is_not_met() {
 
     // Attempt an update with `exists=true`.
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 300, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 6u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    exists: Some(true),
+        storage.update(
+            &Timestamp { seconds: 300, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 6u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(true),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         err(all!(code(Code::FailedPrecondition), has_context(eq("exists=true not satisfied"))))
     );
     expect_that!(
@@ -977,31 +988,35 @@ fn exists_precondition_is_not_met() {
 fn value_precondition_is_met() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Apply an update with a satisfied `value` condition.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    value: Some(b"value A".into()),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        value: Some(b"value A".into()),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         ok(anything())
     );
     expect_that!(
@@ -1020,31 +1035,35 @@ fn value_precondition_is_met() {
 fn value_precondition_is_not_met() {
     let mut storage = Storage::default();
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value A".into()),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value A".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
         ok(anything())
     );
 
     // Attempt an update with an unsatisfied `value` condition.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    value: Some(b"wrong value".into()),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        value: Some(b"wrong value".into()),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         err(all!(code(Code::FailedPrecondition), has_context(eq("value not satisfied"))))
     );
     expect_that!(
@@ -1061,18 +1080,20 @@ fn value_precondition_is_not_met() {
     // Attempt an update with an unsatisfied `value` condition because the entry
     // doesn't exist.
     assert_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 200, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 6u128.to_be_bytes().to_vec(),
-                value: Some(b"value B".into()),
-                preconditions: Some(update_request::Preconditions {
-                    value: Some(b"".into()),
+        storage.update(
+            &Timestamp { seconds: 200, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 6u128.to_be_bytes().to_vec(),
+                    value: Some(b"value B".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        value: Some(b"".into()),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-        }),
+                }],
+            }
+        ),
         err(all!(
             code(Code::FailedPrecondition),
             has_context(eq("value not satisfied (entry doesn't exist)"))
@@ -1094,18 +1115,20 @@ fn value_precondition_is_not_met() {
 fn all_preconditions_for_entry_must_be_met() {
     let mut storage = Storage::default();
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![update_request::Update {
-                key: 5u128.to_be_bytes().to_vec(),
-                value: Some(b"value".into()),
-                preconditions: Some(update_request::Preconditions {
-                    exists: Some(false),
-                    value: Some(b"wrong value".into()),
-                }),
-                ..Default::default()
-            }],
-        }),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value".into()),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(false),
+                        value: Some(b"wrong value".into()),
+                    }),
+                    ..Default::default()
+                }],
+            }
+        ),
         err(all!(code(Code::FailedPrecondition)))
     );
     expect_that!(
@@ -1121,29 +1144,31 @@ fn all_preconditions_for_entry_must_be_met() {
 fn preconditions_for_all_entries_must_be_met() {
     let mut storage = Storage::default();
     expect_that!(
-        storage.update(UpdateRequest {
-            now: Some(Timestamp { seconds: 100, ..Default::default() }),
-            updates: vec![
-                update_request::Update {
-                    key: 5u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 5".into()),
-                    preconditions: Some(update_request::Preconditions {
-                        exists: Some(false),
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![
+                    update_request::Update {
+                        key: 5u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 5".into()),
+                        preconditions: Some(update_request::Preconditions {
+                            exists: Some(false),
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                update_request::Update {
-                    key: 6u128.to_be_bytes().to_vec(),
-                    value: Some(b"value 6".into()),
-                    preconditions: Some(update_request::Preconditions {
-                        exists: Some(true),
+                    },
+                    update_request::Update {
+                        key: 6u128.to_be_bytes().to_vec(),
+                        value: Some(b"value 6".into()),
+                        preconditions: Some(update_request::Preconditions {
+                            exists: Some(true),
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            ],
-        }),
+                    },
+                ],
+            }
+        ),
         err(all!(code(Code::FailedPrecondition)))
     );
     expect_that!(
