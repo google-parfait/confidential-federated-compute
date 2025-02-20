@@ -37,6 +37,7 @@ _RELEASE_BINARIES = {
     # keep-sorted start
     "//containers/agg_core:oci_runtime_bundle.tar": "agg_core/container.tar",
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
+    "//containers/program_executor_tee:oci_runtime_bundle.tar": "program_executor_tee/container.tar",
     "//containers/sql_server:oci_runtime_bundle.tar": "sql_server/container.tar",
     "//containers/tff_server:oci_runtime_bundle.tar": "tff_server/container.tar",
     "//ledger_enclave_app": "ledger/binary",
