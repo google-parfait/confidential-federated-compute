@@ -42,6 +42,7 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
@@ -92,27 +93,29 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::kDeltaIndex;
+using ::tensorflow_federated::aggregation::kEpsilonIndex;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 
-constexpr char kFedSqlDpGroupByUri[] = "fedsql_dp_group_by";
-
-absl::Status ValidateFedSqlDpGroupByParameters(const Intrinsic& intrinsic) {
+absl::Status ValidateFedSqlOuterDpParameters(const Intrinsic& intrinsic) {
   if (intrinsic.parameters.size() < 2) {
     return absl::InvalidArgumentError(
-        "`fedsql_dp_group_by` IntrinsicConfig must have at least two "
+        "Outer DP IntrinsicConfig must have at least two "
         "parameters.");
   }
-  if (intrinsic.parameters.at(0).dtype() != DT_DOUBLE ||
-      intrinsic.parameters.at(1).dtype() != DT_DOUBLE) {
+  if (intrinsic.parameters.at(kEpsilonIndex).dtype() != DT_DOUBLE ||
+      intrinsic.parameters.at(kDeltaIndex).dtype() != DT_DOUBLE) {
     return absl::InvalidArgumentError(
-        "`fedsql_dp_group_by` parameters must both have type DT_DOUBLE.");
+        "Epsilon and delta parameters for outer DP IntrinsicConfig must both "
+        "have type DT_DOUBLE.");
   }
-  if (intrinsic.parameters.at(0).num_elements() != 1 ||
-      intrinsic.parameters.at(1).num_elements() != 1) {
+  if (intrinsic.parameters.at(kEpsilonIndex).num_elements() != 1 ||
+      intrinsic.parameters.at(kDeltaIndex).num_elements() != 1) {
     return absl::InvalidArgumentError(
-        "`fedsql_dp_group_by` parameters must each have exactly one value.");
+        "Epsilon and delta parameters for outer DP IntrinsicConfig must each "
+        "have exactly one value.");
   }
   return absl::OkStatus();
 }
@@ -448,14 +451,16 @@ FedSqlConfidentialTransform::InitializeTransform(
     google::protobuf::Struct config_properties;
     (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
         intrinsics.at(0).uri);
-    if (intrinsics.at(0).uri == kFedSqlDpGroupByUri) {
+    if (intrinsics.at(0).uri ==
+            tensorflow_federated::aggregation::kDPGroupByUri ||
+        intrinsics.at(0).uri ==
+            tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
       const Intrinsic& fedsql_dp_intrinsic = intrinsics.at(0);
-      FCP_RETURN_IF_ERROR(
-          ValidateFedSqlDpGroupByParameters(fedsql_dp_intrinsic));
-      double epsilon =
-          fedsql_dp_intrinsic.parameters.at(0).CastToScalar<double>();
+      FCP_RETURN_IF_ERROR(ValidateFedSqlOuterDpParameters(fedsql_dp_intrinsic));
+      double epsilon = fedsql_dp_intrinsic.parameters.at(kEpsilonIndex)
+                           .CastToScalar<double>();
       double delta =
-          fedsql_dp_intrinsic.parameters.at(1).CastToScalar<double>();
+          fedsql_dp_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
       (*config_properties.mutable_fields())["epsilon"].set_number_value(
           epsilon);
       (*config_properties.mutable_fields())["delta"].set_number_value(delta);

@@ -366,10 +366,8 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersInitialize) {
   auto status = stub_->Initialize(&context, request, &response);
 
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(
-      status.error_message(),
-      HasSubstr(
-          "`fedsql_dp_group_by` parameters must both have type DT_DOUBLE"));
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("must both have type DT_DOUBLE"));
 }
 
 TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsInitialize) {
@@ -478,6 +476,67 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
   ASSERT_TRUE(cwt.ok());
   ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
             "fedsql_dp_group_by");
+  ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
+  ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
+            42);
+  ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
+            7);
+}
+
+TEST_F(FedSqlServerTest,
+       FedSqlDpAggregatorBundleInitializeGeneratesConfigProperties) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "differential_privacy_tensor_aggregator_bundle"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:$differential_privacy_percentile_cont"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          intrinsic_args {
+            parameter {
+              dtype: DT_DOUBLE
+              shape {}
+              double_val: 0.83
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  auto status = stub_->Initialize(&context, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
+  ASSERT_TRUE(cwt.ok());
+  ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
+            "differential_privacy_tensor_aggregator_bundle");
   ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
   ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
   ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
