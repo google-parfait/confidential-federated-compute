@@ -1,22 +1,30 @@
 # Inspecting Federated Compute attestation verification records
 
-As described in the
-[Confidential Federated Computations paper](https://arxiv.org/abs/2404.10764),
-client devices running the
-[Federated Compute](https://github.com/google-parfait/federated-compute) client
-library and which participate in a `ConfidentialAggregations` protocol session
-will verify attestation evidence for the ledger application hosted in this
-repository. They will also verify the data access policy that the ledger will
-enforce, which will specify one or more allowed data transformation applications
-which are built from this repository.
+Be sure to review the introductory [README.md](README.md) before reviewing this
+document.
 
-After a successful verification, these devices will log an
-[attestation verification record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
+As described in the *Enabling External Verifiability of the Data Processing*
+section of the [Confidential Federated Computations
+paper](https://arxiv.org/abs/2404.10764), after a successful verification of
+ledger attestation evidence and the data access policy by a client device, the
+device will log an [attestation verification
+record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
 which can then be inspected. Please see
 [fcp/client/attestation/README.md](https://github.com/google-parfait/federated-compute/blob/main/fcp/client/attestation/README.md)
 in the Federated Compute repository for instructions on how to gather
 attestation verification records from a device that is using the Federated
 Compute client library.
+
+The following sections describe how the information in these attestation
+verification records can be inspected.
+
+Note: the main limitation of the approach described in this document is the
+infeasibility of instrumenting all devices that could possibly contribute data.
+There is a more scalable approach to inspecting the ledger attestation evidence
+and data access policies that any client device may accepts, which leverages a
+public transparency log and which addresses this limitation. See
+[inspecting_endorsements.md](inspecting_endorsements.md) for more details on
+this approach.
 
 ## Inspecting attestation verification records
 
@@ -28,25 +36,7 @@ Attestation verification records consist of two major parts:
 
 2.  *the [data access policy](/ledger_enclave_app#access-policies)* that
     prescribes the conditions under which the ledger binary will allow that
-    encrypted data to be decrypted. A data access policy is effectively a graph
-    describing allowed data transformations, where each transformation has to be
-    performed by a TEE-hosted application. The set of allowable TEE-hosted
-    applications for each transformation step are prescribed by a
-    `ReferenceValues` proto. The ledger verifies the identity of the TEE-hosted
-    data transformation using its attestation evidence. Only if this identity
-    matches the `ReferenceValues`, does the ledger grant that data
-    transformation access to the data.
-
-Therefore, when inspecting attestation verification records there are two steps
-to perform:
-
-1.  Validating the ledger attestation verification, and determining the
-    provenance of the binaries running in each layer (firmware, kernel,
-    application) of the ledger TEE.
-
-2.  Determining the provenances of the TEE-hosted data transformations to which
-    the ledger will grant access to the encrypted data, as prescribed by the
-    `ReferenceValues` data access policies.
+    encrypted data to be decrypted.
 
 To inspect the ledger attestation evidence and data access policy in an
 `AttestationVerificationRecord`, the
@@ -65,7 +55,7 @@ The following is an example of the type of output the tool produces.
 
 ```sh
 $ bazelisk run //tools/explain_fcp_attestation_record:main -- --record=$PWD/extracted_records/record_l2_to_l19_digest12345678.pb
-Inspecting record at extracted_records/record_l2_to_l19_digest12345678.pb.
+Inspecting AttestationVerificationRecord at extracted_records/record_l2_to_l19_digest12345678.pb.
 
 ========================================
 ===== LEDGER ATTESTATION EVIDENCE ======

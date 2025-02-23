@@ -67,23 +67,13 @@ Restricted Kernel and
 
 See each transform's README for more details.
 
-## Mapping Federated Compute attestation verification records to binaries in this repository
+## Inspecting attestation verification records and endorsement transparency log entries
 
-As described in the
-[Confidential Federated Computations paper](https://arxiv.org/abs/2404.10764),
-client devices running the
-[Federated Compute](https://github.com/google-parfait/federated-compute) client
-library and which participate in a `ConfidentialAggregations` protocol session
-will verify attestation evidence for the ledger application hosted in this
-repository. They will also verify the data access policy that the ledger will
-enforce, which will specify one or more allowed data transformation applications
-which are built from this repository.
-
-After a successful verification, these devices will log an
-[attestation verification record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
-which can then be inspected. See
-[inspecting_attestation_records/README.md](inspecting_attestation_records/README.md)
-for more details on how these verification records can be mapped to specific
+See [docs/README.md](docs/README.md) for instructions for mapping attestation
+verification records logged by [Federated
+Compute](https://github.com/google-parfait/federated-compute) clients, as well
+as transparency log entries for ledger and data access policy endorsements to
+the reproducibly buildable binaries in this repository.
 binaries in this repository.
 
 ## Building
