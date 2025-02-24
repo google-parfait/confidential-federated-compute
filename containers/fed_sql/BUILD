@@ -67,11 +67,14 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@gemma//:common",
         "@gemma//:gemma_lib",
         "@gemma//:threading",
         "@gemma//compression:io",
         "@gemma//compression:sfp",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
     ],
 )
 
@@ -85,10 +88,12 @@ cc_test(
         "//testing:parse_text_proto",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@gemma//:gemma_lib",
         "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
     ],
 )
 
