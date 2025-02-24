@@ -92,3 +92,7 @@ jobs:
 
           gcloud storage cp --no-clobber "${provenance_path}" "gs://oak-bins/${gcs_provenance_path}"
 
+          scripts/publish.sh \
+            "${provenance_path}" \
+            "sha1:${GITHUB_SHA}" \
+            "${package_name}"
