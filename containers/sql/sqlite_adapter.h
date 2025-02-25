@@ -68,6 +68,9 @@ class SqliteResultHandler final {
 // SQLite's C interface. This class is not threasdafe.
 class SqliteAdapter {
  public:
+  //  SQLite's limit on the number of variables in a single statement.
+  static constexpr int kSqliteVariableLimit = 32766;
+
   //  Initializes the SQLite library.
   static absl::Status Initialize();
 
@@ -92,7 +95,7 @@ class SqliteAdapter {
   // The table must be created first via the most recent call to `DefineTable`,
   // and the column order of `contents` must match the schema specified for
   // `DefineTable`.
-  absl::Status AddTableContents(std::vector<TensorColumn> contents,
+  absl::Status AddTableContents(const std::vector<TensorColumn>& contents,
                                 int num_rows);
 
   // Evaluates the given SQL `query` statement, producing results matching the
@@ -108,9 +111,19 @@ class SqliteAdapter {
   explicit SqliteAdapter(ABSL_ATTRIBUTE_LIFETIME_BOUND sqlite3* db)
       : result_handler_(db), db_(db) {}
 
+  // Insert rows from `contents` from `start_row_index` (inclusive) to
+  // `end_row_index` (exclusive).
+  // `insert_stmt` should be of the form
+  // "INSERT INTO <table name> (<col name 1>, <col name 2>, ...) VALUES (?, ?,
+  // ...), ..." and the columns should match `contents`, and the number of rows
+  // should match `end_row_index -  start_row_index`.
+  absl::Status InsertRows(const std::vector<TensorColumn>& contents,
+                          int start_row_index, int end_row_index,
+                          absl::string_view insert_stmt);
+
   SqliteResultHandler result_handler_;
   sqlite3* db_;
-  std::optional<std::string> insert_stmt_;
+  std::optional<fcp::confidentialcompute::TableSchema> table_schema_;
 };
 
 }  // namespace confidential_federated_compute::sql
