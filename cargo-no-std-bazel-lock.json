@@ -1,5 +1,5 @@
 {
-  "checksum": "8a70485fb089b3f83b76f667a0d82ba41ea2a7b11b046b4cec77aabf49554ba3",
+  "checksum": "fd6d740473f87b042080c8c1eca83444895c67051ba95e01082689cf6d698287",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -907,14 +907,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "base64 0.22.1": {
+    "base64 0.21.7": {
       "name": "base64",
-      "version": "0.22.1",
+      "version": "0.21.7",
       "package_url": "https://github.com/marshallpierce/rust-base64",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/base64/0.22.1/download",
-          "sha256": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+          "url": "https://static.crates.io/crates/base64/0.21.7/download",
+          "sha256": "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
         }
       },
       "targets": [
@@ -943,7 +943,7 @@
           "selects": {}
         },
         "edition": "2018",
-        "version": "0.22.1"
+        "version": "0.21.7"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -3193,7 +3193,7 @@
               "target": "atomic_refcell"
             },
             {
-              "id": "base64 0.22.1",
+              "id": "base64 0.21.7",
               "target": "base64"
             },
             {
@@ -11093,7 +11093,7 @@
     "anyhow 1.0.86",
     "arrayvec 0.7.6",
     "atomic_refcell 0.1.13",
-    "base64 0.22.1",
+    "base64 0.21.7",
     "bitflags 2.6.0",
     "bitmask 0.5.0",
     "bitvec 1.0.1",

@@ -35,6 +35,14 @@ oak_restricted_kernel {
                 key_id: 1
                 raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
               }
+              signed_timestamp {
+                not_before_absolute {
+                  seconds: 1739577600 # 2025-02-15 00:00:00 UTC
+                }
+                not_before_relative {
+                  seconds: -7776000 # 90 days
+                }
+              }
             }
           }
         }
@@ -67,6 +75,14 @@ oak_restricted_kernel {
               key_id: 1
               raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
             }
+            signed_timestamp {
+              not_before_absolute {
+                seconds: 1739577600 # 2025-02-15 00:00:00 UTC
+              }
+              not_before_relative {
+                seconds: -7776000 # 90 days
+              }
+            }
           }
         }
       }
@@ -89,6 +105,14 @@ oak_restricted_kernel {
               type: 1
               key_id: 1
               raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+            }
+            signed_timestamp {
+              not_before_absolute {
+                #seconds: 1739577600 # 2025-02-15 00:00:00 UTC
+              }
+              not_before_relative {
+                seconds: -7776000 # 90 days
+              }
             }
           }
         }
@@ -117,6 +141,14 @@ oak_restricted_kernel {
               type: 1
               key_id: 1
               raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\xD8m\x98\xFBkZm\xD4\xD5\xE4\x17\x06\x88\x12\x31ѯ_\x00\\+\x90\x16\xE6-!\xAD\x92\xCE\x0Bޥ\xFAɆ4\xCE\xE7\xC1\x9E\x10\xBCR\xBF\xE2˞F\x85\x63\xFF\xF4\x0F\xDB\x63\x62\xE1\x0B}\f\xF7\xE4X\xB7"
+            }
+            signed_timestamp {
+              not_before_absolute {
+                seconds: 1739577600 # 2025-02-15 00:00:00 UTC
+              }
+              not_before_relative {
+                seconds: -7776000 # 90 days
+              }
             }
           }
         }

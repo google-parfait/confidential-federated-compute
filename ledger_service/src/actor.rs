@@ -450,13 +450,14 @@ mod tests {
         let reference_values = actor.get_reference_values();
 
         let evidence =
-            Evidence::decode(include_bytes!("../testdata/evidence_20250213.binarypb").as_slice())?;
+            Evidence::decode(include_bytes!("../testdata/evidence_20250221.binarypb").as_slice())?;
+        // The most recent endorsements in this proto date from 2025-02-21.
         let endorsements = Endorsements::decode(
-            include_bytes!("../testdata/endorsements_20250213.binarypb").as_slice(),
+            include_bytes!("../testdata/endorsements_20250221.binarypb").as_slice(),
         )?;
         assert_that!(
             oak_attestation_verification::verifier::verify(
-                1739404800000,
+                1740182400000, // 2025-02-22 00:00:00 UTC
                 &evidence,
                 &endorsements,
                 &reference_values
