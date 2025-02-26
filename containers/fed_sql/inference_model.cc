@@ -36,17 +36,26 @@ using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::GEMMA2_2B;
 using ::fcp::confidentialcompute::GEMMA_2B;
+using ::fcp::confidentialcompute::GEMMA_F32;
+using ::fcp::confidentialcompute::GEMMA_IT;
+using ::fcp::confidentialcompute::GEMMA_PT;
+using ::fcp::confidentialcompute::GEMMA_SFP;
 using ::fcp::confidentialcompute::GEMMA_TINY;
 using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceTask;
 using ::fcp::confidentialcompute::Prompt;
+using ::gcpp::Allocator;
+using ::gcpp::EOS_ID;
 using ::gcpp::Gemma;
+using ::gcpp::KVCache;
 using ::gcpp::Model;
 using ::gcpp::ModelInfo;
 using ::gcpp::NestedPools;
 using ::gcpp::Path;
 using ::gcpp::PromptWrapping;
+using ::gcpp::RuntimeConfig;
+using ::gcpp::TimingInfo;
 using ::gcpp::Type;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
@@ -76,17 +85,45 @@ absl::StatusOr<ModelInfo> GetGemmaModelInfo(
           "Found invalid InferenceConfiguration.gemma_config.model: ",
           gemma_config.model()));
   }
-  model_info.wrapping = PromptWrapping::GEMMA_IT;
-  model_info.weight = Type::kSFP;
+  switch (gemma_config.model_training()) {
+    case GEMMA_IT: {
+      model_info.wrapping = PromptWrapping::GEMMA_IT;
+      break;
+    }
+    case GEMMA_PT: {
+      model_info.wrapping = PromptWrapping::GEMMA_PT;
+      break;
+    }
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Found invalid "
+                       "InferenceConfiguration.gemma_config.model_training: ",
+                       gemma_config.model_training()));
+  }
+  switch (gemma_config.tensor_type()) {
+    case GEMMA_F32: {
+      model_info.weight = Type::kF32;
+      break;
+    }
+    case GEMMA_SFP: {
+      model_info.weight = Type::kSFP;
+      break;
+    }
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Found invalid "
+                       "InferenceConfiguration.gemma_config.tensor_type: ",
+                       gemma_config.tensor_type()));
+  }
   return model_info;
 }
 
 }  // namespace
 
 std::unique_ptr<Gemma> InferenceModel::BuildGemmaModel(
-    const ModelInfo& model_info,
-    const SessionGemmaConfiguration& gemma_config) {
-  NestedPools pools(0);
+    const ModelInfo& model_info, const SessionGemmaConfiguration& gemma_config,
+    NestedPools& pools) {
+  Allocator::Init(pools.Topology());
   Path tokenizer_path = Path(gemma_config.tokenizer_path);
   Path weights_path = Path(gemma_config.model_weight_path);
   return std::make_unique<Gemma>(tokenizer_path, weights_path, model_info,
@@ -111,7 +148,10 @@ absl::Status InferenceModel::BuildModel(
                            GetGemmaModelInfo(gemma_config));
       SessionGemmaConfiguration session_gemma_config =
           inference_configuration.gemma_configuration.value();
-      model_ = BuildGemmaModel(model_info, session_gemma_config);
+      model_.emplace<GemmaModel>();
+      GemmaModel& gemma_model = std::get<GemmaModel>(model_);
+      gemma_model.gemma_ =
+          BuildGemmaModel(model_info, session_gemma_config, gemma_model.pools_);
       break;
     }
     default:
@@ -125,9 +165,49 @@ absl::Status InferenceModel::BuildModel(
 }
 
 absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
-    const std::string& prompt, const absl::string_view& column_value) {
-  // TODO: Implement this function.
-  return absl::UnimplementedError("Not implemented yet.");
+    const std::string& prompt, const absl::string_view& column_value,
+    const std::string& column_name) {
+  std::string combined_prompt(prompt);
+  std::string old_value = absl::StrCat("{", column_name, "}");
+  size_t pos;
+  while ((pos = combined_prompt.find(old_value)) != std::string::npos) {
+    combined_prompt.replace(pos, old_value.size(), column_value);
+  }
+
+  const size_t prefill_tbatch_size = 64;
+  size_t generated = 0;
+  GemmaModel& gemma_model = std::get<GemmaModel>(model_);
+  Gemma* gemma = gemma_model.gemma_.get();
+  KVCache kv_cache =
+      KVCache::Create(gemma->GetModelConfig(), prefill_tbatch_size);
+  const std::vector<int> tokens = gcpp::WrapAndTokenize(
+      gemma->Tokenizer(), gemma->Info(), generated, combined_prompt);
+  const size_t prompt_size = tokens.size();
+  std::stringstream output_stream;
+  auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
+                          int token, float) {
+    ++generated;
+    if (generated >= prompt_size && token != EOS_ID) {
+      std::string token_text;
+      FCP_CHECK(gemma->Tokenizer().Decode({token}, &token_text));
+      output_stream << token_text;
+    }
+    return true;
+  };
+  TimingInfo timing_info;
+  std::mt19937 gen;
+  std::random_device rd;
+  gen.seed(rd());
+  RuntimeConfig runtime_config = {
+      .max_generated_tokens = 1024,
+      .temperature = 1.0,
+      .gen = &gen,
+      .verbosity = 0,
+      .stream_token = stream_token,
+  };
+
+  gemma->Generate(runtime_config, tokens, 0, kv_cache, timing_info);
+  return output_stream.str();
 }
 
 absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
@@ -184,7 +264,7 @@ absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
           FCP_ASSIGN_OR_RETURN(
               output_string,
               RunGemmaInference(inference_task.prompt().prompt_template(),
-                                input_value));
+                                input_value, input_column_name));
           break;
         }
         default:
@@ -228,6 +308,11 @@ ModelType InferenceModel::GetModelType() const {
 
 bool InferenceModel::HasModel() const {
   return GetModelType() != ModelType::kNone;
+}
+
+const std::optional<SessionInferenceConfiguration>&
+InferenceModel::GetInferenceConfiguration() const {
+  return inference_configuration_;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

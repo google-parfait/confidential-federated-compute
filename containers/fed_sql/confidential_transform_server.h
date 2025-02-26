@@ -144,8 +144,6 @@ class FedSqlSession final : public confidential_federated_compute::Session {
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
   };
-  absl::Status ExecuteInferenceQuery(
-      std::vector<confidential_federated_compute::sql::TensorColumn>& columns);
   absl::StatusOr<
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
   ExecuteClientQuery(

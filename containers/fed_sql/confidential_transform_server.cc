@@ -21,6 +21,7 @@
 #include <string>
 #include <thread>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
@@ -130,10 +131,36 @@ absl::Status ValidateTopLevelIntrinsics(
 }
 
 absl::StatusOr<std::vector<TensorColumn>> Deserialize(
-    const TableSchema& table_schema, CheckpointParser* parser) {
-  std::vector<TensorColumn> columns(table_schema.column_size());
-  std::optional<int> num_rows;
+    const TableSchema& table_schema, CheckpointParser* parser,
+    std::optional<SessionInferenceConfiguration> inference_configuration =
+        std::nullopt) {
+  absl::flat_hash_set<std::string> input_column_names;
+  absl::flat_hash_set<std::string> output_column_names;
+  if (inference_configuration.has_value()) {
+    for (const auto& inference_task :
+         inference_configuration->initialize_configuration.inference_config()
+             .inference_task()) {
+      input_column_names.insert(
+          inference_task.column_config().input_column_name());
+      output_column_names.insert(
+          inference_task.column_config().output_column_name());
+    }
+  }
+
+  // The table schema has inference output columns listed, but the checkpoint
+  // does not contain these, as they are generated during inference. Besides
+  // that, input columns are not listed in the table schema, but are present in
+  // the checkpoint, and have to be unpacked.
+  std::vector<TensorColumn> columns(table_schema.column_size() -
+                                    output_column_names.size() +
+                                    input_column_names.size());
+  std::optional<size_t> num_rows;
+  int tensor_column_index = 0;
   for (int i = 0; i < table_schema.column_size(); i++) {
+    if (output_column_names.contains(table_schema.column(i).name())) {
+      // Inference output columns do not exist in the checkpoint.
+      continue;
+    }
     FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
                          parser->GetTensor(table_schema.column(i).name()));
     if (!num_rows.has_value()) {
@@ -145,7 +172,29 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
     FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
                          TensorColumn::Create(table_schema.column(i),
                                               std::move(tensor_column_values)));
-    columns[i] = std::move(tensor_column);
+    columns[tensor_column_index] = std::move(tensor_column);
+    tensor_column_index++;
+  }
+  for (const auto& column_name : input_column_names) {
+    // Input columns are not listed in the per-client table schema, and have to
+    // be added manually.
+    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
+                         parser->GetTensor(column_name));
+    if (!num_rows.has_value()) {
+      num_rows.emplace(tensor_column_values.num_elements());
+    } else if (num_rows.value() != tensor_column_values.num_elements()) {
+      return absl::InvalidArgumentError(
+          "Checkpoint has columns with differing numbers of rows.");
+    }
+    ColumnSchema input_col_schema;
+    input_col_schema.set_name(column_name);
+    input_col_schema.set_type(
+        ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+    FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
+                         TensorColumn::Create(input_col_schema,
+                                              std::move(tensor_column_values)));
+    columns[tensor_column_index] = std::move(tensor_column);
+    tensor_column_index++;
   }
   return columns;
 }
@@ -205,45 +254,15 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 }  // namespace
 
-absl::Status FedSqlSession::ExecuteInferenceQuery(
-    std::vector<TensorColumn>& columns) {
-  // TODO: Check that a specific column has been set to run inference over.
-  std::string key_column_name = "topic";
-
-  // TODO: remove hard-coded values for testing, should come from inference.
-  std::initializer_list<absl::string_view> string_keys = {"one", "two",
-                                                          "three"};
-  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
-      DataType::DT_STRING,
-      TensorShape({static_cast<int64_t>(string_keys.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(string_keys));
-  CHECK_OK(key_tensor);
-
-  ColumnSchema key_col_schema;
-  key_col_schema.set_name(key_column_name);
-  key_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  FCP_ASSIGN_OR_RETURN(
-      TensorColumn key_column,
-      TensorColumn::Create(key_col_schema, std::move(key_tensor.value())));
-  columns.push_back(std::move(key_column));
-
-  return absl::OkStatus();
-}
-
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
-  std::vector<TensorColumn> contents;
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<TensorColumn> contents,
+      Deserialize(configuration.input_schema, parser,
+                  inference_model_->GetInferenceConfiguration()));
   if (inference_model_->HasModel()) {
-    // If the inference config is set, fill a Tensor with the inference results.
-    FCP_RETURN_IF_ERROR(ExecuteInferenceQuery(contents));
-  } else {
-    // TODO: remove this else block and run deserialization in all cases, once
-    // we implement removal of the existing columns for overriding by inference.
-    FCP_ASSIGN_OR_RETURN(contents,
-                         // TODO: update configuration.input_schema to
-                         // deserialize the correct columns for inference.
-                         Deserialize(configuration.input_schema, parser));
+    FCP_RETURN_IF_ERROR(inference_model_->RunInference(contents));
   }
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());

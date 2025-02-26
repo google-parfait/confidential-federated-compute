@@ -50,20 +50,28 @@ class InferenceModel {
       std::vector<::confidential_federated_compute::sql::TensorColumn>&
           columns);
   bool HasModel() const;
+  const std::optional<SessionInferenceConfiguration>&
+  GetInferenceConfiguration() const;
 
  private:
   struct NoModel {};
+  struct GemmaModel {
+    std::unique_ptr<::gcpp::Gemma> gemma_;
+    ::gcpp::NestedPools pools_{0};
+  };
 
   virtual std::unique_ptr<::gcpp::Gemma> BuildGemmaModel(
       const ::gcpp::ModelInfo& model_info,
-      const SessionGemmaConfiguration& gemma_config);
+      const SessionGemmaConfiguration& gemma_config,
+      ::gcpp::NestedPools& pools);
 
   virtual absl::StatusOr<std::string> RunGemmaInference(
-      const std::string& prompt, const absl::string_view& input_value);
+      const std::string& prompt, const absl::string_view& column_value,
+      const std::string& column_name);
   ModelType GetModelType() const;
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::variant<NoModel, std::unique_ptr<::gcpp::Gemma>> model_;
+  std::variant<NoModel, GemmaModel> model_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

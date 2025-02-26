@@ -32,6 +32,7 @@ using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::gcpp::Gemma;
 using ::gcpp::ModelInfo;
+using ::gcpp::NestedPools;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::internal::federated::plan::
@@ -50,10 +51,12 @@ class MockInferenceModel : public InferenceModel {
  public:
   MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
               (const ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config),
+               const SessionGemmaConfiguration& gemma_config,
+               NestedPools& pools),
               (override));
   MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
-              (const std::string& prompt, const absl::string_view& input_value),
+              (const std::string& prompt, const absl::string_view& column_value,
+               const std::string& column_name),
               (override));
 };
 
@@ -74,7 +77,12 @@ TEST(InferenceModelTest, HasModelGemma) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config { tokenizer_file: "/tmp/tokenizer.json" model: GEMMA_TINY }
+      gemma_config {
+        tokenizer_file: "/tmp/tokenizer.json"
+        model: GEMMA_TINY
+        model_training: GEMMA_IT
+        tensor_type: GEMMA_SFP
+      }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -197,12 +205,13 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
   ON_CALL(inference_model, BuildGemmaModel)
       .WillByDefault(Return(ByMove(nullptr)));
   ON_CALL(inference_model, RunGemmaInference)
-      .WillByDefault(Invoke(
-          [](const std::string& prompt, const absl::string_view& input_value) {
-            std::string output_str(input_value);
-            std::reverse(output_str.begin(), output_str.end());
-            return absl::StrCat(prompt, "---", output_str);
-          }));
+      .WillByDefault(Invoke([](const std::string& prompt,
+                               const absl::string_view& column_value,
+                               const std::string& column_name) {
+        std::string output_str(column_value);
+        std::reverse(output_str.begin(), output_str.end());
+        return absl::StrCat(prompt, "---", output_str);
+      }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -266,12 +275,13 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   ON_CALL(inference_model, BuildGemmaModel)
       .WillByDefault(Return(ByMove(nullptr)));
   ON_CALL(inference_model, RunGemmaInference)
-      .WillByDefault(Invoke(
-          [](const std::string& prompt, const absl::string_view& input_value) {
-            std::string output_str(input_value);
-            std::reverse(output_str.begin(), output_str.end());
-            return absl::StrCat(prompt, "---", output_str);
-          }));
+      .WillByDefault(Invoke([](const std::string& prompt,
+                               const absl::string_view& column_value,
+                               const std::string& column_name) {
+        std::string output_str(column_value);
+        std::reverse(output_str.begin(), output_str.end());
+        return absl::StrCat(prompt, "---", output_str);
+      }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -361,12 +371,13 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   ON_CALL(inference_model, BuildGemmaModel)
       .WillByDefault(Return(ByMove(nullptr)));
   ON_CALL(inference_model, RunGemmaInference)
-      .WillByDefault(Invoke(
-          [](const std::string& prompt, const absl::string_view& input_value) {
-            std::string output_str(input_value);
-            std::reverse(output_str.begin(), output_str.end());
-            return absl::StrCat(prompt, "---", output_str);
-          }));
+      .WillByDefault(Invoke([](const std::string& prompt,
+                               const absl::string_view& column_value,
+                               const std::string& column_name) {
+        std::string output_str(column_value);
+        std::reverse(output_str.begin(), output_str.end());
+        return absl::StrCat(prompt, "---", output_str);
+      }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
