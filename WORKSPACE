@@ -86,9 +86,9 @@ http_archive(
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    sha256 = "7ffd51dd5cdba8ebe7f2ec58d47b71ec4499e1c2a5980de7ad37940f9c7a7cf8",
-    strip_prefix = "tensorflow-federated-b35e8d3eac8536534b6c56996001cf756d953b27",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/b35e8d3eac8536534b6c56996001cf756d953b27.tar.gz",
+    sha256 = "8aeabf62a55860d89adefe71d0de6bb220afc707837760331bbfc0585b76b894",
+    strip_prefix = "tensorflow-federated-d21797d7792cd8bcfcd5b326b2608fd0f8d082b3",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/d21797d7792cd8bcfcd5b326b2608fd0f8d082b3.tar.gz",
 )
 
 http_archive(
@@ -101,9 +101,9 @@ http_archive(
     repo_mapping = {
         "@protobuf": "@com_google_protobuf",
     },
-    sha256 = "d1500db4e6dc7403c3da121cf98ec03693b48384ec7cccae6fdc8ac3df182be0",
-    strip_prefix = "federated-language-be055feb0137577e0d27fe7c78aab87fbcb70b6d",
-    url = "https://github.com/google-parfait/federated-language/archive/be055feb0137577e0d27fe7c78aab87fbcb70b6d.tar.gz",
+    sha256 = "e2b13844d56233616d8ed664d15e155dbc6bb45743b6e5ce775a8553026b34a6",
+    strip_prefix = "federated-language-b685d2243891f9d7ca3c5820cfd690b4ecdb9697",
+    url = "https://github.com/google-parfait/federated-language/archive/b685d2243891f9d7ca3c5820cfd690b4ecdb9697.tar.gz",
 )
 
 # Use a newer version of BoringSSL than what TF gives us, so we can use
