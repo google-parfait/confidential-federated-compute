@@ -93,6 +93,7 @@ using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::gcpp::Gemma;
 using ::gcpp::ModelInfo;
+using ::gcpp::NestedPools;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::internal::federated::plan::
@@ -137,7 +138,12 @@ class MockInferenceModel : public InferenceModel {
  public:
   MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
               (const ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config),
+               const SessionGemmaConfiguration& gemma_config,
+               NestedPools& pools),
+              (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
+              (const std::string& prompt, const absl::string_view& column_value,
+               const std::string& column_name),
               (override));
 };
 
@@ -233,6 +239,8 @@ class FedSqlServerTest : public Test {
 
     ON_CALL(*mock_inference_model_, BuildGemmaModel)
         .WillByDefault(Return(ByMove(nullptr)));
+    ON_CALL(*mock_inference_model_, RunGemmaInference)
+        .WillByDefault(Return("topic_value"));
     service_ = std::make_unique<FedSqlConfidentialTransform>(
         &mock_crypto_stub_, mock_inference_model_);
 
@@ -3111,7 +3119,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
       AGGREGATION_TYPE_ACCUMULATE,
       // TODO: need to change the input column to "transcript" after adding
       // Gemma inference.
-      BuildFedSqlGroupByStringKeyCheckpoint({"1", "1", "2"}, "topic"));
+      BuildFedSqlGroupByStringKeyCheckpoint({"1", "1", "2"}, "transcript"));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream->Write(write_request_1));
@@ -3121,7 +3129,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
       AGGREGATION_TYPE_ACCUMULATE,
       // TODO: need to change the input column to "transcript" after adding
       // Gemma inference.
-      BuildFedSqlGroupByStringKeyCheckpoint({"1", "3"}, "topic"));
+      BuildFedSqlGroupByStringKeyCheckpoint({"1", "3"}, "transcript"));
   SessionResponse write_response_2;
   ASSERT_TRUE(stream->Write(write_request_2));
   ASSERT_TRUE(stream->Read(&write_response_2));
@@ -3150,14 +3158,14 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
   auto col_values = (*parser)->GetTensor("topic_count_agg");
   // The SQL query doubles each `val`, and the aggregation sums the val
   // column, grouping by key.
-  ASSERT_EQ(col_values->num_elements(), 3);
-  ASSERT_EQ(key_values->num_elements(), 3);
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(key_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(key_values->dtype(), DataType::DT_STRING);
-  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(2, 2, 2));
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(5));
   // This is the hard-coded inference output from two write requests.
   EXPECT_THAT(key_values->AsSpan<absl::string_view>(),
-              UnorderedElementsAre("one", "two", "three"));
+              UnorderedElementsAre("topic_value"));
 
   // Remove inference files after assertions.
   std::filesystem::remove("/tmp/write_configuration_1");
