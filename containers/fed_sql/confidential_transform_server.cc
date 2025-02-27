@@ -683,10 +683,10 @@ FedSqlConfidentialTransform::CreateSession() {
     intrinsics = &*intrinsics_;
   }
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  return std::make_unique<FedSqlSession>(FedSqlSession(
+  return std::make_unique<FedSqlSession>(
       std::move(aggregator), *intrinsics, inference_model_,
       serialize_output_access_policy_node_id_,
-      report_output_access_policy_node_id_, sensitive_values_key_));
+      report_output_access_policy_node_id_, sensitive_values_key_);
 }
 
 absl::Status FedSqlSession::ConfigureSession(
