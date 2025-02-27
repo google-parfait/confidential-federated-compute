@@ -100,9 +100,16 @@ rust_library(
 
 rust_test(
     name = "ledger_service_test",
-    compile_data = glob(["testdata/**"]),
     crate = ":ledger_service",
     crate_features = ["testing"],
+    data = [
+        "//ledger_service/testdata:endorsements.binarypb",
+        "//ledger_service/testdata:evidence.binarypb",
+    ],
+    rustc_env = {
+        "ENDORSEMENTS": "$(execpath //ledger_service/testdata:endorsements.binarypb)",
+        "EVIDENCE": "$(execpath //ledger_service/testdata:evidence.binarypb)",
+    },
     deps = [
         "@oak_crates_index//:googletest",
     ],

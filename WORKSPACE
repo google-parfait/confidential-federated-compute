@@ -249,7 +249,7 @@ git_repository(
 
 http_archive(
     name = "oak",
-    #sha256 = "fc7f1600800495ac1227579395a66822402be61dd45d37664f379bab5dec4c26",
+    sha256 = "fc7f1600800495ac1227579395a66822402be61dd45d37664f379bab5dec4c26",
     strip_prefix = "oak-e7c76de7f54ef58527bc7ee59ca7f2e8e32c22fb",
     url = "https://github.com/project-oak/oak/archive/e7c76de7f54ef58527bc7ee59ca7f2e8e32c22fb.tar.gz",
 )

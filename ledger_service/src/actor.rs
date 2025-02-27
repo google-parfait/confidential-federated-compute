@@ -449,12 +449,9 @@ mod tests {
         let actor = create_actor_with_platform(TeePlatform::AmdSevSnp);
         let reference_values = actor.get_reference_values();
 
-        let evidence =
-            Evidence::decode(include_bytes!("../testdata/evidence_20250221.binarypb").as_slice())?;
+        let evidence = Evidence::decode(include_bytes!(env!("EVIDENCE")).as_slice())?;
         // The most recent endorsements in this proto date from 2025-02-21.
-        let endorsements = Endorsements::decode(
-            include_bytes!("../testdata/endorsements_20250221.binarypb").as_slice(),
-        )?;
+        let endorsements = Endorsements::decode(include_bytes!(env!("ENDORSEMENTS")).as_slice())?;
         assert_that!(
             oak_attestation_verification::verifier::verify(
                 1740182400000, // 2025-02-22 00:00:00 UTC
