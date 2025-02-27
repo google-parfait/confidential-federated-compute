@@ -1,5 +1,5 @@
 {
-  "checksum": "c7634b4f199ebc892a1ef3c43927631b83dfff16487ff46b8f89a55fbcc65007",
+  "checksum": "2891c1d9e0f6649d2c6c5d1caa0805b6dd5a432519adb6a68fd7dcc16377c896",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -7693,7 +7693,7 @@
               "target": "tokio_stream"
             },
             {
-              "id": "tokio-util 0.7.11",
+              "id": "tokio-util 0.7.13",
               "target": "tokio_util"
             },
             {
@@ -10904,7 +10904,7 @@
               "target": "tokio"
             },
             {
-              "id": "tokio-util 0.7.11",
+              "id": "tokio-util 0.7.13",
               "target": "tokio_util"
             },
             {
@@ -10991,7 +10991,7 @@
               "target": "tokio"
             },
             {
-              "id": "tokio-util 0.7.11",
+              "id": "tokio-util 0.7.13",
               "target": "tokio_util"
             },
             {
@@ -27189,14 +27189,14 @@
       ],
       "license_file": "LICENSE"
     },
-    "tokio-util 0.7.11": {
+    "tokio-util 0.7.13": {
       "name": "tokio-util",
-      "version": "0.7.11",
+      "version": "0.7.13",
       "package_url": "https://github.com/tokio-rs/tokio",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/tokio-util/0.7.11/download",
-          "sha256": "9cf6b47b3771c49ac75ad09a6162f53ad4b8088b76ac60e8ec1455b31a189fe1"
+          "url": "https://static.crates.io/crates/tokio-util/0.7.13/download",
+          "sha256": "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
         }
       },
       "targets": [
@@ -27222,7 +27222,10 @@
           "common": [
             "codec",
             "default",
-            "io"
+            "futures-util",
+            "hashbrown",
+            "io",
+            "rt"
           ],
           "selects": {}
         },
@@ -27241,6 +27244,10 @@
               "target": "futures_sink"
             },
             {
+              "id": "futures-util 0.3.31",
+              "target": "futures_util"
+            },
+            {
               "id": "pin-project-lite 0.2.14",
               "target": "pin_project_lite"
             },
@@ -27252,7 +27259,7 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.7.11"
+        "version": "0.7.13"
       },
       "license": "MIT",
       "license_ids": [
@@ -27978,7 +27985,7 @@
               "target": "tokio"
             },
             {
-              "id": "tokio-util 0.7.11",
+              "id": "tokio-util 0.7.13",
               "target": "tokio_util"
             },
             {
@@ -35077,7 +35084,7 @@
     "time 0.3.36",
     "tokio 1.38.0",
     "tokio-stream 0.1.15",
-    "tokio-util 0.7.11",
+    "tokio-util 0.7.13",
     "tokio-vsock 0.5.0",
     "toml 0.5.11",
     "tonic 0.11.0",

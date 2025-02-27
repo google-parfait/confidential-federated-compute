@@ -128,6 +128,56 @@ rust_test(
     ],
 )
 
+rust_library(
+    name = "storage_client",
+    srcs = ["storage_client.rs"],
+    rustc_flags = ["-Zpolonius"],
+    deps = [
+        ":session_config",
+        ":session_v1_service_prost_proto",
+        ":storage_prost_proto",
+        "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification_types",
+        "@oak//oak_crypto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:hashbrown",
+        "@oak_crates_index//:log",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:tokio",
+        "@oak_crates_index//:tokio-stream",
+        "@oak_crates_index//:tokio-util",
+        "@oak_crates_index//:tonic",
+    ],
+)
+
+rust_test(
+    name = "storage_client_test",
+    srcs = ["storage_client_test.rs"],
+    env = {"RUST_LOG": "debug"},
+    deps = [
+        ":matchers",
+        ":session_config",
+        ":session_test_utils",
+        ":session_v1_service_prost_proto",
+        ":storage_client",
+        ":storage_prost_proto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:googletest",
+        "@oak_crates_index//:log",
+        "@oak_crates_index//:mockall",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:test-log",
+        "@oak_crates_index//:tokio",
+        "@oak_crates_index//:tokio-stream",
+        "@oak_crates_index//:tokio-util",
+        "@oak_crates_index//:tonic",
+    ],
+)
+
 # buildifier: disable=native-proto
 proto_library(
     name = "storage_proto",
@@ -144,4 +194,9 @@ proto_library(
 rust_prost_library(
     name = "storage_prost_proto",
     proto = ":storage_proto",
+)
+
+rust_prost_library(
+    name = "session_v1_service_prost_proto",
+    proto = "@oak//proto/services:session_v1_service_proto",
 )
