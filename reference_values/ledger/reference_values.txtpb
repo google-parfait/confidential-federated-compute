@@ -108,7 +108,7 @@ oak_restricted_kernel {
             }
             signed_timestamp {
               not_before_absolute {
-                #seconds: 1739577600 # 2025-02-15 00:00:00 UTC
+                seconds: 1739577600 # 2025-02-15 00:00:00 UTC
               }
               not_before_relative {
                 seconds: -7776000 # 90 days
