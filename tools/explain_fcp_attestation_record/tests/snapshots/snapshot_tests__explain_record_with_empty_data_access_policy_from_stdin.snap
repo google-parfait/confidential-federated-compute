@@ -2,7 +2,7 @@
 source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
 expression: output
 ---
-Inspecting record provided via stdin.
+Inspecting AttestationVerificationRecord provided via stdin.
 
 ========================================
 ===== LEDGER ATTESTATION EVIDENCE ======

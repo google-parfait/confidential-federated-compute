@@ -14,7 +14,9 @@
 
 use anyhow::{bail, Context};
 use federated_compute::proto::access_budget::Kind;
-use federated_compute::proto::{AccessBudget, AttestationVerificationRecord, DataAccessPolicy};
+use federated_compute::proto::{
+    AccessBudget, AttestationVerificationRecord, DataAccessPolicy, PipelineVariantPolicy,
+};
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
     extracted_evidence::EvidenceValues, Evidence, OakRestrictedKernelData,
@@ -128,9 +130,31 @@ fn explain_ledger_evidence(
 
 /// Writes a human readable explanation for the given data access policy to the
 /// given buffer.
-fn explain_data_access_policy(
+pub fn explain_data_access_policy(
     buf: &mut dyn std::fmt::Write,
     policy: &DataAccessPolicy,
+) -> anyhow::Result<()> {
+    if policy.pipelines.is_empty() {
+        return explain_legacy_data_access_policy(buf, policy);
+    }
+
+    writeln!(buf, "The data access policy allows {} logical pipelines.", policy.pipelines.len(),)?;
+    for (name, pipeline) in &policy.pipelines {
+        writeln!(buf, "Logical pipeline '{name}' has {} instances.", pipeline.instances.len(),)?;
+        for (i, instance) in pipeline.instances.iter().enumerate() {
+            writeln!(buf, "Printing details of pipeline instance #{i}:")?;
+            explain_pipeline_variant_policy(buf, instance)?;
+        }
+    }
+    Ok(())
+}
+
+// TODO: This is almost exactly the same as the
+// `explain_legacy_data_access_policy` function, except that the input message
+// types don't match (even though they both have the same fields).
+fn explain_pipeline_variant_policy(
+    buf: &mut dyn std::fmt::Write,
+    policy: &PipelineVariantPolicy,
 ) -> anyhow::Result<()> {
     writeln!(
         buf,
@@ -146,6 +170,108 @@ fn explain_data_access_policy(
         writeln!(buf, "Source blob ID: {}", transform.src)?;
         writeln!(buf)?;
         explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
+        writeln!(buf)?;
+        let app_matcher = transform.application.clone().unwrap_or_default();
+        writeln!(buf, "Application matcher for this transform:")?;
+        writeln!(buf, "- Tag: {}", app_matcher.tag.unwrap_or_default())?;
+        if let Some(config_properties) = app_matcher.config_properties {
+            writeln!(buf, "- Binary configuration restrictions:")?;
+            // Note: we simply print the StructMatcher's debug output for now. We may want
+            // to format this information more clearly in the future.
+            writeln!(buf, "  {:?}", config_properties)?;
+        }
+        if let Some(ref_vals) = app_matcher.reference_values {
+            writeln!(
+                buf,
+                "- Applications performing this transform must provide attestation evidence that \
+                can be verified with the following reference values:"
+            )?;
+            writeln!(buf)?;
+            writeln!(buf, "{}", ref_vals.title()?)?;
+            writeln!(buf, "{}", ref_vals.description()?)?;
+            writeln!(buf)?;
+        } else {
+            writeln!(
+                buf,
+                "- Any application can perform this transform (attestation evidence will not be \
+                verified)."
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Writes a human readable explanation for the given access budget to the given
+/// buffer.
+fn explain_transform_access_budgets(
+    buf: &mut dyn std::fmt::Write,
+    transform: &federated_compute::proto::pipeline_variant_policy::Transform,
+    transform_idx: usize,
+    shared_budgets: &[AccessBudget],
+) -> Result<(), anyhow::Error> {
+    writeln!(
+        buf,
+        "Access budgets: the transform's access to its source blob is gated by *all* of the \
+        following access rules:"
+    )?;
+    let mut access_restricted = false;
+    if let Some(access_budget) = &transform.access_budget {
+        access_restricted |= process_budget_access_time_with(access_budget, |times| {
+            writeln!(
+                buf,
+                "- limited access budget (at most {times} times): the transform may only access its source \
+                blob this many times."
+            )?;
+            Ok(())
+        })?;
+    }
+    for shared_budget_id in &transform.shared_access_budget_indices {
+        let shared_budget = shared_budgets.get(*shared_budget_id as usize).with_context(|| {
+            format!(
+                "transform {transform_idx} references non-existent shared access budget \
+                        {shared_budget_id}"
+            )
+        })?;
+        access_restricted |= process_budget_access_time_with(shared_budget, |shared_times| {
+            writeln!(
+                buf,
+                "- limited shared access budget #{shared_budget_id} (at most {shared_times} \
+                times): this and other transforms sharing this same budget may only access their \
+                source blobs this many times combined."
+            )?;
+            Ok(())
+        })?;
+    }
+    if !access_restricted {
+        writeln!(
+            buf,
+            "- no access budget restrictions apply: this transform may access the source blob an \
+            unlimited number of times."
+        )?;
+    }
+    Ok(())
+}
+
+fn explain_legacy_data_access_policy(
+    buf: &mut dyn std::fmt::Write,
+    policy: &DataAccessPolicy,
+) -> anyhow::Result<()> {
+    // TODO: Update to print new-style policies correctly.
+    writeln!(
+        buf,
+        "The data access policy allows {} data transformations and defines {} shared access \
+        budgets.",
+        policy.transforms.len(),
+        policy.shared_access_budgets.len(),
+    )?;
+
+    for (i, transform) in policy.transforms.iter().enumerate() {
+        writeln!(buf)?;
+        writeln!(buf, ">>>>> Transform #{i} <<<<<",)?;
+        writeln!(buf, "Source blob ID: {}", transform.src)?;
+        writeln!(buf)?;
+        explain_legacy_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
         writeln!(buf)?;
         let app_matcher = transform.application.clone().unwrap_or_default();
         writeln!(buf, "Application matcher for this transform:")?;
@@ -188,7 +314,7 @@ fn explain_data_access_policy(
 
 /// Writes a human readable explanation for the given access budget to the given
 /// buffer.
-fn explain_transform_access_budgets(
+fn explain_legacy_transform_access_budgets(
     buf: &mut dyn std::fmt::Write,
     transform: &federated_compute::proto::data_access_policy::Transform,
     transform_idx: usize,

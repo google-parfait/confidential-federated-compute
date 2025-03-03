@@ -2,7 +2,7 @@
 source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
 expression: "output.replace(record_file_path, \"{TMP_RECORD_FILE}\")"
 ---
-Inspecting record at {TMP_RECORD_FILE}.
+Inspecting AttestationVerificationRecord at {TMP_RECORD_FILE}.
 
 ========================================
 ===== LEDGER ATTESTATION EVIDENCE ======
