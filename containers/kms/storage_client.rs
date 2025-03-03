@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbrown::HashMap;
@@ -63,6 +60,7 @@ impl StorageClient {
         endorser: E,
         signer: S,
         reference_values: ReferenceValues,
+        clock: Arc<dyn Clock>,
     ) -> Self
     where
         A: Attester + Clone + 'static,
@@ -81,7 +79,7 @@ impl StorageClient {
                 endorser,
                 signer,
                 reference_values,
-                clock: Arc::new(SystemClock {}),
+                clock,
                 pending_requests: HashMap::new(),
                 next_correlation_id: 1,
             }
@@ -143,7 +141,7 @@ struct MessageSender<InitFn, A, E, S> {
     endorser: E,
     signer: S,
     reference_values: ReferenceValues,
-    clock: Arc<SystemClock>,
+    clock: Arc<dyn Clock>,
 }
 
 impl<InitFn, A, E, S> MessageSender<InitFn, A, E, S>
@@ -291,17 +289,5 @@ where
                 }
             }
         }
-    }
-}
-
-struct SystemClock {}
-impl Clock for SystemClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("SystemTime before Unix epoch")
-            .as_millis()
-            .try_into()
-            .expect("SystemTime too large")
     }
 }

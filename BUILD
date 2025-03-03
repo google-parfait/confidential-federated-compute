@@ -62,6 +62,7 @@ pkg_install(
 _ALL_BINARIES = _RELEASE_BINARIES | {
     # keep-sorted start
     "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
+    "//containers/kms:oci_runtime_bundle.tar": "kms/container.tar",
     "//containers/test_concat:oci_runtime_bundle.tar": "test_concat/container.tar",
     "//examples/square_enclave_app": "square_example/binary",
     "//examples/sum_enclave_app": "sum_example/binary",
