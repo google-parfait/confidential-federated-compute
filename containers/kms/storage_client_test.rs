@@ -171,6 +171,7 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
         server.endorser.clone(),
         server.signer.clone(),
         server.reference_values.clone(),
+        server.clock.clone(),
     );
     let handle = tokio::spawn(async move {
         Server::builder()
@@ -188,7 +189,6 @@ async fn init_succeeds() {
     let mut storage = MockStorage::new();
     let init_fn = || UpdateRequest {
         updates: vec![update_request::Update { key: b"key".into(), ..Default::default() }],
-        ..Default::default()
     };
     // The initialization request should be sent once before any other requests.
     let mut seq = mockall::Sequence::new();
@@ -237,7 +237,6 @@ async fn init_retries_other_errors() {
     let mut storage = MockStorage::new();
     let init_fn = || UpdateRequest {
         updates: vec![update_request::Update { key: b"key".into(), ..Default::default() }],
-        ..Default::default()
     };
     let mut seq = mockall::Sequence::new();
     storage
@@ -347,7 +346,6 @@ async fn update_succeeds() {
         .return_const(Ok(storage_response::Kind::Update(UpdateResponse::default())));
     let update_request = UpdateRequest {
         updates: vec![update_request::Update { key: b"key".into(), ..Default::default() }],
-        ..Default::default()
     };
     let update_response = UpdateResponse::default();
     storage
@@ -407,7 +405,6 @@ async fn retry_on_connection_failure() {
     let mut storage = MockStorage::new();
     let init_fn = || UpdateRequest {
         updates: vec![update_request::Update { key: b"init".into(), ..Default::default() }],
-        ..Default::default()
     };
     let mut seq = mockall::Sequence::new();
     storage
@@ -421,7 +418,6 @@ async fn retry_on_connection_failure() {
     };
     let update_request = UpdateRequest {
         updates: vec![update_request::Update { key: b"update".into(), ..Default::default() }],
-        ..Default::default()
     };
     storage
         .expect_call()
