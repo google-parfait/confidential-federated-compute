@@ -117,6 +117,23 @@ http_archive(
 )
 
 http_archive(
+    name = "trusted_computations_platform",
+    sha256 = "11fce7ae0c72b542b71f54e936ba24b17848e520a52a79015218a13bc8f2feb1",
+    strip_prefix = "trusted-computations-platform-ee330cf3b6be34419d15ce362304c9d0b9f4e06c",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ee330cf3b6be34419d15ce362304c9d0b9f4e06c.tar.gz",
+)
+
+http_archive(
+    name = "rules_pkg",
+    patches = ["@trusted_computations_platform//third_party/rules_pkg:tar.patch"],
+    sha256 = "d20c951960ed77cb7b341c2a59488534e494d5ad1d30c4818c736d57772a9fef",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/1.0.1/rules_pkg-1.0.1.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/1.0.1/rules_pkg-1.0.1.tar.gz",
+    ],
+)
+
+http_archive(
     name = "org_tensorflow",
     patches = [
         "//third_party/org_tensorflow:internal_visibility.patch",
@@ -223,13 +240,6 @@ http_archive(
     sha256 = "9519f72f24a0e1ed33ac348999f38ac87d5a871a9eb137743ee30200b338b090",
     strip_prefix = "federated-compute-2cb0edb3327da4ca1720cc50103fb832cb368a9a",
     url = "https://github.com/google/federated-compute/archive/2cb0edb3327da4ca1720cc50103fb832cb368a9a.tar.gz",
-)
-
-http_archive(
-    name = "trusted_computations_platform",
-    sha256 = "11fce7ae0c72b542b71f54e936ba24b17848e520a52a79015218a13bc8f2feb1",
-    strip_prefix = "trusted-computations-platform-ee330cf3b6be34419d15ce362304c9d0b9f4e06c",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ee330cf3b6be34419d15ce362304c9d0b9f4e06c.tar.gz",
 )
 
 http_archive(
@@ -402,6 +412,23 @@ llvm_toolchain(
     # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
     # https://github.com/llvm/llvm-project/issues/51620
     llvm_version = "14.0.0",
+    sysroot = {"linux-x86_64": "@clang_sysroot//:sysroot"},
+)
+
+# Use a sysroot to make clang builds hermetic. This sysroot may not be
+# reproducible, but that's OK because it's only used by sanitizer builds.
+http_archive(
+    name = "clang_sysroot",
+    build_file_content = """
+filegroup(
+    name = "sysroot",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+    """,
+    sha256 = "dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
+    type = "tar.xz",
+    url = "https://commondatastorage.googleapis.com/chrome-linux-sysroot/dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
 )
 
 # Stub out unneeded Java proto library rules used by various dependencies. This
