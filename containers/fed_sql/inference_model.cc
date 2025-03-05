@@ -14,6 +14,7 @@
 
 #include "containers/fed_sql/inference_model.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -215,7 +216,7 @@ absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
     return absl::UnimplementedError(
         "Model must be initialized before running inference.");
   }
-  std::set<std::string> erase_column_names;
+  absl::flat_hash_set<std::string> erase_column_names;
   for (const auto& inference_task :
        inference_configuration_->initialize_configuration.inference_config()
            .inference_task()) {
@@ -295,8 +296,7 @@ absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
   auto new_end = std::remove_if(
       columns.begin(), columns.end(),
       [&erase_column_names](const TensorColumn& column) {
-        return erase_column_names.find(column.column_schema_.name()) !=
-               erase_column_names.end();
+        return erase_column_names.contains(column.column_schema_.name());
       });
   columns.erase(new_end, columns.end());
   return absl::OkStatus();
