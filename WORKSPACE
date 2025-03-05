@@ -58,8 +58,7 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
 )
 
-# Initialize hermetic python prior to loading Tensorflow deps. See
-# https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L6
+# Initialize hermetic python prior to loading Tensorflow deps.
 http_archive(
     name = "rules_python",
     sha256 = "dc6e2756130fafb90273587003659cadd1a2dfef3f6464c227794cdc01ebf70e",
@@ -77,7 +76,7 @@ py_repositories()
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = "3.10",
+    python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
 )
 
 http_archive(
@@ -145,15 +144,15 @@ http_archive(
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
     ],
-    sha256 = "d7876f4bb0235cac60eb6316392a7c48676729860da1ab659fb440379ad5186d",
-    strip_prefix = "tensorflow-2.18.0",
+    sha256 = "899533cb45ded37ef069ec18b9ae04401f2c9babee4dde3672343d63a83f3910",
+    strip_prefix = "tensorflow-0f3366971a0a78a71303167d14bc5c1659a4b632",
     urls = [
-        "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.18.0.tar.gz",
+        "https://github.com/tensorflow/tensorflow/archive/0f3366971a0a78a71303167d14bc5c1659a4b632.tar.gz",
     ],
 )
 
 # The following is copied from TensorFlow's own WORKSPACE, see
-# https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L68
+# https://github.com/tensorflow/tensorflow/blob/v2.19.0-rc0/WORKSPACE#L68
 load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
@@ -169,6 +168,27 @@ tf_workspace1()
 load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
+
+load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
+
+python_init_repositories(
+    local_wheel_dist_folder = "dist",
+    local_wheel_inclusion_list = [
+        "tensorflow*",
+        "tf_nightly*",
+    ],
+    local_wheel_workspaces = ["//:WORKSPACE"],
+    requirements = {
+        "3.10": "//:requirements_lock_3_10.txt",
+    },
+)
+
+load(
+    "@local_xla//third_party/py:python_repo.bzl",
+    "python_repository",
+)
+
+python_repository(name = "python_version_repo")
 
 load(
     "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",

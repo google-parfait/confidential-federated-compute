@@ -8,6 +8,11 @@ build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/baz
 build --output_filter='^//'  # Suppress warnings from external dependencies.
 # Build TensorFlow with more optimizations to avoid linker OOM
 build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
+build --repo_env=TF_PYTHON_VERSION=3.10
+build --define xnn_enable_avx512fp16=false
+build --define xnn_enable_avx512amx=false
+build --define xnn_enable_avxvnni=false
+build --define xnn_enable_avxvnniint8=false
 build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
