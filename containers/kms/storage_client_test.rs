@@ -23,7 +23,7 @@ use oak_session::{ProtocolEngine, ServerSession, Session};
 use prost::Message;
 use session_config::create_session_config;
 use session_test_utils::{
-    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSigner,
+    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSessionBinder,
 };
 use session_v1_service_proto::{
     oak::services::{
@@ -65,7 +65,7 @@ struct FakeServer {
     storage: Arc<MockStorage>,
     attester: FakeAttester,
     endorser: FakeEndorser,
-    signer: FakeSigner,
+    session_binder: FakeSessionBinder,
     reference_values: ReferenceValues,
     clock: Arc<FakeClock>,
 }
@@ -76,7 +76,7 @@ impl FakeServer {
             storage: Arc::new(storage),
             attester: FakeAttester::create().unwrap(),
             endorser: FakeEndorser::default(),
-            signer: FakeSigner::create().unwrap(),
+            session_binder: FakeSessionBinder::create().unwrap(),
             reference_values: test_reference_values(),
             clock: Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
         }
@@ -92,14 +92,13 @@ impl OakSessionV1Service for FakeServer {
         &self,
         request: tonic::Request<tonic::Streaming<SessionRequest>>,
     ) -> std::result::Result<tonic::Response<Self::StreamStream>, tonic::Status> {
-        let mut session = create_session_config(
+        let mut session = ServerSession::create(create_session_config(
             Box::new(self.attester.clone()),
             Box::new(self.endorser.clone()),
-            Box::new(self.signer.clone()),
+            Box::new(self.session_binder.clone()),
             self.reference_values.clone(),
             self.clock.clone(),
-        )
-        .and_then(ServerSession::create)
+        ))
         .expect("failed to create ServerSession");
 
         let mut in_stream = request.into_inner();
@@ -128,9 +127,7 @@ impl OakSessionV1Service for FakeServer {
                                 };
                                 debug!("Returning StorageResponse: {:?}", response);
                                 session
-                                    .write(&PlaintextMessage {
-                                        plaintext: response.encode_to_vec(),
-                                    })
+                                    .write(PlaintextMessage { plaintext: response.encode_to_vec() })
                                     .expect("failed to write to session");
                             }
                             Err(err) => {
@@ -169,7 +166,7 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
         init_fn,
         server.attester.clone(),
         server.endorser.clone(),
-        server.signer.clone(),
+        server.session_binder.clone(),
         server.reference_values.clone(),
         server.clock.clone(),
     );

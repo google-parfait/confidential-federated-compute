@@ -118,9 +118,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    sha256 = "11fce7ae0c72b542b71f54e936ba24b17848e520a52a79015218a13bc8f2feb1",
-    strip_prefix = "trusted-computations-platform-ee330cf3b6be34419d15ce362304c9d0b9f4e06c",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ee330cf3b6be34419d15ce362304c9d0b9f4e06c.tar.gz",
+    sha256 = "87f5ccaa551611816ab3799ce0c8ef58d5f780ed0f960c6954fd84a01a33b61d",
+    strip_prefix = "trusted-computations-platform-7254e8c2d029609f5cb65ca72a01d3ce61198bd9",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/7254e8c2d029609f5cb65ca72a01d3ce61198bd9.tar.gz",
 )
 
 http_archive(
@@ -259,9 +259,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    sha256 = "fc7f1600800495ac1227579395a66822402be61dd45d37664f379bab5dec4c26",
-    strip_prefix = "oak-e7c76de7f54ef58527bc7ee59ca7f2e8e32c22fb",
-    url = "https://github.com/project-oak/oak/archive/e7c76de7f54ef58527bc7ee59ca7f2e8e32c22fb.tar.gz",
+    sha256 = "5bb692898705ae3dcdb2e7a385e7afc681e3f18866120aee6b06d1615f5a4cf9",
+    strip_prefix = "oak-d889956d9503c0459b96579e75ba34583d0809ae",
+    url = "https://github.com/project-oak/oak/archive/d889956d9503c0459b96579e75ba34583d0809ae.tar.gz",
 )
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")

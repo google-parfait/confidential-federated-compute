@@ -18,12 +18,13 @@ use anyhow::{anyhow, ensure, Context};
 use hashbrown::{hash_map, HashMap};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
-use oak_session::{config::SessionConfig, ProtocolEngine, ServerSession, Session};
+use oak_session::{
+    config::SessionConfig, session_binding::SessionBinder, ProtocolEngine, ServerSession, Session,
+};
 use prost::{bytes::Bytes, Message};
 use session_config::create_session_config;
 use slog::{debug, error, warn};
@@ -51,7 +52,7 @@ pub struct StorageActor {
     // The underlying storage struct.
     storage: Storage,
     // A factory function that creates new configs for encrypted sessions.
-    session_config_factory: Box<dyn Fn() -> anyhow::Result<SessionConfig>>,
+    session_config_factory: Box<dyn Fn() -> SessionConfig>,
     // The reference values used for attestation.
     reference_values: ReferenceValues,
     // The set of active encrypted Oak sessions, keyed by session ID.
@@ -85,17 +86,17 @@ enum HandleStorageRequestOutcome {
 const CLOCK_UPDATE_INTERVAL_MS: u64 = 60_000;
 
 impl StorageActor {
-    pub fn new<A, E, S>(
+    pub fn new<A, E, SB>(
         attester: A,
         endorser: E,
-        signer: S,
+        session_binder: SB,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
     ) -> Self
     where
         A: Attester + Clone + 'static,
         E: Endorser + Clone + 'static,
-        S: Signer + Clone + 'static,
+        SB: SessionBinder + Clone + 'static,
     {
         let storage = Storage::default();
 
@@ -105,7 +106,7 @@ impl StorageActor {
             create_session_config(
                 Box::new(attester.clone()),
                 Box::new(endorser.clone()),
-                Box::new(signer.clone()),
+                Box::new(session_binder.clone()),
                 rv_copy.clone(),
                 clock_copy.clone(),
             )
@@ -147,8 +148,7 @@ impl StorageActor {
         let session = match self.sessions.entry_ref(session_request.session_id.as_slice()) {
             hash_map::EntryRef::Occupied(entry) => entry.into_mut(),
             hash_map::EntryRef::Vacant(entry) => entry.insert(
-                (self.session_config_factory)()
-                    .and_then(ServerSession::create)
+                ServerSession::create((self.session_config_factory)())
                     .context("failed to create ServerSession")
                     .context(ActorError::Internal)?,
             ),
@@ -181,7 +181,7 @@ impl StorageActor {
                     // Encrypt the response by adding it back to the session. It'll be retrieved by
                     // `get_outgoing_message()` below.
                     session
-                        .write(&PlaintextMessage { plaintext: response.encode_to_vec() })
+                        .write(PlaintextMessage { plaintext: response.encode_to_vec() })
                         .context("failed to write to session")?;
                 }
                 HandleStorageRequestOutcome::Event(event) => {
@@ -275,7 +275,7 @@ impl StorageActor {
         let response =
             StorageResponse { correlation_id: event.correlation_id, kind: Some(response_kind) };
         session
-            .write(&PlaintextMessage { plaintext: response.encode_to_vec() })
+            .write(PlaintextMessage { plaintext: response.encode_to_vec() })
             .context("failed to write to session")?;
 
         if let Some(msg) = session.get_outgoing_message()? {

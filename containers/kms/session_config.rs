@@ -14,14 +14,12 @@
 
 use std::sync::Arc;
 
-use anyhow::Context;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::attestation::v1::ReferenceValues;
 use oak_session::{
     attestation::AttestationType, config::SessionConfig, dice_attestation::DiceAttestationVerifier,
-    handshake::HandshakeType, session_binding::SignatureBinderBuilder,
+    handshake::HandshakeType, session_binding::SessionBinder,
 };
 
 const SESSION_ID: &str = "cfc_kms";
@@ -30,23 +28,17 @@ const SESSION_ID: &str = "cfc_kms";
 pub fn create_session_config(
     attester: Box<dyn Attester>,
     endorser: Box<dyn Endorser>,
-    signer: Box<dyn Signer>,
+    session_binder: Box<dyn SessionBinder>,
     reference_values: ReferenceValues,
     clock: Arc<dyn Clock>,
-) -> anyhow::Result<SessionConfig> {
-    let session_binder = SignatureBinderBuilder::default()
-        .signer(signer)
-        .build()
-        .map_err(anyhow::Error::msg)
-        .context("failed to create SignatureBinder")?;
-
-    Ok(SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
+) -> SessionConfig {
+    SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
         .add_self_attester(SESSION_ID.into(), attester)
         .add_self_endorser(SESSION_ID.into(), endorser)
         .add_peer_verifier(
             SESSION_ID.into(),
             Box::new(DiceAttestationVerifier::create(reference_values, clock)),
         )
-        .add_session_binder(SESSION_ID.into(), Box::new(session_binder))
-        .build())
+        .add_session_binder(SESSION_ID.into(), session_binder)
+        .build()
 }

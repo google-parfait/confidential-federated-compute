@@ -19,12 +19,11 @@ use hashbrown::HashMap;
 use log::{error, info, warn};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionResponse},
 };
-use oak_session::{ClientSession, ProtocolEngine, Session};
+use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
 use prost::Message;
 use session_config::create_session_config;
 use session_v1_service_proto::{
@@ -53,19 +52,19 @@ pub struct StorageClient {
 }
 
 impl StorageClient {
-    pub fn new<A, E, S>(
+    pub fn new<A, E, SB>(
         client: OakSessionV1ServiceClient<tonic::transport::Channel>,
         init_fn: impl Fn() -> UpdateRequest + Send + 'static,
         attester: A,
         endorser: E,
-        signer: S,
+        session_binder: SB,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
     ) -> Self
     where
         A: Attester + Clone + 'static,
         E: Endorser + Clone + 'static,
-        S: Signer + Clone + 'static,
+        SB: SessionBinder + Clone + 'static,
     {
         let (tx, rx) = mpsc::unbounded_channel();
         let sender = tx.clone();
@@ -77,7 +76,7 @@ impl StorageClient {
                 init_fn,
                 attester,
                 endorser,
-                signer,
+                session_binder,
                 reference_values,
                 clock,
                 pending_requests: HashMap::new(),
@@ -130,7 +129,7 @@ impl StorageClient {
     }
 }
 
-struct MessageSender<InitFn, A, E, S> {
+struct MessageSender<InitFn, A, E, SB> {
     tx: mpsc::UnboundedSender<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     rx: mpsc::UnboundedReceiver<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     client: OakSessionV1ServiceClient<tonic::transport::Channel>,
@@ -139,17 +138,17 @@ struct MessageSender<InitFn, A, E, S> {
     next_correlation_id: u64,
     attester: A,
     endorser: E,
-    signer: S,
+    session_binder: SB,
     reference_values: ReferenceValues,
     clock: Arc<dyn Clock>,
 }
 
-impl<InitFn, A, E, S> MessageSender<InitFn, A, E, S>
+impl<InitFn, A, E, SB> MessageSender<InitFn, A, E, SB>
 where
     InitFn: Fn() -> UpdateRequest + 'static,
     A: Attester + Clone + 'static,
     E: Endorser + Clone + 'static,
-    S: Signer + Clone + 'static,
+    SB: SessionBinder + Clone + 'static,
 {
     pub async fn run(mut self) {
         while let Err(err) = self.run_session().await {
@@ -167,14 +166,13 @@ where
     /// return an error if/when the server closes the stream or a protocol error
     /// occurs.
     async fn run_session(&mut self) -> Result<()> {
-        let mut session = create_session_config(
+        let mut session = ClientSession::create(create_session_config(
             Box::new(self.attester.clone()),
             Box::new(self.endorser.clone()),
-            Box::new(self.signer.clone()),
+            Box::new(self.session_binder.clone()),
             self.reference_values.clone(),
             self.clock.clone(),
-        )
-        .and_then(ClientSession::create)
+        ))
         .context("failed to create ClientSession")?;
         let (server_tx, rx) = mpsc::channel(1);
         let mut responses = self.client.stream(ReceiverStream::new(rx)).await?.into_inner();
@@ -217,7 +215,7 @@ where
                 event = init_rx.recv(), if session.is_open() => {
                     // Once the session is open, write the initialization request to the
                     // ClientSession. It'll be retrieved using `get_outgoing_message` below.
-                    session.write(&PlaintextMessage { plaintext: event.unwrap().encode_to_vec() })?;
+                    session.write(PlaintextMessage { plaintext: event.unwrap().encode_to_vec() })?;
                 }
                 event = self.rx.recv(), if initialized => {
                     // Once initialized, write messages from the mpsc channel to the ClientSession.
@@ -229,7 +227,7 @@ where
                                 msg.correlation_id = self.next_correlation_id;
                                 self.next_correlation_id = self.next_correlation_id.wrapping_add(1);
                                 session.write(
-                                    &PlaintextMessage { plaintext: msg.encode_to_vec() }
+                                    PlaintextMessage { plaintext: msg.encode_to_vec() }
                                 )?;
                                 self.pending_requests.insert(msg.correlation_id, (msg, tx));
                             }

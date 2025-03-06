@@ -17,8 +17,8 @@
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
-use oak_restricted_kernel_sdk::testing::MockAttester;
-pub use oak_restricted_kernel_sdk::testing::MockSigner as FakeSigner;
+use oak_restricted_kernel_sdk::testing::{MockAttester, MockSigner};
+use oak_session::session_binding::{SessionBinder, SignatureBinderBuilder};
 
 /// Creates test reference values compatible with `FakeAttester` and
 /// `FakeEndorser`.
@@ -100,6 +100,29 @@ impl Endorser for FakeEndorser {
             )),
             ..Default::default()
         })
+    }
+}
+
+/// A fake SessionBinder that signs using a key compatible with the
+/// `FakeAttester`.
+#[derive(Clone)]
+pub struct FakeSessionBinder {
+    signer: MockSigner,
+}
+impl FakeSessionBinder {
+    pub fn create() -> anyhow::Result<Self> {
+        Ok(Self { signer: MockSigner::create()? })
+    }
+}
+impl SessionBinder for FakeSessionBinder {
+    fn bind(&self, bound_data: &[u8]) -> Vec<u8> {
+        // SignatureBinder does not implement Clone, so we create a new one for
+        // each binding.
+        SignatureBinderBuilder::default()
+            .signer(Box::new(self.signer.clone()))
+            .build()
+            .unwrap()
+            .bind(bound_data)
     }
 }
 

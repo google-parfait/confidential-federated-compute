@@ -58,7 +58,6 @@ rust_binary(
         ":storage_client",
         "@oak//oak_attestation_types",
         "@oak//oak_attestation_verification_types",
-        "@oak//oak_containers_sdk",
         "@oak//oak_proto_rust",
         "@oak//oak_sdk/common:oak_sdk_common",
         "@oak//oak_sdk/containers:oak_sdk_containers",
@@ -107,10 +106,8 @@ rust_library(
     deps = [
         "@oak//oak_attestation_types",
         "@oak//oak_attestation_verification_types",
-        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
-        "@oak_crates_index//:anyhow",
     ],
 )
 
@@ -123,6 +120,7 @@ rust_library(
         "@oak//oak_attestation_verification_types",
         "@oak//oak_proto_rust",
         "@oak//oak_restricted_kernel_sdk",
+        "@oak//oak_session",
         "@oak_crates_index//:anyhow",
     ],
 )
@@ -167,7 +165,6 @@ rust_library(
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
         "@oak//oak_attestation_verification_types",
-        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",
@@ -213,7 +210,6 @@ rust_library(
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
         "@oak//oak_attestation_verification_types",
-        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",

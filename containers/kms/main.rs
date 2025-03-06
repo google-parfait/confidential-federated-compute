@@ -22,9 +22,9 @@ use key_management_service::KeyManagementService;
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_containers_sdk::{crypto::InstanceSigner, OrchestratorClient};
 use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
+use oak_sdk_containers::{InstanceSessionBinder, OrchestratorClient};
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use storage_actor::StorageActor;
@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     let attester = CloneableAttester { inner: Arc::new(StaticAttester::new(evidence.clone())) };
     let endorser = CloneableEndorser { inner: Arc::new(StaticEndorser::new(endorsements)) };
-    let signer = InstanceSigner::create(&channel);
+    let session_binder = InstanceSessionBinder::create(&channel);
     let reference_values = get_reference_values(&evidence)?;
     let clock = Arc::new(SystemClock {});
 
@@ -79,14 +79,14 @@ async fn main() -> anyhow::Result<()> {
         KeyManagementService::get_init_request,
         attester.clone(),
         endorser.clone(),
-        signer.clone(),
+        session_binder.clone(),
         reference_values.clone(),
         clock.clone(),
     ));
 
     // Create the TCP EndpointService.
     let endpoint_service = TonicApplicationService::new(channel, evidence, move || {
-        StorageActor::new(attester, endorser, signer, reference_values, clock)
+        StorageActor::new(attester, endorser, session_binder, reference_values, clock)
     });
 
     // Start the gRPC server.
