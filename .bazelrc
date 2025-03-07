@@ -8,7 +8,9 @@ build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/baz
 build --output_filter='^//'  # Suppress warnings from external dependencies.
 # Build TensorFlow with more optimizations to avoid linker OOM
 build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
+build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
 common --experimental_repo_remote_exec
+common --noenable_bzlmod
 
 build:asan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan --compilation_mode=dbg

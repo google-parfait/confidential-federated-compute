@@ -62,9 +62,9 @@ http_archive(
 # https://github.com/tensorflow/tensorflow/blob/v2.14.0-rc0/WORKSPACE#L6
 http_archive(
     name = "rules_python",
-    sha256 = "d71d2c67e0bce986e1c5a7731b4693226867c45bfe0b7c5e0067228a536fc580",
-    strip_prefix = "rules_python-0.29.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.29.0/rules_python-0.29.0.tar.gz",
+    sha256 = "dc6e2756130fafb90273587003659cadd1a2dfef3f6464c227794cdc01ebf70e",
+    strip_prefix = "rules_python-0.33.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.33.0/rules_python-0.33.0.tar.gz",
 )
 
 # Call py_repositories() first so rules_python can setup any state
@@ -123,14 +123,20 @@ http_archive(
     url = "https://github.com/google-parfait/trusted-computations-platform/archive/7254e8c2d029609f5cb65ca72a01d3ce61198bd9.tar.gz",
 )
 
+# Use a version of rules_apple that's compatible with Bazel 7.
+# This can be removed when we update to TensorFlow 2.19.0 or later.
 http_archive(
-    name = "rules_pkg",
-    patches = ["@trusted_computations_platform//third_party/rules_pkg:tar.patch"],
-    sha256 = "d20c951960ed77cb7b341c2a59488534e494d5ad1d30c4818c736d57772a9fef",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/1.0.1/rules_pkg-1.0.1.tar.gz",
-        "https://github.com/bazelbuild/rules_pkg/releases/download/1.0.1/rules_pkg-1.0.1.tar.gz",
-    ],
+    name = "build_bazel_rules_apple",
+    sha256 = "20da675977cb8249919df14d0ce6165d7b00325fb067f0b06696b893b90a55e8",
+    url = "https://github.com/bazelbuild/rules_apple/releases/download/3.0.0/rules_apple.3.0.0.tar.gz",
+)
+
+# Use a version of apple_support that's compatible with rules_apple 3.0.0.
+# This can be removed when we update to TensorFlow 2.19.0 or later.
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "73455d9ae35d28e04853fc9e276bbd05ba4297dbb9cc16e4a15f2034ce687a4c",
+    url = "https://github.com/bazelbuild/apple_support/releases/download/1.10.0/apple_support.1.10.0.tar.gz",
 )
 
 http_archive(
