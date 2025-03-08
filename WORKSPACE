@@ -122,22 +122,6 @@ http_archive(
     url = "https://github.com/google-parfait/trusted-computations-platform/archive/7254e8c2d029609f5cb65ca72a01d3ce61198bd9.tar.gz",
 )
 
-# Use a version of rules_apple that's compatible with Bazel 7.
-# This can be removed when we update to TensorFlow 2.19.0 or later.
-http_archive(
-    name = "build_bazel_rules_apple",
-    sha256 = "20da675977cb8249919df14d0ce6165d7b00325fb067f0b06696b893b90a55e8",
-    url = "https://github.com/bazelbuild/rules_apple/releases/download/3.0.0/rules_apple.3.0.0.tar.gz",
-)
-
-# Use a version of apple_support that's compatible with rules_apple 3.0.0.
-# This can be removed when we update to TensorFlow 2.19.0 or later.
-http_archive(
-    name = "build_bazel_apple_support",
-    sha256 = "73455d9ae35d28e04853fc9e276bbd05ba4297dbb9cc16e4a15f2034ce687a4c",
-    url = "https://github.com/bazelbuild/apple_support/releases/download/1.10.0/apple_support.1.10.0.tar.gz",
-)
-
 http_archive(
     name = "org_tensorflow",
     patches = [
