@@ -21,7 +21,6 @@ package confidential_federated_compute.kms;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
-import "proto/session/session.proto";
 
 // A top-level request to the storage service.
 message StorageRequest {
@@ -129,15 +128,4 @@ message StorageEvent {
   oneof kind {
     UpdateRequest update = 3;
   }
-}
-
-// A SessionResponse wrapper since the TCP Actor API expects application-level
-// errors to be sent in the response message, not as an RPC error.
-// TODO: b/393146003 - move this message to google-parfait/federated-compute.
-message SessionResponseWithStatus {
-  // The status of the response. If not OK, the response should be ignored.
-  google.rpc.Status status = 1;
-
-  // The session response.
-  oak.session.v1.SessionResponse response = 2;
 }

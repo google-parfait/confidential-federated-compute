@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Context};
 use hashbrown::{hash_map, HashMap};
+use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::{
@@ -32,8 +33,7 @@ use storage::Storage;
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_request, storage_event, storage_request, storage_response, update_request,
-        ReadRequest, ReadResponse, SessionResponseWithStatus, StorageEvent, StorageRequest,
-        StorageResponse, UpdateRequest,
+        ReadRequest, ReadResponse, StorageEvent, StorageRequest, StorageResponse, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -424,8 +424,8 @@ impl Actor for StorageActor {
                 }
                 HandleSessionRequestOutcome::Response(response) => {
                     // Until Oak uses `rust_prost_library`, the types in `oak_proto_rust` are
-                    // not the same as the types in `storage_proto`.
-                    use storage_proto::session_proto::oak::session::v1::SessionResponse;
+                    // not the same as the types in `kms_proto`.
+                    use kms_proto::session_proto::oak::session::v1::SessionResponse;
                     let response = SessionResponse::decode(response.encode_to_vec().as_slice())?;
                     Ok(CommandOutcome::with_command(ActorCommand::with_header(
                         command.correlation_id,
@@ -476,8 +476,8 @@ impl Actor for StorageActor {
             }
 
             // Until Oak uses `rust_prost_library`, the types in `oak_proto_rust` are not
-            // the same as the types in `storage_proto`.
-            use storage_proto::session_proto::oak::session::v1::SessionResponse;
+            // the same as the types in `kms_proto`.
+            use kms_proto::session_proto::oak::session::v1::SessionResponse;
             let response = SessionResponse::decode(response.unwrap().encode_to_vec().as_slice())?;
             Ok(EventOutcome::with_command(ActorCommand::with_header(
                 event.correlation_id,

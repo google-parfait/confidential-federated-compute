@@ -15,6 +15,7 @@
 use std::sync::Arc;
 
 use googletest::prelude::*;
+use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
@@ -31,8 +32,7 @@ use storage_actor::StorageActor;
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_request, read_response, storage_request, storage_response, update_request,
-        ReadRequest, ReadResponse, SessionResponseWithStatus, StorageRequest, StorageResponse,
-        UpdateRequest, UpdateResponse,
+        ReadRequest, ReadResponse, StorageRequest, StorageResponse, UpdateRequest, UpdateResponse,
     },
     duration_proto::google::protobuf::Duration,
     status_proto::google::rpc::Status,

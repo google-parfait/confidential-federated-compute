@@ -160,6 +160,7 @@ rust_library(
     name = "storage_actor",
     srcs = ["storage_actor.rs"],
     deps = [
+        ":kms_prost_proto",
         ":session_config",
         ":storage",
         ":storage_prost_proto",
@@ -181,6 +182,7 @@ rust_test(
     srcs = ["storage_actor_test.rs"],
     env = {"RUST_LOG": "debug"},
     deps = [
+        ":kms_prost_proto",
         ":session_config",
         ":session_test_utils",
         ":storage_actor",
@@ -258,7 +260,6 @@ proto_library(
         "@com_google_googleapis//google/rpc:status_proto",
         "@com_google_protobuf//:duration_proto",
         "@com_google_protobuf//:timestamp_proto",
-        "@oak//proto/session:session_proto",
     ],
 )
 
