@@ -74,7 +74,6 @@ verification records logged by [Federated
 Compute](https://github.com/google-parfait/federated-compute) clients, as well
 as transparency log entries for ledger and data access policy endorsements to
 the reproducibly buildable binaries in this repository.
-binaries in this repository.
 
 ## Building
 
