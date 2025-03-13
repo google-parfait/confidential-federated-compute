@@ -19,11 +19,12 @@ use hashbrown::HashMap;
 use log::{error, info, warn};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
+use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionResponse},
 };
-use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
+use oak_session::{ClientSession, ProtocolEngine, Session};
 use prost::Message;
 use session_config::create_session_config;
 use session_v1_service_proto::{
@@ -52,20 +53,15 @@ pub struct StorageClient {
 }
 
 impl StorageClient {
-    pub fn new<A, E, SB>(
+    pub fn new<S: Signer + Clone + 'static>(
         client: OakSessionV1ServiceClient<tonic::transport::Channel>,
         init_fn: impl Fn() -> UpdateRequest + Send + 'static,
-        attester: A,
-        endorser: E,
-        session_binder: SB,
+        attester: Arc<dyn Attester>,
+        endorser: Arc<dyn Endorser>,
+        signer: S,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
-    ) -> Self
-    where
-        A: Attester + Clone + 'static,
-        E: Endorser + Clone + 'static,
-        SB: SessionBinder + Clone + 'static,
-    {
+    ) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let sender = tx.clone();
         let handle = tokio::spawn(async move {
@@ -76,7 +72,7 @@ impl StorageClient {
                 init_fn,
                 attester,
                 endorser,
-                session_binder,
+                signer,
                 reference_values,
                 clock,
                 pending_requests: HashMap::new(),
@@ -129,26 +125,24 @@ impl StorageClient {
     }
 }
 
-struct MessageSender<InitFn, A, E, SB> {
+struct MessageSender<InitFn, S> {
     tx: mpsc::UnboundedSender<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     rx: mpsc::UnboundedReceiver<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     client: OakSessionV1ServiceClient<tonic::transport::Channel>,
     init_fn: InitFn,
     pending_requests: HashMap<u64, (StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     next_correlation_id: u64,
-    attester: A,
-    endorser: E,
-    session_binder: SB,
+    attester: Arc<dyn Attester>,
+    endorser: Arc<dyn Endorser>,
+    signer: S,
     reference_values: ReferenceValues,
     clock: Arc<dyn Clock>,
 }
 
-impl<InitFn, A, E, SB> MessageSender<InitFn, A, E, SB>
+impl<InitFn, S> MessageSender<InitFn, S>
 where
     InitFn: Fn() -> UpdateRequest + 'static,
-    A: Attester + Clone + 'static,
-    E: Endorser + Clone + 'static,
-    SB: SessionBinder + Clone + 'static,
+    S: Signer + Clone + 'static,
 {
     pub async fn run(mut self) {
         while let Err(err) = self.run_session().await {
@@ -166,13 +160,14 @@ where
     /// return an error if/when the server closes the stream or a protocol error
     /// occurs.
     async fn run_session(&mut self) -> Result<()> {
-        let mut session = ClientSession::create(create_session_config(
-            Box::new(self.attester.clone()),
-            Box::new(self.endorser.clone()),
-            Box::new(self.session_binder.clone()),
+        let mut session = create_session_config(
+            &self.attester,
+            &self.endorser,
+            Box::new(self.signer.clone()),
             self.reference_values.clone(),
             self.clock.clone(),
-        ))
+        )
+        .and_then(ClientSession::create)
         .context("failed to create ClientSession")?;
         let (server_tx, rx) = mpsc::channel(1);
         let mut responses = self.client.stream(ReceiverStream::new(rx)).await?.into_inner();

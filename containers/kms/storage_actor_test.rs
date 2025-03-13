@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use googletest::prelude::*;
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
+use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
@@ -25,7 +26,7 @@ use prost::{bytes::Bytes, Message};
 use rand::Rng;
 use session_config::create_session_config;
 use session_test_utils::{
-    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSessionBinder,
+    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSigner,
 };
 use slog::Drain;
 use storage_actor::StorageActor;
@@ -60,19 +61,20 @@ fn create_actor_context(leader: bool) -> Box<MockActorContext> {
 fn create_client_session(
     actor: &mut StorageActor,
     session_id: &[u8],
-    attester: FakeAttester,
-    endorser: FakeEndorser,
-    session_binder: FakeSessionBinder,
+    attester: Arc<FakeAttester>,
+    endorser: Arc<FakeEndorser>,
+    signer: FakeSigner,
     reference_values: ReferenceValues,
     clock: Arc<FakeClock>,
 ) -> ClientSession {
-    let mut session = ClientSession::create(create_session_config(
-        Box::new(attester),
-        Box::new(endorser),
-        Box::new(session_binder),
+    let mut session = create_session_config(
+        &(attester as Arc<dyn Attester>),
+        &(endorser as Arc<dyn Endorser>),
+        Box::new(signer),
         reference_values,
         clock,
-    ))
+    )
+    .and_then(ClientSession::create)
     .expect("failed to create ClientSession");
 
     // Perform the initial handshake.
@@ -170,9 +172,9 @@ fn decode_response(
 fn get_reference_values_succeeds() {
     let reference_values = test_reference_values();
     let actor = StorageActor::new(
-        FakeAttester::create().unwrap(),
-        FakeEndorser::default(),
-        FakeSessionBinder::create().unwrap(),
+        Arc::new(FakeAttester::create().unwrap()),
+        Arc::new(FakeEndorser::default()),
+        FakeSigner::create().unwrap(),
         reference_values.clone(),
         Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
@@ -183,9 +185,9 @@ fn get_reference_values_succeeds() {
 #[test_log::test(googletest::test)]
 fn empty_command_ignored_on_follower() {
     let mut actor = StorageActor::new(
-        FakeAttester::create().unwrap(),
-        FakeEndorser::default(),
-        FakeSessionBinder::create().unwrap(),
+        Arc::new(FakeAttester::create().unwrap()),
+        Arc::new(FakeEndorser::default()),
+        FakeSigner::create().unwrap(),
         test_reference_values(),
         Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
@@ -196,15 +198,15 @@ fn empty_command_ignored_on_follower() {
 
 #[test_log::test(googletest::test)]
 fn empty_command_causes_periodic_clock_update() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 12_345_000 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -221,7 +223,7 @@ fn empty_command_causes_periodic_clock_update() {
         session_id,
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );
@@ -302,9 +304,9 @@ fn empty_command_causes_periodic_clock_update() {
 #[test_log::test(googletest::test)]
 fn invalid_request_fails() {
     let mut actor = StorageActor::new(
-        FakeAttester::create().unwrap(),
-        FakeEndorser::default(),
-        FakeSessionBinder::create().unwrap(),
+        Arc::new(FakeAttester::create().unwrap()),
+        Arc::new(FakeEndorser::default()),
+        FakeSigner::create().unwrap(),
         test_reference_values(),
         Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
@@ -336,9 +338,9 @@ fn invalid_request_fails() {
 #[test_log::test(googletest::test)]
 fn request_to_follower_fails() {
     let mut actor = StorageActor::new(
-        FakeAttester::create().unwrap(),
-        FakeEndorser::default(),
-        FakeSessionBinder::create().unwrap(),
+        Arc::new(FakeAttester::create().unwrap()),
+        Arc::new(FakeEndorser::default()),
+        FakeSigner::create().unwrap(),
         test_reference_values(),
         Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
     );
@@ -369,15 +371,15 @@ fn request_to_follower_fails() {
 
 #[test_log::test(googletest::test)]
 fn empty_storage_request_fails() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -389,7 +391,7 @@ fn empty_storage_request_fails() {
         session_id,
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );
@@ -417,15 +419,15 @@ fn empty_storage_request_fails() {
 
 #[test_log::test(googletest::test)]
 fn write_and_read_succeeds() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -437,7 +439,7 @@ fn write_and_read_succeeds() {
         session_id,
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );
@@ -530,15 +532,15 @@ fn write_and_read_succeeds() {
 
 #[test_log::test(googletest::test)]
 fn save_and_load_snapshot_succeeds() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -550,7 +552,7 @@ fn save_and_load_snapshot_succeeds() {
         session_id,
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -604,7 +606,7 @@ fn save_and_load_snapshot_succeeds() {
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         // This clock shouldn't affect the loaded snapshot.
         Arc::new(FakeClock { milliseconds_since_epoch: 200_000 }),
@@ -618,7 +620,7 @@ fn save_and_load_snapshot_succeeds() {
         session_id,
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );
@@ -665,15 +667,15 @@ fn save_and_load_snapshot_succeeds() {
 
 #[test_log::test(googletest::test)]
 fn session_reuse_fails() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -685,20 +687,21 @@ fn session_reuse_fails() {
         session_id,
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
 
     // Attempting to create another session with the same ID should fail during the
     // handshake.
-    let mut session = ClientSession::create(create_session_config(
-        Box::new(attester),
-        Box::new(endorser),
-        Box::new(session_binder),
+    let mut session = create_session_config(
+        &(attester as Arc<dyn Attester>),
+        &(endorser as Arc<dyn Endorser>),
+        Box::new(signer),
         reference_values,
         clock,
-    ))
+    )
+    .and_then(ClientSession::create)
     .expect("failed to create ClientSession");
     let message = session.get_outgoing_message();
     assert_that!(message, ok(some(anything())));
@@ -729,15 +732,15 @@ fn session_reuse_fails() {
 
 #[test_log::test(googletest::test)]
 fn session_reuse_after_close_succeeds() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -749,7 +752,7 @@ fn session_reuse_after_close_succeeds() {
         session_id,
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -777,7 +780,7 @@ fn session_reuse_after_close_succeeds() {
         session_id,
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );
@@ -785,15 +788,15 @@ fn session_reuse_after_close_succeeds() {
 
 #[test_log::test(googletest::test)]
 fn multiple_sessions_succeeds() {
-    let attester = FakeAttester::create().unwrap();
-    let endorser = FakeEndorser::default();
-    let session_binder = FakeSessionBinder::create().unwrap();
+    let attester = Arc::new(FakeAttester::create().unwrap());
+    let endorser = Arc::new(FakeEndorser::default());
+    let signer = FakeSigner::create().unwrap();
     let reference_values = test_reference_values();
     let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -804,7 +807,7 @@ fn multiple_sessions_succeeds() {
         b"session1",
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     );
@@ -815,7 +818,7 @@ fn multiple_sessions_succeeds() {
         b"session2",
         attester,
         endorser,
-        session_binder,
+        signer,
         reference_values,
         clock,
     );

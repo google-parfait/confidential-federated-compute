@@ -19,13 +19,12 @@ use hashbrown::{hash_map, HashMap};
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
+use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
-use oak_session::{
-    config::SessionConfig, session_binding::SessionBinder, ProtocolEngine, ServerSession, Session,
-};
+use oak_session::{config::SessionConfig, ProtocolEngine, ServerSession, Session};
 use prost::{bytes::Bytes, Message};
 use session_config::create_session_config;
 use slog::{debug, error, warn};
@@ -52,7 +51,7 @@ pub struct StorageActor {
     // The underlying storage struct.
     storage: Storage,
     // A factory function that creates new configs for encrypted sessions.
-    session_config_factory: Box<dyn Fn() -> SessionConfig>,
+    session_config_factory: Box<dyn Fn() -> anyhow::Result<SessionConfig>>,
     // The reference values used for attestation.
     reference_values: ReferenceValues,
     // The set of active encrypted Oak sessions, keyed by session ID.
@@ -86,27 +85,22 @@ enum HandleStorageRequestOutcome {
 const CLOCK_UPDATE_INTERVAL_MS: u64 = 60_000;
 
 impl StorageActor {
-    pub fn new<A, E, SB>(
-        attester: A,
-        endorser: E,
-        session_binder: SB,
+    pub fn new<S: Signer + Clone + 'static>(
+        attester: Arc<dyn Attester>,
+        endorser: Arc<dyn Endorser>,
+        signer: S,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
-    ) -> Self
-    where
-        A: Attester + Clone + 'static,
-        E: Endorser + Clone + 'static,
-        SB: SessionBinder + Clone + 'static,
-    {
+    ) -> Self {
         let storage = Storage::default();
 
         let rv_copy = reference_values.clone();
         let clock_copy = clock.clone();
         let session_config_factory = Box::new(move || {
             create_session_config(
-                Box::new(attester.clone()),
-                Box::new(endorser.clone()),
-                Box::new(session_binder.clone()),
+                &attester,
+                &endorser,
+                Box::new(signer.clone()),
                 rv_copy.clone(),
                 clock_copy.clone(),
             )
@@ -148,7 +142,8 @@ impl StorageActor {
         let session = match self.sessions.entry_ref(session_request.session_id.as_slice()) {
             hash_map::EntryRef::Occupied(entry) => entry.into_mut(),
             hash_map::EntryRef::Vacant(entry) => entry.insert(
-                ServerSession::create((self.session_config_factory)())
+                (self.session_config_factory)()
+                    .and_then(ServerSession::create)
                     .context("failed to create ServerSession")
                     .context(ActorError::Internal)?,
             ),

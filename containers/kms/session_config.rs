@@ -16,29 +16,38 @@ use std::sync::Arc;
 
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
+use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::attestation::v1::ReferenceValues;
 use oak_session::{
     attestation::AttestationType, config::SessionConfig, dice_attestation::DiceAttestationVerifier,
-    handshake::HandshakeType, session_binding::SessionBinder,
+    handshake::HandshakeType, session_binding::SignatureBinderBuilder,
 };
 
 const SESSION_ID: &str = "cfc_kms";
 
 /// Creates a new SessionConfig for connections between KMS servers.
 pub fn create_session_config(
-    attester: Box<dyn Attester>,
-    endorser: Box<dyn Endorser>,
-    session_binder: Box<dyn SessionBinder>,
+    attester: &Arc<dyn Attester>,
+    endorser: &Arc<dyn Endorser>,
+    signer: Box<dyn Signer>,
     reference_values: ReferenceValues,
     clock: Arc<dyn Clock>,
-) -> SessionConfig {
-    SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
-        .add_self_attester(SESSION_ID.into(), attester)
-        .add_self_endorser(SESSION_ID.into(), endorser)
+) -> anyhow::Result<SessionConfig> {
+    Ok(SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
+        .add_self_attester_ref(SESSION_ID.into(), attester)
+        .add_self_endorser_ref(SESSION_ID.into(), endorser)
         .add_peer_verifier(
             SESSION_ID.into(),
             Box::new(DiceAttestationVerifier::create(reference_values, clock)),
         )
-        .add_session_binder(SESSION_ID.into(), session_binder)
-        .build()
+        .add_session_binder(
+            SESSION_ID.into(),
+            Box::new(
+                SignatureBinderBuilder::default()
+                    .signer(signer)
+                    .build()
+                    .map_err(anyhow::Error::msg)?,
+            ),
+        )
+        .build())
 }

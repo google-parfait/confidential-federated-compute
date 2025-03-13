@@ -18,12 +18,13 @@ use googletest::prelude::*;
 use log::debug;
 use matchers::{code, has_context};
 use mockall::{predicate::eq as request_eq, PredicateBooleanExt};
+use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
 use oak_session::{ProtocolEngine, ServerSession, Session};
 use prost::Message;
 use session_config::create_session_config;
 use session_test_utils::{
-    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSessionBinder,
+    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSigner,
 };
 use session_v1_service_proto::{
     oak::services::{
@@ -63,9 +64,9 @@ trait Storage {
 /// interactions over an encrypted Oak session without too much complexity.
 struct FakeServer {
     storage: Arc<MockStorage>,
-    attester: FakeAttester,
-    endorser: FakeEndorser,
-    session_binder: FakeSessionBinder,
+    attester: Arc<dyn Attester>,
+    endorser: Arc<dyn Endorser>,
+    signer: FakeSigner,
     reference_values: ReferenceValues,
     clock: Arc<FakeClock>,
 }
@@ -74,9 +75,9 @@ impl FakeServer {
     fn new(storage: MockStorage) -> Self {
         Self {
             storage: Arc::new(storage),
-            attester: FakeAttester::create().unwrap(),
-            endorser: FakeEndorser::default(),
-            session_binder: FakeSessionBinder::create().unwrap(),
+            attester: Arc::new(FakeAttester::create().unwrap()),
+            endorser: Arc::new(FakeEndorser::default()),
+            signer: FakeSigner::create().unwrap(),
             reference_values: test_reference_values(),
             clock: Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
         }
@@ -92,13 +93,14 @@ impl OakSessionV1Service for FakeServer {
         &self,
         request: tonic::Request<tonic::Streaming<SessionRequest>>,
     ) -> std::result::Result<tonic::Response<Self::StreamStream>, tonic::Status> {
-        let mut session = ServerSession::create(create_session_config(
-            Box::new(self.attester.clone()),
-            Box::new(self.endorser.clone()),
-            Box::new(self.session_binder.clone()),
+        let mut session = create_session_config(
+            &self.attester,
+            &self.endorser,
+            Box::new(self.signer.clone()),
             self.reference_values.clone(),
             self.clock.clone(),
-        ))
+        )
+        .and_then(ServerSession::create)
         .expect("failed to create ServerSession");
 
         let mut in_stream = request.into_inner();
@@ -166,7 +168,7 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
         init_fn,
         server.attester.clone(),
         server.endorser.clone(),
-        server.session_binder.clone(),
+        server.signer.clone(),
         server.reference_values.clone(),
         server.clock.clone(),
     );

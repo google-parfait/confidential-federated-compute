@@ -20,11 +20,10 @@ use std::{
 use anyhow::{anyhow, bail, Context};
 use key_management_service::KeyManagementService;
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
-use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
+use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
-use oak_sdk_containers::{InstanceSessionBinder, OrchestratorClient};
+use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use storage_actor::StorageActor;
@@ -64,9 +63,9 @@ async fn main() -> anyhow::Result<()> {
         .endorsements
         .ok_or_else(|| anyhow!("EndorsedEvidence.endorsements not set"))?;
 
-    let attester = CloneableAttester { inner: Arc::new(StaticAttester::new(evidence.clone())) };
-    let endorser = CloneableEndorser { inner: Arc::new(StaticEndorser::new(endorsements)) };
-    let session_binder = InstanceSessionBinder::create(&channel);
+    let attester = Arc::new(StaticAttester::new(evidence.clone()));
+    let endorser = Arc::new(StaticEndorser::new(endorsements));
+    let signer = InstanceSigner::create(&channel);
     let reference_values = get_reference_values(&evidence)?;
     let clock = Arc::new(SystemClock {});
 
@@ -79,14 +78,14 @@ async fn main() -> anyhow::Result<()> {
         KeyManagementService::get_init_request,
         attester.clone(),
         endorser.clone(),
-        session_binder.clone(),
+        signer.clone(),
         reference_values.clone(),
         clock.clone(),
     ));
 
     // Create the TCP EndpointService.
     let endpoint_service = TonicApplicationService::new(channel, evidence, move || {
-        StorageActor::new(attester, endorser, session_binder, reference_values, clock)
+        StorageActor::new(attester, endorser, signer, reference_values, clock)
     });
 
     // Start the gRPC server.
@@ -108,29 +107,5 @@ impl Clock for SystemClock {
             .as_millis()
             .try_into()
             .expect("SystemTime too large")
-    }
-}
-
-#[derive(Clone)]
-struct CloneableAttester {
-    inner: Arc<StaticAttester>,
-}
-impl Attester for CloneableAttester {
-    fn extend(&mut self, _encoded_event: &[u8]) -> anyhow::Result<()> {
-        anyhow::bail!("This attester type is finalized and can not be extended.")
-    }
-
-    fn quote(&self) -> anyhow::Result<Evidence> {
-        self.inner.quote()
-    }
-}
-
-#[derive(Clone)]
-struct CloneableEndorser {
-    inner: Arc<StaticEndorser>,
-}
-impl Endorser for CloneableEndorser {
-    fn endorse(&self, evidence: Option<&Evidence>) -> anyhow::Result<Endorsements> {
-        self.inner.endorse(evidence)
     }
 }
