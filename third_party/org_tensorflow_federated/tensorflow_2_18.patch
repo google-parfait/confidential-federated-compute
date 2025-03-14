@@ -1,3 +1,5 @@
+# Patch to make TFF compatible with TF 2.18.
+
 diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
 index d5b3eb12b..cb271235a 100644
 --- tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
