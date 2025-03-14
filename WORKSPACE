@@ -22,6 +22,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # version.
 http_archive(
     name = "com_github_grpc_grpc",
+    patches = [
+        "//third_party/grpc:noexcept.patch",
+    ],
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
     strip_prefix = "grpc-1.50.0",
     urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
@@ -125,6 +128,7 @@ http_archive(
 http_archive(
     name = "org_tensorflow",
     patches = [
+        "//third_party/org_tensorflow:cython.patch",
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
     ],
