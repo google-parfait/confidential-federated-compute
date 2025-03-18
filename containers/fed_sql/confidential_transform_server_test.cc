@@ -26,6 +26,7 @@
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/private_state.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -48,6 +49,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
+#include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -2261,9 +2263,10 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
   ASSERT_TRUE(
       finalize_response.read().first_response_metadata().has_unencrypted());
 
+  std::string data = finalize_response.read().data();
+  ASSERT_THAT(UnbundlePrivateState(data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
-      CheckpointAggregator::Deserialize(DefaultConfiguration(),
-                                        finalize_response.read().data());
+      CheckpointAggregator::Deserialize(DefaultConfiguration(), data);
   ASSERT_TRUE(deserialized_agg.ok());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
@@ -2292,7 +2295,8 @@ TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
 
   SessionRequest write_request = CreateDefaultWriteRequest(
       AGGREGATION_TYPE_MERGE,
-      (std::move(*input_aggregator).Serialize()).value());
+      BundlePrivateState((std::move(*input_aggregator).Serialize()).value(),
+                         PrivateState{}));
   SessionResponse write_response;
 
   ASSERT_TRUE(stream_->Write(write_request));
@@ -2346,11 +2350,12 @@ TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
       finalize_response.read().first_response_metadata().total_size_bytes(), 0);
   ASSERT_TRUE(
       finalize_response.read().first_response_metadata().has_unencrypted());
-
+  std::string data = finalize_response.read().data();
+  ASSERT_THAT(UnbundlePrivateState(data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>>
-      deserialized_agg_status = CheckpointAggregator::Deserialize(
-          DefaultConfiguration(), finalize_response.read().data());
-  ASSERT_TRUE(deserialized_agg_status.ok());
+      deserialized_agg_status =
+          CheckpointAggregator::Deserialize(DefaultConfiguration(), data);
+  ASSERT_THAT(deserialized_agg_status, IsOk());
   std::unique_ptr<CheckpointAggregator> deserialized_agg =
       *std::move(deserialized_agg_status);
 
@@ -2730,10 +2735,11 @@ TEST_F(FedSqlServerFederatedSumTest,
                               result_metadata.encapsulated_public_key());
   ASSERT_FALSE(failed_decrypt.ok()) << failed_decrypt.status();
 
+  std::string decrypted_data = *decrypted_result;
+  ASSERT_THAT(UnbundlePrivateState(decrypted_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
-      CheckpointAggregator::Deserialize(DefaultConfiguration(),
-                                        *decrypted_result);
-  ASSERT_TRUE(deserialized_agg.ok());
+      CheckpointAggregator::Deserialize(DefaultConfiguration(), decrypted_data);
+  ASSERT_THAT(deserialized_agg, IsOk());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =

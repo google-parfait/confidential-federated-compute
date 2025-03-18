@@ -26,6 +26,7 @@
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -62,19 +63,17 @@ class FedSqlConfidentialTransform final
     sensitive_values_key_ = std::move(key);
   };
 
- protected:
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
+ private:
+  absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
-  virtual absl::Status ReadWriteConfigurationRequest(
+  absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
-  virtual absl::StatusOr<
-      std::unique_ptr<confidential_federated_compute::Session>>
+  absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
 
- private:
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
@@ -144,12 +143,15 @@ class FedSqlSession final : public confidential_federated_compute::Session {
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
   };
+
   absl::StatusOr<
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
   ExecuteClientQuery(
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
 
+  // Session private data (such as privacy budget).
+  std::unique_ptr<PrivateState> private_state_;
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
