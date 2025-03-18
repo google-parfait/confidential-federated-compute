@@ -89,16 +89,6 @@ class ProgramExecutorTeeTest : public Test {
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
-TEST_F(ProgramExecutorTeeTest, InitializeFailsUnsupported) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-
-  auto status = stub_->Initialize(&context, request, &response);
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED);
-  ASSERT_THAT(status.error_message(), HasSubstr("Initialize is not supported"));
-}
-
 TEST_F(ProgramExecutorTeeTest, ValidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;

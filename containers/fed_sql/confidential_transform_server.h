@@ -64,13 +64,15 @@ class FedSqlConfidentialTransform final
   };
 
  private:
-  absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override;
-  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
+  //  Set the configuration of the server and returns the properties of the
+  //  configuration.
+  absl::StatusOr<google::protobuf::Struct> SetConfiguration(
+      const fcp::confidentialcompute::InitializeRequest* request);
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
 

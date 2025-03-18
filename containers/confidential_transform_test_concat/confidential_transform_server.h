@@ -83,10 +83,6 @@ class TestConcatConfidentialTransform final
       : ConfidentialTransformBase(crypto_stub) {};
 
  protected:
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    return google::protobuf::Struct();
-  }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
     return google::protobuf::Struct();

@@ -96,11 +96,7 @@ class TffConfidentialTransform final
       : ConfidentialTransformBase(crypto_stub) {};
 
  protected:
-  // No transform specific initialization and stream initialization for TFF.
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    return google::protobuf::Struct();
-  };
+  // No transform specific stream initialization for TFF.
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
     return google::protobuf::Struct();
