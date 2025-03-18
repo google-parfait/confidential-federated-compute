@@ -1,0 +1,43 @@
+# Backport of https://github.com/bazelbuild/rules_rust/pull/3363.
+--- bindgen/private/bindgen.bzl
++++ bindgen/private/bindgen.bzl
+@@ -271,7 +271,8 @@
+     # Ideally we could depend on a more specific toolchain, requesting one which is specifically clang via some constraint.
+     # Unfortunately, we can't currently rely on this, so instead we filter only to flags we know clang supports.
+     # We can add extra flags here as needed.
+-    flags_known_to_clang = (
++    # Flags in this list accept a parameter in the same argument (`-Ipath`, `--target=T`) or separately (`-I path`).
++    param_flags_known_to_clang = (
+         "-I",
+         "-iquote",
+         "-isystem",
+@@ -283,8 +284,14 @@
+         "--no-system-header-prefix",
+         "-Xclang",
+         "-D",
++    )
++    # Flags in this list do not accept a parameter.
++    paramless_flags_known_to_clang = (
+         "-no-canonical-prefixes",
+-        "-nostd",
++        "-nostdinc",
++        "-nostdinc++",
++        "-nostdlib++",
++        "-nostdlibinc",
+     )
+     open_arg = False
+     for arg in compile_flags:
+@@ -298,11 +305,11 @@
+             args.add(arg)
+             continue
+
+-        if not arg.startswith(flags_known_to_clang):
++        if not arg.startswith(param_flags_known_to_clang) and not arg in paramless_flags_known_to_clang:
+             continue
+
+         args.add(arg)
+
+-        if arg in flags_known_to_clang:
++        if arg in param_flags_known_to_clang:
+             open_arg = True
+             continue

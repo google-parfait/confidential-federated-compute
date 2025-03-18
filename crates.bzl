@@ -45,6 +45,9 @@ _COMMON_PACKAGES = {
 
 # Crates used for std builds.
 CFC_ANNOTATIONS = {
+    "bindgen-cli": [crate.annotation(
+        gen_binaries = ["bindgen"],
+    )],
     "protoc-gen-prost": [crate.annotation(
         gen_binaries = ["protoc-gen-prost"],
     )],
@@ -55,6 +58,10 @@ CFC_ANNOTATIONS = {
 CFC_PACKAGES = _COMMON_PACKAGES | {
     "assert_cmd": crate.spec(
         version = "2.0.14",
+    ),
+    "bindgen-cli": crate.spec(
+        artifact = "bin",
+        version = "0.70.1",
     ),
     "insta": crate.spec(
         version = "1.38.0",

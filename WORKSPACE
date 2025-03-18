@@ -69,6 +69,13 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_python/releases/download/0.33.0/rules_python-0.33.0.tar.gz",
 )
 
+http_archive(
+    name = "rules_rust",
+    patches = ["//third_party/rules_rust:bindgen.patch"],
+    sha256 = "af4f56caae50a99a68bfce39b141b509dd68548c8204b98ab7a1cafc94d5bb02",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.54.1/rules_rust-v0.54.1.tar.gz"],
+)
+
 # Call py_repositories() first so rules_python can setup any state
 # subsequent things might need. See
 # https://github.com/bazelbuild/rules_python/issues/1560
@@ -108,14 +115,12 @@ http_archive(
     url = "https://github.com/google-parfait/federated-language/archive/b685d2243891f9d7ca3c5820cfd690b4ecdb9697.tar.gz",
 )
 
-# Use a newer version of BoringSSL than what TF gives us, so we can use
-# functions like `EC_group_p256` (which was added in commit
-# 417069f8b2fd6dd4f8c2f5f69de7c038a2397050).
 http_archive(
     name = "boringssl",
-    sha256 = "5d6be8b65198828b151e7e4a83c3e4d76b892c43c3fb01c63f03de62b420b70f",
-    strip_prefix = "boringssl-47e850c41f43350699e1325a134ec88269cabe6b",
-    urls = ["https://github.com/google/boringssl/archive/47e850c41f43350699e1325a134ec88269cabe6b.tar.gz"],
+    integrity = "sha256-gfKR+SoN9b5XO+Pb4qcgjWhe59Fm3ie2016YNfhgEsw=",
+    patches = ["//third_party/boringssl:rust.patch"],
+    strip_prefix = "boringssl-96fd8673f263a037b25b28d6e40a506397bc8dfb",
+    urls = ["https://github.com/google/boringssl/archive/96fd8673f263a037b25b28d6e40a506397bc8dfb.tar.gz"],
 )
 
 http_archive(
@@ -313,6 +318,8 @@ create_oak_crate_repositories(
 load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 
 load_oak_crate_repositories()
+
+register_toolchains("//toolchains:bindgen_toolchain")
 
 http_archive(
     name = "googletest",

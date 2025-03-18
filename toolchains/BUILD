@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_import")
+load("@rules_rust//bindgen:defs.bzl", "rust_bindgen_toolchain")
 load("@rules_rust//proto/prost:defs.bzl", "rust_prost_toolchain")
 load("@rules_rust//rust:defs.bzl", "rust_library_group")
 
@@ -41,4 +43,22 @@ toolchain(
     name = "prost_toolchain",
     toolchain = "prost_toolchain_impl",
     toolchain_type = "@rules_rust//proto/prost:toolchain_type",
+)
+
+cc_import(
+    name = "libclang",
+    shared_library = "@llvm_toolchain_llvm//:lib/libclang.so",
+)
+
+rust_bindgen_toolchain(
+    name = "bindgen_toolchain_impl",
+    bindgen = "@oak_std_crates_index//:bindgen-cli__bindgen",
+    clang = "@llvm_toolchain_llvm//:bin/clang",
+    libclang = ":libclang",
+)
+
+toolchain(
+    name = "bindgen_toolchain",
+    toolchain = "bindgen_toolchain_impl",
+    toolchain_type = "@rules_rust//bindgen:toolchain_type",
 )
