@@ -252,13 +252,13 @@ rules_proto_toolchains()
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-5TAuDzMvhx+q2R1NaL5PKP7Ih/x/DGT/CjYDhERWPvE=",
+    integrity = "sha256-QwiP7xNbNA/g9lRHwaVGeK9rsJ4TLZ/zlA8tT3qfCvc=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    strip_prefix = "federated-compute-7beffc12d5a3c732fbdf916467b524d52d703e1a",
-    url = "https://github.com/google/federated-compute/archive/7beffc12d5a3c732fbdf916467b524d52d703e1a.tar.gz",
+    strip_prefix = "federated-compute-5afdd000dad2af1bd1fcf2eb33efe417435e1d61",
+    url = "https://github.com/google/federated-compute/archive/5afdd000dad2af1bd1fcf2eb33efe417435e1d61.tar.gz",
 )
 
 http_archive(

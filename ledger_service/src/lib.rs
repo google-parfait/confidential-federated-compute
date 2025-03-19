@@ -160,6 +160,7 @@ impl LedgerService {
                         application: legacy_transform.application,
                         access_budget: legacy_transform.access_budget,
                         shared_access_budget_indices: legacy_transform.shared_access_budget_indices,
+                        ..Default::default()
                     }
                 })
                 .collect(),
