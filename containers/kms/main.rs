@@ -18,7 +18,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context};
-use key_management_service::KeyManagementService;
+use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues};
@@ -27,7 +27,7 @@ use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use storage_actor::StorageActor;
-use storage_client::StorageClient;
+use storage_client::GrpcStorageClient;
 use tcp_proto::runtime::endpoint::endpoint_service_server::EndpointServiceServer;
 use tcp_runtime::service::TonicApplicationService;
 
@@ -73,9 +73,9 @@ async fn main() -> anyhow::Result<()> {
     let session_service_client = OakSessionV1ServiceClient::connect("http://[::1]:8008")
         .await
         .context("failed to create OakSessionV1ServiceClient")?;
-    let key_management_service = KeyManagementService::new(StorageClient::new(
+    let key_management_service = KeyManagementService::new(GrpcStorageClient::new(
         session_service_client,
-        KeyManagementService::get_init_request,
+        get_init_request,
         attester.clone(),
         endorser.clone(),
         signer.clone(),

@@ -129,3 +129,13 @@ message StorageEvent {
     UpdateRequest update = 3;
   }
 }
+
+//
+// Stored values, each corresponding to a key_management_service::StorageKey.
+//
+
+// A cluster-wide signing key.
+message ClusterKeyValue {
+  // Serialized P256 ECDSA private key (zero-padded, big-endian representation).
+  bytes key = 1;
+}

@@ -33,7 +33,7 @@ use session_v1_service_proto::{
     },
     session_proto::oak::session::v1::{SessionRequest, SessionResponse},
 };
-use storage_client::StorageClient;
+use storage_client::{GrpcStorageClient, StorageClient};
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_request, storage_request, storage_response, update_request, ReadRequest, ReadResponse,
@@ -159,11 +159,11 @@ impl OakSessionV1Service for FakeServer {
 async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     storage: MockStorage,
     init_fn: F,
-) -> (StorageClient, AbortOnDropHandle<()>) {
+) -> (GrpcStorageClient, AbortOnDropHandle<()>) {
     let listener = TcpListener::bind("[::]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = FakeServer::new(storage);
-    let client = StorageClient::new(
+    let client = GrpcStorageClient::new(
         OakSessionV1ServiceClient::connect(format!("http://{addr}")).await.unwrap(),
         init_fn,
         server.attester.clone(),
