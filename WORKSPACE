@@ -12,8 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+################################################################################
+# Directly managed dependencies
+################################################################################
+
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//:stub_repo.bzl", "stub_repo")
+
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_repo
+http_archive(
+    name = "boringssl",
+    integrity = "sha256-gfKR+SoN9b5XO+Pb4qcgjWhe59Fm3ie2016YNfhgEsw=",
+    patches = ["//third_party/boringssl:rust.patch"],
+    strip_prefix = "boringssl-96fd8673f263a037b25b28d6e40a506397bc8dfb",
+    urls = ["https://github.com/google/boringssl/archive/96fd8673f263a037b25b28d6e40a506397bc8dfb.tar.gz"],
+)
+
+# Use a sysroot to make clang builds hermetic. This sysroot may not be
+# reproducible, but that's OK because it's only used by sanitizer builds.
+http_archive(
+    name = "clang_sysroot",
+    build_file_content = """
+filegroup(
+    name = "sysroot",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
+    type = "tar.xz",
+    url = "https://commondatastorage.googleapis.com/chrome-linux-sysroot/dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
+)
 
 # Pin a newer version of gRPC than the one provided by Tensorflow.
 # 1.50.0 is used as it is the gRPC version used by FCP. It's not a requirement
@@ -30,17 +60,181 @@ http_archive(
     urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
 )
 
-# TensorFlow pins an old version of upb that's compatible with their old
-# version of gRPC, but not with the newer version we use. Pin the version that
-# would be added by gRPC 1.50.0.
+# Avoid Kotlin dependencies.
+stub_repo(
+    name = "com_github_grpc_grpc_kotlin",
+    rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
+)
+
 http_archive(
-    name = "upb",
-    sha256 = "017a7e8e4e842d01dba5dc8aa316323eee080cd1b75986a7d1f94d87220e6502",
-    strip_prefix = "upb-e4635f223e7d36dfbea3b722a4ca4807a7e882e2",
-    urls = [
-        "https://storage.googleapis.com/grpc-bazel-mirror/github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
-        "https://github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
+    name = "com_google_absl",
+    integrity = "sha256-AyBYaFZnTRawt6TUr7IhUb3HmEkLt/KV7d2PamK0b+o=",
+    strip_prefix = "abseil-cpp-fb3621f4f897824c0dbe0615fa94543df6192f30",
+    url = "https://github.com/abseil/abseil-cpp/archive/fb3621f4f897824c0dbe0615fa94543df6192f30.tar.gz",
+)
+
+# The following enables the use of the library functions in the differential-
+# privacy github repo
+http_archive(
+    name = "com_google_cc_differential_privacy",
+    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
+    strip_prefix = "differential-privacy-3.0.0/cc",
+    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
+)
+
+http_archive(
+    name = "com_google_differential_privacy",
+    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
+    strip_prefix = "differential-privacy-3.0.0",
+    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
+)
+
+http_archive(
+    name = "com_google_sentencepiece",
+    build_file = "@gemma//bazel:sentencepiece.bazel",
+    patch_args = ["-p1"],
+    patches = ["@gemma//bazel:sentencepiece.patch"],
+    repo_mapping = {"@abseil-cpp": "@com_google_absl"},
+    sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
+    strip_prefix = "sentencepiece-0.1.96",
+    urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],
+)
+
+# The following enables the use of the library functions in the gemma.cpp
+# github repo.
+http_archive(
+    name = "darts_clone",
+    build_file_content = """
+licenses(["notice"])
+exports_files(["LICENSE"])
+package(default_visibility = ["//visibility:public"])
+cc_library(
+    name = "darts_clone",
+    hdrs = [
+        "include/darts.h",
     ],
+)
+""",
+    sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
+    strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
+    urls = [
+        "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
+    ],
+)
+
+http_archive(
+    name = "federated-compute",
+    integrity = "sha256-QwiP7xNbNA/g9lRHwaVGeK9rsJ4TLZ/zlA8tT3qfCvc=",
+    patches = [
+        "//third_party/federated_compute:libcppbor.patch",
+        "//third_party/federated_compute:visibility.patch",
+    ],
+    strip_prefix = "federated-compute-5afdd000dad2af1bd1fcf2eb33efe417435e1d61",
+    url = "https://github.com/google/federated-compute/archive/5afdd000dad2af1bd1fcf2eb33efe417435e1d61.tar.gz",
+)
+
+http_archive(
+    name = "federated_language",
+    patches = [
+        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
+        "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
+        "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
+    ],
+    repo_mapping = {
+        "@protobuf": "@com_google_protobuf",
+    },
+    sha256 = "e2b13844d56233616d8ed664d15e155dbc6bb45743b6e5ce775a8553026b34a6",
+    strip_prefix = "federated-language-b685d2243891f9d7ca3c5820cfd690b4ecdb9697",
+    url = "https://github.com/google-parfait/federated-language/archive/b685d2243891f9d7ca3c5820cfd690b4ecdb9697.tar.gz",
+)
+
+http_archive(
+    name = "gemma",
+    sha256 = "ee01ac7165fbacddc5509e8384900165b72f349c1421efdd5b6f9391c3c1729e",
+    strip_prefix = "gemma.cpp-9f5159ff683d99a7d852a0e66782e718588937df",
+    url = "https://github.com/google/gemma.cpp/archive/9f5159ff683d99a7d852a0e66782e718588937df.tar.gz",
+)
+
+http_archive(
+    name = "google_benchmark",
+    sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
+    strip_prefix = "benchmark-1.8.3",
+    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"],
+)
+
+http_archive(
+    name = "googletest",
+    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
+    strip_prefix = "googletest-1.14.0",
+    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
+)
+
+http_archive(
+    name = "highway",
+    sha256 = "eb07b6c8b9fc23cca4e2e166e30937ff4a13811d48f59ba87f2d2499470d4a63",
+    strip_prefix = "highway-2b565e87d50b151660494624af532ac0b6076c79",
+    urls = ["https://github.com/google/highway/archive/2b565e87d50b151660494624af532ac0b6076c79.tar.gz"],
+)
+
+# Avoid Java dependencies.
+stub_repo(
+    name = "io_grpc_grpc_java",
+    rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
+)
+
+git_repository(
+    name = "libcppbor",
+    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
+    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
+    remote = "https://android.googlesource.com/platform/external/libcppbor",
+)
+
+http_archive(
+    name = "lingvo",
+    patches = ["//third_party/lingvo:lingvo.bzl.patch"],
+    sha256 = "6baf671a81ed747f2580eb4f549044093c48173cd88b392510fe6ddf5dce2ba2",
+    strip_prefix = "lingvo-ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39",
+    url = "https://github.com/tensorflow/lingvo/archive/ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39.tar.gz",
+)
+
+http_archive(
+    name = "oak",
+    integrity = "sha256-kARmPybmsuo+IVDa78GQPpFS8k4WUs+xZLB2D/MURnU=",
+    strip_prefix = "oak-e1a7df380564e85fdc38a29e53b127eeeddd0f22",
+    url = "https://github.com/project-oak/oak/archive/e1a7df380564e85fdc38a29e53b127eeeddd0f22.tar.gz",
+)
+
+http_archive(
+    name = "org_tensorflow",
+    patches = [
+        "//third_party/org_tensorflow:cython.patch",
+        "//third_party/org_tensorflow:internal_visibility.patch",
+        "//third_party/org_tensorflow:protobuf.patch",
+    ],
+    sha256 = "899533cb45ded37ef069ec18b9ae04401f2c9babee4dde3672343d63a83f3910",
+    strip_prefix = "tensorflow-0f3366971a0a78a71303167d14bc5c1659a4b632",
+    urls = [
+        "https://github.com/tensorflow/tensorflow/archive/0f3366971a0a78a71303167d14bc5c1659a4b632.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "org_tensorflow_federated",
+    patches = [
+        # Patch to make TFF compatible with TF 2.18.
+        "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
+    ],
+    sha256 = "8aeabf62a55860d89adefe71d0de6bb220afc707837760331bbfc0585b76b894",
+    strip_prefix = "tensorflow-federated-d21797d7792cd8bcfcd5b326b2608fd0f8d082b3",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/d21797d7792cd8bcfcd5b326b2608fd0f8d082b3.tar.gz",
+)
+
+http_archive(
+    name = "raft_rs",
+    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
+    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
+    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
+    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
 )
 
 http_archive(
@@ -52,6 +246,26 @@ http_archive(
     # doesn't have cc_proto rule. We can't easily update the version of protobuf
     # because we need to use a version compatible with TensorFlow.
     urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
+)
+
+# Avoid Java dependencies.
+stub_repo(
+    name = "rules_java",
+    rules = {"java:defs.bzl": [
+        "java_binary",
+        "java_library",
+        "java_lite_proto_library",
+        "java_proto_library",
+        "java_test",
+    ]},
+)
+
+http_archive(
+    name = "rules_oci",
+    patches = ["//third_party/rules_oci:zot_rbe.patch"],
+    sha256 = "4a276e9566c03491649eef63f27c2816cc222f41ccdebd97d2c5159e84917c3b",
+    strip_prefix = "rules_oci-1.7.4",
+    url = "https://github.com/bazel-contrib/rules_oci/releases/download/v1.7.4/rules_oci-v1.7.4.tar.gz",
 )
 
 http_archive(
@@ -76,6 +290,52 @@ http_archive(
     urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.54.1/rules_rust-v0.54.1.tar.gz"],
 )
 
+http_archive(
+    name = "sqlite",
+    build_file = "//third_party/sqlite:BUILD.sqlite",
+    sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
+    strip_prefix = "sqlite-amalgamation-3450200",
+    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
+)
+
+# Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
+# not easily enable sanitizers to be used with tests. The clang toolchain is not
+# registered, so that the registered gcc toolchain is used by default, but can
+# be specified on the command line with
+# --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux (as is
+# configured in the .bazelrc when asan, tsan, or ubsan are enabled.)
+http_archive(
+    name = "toolchains_llvm",
+    sha256 = "b7cd301ef7b0ece28d20d3e778697a5e3b81828393150bed04838c0c52963a01",
+    strip_prefix = "toolchains_llvm-0.10.3",
+    url = "https://github.com/grailbio/bazel-toolchain/releases/download/0.10.3/toolchains_llvm-0.10.3.tar.gz",
+)
+
+http_archive(
+    name = "trusted_computations_platform",
+    integrity = "sha256-WmVPr+/6C3NnAHIJcSbX5PkmtJMh1g4J8tiwAL5jtYk=",
+    strip_prefix = "trusted-computations-platform-ce026a2fc3082b25d12c640df44022ca81f2f4b3",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ce026a2fc3082b25d12c640df44022ca81f2f4b3.tar.gz",
+)
+
+# TensorFlow pins an old version of upb that's compatible with their old
+# version of gRPC, but not with the newer version we use. Pin the version that
+# would be added by gRPC 1.50.0.
+http_archive(
+    name = "upb",
+    sha256 = "017a7e8e4e842d01dba5dc8aa316323eee080cd1b75986a7d1f94d87220e6502",
+    strip_prefix = "upb-e4635f223e7d36dfbea3b722a4ca4807a7e882e2",
+    urls = [
+        "https://storage.googleapis.com/grpc-bazel-mirror/github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
+        "https://github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
+    ],
+)
+# go/keep-sorted end
+
+################################################################################
+# Transitive dependencies managed via macros
+################################################################################
+
 # Call py_repositories() first so rules_python can setup any state
 # subsequent things might need. See
 # https://github.com/bazelbuild/rules_python/issues/1560
@@ -87,61 +347,6 @@ python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
     python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
-)
-
-http_archive(
-    name = "org_tensorflow_federated",
-    patches = [
-        # Patch to make TFF compatible with TF 2.18.
-        "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
-    ],
-    sha256 = "8aeabf62a55860d89adefe71d0de6bb220afc707837760331bbfc0585b76b894",
-    strip_prefix = "tensorflow-federated-d21797d7792cd8bcfcd5b326b2608fd0f8d082b3",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/d21797d7792cd8bcfcd5b326b2608fd0f8d082b3.tar.gz",
-)
-
-http_archive(
-    name = "federated_language",
-    patches = [
-        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
-        "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
-        "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
-    ],
-    repo_mapping = {
-        "@protobuf": "@com_google_protobuf",
-    },
-    sha256 = "e2b13844d56233616d8ed664d15e155dbc6bb45743b6e5ce775a8553026b34a6",
-    strip_prefix = "federated-language-b685d2243891f9d7ca3c5820cfd690b4ecdb9697",
-    url = "https://github.com/google-parfait/federated-language/archive/b685d2243891f9d7ca3c5820cfd690b4ecdb9697.tar.gz",
-)
-
-http_archive(
-    name = "boringssl",
-    integrity = "sha256-gfKR+SoN9b5XO+Pb4qcgjWhe59Fm3ie2016YNfhgEsw=",
-    patches = ["//third_party/boringssl:rust.patch"],
-    strip_prefix = "boringssl-96fd8673f263a037b25b28d6e40a506397bc8dfb",
-    urls = ["https://github.com/google/boringssl/archive/96fd8673f263a037b25b28d6e40a506397bc8dfb.tar.gz"],
-)
-
-http_archive(
-    name = "trusted_computations_platform",
-    integrity = "sha256-WmVPr+/6C3NnAHIJcSbX5PkmtJMh1g4J8tiwAL5jtYk=",
-    strip_prefix = "trusted-computations-platform-ce026a2fc3082b25d12c640df44022ca81f2f4b3",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ce026a2fc3082b25d12c640df44022ca81f2f4b3.tar.gz",
-)
-
-http_archive(
-    name = "org_tensorflow",
-    patches = [
-        "//third_party/org_tensorflow:cython.patch",
-        "//third_party/org_tensorflow:internal_visibility.patch",
-        "//third_party/org_tensorflow:protobuf.patch",
-    ],
-    sha256 = "899533cb45ded37ef069ec18b9ae04401f2c9babee4dde3672343d63a83f3910",
-    strip_prefix = "tensorflow-0f3366971a0a78a71303167d14bc5c1659a4b632",
-    urls = [
-        "https://github.com/tensorflow/tensorflow/archive/0f3366971a0a78a71303167d14bc5c1659a4b632.tar.gz",
-    ],
 )
 
 # The following is copied from TensorFlow's own WORKSPACE, see
@@ -230,14 +435,6 @@ load(
 
 nccl_configure(name = "local_config_nccl")
 
-http_archive(
-    name = "lingvo",
-    patches = ["//third_party/lingvo:lingvo.bzl.patch"],
-    sha256 = "6baf671a81ed747f2580eb4f549044093c48173cd88b392510fe6ddf5dce2ba2",
-    strip_prefix = "lingvo-ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39",
-    url = "https://github.com/tensorflow/lingvo/archive/ccfa97995bea99a3c0bb47b7b0b8e34a757ecf39.tar.gz",
-)
-
 load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
 
 rules_proto_dependencies()
@@ -249,39 +446,6 @@ rules_proto_setup()
 load("@rules_proto//proto:toolchains.bzl", "rules_proto_toolchains")
 
 rules_proto_toolchains()
-
-http_archive(
-    name = "federated-compute",
-    integrity = "sha256-QwiP7xNbNA/g9lRHwaVGeK9rsJ4TLZ/zlA8tT3qfCvc=",
-    patches = [
-        "//third_party/federated_compute:libcppbor.patch",
-        "//third_party/federated_compute:visibility.patch",
-    ],
-    strip_prefix = "federated-compute-5afdd000dad2af1bd1fcf2eb33efe417435e1d61",
-    url = "https://github.com/google/federated-compute/archive/5afdd000dad2af1bd1fcf2eb33efe417435e1d61.tar.gz",
-)
-
-http_archive(
-    name = "raft_rs",
-    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
-    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
-    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
-    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
-)
-
-git_repository(
-    name = "libcppbor",
-    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
-    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-    remote = "https://android.googlesource.com/platform/external/libcppbor",
-)
-
-http_archive(
-    name = "oak",
-    integrity = "sha256-kARmPybmsuo+IVDa78GQPpFS8k4WUs+xZLB2D/MURnU=",
-    strip_prefix = "oak-e1a7df380564e85fdc38a29e53b127eeeddd0f22",
-    url = "https://github.com/project-oak/oak/archive/e1a7df380564e85fdc38a29e53b127eeeddd0f22.tar.gz",
-)
 
 load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
 
@@ -320,43 +484,6 @@ load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 load_oak_crate_repositories()
 
 register_toolchains("//toolchains:bindgen_toolchain")
-
-http_archive(
-    name = "googletest",
-    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
-    strip_prefix = "googletest-1.14.0",
-    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
-)
-
-http_archive(
-    name = "sqlite",
-    build_file = "//third_party/sqlite:BUILD.sqlite",
-    sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
-    strip_prefix = "sqlite-amalgamation-3450200",
-    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
-)
-
-http_archive(
-    name = "com_google_absl",
-    sha256 = "aabf6c57e3834f8dc3873a927f37eaf69975d4b28117fc7427dfb1c661542a87",
-    strip_prefix = "abseil-cpp-98eb410c93ad059f9bba1bf43f5bb916fc92a5ea",
-    urls = ["https://github.com/abseil/abseil-cpp/archive/98eb410c93ad059f9bba1bf43f5bb916fc92a5ea.zip"],
-)
-
-http_archive(
-    name = "google_benchmark",
-    sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
-    strip_prefix = "benchmark-1.8.3",
-    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"],
-)
-
-http_archive(
-    name = "rules_oci",
-    patches = ["//third_party/rules_oci:zot_rbe.patch"],
-    sha256 = "4a276e9566c03491649eef63f27c2816cc222f41ccdebd97d2c5159e84917c3b",
-    strip_prefix = "rules_oci-1.7.4",
-    url = "https://github.com/bazel-contrib/rules_oci/releases/download/v1.7.4/rules_oci-v1.7.4.tar.gz",
-)
 
 load("@rules_oci//oci:dependencies.bzl", "rules_oci_dependencies")
 
@@ -409,19 +536,6 @@ gcc_register_toolchain(
     ],
 )
 
-# Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
-# not easily enable sanitizers to be used with tests. The clang toolchain is not
-# registered, so that the registered gcc toolchain is used by default, but can
-# be specified on the command line with
-# --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux (as is
-# configured in the .bazelrc when asan, tsan, or ubsan are enabled.)
-http_archive(
-    name = "toolchains_llvm",
-    sha256 = "b7cd301ef7b0ece28d20d3e778697a5e3b81828393150bed04838c0c52963a01",
-    strip_prefix = "toolchains_llvm-0.10.3",
-    url = "https://github.com/grailbio/bazel-toolchain/releases/download/0.10.3/toolchains_llvm-0.10.3.tar.gz",
-)
-
 load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
 
 bazel_toolchain_dependencies()
@@ -434,106 +548,4 @@ llvm_toolchain(
     # https://github.com/llvm/llvm-project/issues/51620
     llvm_version = "14.0.0",
     sysroot = {"linux-x86_64": "@clang_sysroot//:sysroot"},
-)
-
-# Use a sysroot to make clang builds hermetic. This sysroot may not be
-# reproducible, but that's OK because it's only used by sanitizer builds.
-http_archive(
-    name = "clang_sysroot",
-    build_file_content = """
-filegroup(
-    name = "sysroot",
-    srcs = glob(["**"]),
-    visibility = ["//visibility:public"],
-)
-    """,
-    sha256 = "dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
-    type = "tar.xz",
-    url = "https://commondatastorage.googleapis.com/chrome-linux-sysroot/dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
-)
-
-# Stub out unneeded Java proto library rules used by various dependencies. This
-# avoids needing to depend on a Java toolchain.
-load("//:stub_repo.bzl", "stub_repo")
-
-stub_repo(
-    name = "io_grpc_grpc_java",
-    rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
-)
-
-stub_repo(
-    name = "rules_java",
-    rules = {"java:defs.bzl": [
-        "java_lite_proto_library",
-        "java_proto_library",
-    ]},
-)
-
-stub_repo(
-    name = "com_github_grpc_grpc_kotlin",
-    rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
-)
-
-# The following enables the use of the library functions in the differential-
-# privacy github repo
-http_archive(
-    name = "com_google_cc_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0/cc",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-)
-
-http_archive(
-    name = "com_google_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-)
-
-# The following enables the use of the library functions in the gemma.cpp
-# github repo.
-
-http_archive(
-    name = "darts_clone",
-    build_file_content = """
-licenses(["notice"])
-exports_files(["LICENSE"])
-package(default_visibility = ["//visibility:public"])
-cc_library(
-    name = "darts_clone",
-    hdrs = [
-        "include/darts.h",
-    ],
-)
-""",
-    sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
-    strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
-    urls = [
-        "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
-    ],
-)
-
-http_archive(
-    name = "com_google_sentencepiece",
-    build_file = "@gemma//bazel:sentencepiece.bazel",
-    patch_args = ["-p1"],
-    patches = ["@gemma//bazel:sentencepiece.patch"],
-    repo_mapping = {"@abseil-cpp": "@com_google_absl"},
-    sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
-    strip_prefix = "sentencepiece-0.1.96",
-    urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],
-)
-
-http_archive(
-    name = "highway",
-    sha256 = "eb07b6c8b9fc23cca4e2e166e30937ff4a13811d48f59ba87f2d2499470d4a63",
-    strip_prefix = "highway-2b565e87d50b151660494624af532ac0b6076c79",
-    urls = ["https://github.com/google/highway/archive/2b565e87d50b151660494624af532ac0b6076c79.tar.gz"],
-)
-
-http_archive(
-    name = "gemma",
-    sha256 = "ee01ac7165fbacddc5509e8384900165b72f349c1421efdd5b6f9391c3c1729e",
-    strip_prefix = "gemma.cpp-9f5159ff683d99a7d852a0e66782e718588937df",
-    url = "https://github.com/google/gemma.cpp/archive/9f5159ff683d99a7d852a0e66782e718588937df.tar.gz",
 )
