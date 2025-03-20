@@ -21,8 +21,8 @@
 +++ rust/bssl-sys/BUILD
 @@ -0,0 +1,52 @@
 +load("@rules_cc//cc:defs.bzl", "cc_library")
-+load("@rules_rust//bindgen:defs.bzl", "rust_bindgen")
 +load("@rules_rust//rust:defs.bzl", "rust_library")
++load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen")
 +
 +rust_library(
 +    name = "bssl-sys",

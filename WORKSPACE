@@ -239,13 +239,12 @@ http_archive(
 
 http_archive(
     name = "rules_cc",
-    sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
-    strip_prefix = "rules_cc-0.0.9",
-    # We intentionally chose an older version of rules_cc here because the newer
-    # versions get cc_proto rule from protobuf, but the version of protobuf we use
-    # doesn't have cc_proto rule. We can't easily update the version of protobuf
-    # because we need to use a version compatible with TensorFlow.
-    urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
+    patch_args = ["-p1"],
+    # Patch rules_cc to be compatible with the older version of protobuf we use.
+    patches = ["@rules_rust//rust/private/3rdparty:rules_cc.patch"],
+    sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
+    strip_prefix = "rules_cc-0.0.17",
+    url = "https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz",
 )
 
 # Avoid Java dependencies.
@@ -285,9 +284,22 @@ http_archive(
 
 http_archive(
     name = "rules_rust",
-    patches = ["//third_party/rules_rust:bindgen.patch"],
-    sha256 = "af4f56caae50a99a68bfce39b141b509dd68548c8204b98ab7a1cafc94d5bb02",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.54.1/rules_rust-v0.54.1.tar.gz"],
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz"],
+)
+
+http_archive(
+    name = "rules_rust_bindgen",
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    strip_prefix = "extensions/bindgen",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
+)
+
+http_archive(
+    name = "rules_rust_prost",
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    strip_prefix = "extensions/prost",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
 )
 
 http_archive(
@@ -335,6 +347,10 @@ http_archive(
 ################################################################################
 # Transitive dependencies managed via macros
 ################################################################################
+
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies")
+
+rules_rust_dependencies()
 
 # Call py_repositories() first so rules_python can setup any state
 # subsequent things might need. See
@@ -459,11 +475,11 @@ load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 
 setup_rust_dependencies()
 
-load("@rules_rust//proto/prost:repositories.bzl", "rust_prost_dependencies")
+load("@rules_rust_prost//:repositories.bzl", "rust_prost_dependencies")
 
 rust_prost_dependencies()
 
-load("@rules_rust//proto/prost:transitive_repositories.bzl", "rust_prost_transitive_repositories")
+load("@rules_rust_prost//:transitive_repositories.bzl", "rust_prost_transitive_repositories")
 
 rust_prost_transitive_repositories()
 

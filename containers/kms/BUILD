@@ -15,8 +15,8 @@
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("@rules_rust//proto/prost:defs.bzl", "rust_prost_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 load("//:proto_data.bzl", "proto_data")
 
 rust_library(

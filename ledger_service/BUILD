@@ -100,8 +100,14 @@ rust_library(
 
 rust_test(
     name = "ledger_service_test",
+    compile_data = [
+        "//ledger_service/testdata:endorsements.binarypb",
+        "//ledger_service/testdata:evidence.binarypb",
+    ],
     crate = ":ledger_service",
     crate_features = ["testing"],
+    # `data` isn't available at compile time, but $(execpath) doesn't work with
+    # compile_data. We use both and hope the paths are the same.
     data = [
         "//ledger_service/testdata:endorsements.binarypb",
         "//ledger_service/testdata:evidence.binarypb",
