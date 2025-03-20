@@ -85,6 +85,7 @@ rust_binary(
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:log",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:stderrlog",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
         "@trusted_computations_platform//proto:tcp_proto",

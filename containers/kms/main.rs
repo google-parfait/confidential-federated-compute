@@ -17,7 +17,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_verification_types::util::Clock;
@@ -45,28 +45,31 @@ fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> 
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
+    stderrlog::new()
+        .show_level(true)
+        .show_module_names(true)
+        // TODO: b/398874186 - Review whether this should be increased to Warn.
+        .verbosity(log::LevelFilter::Info)
+        .color(stderrlog::ColorChoice::Never)
+        .init()
+        .expect("failed to initialize logging");
     log::info!("KMS starting...");
-    log::set_max_level(log::LevelFilter::Warn);
 
     let channel = oak_sdk_containers::default_orchestrator_channel()
         .await
-        .context("failed to create orchestrator channel")?;
+        .expect("failed to create orchestrator channel");
     let mut orchestrator_client = OrchestratorClient::create(&channel);
-    let endorsed_evidence = orchestrator_client
-        .get_endorsed_evidence()
-        .await
-        .context("failed to get endorsed evidence")?;
-    let evidence =
-        endorsed_evidence.evidence.ok_or_else(|| anyhow!("EndorsedEvidence.evidence not set"))?;
-    let endorsements = endorsed_evidence
-        .endorsements
-        .ok_or_else(|| anyhow!("EndorsedEvidence.endorsements not set"))?;
+    let endorsed_evidence =
+        orchestrator_client.get_endorsed_evidence().await.expect("failed to get endorsed evidence");
+    let evidence = endorsed_evidence.evidence.expect("EndorsedEvidence.evidence not set");
+    let endorsements =
+        endorsed_evidence.endorsements.expect("EndorsedEvidence.endorsements not set");
 
     let attester = Arc::new(StaticAttester::new(evidence.clone()));
     let endorser = Arc::new(StaticEndorser::new(endorsements));
     let signer = InstanceSigner::create(&channel);
-    let reference_values = get_reference_values(&evidence)?;
+    let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
     let clock = Arc::new(SystemClock {});
 
     // Create the KeyManagementService. The host matches Oak's `launcher_addr`
@@ -74,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
     // and the port matches the forwarding rules set by the host.
     let session_service_client = OakSessionV1ServiceClient::connect("http://10.0.2.100:8008")
         .await
-        .context("failed to create OakSessionV1ServiceClient")?;
+        .expect("failed to create OakSessionV1ServiceClient");
     let key_management_service = KeyManagementService::new(GrpcStorageClient::new(
         session_service_client,
         get_init_request,
@@ -91,13 +94,13 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Start the gRPC server.
-    orchestrator_client.notify_app_ready().await.context("failed to notify that app is ready")?;
+    orchestrator_client.notify_app_ready().await.expect("failed to notify that app is ready");
     tonic::transport::Server::builder()
         .add_service(KeyManagementServiceServer::new(key_management_service))
         .add_service(EndpointServiceServer::new(endpoint_service))
-        .serve("[::]:8080".parse()?)
-        .await?;
-    Ok(())
+        .serve("[::]:8080".parse().expect("failed to parse address"))
+        .await
+        .expect("failed to start server");
 }
 
 struct SystemClock {}
