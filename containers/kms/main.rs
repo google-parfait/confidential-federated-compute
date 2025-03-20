@@ -21,7 +21,7 @@ use anyhow::{anyhow, bail, Context};
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_verification_types::util::Clock;
-use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues};
+use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
 use prost::Message;
@@ -33,14 +33,14 @@ use tcp_runtime::service::TonicApplicationService;
 
 fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> {
     // TODO: b/400476265 - Add ReferenceValues for SEV-SNP.
-    match evidence.root_layer.as_ref().map(|rl| rl.platform) {
-        None => {
+    match evidence.root_layer.as_ref().map(|rl| rl.platform.try_into()) {
+        Some(Ok(TeePlatform::None)) => {
             // When running in insecure mode, simply skip all reference values.
             // This is only used for tests.
             ReferenceValues::decode(include_bytes!(env!("INSECURE_REFERENCE_VALUES")).as_slice())
                 .context("failed to decode insecure ReferenceValues")
         }
-        Some(platform) => bail!("platform {} is not supported", platform),
+        platform => bail!("platform {:?} is not supported", platform),
     }
 }
 
@@ -69,8 +69,10 @@ async fn main() -> anyhow::Result<()> {
     let reference_values = get_reference_values(&evidence)?;
     let clock = Arc::new(SystemClock {});
 
-    // Create the KeyManagementService.
-    let session_service_client = OakSessionV1ServiceClient::connect("http://[::1]:8008")
+    // Create the KeyManagementService. The host matches Oak's `launcher_addr`
+    // (https://github.com/search?q=repo%3Aproject-oak%2Foak+launcher_addr&type=code),
+    // and the port matches the forwarding rules set by the host.
+    let session_service_client = OakSessionV1ServiceClient::connect("http://10.0.2.100:8008")
         .await
         .context("failed to create OakSessionV1ServiceClient")?;
     let key_management_service = KeyManagementService::new(GrpcStorageClient::new(
