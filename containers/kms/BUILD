@@ -26,6 +26,28 @@ rust_library(
         ":kms_prost_proto",
         ":storage_client",
         ":storage_prost_proto",
+        "@boringssl//rust/bssl-crypto",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:tonic",
+    ],
+)
+
+rust_test(
+    name = "key_management_service_test",
+    srcs = ["key_management_service_test.rs"],
+    deps = [
+        ":key_management_service",
+        ":kms_prost_proto",
+        ":storage",
+        ":storage_client",
+        ":storage_prost_proto",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:googletest",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
     ],
 )

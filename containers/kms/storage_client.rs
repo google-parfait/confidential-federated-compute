@@ -47,12 +47,27 @@ use tonic::Code;
 // struct handles multiplexing requests over a single stream and retrying
 // requests if there are connection or protocol errors, including errors due to
 // the TCP leader changing.
-pub struct StorageClient {
+pub trait StorageClient {
+    /// Performs a read operation.
+    fn read(
+        &self,
+        request: ReadRequest,
+    ) -> impl std::future::Future<Output = Result<ReadResponse>> + Send;
+
+    /// Performs an update operation.
+    fn update(
+        &self,
+        request: UpdateRequest,
+    ) -> impl std::future::Future<Output = Result<UpdateResponse>> + Send;
+}
+
+// A StorageClient that communicates with the TCP leader via gRPC.
+pub struct GrpcStorageClient {
     sender: mpsc::UnboundedSender<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     _handle: AbortOnDropHandle<()>,
 }
 
-impl StorageClient {
+impl GrpcStorageClient {
     pub fn new<S: Signer + Clone + 'static>(
         client: OakSessionV1ServiceClient<tonic::transport::Channel>,
         init_fn: impl Fn() -> UpdateRequest + Send + 'static,
@@ -84,8 +99,21 @@ impl StorageClient {
         Self { sender, _handle: AbortOnDropHandle::new(handle) }
     }
 
-    /// Performs a read operation.
-    pub async fn read(&self, request: ReadRequest) -> Result<ReadResponse> {
+    async fn send_request(&self, request: StorageRequest) -> Result<StorageResponse> {
+        let (tx, rx) = oneshot::channel();
+        self.sender.send((request, tx)).context("failed to send request")?;
+        let response = rx.await.context("failed to receive response")??;
+        match response.kind {
+            Some(storage_response::Kind::Error(err)) => {
+                Err(anyhow::Error::msg(err.message)).context(Code::from(err.code))
+            }
+            _ => Ok(response),
+        }
+    }
+}
+
+impl StorageClient for GrpcStorageClient {
+    async fn read(&self, request: ReadRequest) -> Result<ReadResponse> {
         let response = self
             .send_request(StorageRequest {
                 kind: Some(storage_request::Kind::Read(request)),
@@ -98,8 +126,7 @@ impl StorageClient {
         }
     }
 
-    /// Performs an update operation.
-    pub async fn update(&self, request: UpdateRequest) -> Result<UpdateResponse> {
+    async fn update(&self, request: UpdateRequest) -> Result<UpdateResponse> {
         let response = self
             .send_request(StorageRequest {
                 kind: Some(storage_request::Kind::Update(request)),
@@ -109,18 +136,6 @@ impl StorageClient {
         match response.kind {
             Some(storage_response::Kind::Update(response)) => Ok(response),
             _ => Err(anyhow!("unexpected StorageResponse.kind during update")),
-        }
-    }
-
-    async fn send_request(&self, request: StorageRequest) -> Result<StorageResponse> {
-        let (tx, rx) = oneshot::channel();
-        self.sender.send((request, tx)).context("failed to send request")?;
-        let response = rx.await.context("failed to receive response")??;
-        match response.kind {
-            Some(storage_response::Kind::Error(err)) => {
-                Err(anyhow::Error::msg(err.message)).context(Code::from(err.code))
-            }
-            _ => Ok(response),
         }
     }
 }
