@@ -31,6 +31,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/sensitive_columns.h"
+#include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
@@ -331,8 +332,15 @@ absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
       break;
     }
     case AGGREGATION_TYPE_MERGE: {
+      FCP_ASSIGN_OR_RETURN(std::unique_ptr<PrivateState> other_private_state,
+                           UnbundlePrivateState(unencrypted_data));
+      FCP_RETURN_IF_ERROR(private_state_->Merge(*other_private_state));
+      // TODO: Avoid copying unencrypted_cord back string, which can be
+      // achieved by passing a cord to CheckpointAggregator implementing parsing
+      // from Cord at the CheckpointAggregator level.
       absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
-          CheckpointAggregator::Deserialize(&intrinsics_, unencrypted_data);
+          CheckpointAggregator::Deserialize(&intrinsics_,
+                                            std::move(unencrypted_data));
       if (!other.ok()) {
         return ToSessionWriteFinishedResponse(
             absl::Status(other.status().code(),
@@ -411,10 +419,13 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
+      // Serialize the aggregator and bundle it with the private state.
       FCP_ASSIGN_OR_RETURN(std::string serialized_aggregator,
                            std::move(*aggregator_).Serialize());
+      std::string serialized_bundle =
+          BundlePrivateState(serialized_aggregator, *private_state_);
       if (input_metadata.has_unencrypted()) {
-        result = std::move(serialized_aggregator);
+        result = std::move(serialized_bundle);
         result_metadata.set_total_size_bytes(result.size());
         result_metadata.mutable_unencrypted();
         break;
@@ -424,9 +435,10 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
             "No output access policy node ID set for serialized outputs. This "
             "must be set to output serialized state.");
       }
+      // Encrypt the bundled blob.
       FCP_ASSIGN_OR_RETURN(
           Record result_record,
-          EncryptSessionResult(input_metadata, serialized_aggregator,
+          EncryptSessionResult(input_metadata, serialized_bundle,
                                *serialize_output_access_policy_node_id_));
       result_metadata = GetBlobMetadataFromRecord(result_record);
       result = result_record.hpke_plus_aead_data().ciphertext();

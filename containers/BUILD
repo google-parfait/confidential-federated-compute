@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
 package(default_visibility = ["//containers:__subpackages__"])
 
 cc_library(
@@ -196,6 +198,30 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "private_state",
+    srcs = ["private_state.cc"],
+    hdrs = ["private_state.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
+    ],
+)
+
+cc_test(
+    name = "private_state_test",
+    srcs = ["private_state_test.cc"],
+    deps = [
+        ":private_state",
+        "//testing:matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@googletest//:gtest_main",
     ],
 )

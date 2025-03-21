@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
 package(default_visibility = ["//:__subpackages__"])
 
 cc_library(
@@ -21,5 +23,16 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
+    ],
+)
+
+cc_library(
+    name = "matchers",
+    testonly = 1,
+    hdrs = ["matchers.h"],
+    deps = [
+        ":parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_protobuf//:protobuf",
     ],
 )
