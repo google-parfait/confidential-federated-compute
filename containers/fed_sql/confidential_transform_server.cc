@@ -391,14 +391,21 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
             "This may be because inputs were ignored due to an earlier error.");
       }
 
-      FederatedComputeCheckpointBuilderFactory builder_factory;
-      std::unique_ptr<CheckpointBuilder> checkpoint_builder =
-          builder_factory.Create();
-      FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
-      FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
-                           checkpoint_builder->Build());
+      // Extract unectrypted checkpoint from the aggregator.
+      // Using the scope below ensures that both CheckpointBuilder and Cord
+      // are promptly deleted.
       std::string unencrypted_result;
-      absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
+      {
+        FederatedComputeCheckpointBuilderFactory builder_factory;
+        std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+            builder_factory.Create();
+        // TODO: The aggregator should be released promptly after
+        // producing report.
+        FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
+        FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
+                             checkpoint_builder->Build());
+        absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
+      }
 
       if (input_metadata.has_unencrypted() ||
           report_output_access_policy_node_id_ == std::nullopt) {
@@ -415,17 +422,19 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
           EncryptSessionResult(input_metadata, unencrypted_result,
                                *report_output_access_policy_node_id_));
       result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = result_record.hpke_plus_aead_data().ciphertext();
+      result = std::move(
+          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
       // Serialize the aggregator and bundle it with the private state.
-      FCP_ASSIGN_OR_RETURN(std::string serialized_aggregator,
+      // TODO: The aggregator should be released promptly after
+      // being serialized.
+      FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                            std::move(*aggregator_).Serialize());
-      std::string serialized_bundle =
-          BundlePrivateState(serialized_aggregator, *private_state_);
+      serialized_data = BundlePrivateState(serialized_data, *private_state_);
       if (input_metadata.has_unencrypted()) {
-        result = std::move(serialized_bundle);
+        result = std::move(serialized_data);
         result_metadata.set_total_size_bytes(result.size());
         result_metadata.mutable_unencrypted();
         break;
@@ -438,10 +447,11 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       // Encrypt the bundled blob.
       FCP_ASSIGN_OR_RETURN(
           Record result_record,
-          EncryptSessionResult(input_metadata, serialized_bundle,
+          EncryptSessionResult(input_metadata, serialized_data,
                                *serialize_output_access_policy_node_id_));
       result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = result_record.hpke_plus_aead_data().ciphertext();
+      result = std::move(
+          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
       break;
     }
     default:
@@ -452,7 +462,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
   read_response->set_finish_read(true);
-  *(read_response->mutable_data()) = result;
+  *(read_response->mutable_data()) = std::move(result);
   *(read_response->mutable_first_response_metadata()) = result_metadata;
   return response;
 }
