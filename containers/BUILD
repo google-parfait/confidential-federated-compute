@@ -58,6 +58,8 @@ cc_test(
     srcs = ["session_test.cc"],
     deps = [
         ":session",
+        "//testing:matchers",
+        "@com_google_absl//absl/time",
         "@googletest//:gtest_main",
     ],
 )
