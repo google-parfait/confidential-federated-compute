@@ -23,10 +23,19 @@ using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 
+constexpr absl::Duration kAddSessionPreconditionTimeout = absl::Seconds(1);
+
 absl::Status SessionTracker::AddSession() {
   absl::MutexLock l(&mutex_);
-  if (num_sessions_ < max_num_sessions_) {
-    num_sessions_++;
+  // Wait for the nonzero number of available sessions in case
+  // there is a race between creating a new session and destroying
+  // an old session.
+  mutex_.AwaitWithTimeout(
+      absl::Condition(
+          +[](int* available) { return *available > 0; }, &available_sessions_),
+      kAddSessionPreconditionTimeout);
+  if (available_sessions_ > 0) {
+    available_sessions_--;
     return absl::OkStatus();
   }
   return absl::FailedPreconditionError(
@@ -35,11 +44,11 @@ absl::Status SessionTracker::AddSession() {
 
 absl::Status SessionTracker::RemoveSession() {
   absl::MutexLock l(&mutex_);
-  if (num_sessions_ <= 0) {
+  if (available_sessions_ >= max_num_sessions_) {
     return absl::FailedPreconditionError(
         "SessionTracker: no sessions to remove.");
   }
-  num_sessions_--;
+  available_sessions_++;
   return absl::OkStatus();
 }
 

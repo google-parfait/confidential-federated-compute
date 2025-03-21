@@ -13,9 +13,14 @@
 // limitations under the License.
 #include "containers/session.h"
 
+#include <thread>
+
+#include "absl/time/clock.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "gmock/gmock.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
+#include "testing/matchers.h"
 
 namespace confidential_federated_compute {
 namespace {
@@ -24,29 +29,29 @@ using ::fcp::confidentialcompute::SessionResponse;
 
 TEST(SessionTest, AddSession) {
   SessionTracker session_tracker(1);
-  EXPECT_TRUE(session_tracker.AddSession().ok());
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
 }
 
 TEST(SessionTest, MaximumSessionsReachedAddSession) {
   SessionTracker session_tracker(1);
-  EXPECT_TRUE(session_tracker.AddSession().ok());
-  EXPECT_EQ(session_tracker.AddSession().code(),
-            absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
+  EXPECT_THAT(session_tracker.AddSession(),
+              IsCode(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(SessionTest, MaximumSessionsReachedCanAddSessionAfterRemoveSession) {
   SessionTracker session_tracker(1);
-  EXPECT_TRUE(session_tracker.AddSession().ok());
-  EXPECT_EQ(session_tracker.AddSession().code(),
-            absl::StatusCode::kFailedPrecondition);
-  EXPECT_TRUE(session_tracker.RemoveSession().ok());
-  EXPECT_TRUE(session_tracker.AddSession().ok());
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
+  EXPECT_THAT(session_tracker.AddSession(),
+              IsCode(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(session_tracker.RemoveSession(), IsOk());
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
 }
 
 TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
   SessionTracker session_tracker(1);
-  EXPECT_EQ(session_tracker.RemoveSession().code(),
-            absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(session_tracker.RemoveSession(),
+              IsCode(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
@@ -66,6 +71,17 @@ TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
   EXPECT_EQ(response.write().committed_size_bytes(), 6);
   EXPECT_EQ(response.write().status().code(), grpc::StatusCode::OK);
   EXPECT_TRUE(response.write().status().message().empty());
+}
+
+TEST(SessionTest, MaximumSessionsReachedConcurrentAddRemove) {
+  SessionTracker session_tracker(1);
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
+  std::thread t([&]() {
+    absl::SleepFor(absl::Milliseconds(10));
+    EXPECT_THAT(session_tracker.RemoveSession(), IsOk());
+  });
+  EXPECT_THAT(session_tracker.AddSession(), IsOk());
+  t.join();
 }
 
 }  // namespace

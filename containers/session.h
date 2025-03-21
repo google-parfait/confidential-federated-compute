@@ -28,7 +28,9 @@ namespace confidential_federated_compute {
 // This class is threadsafe.
 class SessionTracker {
  public:
-  SessionTracker(int max_num_sessions) : max_num_sessions_(max_num_sessions) {};
+  SessionTracker(int max_num_sessions)
+      : available_sessions_(max_num_sessions),
+        max_num_sessions_(max_num_sessions) {};
 
   // Tries to add a session and returns the amount of memory in bytes that the
   // session is allowed. Returns 0 if there is no available memory.
@@ -39,10 +41,8 @@ class SessionTracker {
 
  private:
   absl::Mutex mutex_;
-  int num_sessions_ ABSL_GUARDED_BY(mutex_) = 0;
+  int available_sessions_ ABSL_GUARDED_BY(mutex_) = 0;
   int max_num_sessions_;
-  // Memory for each session in bytes.
-  long max_session_memory_bytes_;
 };
 
 // Create a SessionResponse with a WriteFinishedResponse.
