@@ -292,7 +292,7 @@ diff --git tensorflow_federated/cc/core/impl/executors/xla_utils.cc tensorflow_f
 index 06da07e10..2be6c8c70 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_utils.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_utils.cc
-@@ -25,11 +25,11 @@ limitations under the License
+@@ -27,11 +27,11 @@ limitations under the License
  #include "federated_language/proto/array.pb.h"
  #include "federated_language/proto/computation.pb.h"
  #include "federated_language/proto/data_type.pb.h"
@@ -328,7 +328,7 @@ diff --git tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc tensorf
 index f9b00096f..5a34339b0 100644
 --- tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
 +++ tensorflow_federated/cc/core/impl/executors/xla_utils_test.cc
-@@ -25,13 +25,13 @@ limitations under the License
+@@ -27,13 +27,13 @@ limitations under the License
  #include "federated_language/proto/array.pb.h"
  #include "federated_language/proto/computation.pb.h"
  #include "federated_language/proto/data_type.pb.h"
@@ -348,4 +348,4 @@ index f9b00096f..5a34339b0 100644
 +#include "xla/xla_data.pb.h"
  #include "tensorflow_federated/cc/core/impl/executors/array_shape_test_utils.h"
  #include "tensorflow_federated/cc/core/impl/executors/array_test_utils.h"
- #include "tensorflow_federated/cc/testing/status_matchers.h"
+ #include "tensorflow_federated/cc/testing/protobuf_matchers.h"
