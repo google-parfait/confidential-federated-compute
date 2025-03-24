@@ -200,6 +200,7 @@ http_archive(
 http_archive(
     name = "oak",
     integrity = "sha256-kARmPybmsuo+IVDa78GQPpFS8k4WUs+xZLB2D/MURnU=",
+    patches = ["//third_party/oak:oak_sdk_containers.patch"],
     strip_prefix = "oak-e1a7df380564e85fdc38a29e53b127eeeddd0f22",
     url = "https://github.com/project-oak/oak/archive/e1a7df380564e85fdc38a29e53b127eeeddd0f22.tar.gz",
 )

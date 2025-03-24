@@ -20,6 +20,34 @@ load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 load("//:proto_data.bzl", "proto_data")
 
 rust_library(
+    name = "key_derivation",
+    srcs = ["key_derivation.rs"],
+    deps = [
+        "@boringssl//rust/bssl-crypto",
+        "@oak//oak_sdk/containers:oak_sdk_containers",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:futures",
+    ],
+)
+
+rust_test(
+    name = "key_derivation_test",
+    srcs = ["key_derivation_test.rs"],
+    proc_macro_deps = ["@oak_crates_index//:async-trait"],
+    deps = [
+        ":key_derivation",
+        "@boringssl//rust/bssl-crypto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_sdk/containers:oak_sdk_containers",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:googletest",
+        "@oak_crates_index//:tokio",
+    ],
+)
+
+rust_library(
     name = "key_management_service",
     srcs = ["key_management_service.rs"],
     deps = [

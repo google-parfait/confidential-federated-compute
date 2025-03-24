@@ -1,0 +1,20 @@
+# Expose oak_sdk_containers::Signer and make its futures Send for compatibility
+# with tonic.
+--- oak_sdk/containers/lib.rs
++++ oak_sdk/containers/lib.rs
+@@ -19,3 +19,3 @@
+ pub use orchestrator_crypto_client::{
+-    InstanceEncryptionKeyHandle, InstanceSessionBinder, InstanceSigner,
++    InstanceEncryptionKeyHandle, InstanceSessionBinder, InstanceSigner, Signer,
+ };
+
+--- oak_sdk/containers/orchestrator_crypto_client.rs
++++ oak_sdk/containers/orchestrator_crypto_client.rs
+@@ -159,2 +159,2 @@
+-#[async_trait(?Send)]
++#[async_trait]
+ pub trait Signer {
+@@ -175,2 +175,2 @@
+-#[async_trait(?Send)]
++#[async_trait]
+ impl Signer for InstanceSigner {
