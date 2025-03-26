@@ -199,10 +199,9 @@ http_archive(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-kARmPybmsuo+IVDa78GQPpFS8k4WUs+xZLB2D/MURnU=",
-    patches = ["//third_party/oak:oak_sdk_containers.patch"],
-    strip_prefix = "oak-e1a7df380564e85fdc38a29e53b127eeeddd0f22",
-    url = "https://github.com/project-oak/oak/archive/e1a7df380564e85fdc38a29e53b127eeeddd0f22.tar.gz",
+    integrity = "sha256-XGBkZW+I+yN0q4+Vs+gG9879tf9+Lae8XRZCsghUbRA=",
+    strip_prefix = "oak-aa9cec7b610d01bc8c046d5837b06d522858da07",
+    url = "https://github.com/project-oak/oak/archive/aa9cec7b610d01bc8c046d5837b06d522858da07.tar.gz",
 )
 
 http_archive(

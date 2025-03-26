@@ -76,6 +76,9 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
     "slog-stdlog": crate.spec(
         version = "4.1.1",
     ),
+    "stderrlog": crate.spec(
+        version = "0.6.0",
+    ),
     "tokio-util": crate.spec(
         features = ["rt"],
         version = "0.7.12",
