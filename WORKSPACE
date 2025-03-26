@@ -23,10 +23,10 @@ load("//:stub_repo.bzl", "stub_repo")
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_repo
 http_archive(
     name = "boringssl",
-    integrity = "sha256-gfKR+SoN9b5XO+Pb4qcgjWhe59Fm3ie2016YNfhgEsw=",
+    integrity = "sha256-eE+nl4x617ZJVfhB3TUSzfsueu66bRhkgcsJtt/nU8M=",
     patches = ["//third_party/boringssl:rust.patch"],
-    strip_prefix = "boringssl-96fd8673f263a037b25b28d6e40a506397bc8dfb",
-    urls = ["https://github.com/google/boringssl/archive/96fd8673f263a037b25b28d6e40a506397bc8dfb.tar.gz"],
+    strip_prefix = "boringssl-5b6b14d9966383ae5240f659fd3ed2e7e9e09a91",
+    urls = ["https://github.com/google/boringssl/archive/5b6b14d9966383ae5240f659fd3ed2e7e9e09a91.tar.gz"],
 )
 
 # Use a sysroot to make clang builds hermetic. This sysroot may not be

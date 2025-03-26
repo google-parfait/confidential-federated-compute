@@ -92,7 +92,7 @@ fn derive_raw_private_keys(
 fn get_public_key(alg: i64, private_key: &[u8]) -> anyhow::Result<Vec<u8>> {
     match alg {
         HPKE_BASE_X25519_SHA256_AES128GCM => hpke::Kem::X25519HkdfSha256
-            .get_public_key(private_key)
+            .public_from_private(private_key)
             .ok_or_else(|| anyhow!("derived private key is invalid")),
         _ => bail!("unsupported algorithm: {}", alg),
     }
