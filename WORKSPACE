@@ -198,15 +198,15 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow",
+    integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
     patches = [
         "//third_party/org_tensorflow:cython.patch",
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
     ],
-    sha256 = "899533cb45ded37ef069ec18b9ae04401f2c9babee4dde3672343d63a83f3910",
-    strip_prefix = "tensorflow-0f3366971a0a78a71303167d14bc5c1659a4b632",
+    strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
     urls = [
-        "https://github.com/tensorflow/tensorflow/archive/0f3366971a0a78a71303167d14bc5c1659a4b632.tar.gz",
+        "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
     ],
 )
 
@@ -397,7 +397,14 @@ load(
 python_repository(name = "python_version_repo")
 
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "@local_xla//third_party/py:python_wheel.bzl",
+    "python_wheel_version_suffix_repository",
+)
+
+python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
+
+load(
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
 
@@ -409,7 +416,7 @@ load(
     "CUDNN_REDISTRIBUTIONS",
 )
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
     "cuda_redist_init_repositories",
     "cudnn_redist_init_repository",
 )
@@ -423,21 +430,21 @@ cudnn_redist_init_repository(
 )
 
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
     "cuda_configure",
 )
 
 cuda_configure(name = "local_config_cuda")
 
 load(
-    "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
     "nccl_redist_init_repository",
 )
 
 nccl_redist_init_repository()
 
 load(
-    "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
+    "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
     "nccl_configure",
 )
 
