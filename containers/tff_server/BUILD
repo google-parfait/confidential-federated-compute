@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
@@ -39,7 +40,6 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@federated_language//federated_language/proto:computation_cc_proto",
-        "@lingvo//lingvo/core/ops:assert_kernels",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
