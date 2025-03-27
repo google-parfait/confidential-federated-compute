@@ -217,7 +217,7 @@ where
                         Some(msg) => {
                             let msg = SessionResponse::decode(msg.encode_to_vec().as_slice())
                                 .context("failed to convert response")?;
-                            session.put_incoming_message(&msg)?;
+                            session.put_incoming_message(msg)?;
                         }
                         None => bail!("server unexpectedly closed stream"),
                     }

@@ -191,9 +191,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-XGBkZW+I+yN0q4+Vs+gG9879tf9+Lae8XRZCsghUbRA=",
-    strip_prefix = "oak-aa9cec7b610d01bc8c046d5837b06d522858da07",
-    url = "https://github.com/project-oak/oak/archive/aa9cec7b610d01bc8c046d5837b06d522858da07.tar.gz",
+    integrity = "sha256-43v+nQM0aST9pPgJTSjLd//WmITBP0gzw4MWDrXENas=",
+    strip_prefix = "oak-705c854b8cee04f12dcf583a490a10f1e4279617",
+    url = "https://github.com/project-oak/oak/archive/705c854b8cee04f12dcf583a490a10f1e4279617.tar.gz",
 )
 
 http_archive(
@@ -317,9 +317,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-WmVPr+/6C3NnAHIJcSbX5PkmtJMh1g4J8tiwAL5jtYk=",
-    strip_prefix = "trusted-computations-platform-ce026a2fc3082b25d12c640df44022ca81f2f4b3",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ce026a2fc3082b25d12c640df44022ca81f2f4b3.tar.gz",
+    integrity = "sha256-9v6HKhFNSjjHmlTPqajXvlP91CHwiqVZbvcuRoahQYE=",
+    strip_prefix = "trusted-computations-platform-af8d62c796b0b272a90d06feeede7e59531210f2",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/af8d62c796b0b272a90d06feeede7e59531210f2.tar.gz",
 )
 
 # TensorFlow pins an old version of upb that's compatible with their old

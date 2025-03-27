@@ -153,7 +153,7 @@ impl StorageActor {
         // is complete, the resulting decrypted message will be read by `read()`
         // below.
         session
-            .put_incoming_message(&session_request.request.unwrap())
+            .put_incoming_message(session_request.request.unwrap())
             .context("SessionRequest is invalid")
             .context(Code::InvalidArgument)?;
 
