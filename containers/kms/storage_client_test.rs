@@ -111,7 +111,7 @@ impl OakSessionV1Service for FakeServer {
                 debug!("Server received SessionRequest: {:?}", msg);
                 session
                     .put_incoming_message(
-                        &oak_proto_rust::oak::session::v1::SessionRequest::decode(
+                        oak_proto_rust::oak::session::v1::SessionRequest::decode(
                             msg.unwrap().encode_to_vec().as_slice(),
                         )
                         .unwrap(),
