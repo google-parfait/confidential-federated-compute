@@ -262,7 +262,7 @@ async fn init_retries_other_errors() {
 
     let (client, _server_handle) = start_server(storage, init_fn).await;
     expect_that!(
-        timeout(Duration::from_secs(1), client.read(ReadRequest::default())).await,
+        timeout(Duration::from_secs(2), client.read(ReadRequest::default())).await,
         ok(ok(anything()))
     );
 }
@@ -456,8 +456,8 @@ async fn retry_on_connection_failure() {
 
     let (client, _server_handle) = start_server(storage, init_fn).await;
     let (read_response, update_response) = tokio::join!(
-        timeout(Duration::from_secs(1), client.read(read_request)),
-        timeout(Duration::from_secs(1), client.update(update_request)),
+        timeout(Duration::from_secs(2), client.read(read_request)),
+        timeout(Duration::from_secs(2), client.update(update_request)),
     );
     expect_that!(read_response, ok(ok(eq(ReadResponse::default()))));
     expect_that!(update_response, ok(ok(eq(UpdateResponse::default()))));

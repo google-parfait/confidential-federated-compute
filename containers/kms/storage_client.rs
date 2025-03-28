@@ -43,6 +43,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::task::AbortOnDropHandle;
 use tonic::Code;
 
+/// Minimum time between initating /OakSessionV1ServiceClient.Steam RPCs.
+const RECONNECT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
 // A client for sending requests to the StorageActor over a secure channel. This
 // struct handles multiplexing requests over a single stream and retrying
 // requests if there are connection or protocol errors, including errors due to
@@ -160,12 +163,21 @@ where
     S: Signer + Clone + 'static,
 {
     pub async fn run(mut self) {
-        while let Err(err) = self.run_session().await {
-            warn!("StreamingSession closed: {:?}", err);
-            // Requeue all pending requests.
-            for (id, (request, tx)) in self.pending_requests.drain() {
-                if let Err(err) = self.tx.send((request, tx)) {
-                    error!("failed to requeue request to {}: {:?}", id, err);
+        // Limit the frequency with which we attempt to reconnect.
+        let mut interval = tokio::time::interval(RECONNECT_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            match self.run_session().await {
+                Ok(()) => break,
+                Err(err) => {
+                    warn!("StreamingSession closed: {:?}", err);
+                    // Requeue all pending requests.
+                    for (id, (request, tx)) in self.pending_requests.drain() {
+                        if let Err(err) = self.tx.send((request, tx)) {
+                            error!("failed to requeue request to {}: {:?}", id, err);
+                        }
+                    }
                 }
             }
         }
