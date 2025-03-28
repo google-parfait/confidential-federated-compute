@@ -78,15 +78,18 @@ async fn main() {
     let session_service_client = OakSessionV1ServiceClient::connect("http://10.0.2.100:8008")
         .await
         .expect("failed to create OakSessionV1ServiceClient");
-    let key_management_service = KeyManagementService::new(GrpcStorageClient::new(
-        session_service_client,
-        get_init_request,
-        attester.clone(),
-        endorser.clone(),
+    let key_management_service = KeyManagementService::new(
+        GrpcStorageClient::new(
+            session_service_client,
+            get_init_request,
+            attester.clone(),
+            endorser.clone(),
+            signer.clone(),
+            reference_values.clone(),
+            clock.clone(),
+        ),
         signer.clone(),
-        reference_values.clone(),
-        clock.clone(),
-    ));
+    );
 
     // Create the TCP EndpointService.
     let endpoint_service = TonicApplicationService::new(channel, evidence, move || {
