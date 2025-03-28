@@ -291,6 +291,7 @@ rust_test(
         ":storage_client",
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
+        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",

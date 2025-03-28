@@ -153,6 +153,18 @@ impl OakSessionV1Service for FakeServer {
     }
 }
 
+/// A Signer that calls `block_on` to emulate
+/// `oak_sdk_containers::InstanceSigner`.
+#[derive(Clone)]
+struct BlockingSigner {
+    inner: FakeSigner,
+}
+impl oak_crypto::signer::Signer for BlockingSigner {
+    fn sign(&self, message: &[u8]) -> Vec<u8> {
+        tokio::runtime::Handle::current().block_on(async { self.inner.sign(message) })
+    }
+}
+
 /// Starts a fake server that delegates to the given MockStorage object. Returns
 /// a StorageClient connected to the server and a handle that will stop the
 /// server when dropped.
@@ -163,12 +175,14 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     let listener = TcpListener::bind("[::]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = FakeServer::new(storage);
+    // Test compatibility with `oak_sdk_containers::InstanceSigner`.
+    let signer = BlockingSigner { inner: server.signer.clone() };
     let client = GrpcStorageClient::new(
         OakSessionV1ServiceClient::connect(format!("http://{addr}")).await.unwrap(),
         init_fn,
         server.attester.clone(),
         server.endorser.clone(),
-        server.signer.clone(),
+        signer,
         server.reference_values.clone(),
         server.clock.clone(),
     );
