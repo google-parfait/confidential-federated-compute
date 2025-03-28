@@ -100,6 +100,7 @@ rust_binary(
     rustc_env = {
         "INSECURE_REFERENCE_VALUES": "$(location :insecure_reference_values)",
     },
+    rustc_flags = ["-Cpanic=abort"],
     deps = [
         ":key_management_service",
         ":kms_prost_proto",
