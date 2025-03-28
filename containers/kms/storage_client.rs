@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashMap;
 use log::{error, info, warn};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
@@ -187,6 +187,65 @@ where
     /// return an error if/when the server closes the stream or a protocol error
     /// occurs.
     async fn run_session(&mut self) -> Result<()> {
+        let (mut session, server_tx, mut responses) = self.initialize_session().await?;
+        loop {
+            select! {
+                // Forward requests from the (local) mpsc channel to the server.
+                event = self.rx.recv() => match event {
+                    Some((mut msg, tx)) => {
+                        // Skip requests that have been abandoned.
+                        if tx.is_closed() {
+                            continue;
+                        }
+
+                        msg.correlation_id = self.next_correlation_id;
+                        self.next_correlation_id = self.next_correlation_id.wrapping_add(1);
+                        let encoded_msg = msg.encode_to_vec();
+                        self.pending_requests.insert(msg.correlation_id, (msg, tx));
+                        session.write(PlaintextMessage { plaintext: encoded_msg })?;
+                        while let Some(request) = session.get_outgoing_message()? {
+                            server_tx.send(Self::convert_request(&request)?).await?;
+                        }
+                    }
+                    None => bail!("StorageClient stream unexpectedly closed"),
+                },
+
+                // Forward responses from the remote server back to the local caller.
+                event = responses.message() => match event? {
+                    Some(response) => {
+                        session.put_incoming_message(Self::convert_response(&response)?)?;
+                        let response = session.read()?
+                            .ok_or_else(|| anyhow!("ClientSession::read returned None"))?;
+                        let msg = StorageResponse::decode(response.plaintext.as_slice())
+                            .context("failed to decode StorageResponse")?;
+
+                        if let Some((_, tx)) = self.pending_requests.remove(&msg.correlation_id) {
+                            if let Err(err) = tx.send(Ok(msg)) {
+                                warn!("failed to send response to client: {:?}", err);
+                            }
+                        } else {
+                            warn!("unexpected correlation id in response: {}", msg.correlation_id);
+                        }
+                    },
+                    None => bail!("server unexpectedly closed stream"),
+                }
+            }
+        }
+    }
+
+    /// Sets up and initializes a ClientSession.
+    ///
+    /// The session will be open when returned and the `self.init_fn`
+    /// UpdateRequest will have been applied.
+    async fn initialize_session(
+        &mut self,
+    ) -> Result<(
+        ClientSession,
+        mpsc::Sender<SessionRequest>,
+        tonic::Streaming<
+            session_v1_service_proto::session_proto::oak::session::v1::SessionResponse,
+        >,
+    )> {
         let mut session = create_session_config(
             &self.attester,
             &self.endorser,
@@ -196,118 +255,107 @@ where
         )
         .and_then(ClientSession::create)
         .context("failed to create ClientSession")?;
-        let (server_tx, rx) = mpsc::channel(1);
-        let mut responses = self.client.stream(ReceiverStream::new(rx)).await?.into_inner();
-        let (init_tx, mut init_rx) = mpsc::channel(1);
-        init_tx
-            .send(StorageRequest {
-                correlation_id: 0,
-                kind: Some(storage_request::Kind::Update((self.init_fn)())),
-            })
-            .await
-            .context("failed to enqueue init request")?;
-        let mut initialized = false;
 
-        // Send the initial message. Unlike all other steps in the protocol, the
-        // ClientSession will return an error if `get_outgoing_message()` is
+        // Construct the initial message. Unlike all other steps in the protocol,
+        // the ClientSession will return an error if `get_outgoing_message()` is
         // called an extra time before a response is received from the server.
-        let msg = session
+        let request = session
             .get_outgoing_message()?
             .ok_or_else(|| anyhow!("failed to get first message from ClientSession"))?;
-        let msg = SessionRequest::decode(msg.encode_to_vec().as_slice())
-            .context("failed to convert request")?;
-        server_tx.send(msg).await?;
 
-        loop {
-            // Check for an incoming message from the server. Once initialization is
-            // complete, also check for messages from the mpsc channel.
-            select! {
-                event = responses.message() => {
-                    // Pass messages from the server to the ClientSession. Assuming they aren't part
-                    // of the initial handshake, they'll be retrieved using `read` below.
-                    match event? {
-                        Some(msg) => {
-                            let msg = SessionResponse::decode(msg.encode_to_vec().as_slice())
-                                .context("failed to convert response")?;
-                            session.put_incoming_message(msg)?;
-                        }
-                        None => bail!("server unexpectedly closed stream"),
-                    }
-                }
-                event = init_rx.recv(), if session.is_open() => {
-                    // Once the session is open, write the initialization request to the
-                    // ClientSession. It'll be retrieved using `get_outgoing_message` below.
-                    session.write(PlaintextMessage { plaintext: event.unwrap().encode_to_vec() })?;
-                }
-                event = self.rx.recv(), if initialized => {
-                    // Once initialized, write messages from the mpsc channel to the ClientSession.
-                    // They'll be retrieved using `get_outgoing_message` below.
-                    match event {
-                        Some((mut msg, tx)) => {
-                            // Skip requests that have been abandoned.
-                            if !tx.is_closed() {
-                                msg.correlation_id = self.next_correlation_id;
-                                self.next_correlation_id = self.next_correlation_id.wrapping_add(1);
-                                session.write(
-                                    PlaintextMessage { plaintext: msg.encode_to_vec() }
-                                )?;
-                                self.pending_requests.insert(msg.correlation_id, (msg, tx));
-                            }
-                        }
-                        None => { bail!("StorageClient stream unexpectedly closed") }
-                    }
-                }
-            }
+        // Start the stream. https://github.com/hyperium/tonic/issues/515 means
+        // that this may block until the server sends a response, so this MUST
+        // happen after an initial message is added to `server_tx`.
+        let (server_tx, rx) = mpsc::channel(1);
+        server_tx.send(Self::convert_request(&request)?).await?;
+        let mut responses = self.client.stream(ReceiverStream::new(rx)).await?.into_inner();
 
-            // Send all already encrypted messages to the server. This also
-            // includes messages for the initial handshake.
-            while let Some(msg) = session.get_outgoing_message()? {
-                let msg = SessionRequest::decode(msg.encode_to_vec().as_slice())
-                    .context("failed to convert request")?;
-                server_tx.send(msg).await?;
-            }
-
-            if session.is_open() {
-                // Read any pending responses from the ClientSession.
-                while let Some(msg) = session.read()? {
-                    let msg = StorageResponse::decode(msg.plaintext.as_slice())
-                        .context("failed to decode response")?;
-                    if initialized {
-                        if let Some((_, tx)) = self.pending_requests.remove(&msg.correlation_id) {
-                            if let Err(err) = tx.send(Ok(msg)) {
-                                warn!("failed to send response to client: {:?}", err);
-                            }
-                        } else {
-                            warn!("unexpected correlation id in response: {}", msg.correlation_id);
-                        }
-                    } else {
-                        // Process the initialization response. Initialization should only be
-                        // performed once per cluster of storage servers, so this operation will
-                        // frequently fail with a FAILED_PRECONDITION error.
-                        ensure!(
-                            msg.correlation_id == 0,
-                            "unexpected correlation id in init response: {}",
-                            msg.correlation_id,
-                        );
-                        match msg.kind {
-                            Some(storage_response::Kind::Update(_)) => {
-                                info!("Storage initialized!");
-                            }
-                            Some(storage_response::Kind::Error(err)) => {
-                                if err.code == Code::FailedPrecondition as i32 {
-                                    info!("Storage already initialized");
-                                } else {
-                                    return Err(anyhow::Error::msg(err.message)
-                                        .context("storage initialization failed")
-                                        .context(Code::from(err.code)));
-                                }
-                            }
-                            _ => bail!("unexpected StorageResponse.kind during initialization"),
-                        }
-                        initialized = true;
+        // Perform the initial handshake.
+        while !session.is_open() {
+            let response = responses
+                .message()
+                .await?
+                .ok_or_else(|| anyhow!("server unexpectedly closed stream"))?;
+            // `oak_sdk_containers::InstanceSigner` performs blocking operations,
+            // so it cannot be called from an async thread. The signer is only
+            // used during the initial handshake, so it's not necessary to run
+            // subsequent ClientSession interactions on a separate thread.
+            let requests;
+            (session, requests) = tokio::task::spawn_blocking(
+                move || -> Result<(ClientSession, Vec<SessionRequest>)> {
+                    session.put_incoming_message(Self::convert_response(&response)?)?;
+                    let mut requests = Vec::with_capacity(1);
+                    while let Some(request) = session.get_outgoing_message()? {
+                        requests.push(Self::convert_request(&request)?);
                     }
-                }
+                    Ok((session, requests))
+                },
+            )
+            .await??;
+            for request in requests {
+                server_tx.send(request).await?;
             }
         }
+
+        // Send the initialization request.
+        session.write(PlaintextMessage {
+            plaintext: StorageRequest {
+                correlation_id: 0,
+                kind: Some(storage_request::Kind::Update((self.init_fn)())),
+            }
+            .encode_to_vec(),
+        })?;
+        while let Some(request) = session.get_outgoing_message()? {
+            server_tx.send(Self::convert_request(&request)?).await?;
+        }
+
+        // Process the initialization response. Initialization should only be
+        // performed once per cluster of storage servers, so this operation will
+        // frequently fail with a FAILED_PRECONDITION error.
+        let response = responses
+            .message()
+            .await?
+            .ok_or_else(|| anyhow!("server unexpectedly closed stream"))?;
+        session.put_incoming_message(Self::convert_response(&response)?)?;
+        let response =
+            session.read()?.ok_or_else(|| anyhow!("ClientSession::read returned None"))?;
+        match StorageResponse::decode(response.plaintext.as_slice()) {
+            Ok(StorageResponse { correlation_id, .. }) if correlation_id != 0 => {
+                bail!("unexpected correlation id in init response: {}", correlation_id);
+            }
+            Ok(StorageResponse { kind: Some(storage_response::Kind::Update(_)), .. }) => {
+                info!("Storage initialized!");
+            }
+            Ok(StorageResponse { kind: Some(storage_response::Kind::Error(err)), .. }) => {
+                if err.code == Code::FailedPrecondition as i32 {
+                    info!("Storage already initialized");
+                } else {
+                    return Err(anyhow::Error::msg(err.message)
+                        .context("storage initialization failed")
+                        .context(Code::from(err.code)));
+                }
+            }
+            Ok(_) => bail!("unexpected StorageResponse.kind during initialization"),
+            Err(err) => {
+                return Err(err).context("failed to decode StorageResponse");
+            }
+        }
+
+        Ok((session, server_tx, responses))
+    }
+
+    /// Converts an `oak_proto_rust` session request to a `kms_proto` request.
+    fn convert_request(
+        msg: &oak_proto_rust::oak::session::v1::SessionRequest,
+    ) -> Result<SessionRequest> {
+        SessionRequest::decode(msg.encode_to_vec().as_slice()).context("failed to convert request")
+    }
+
+    /// Converts an `oak_proto_rust` session response to a `kms_proto` response.
+    fn convert_response(
+        msg: &session_v1_service_proto::session_proto::oak::session::v1::SessionResponse,
+    ) -> Result<SessionResponse> {
+        SessionResponse::decode(msg.encode_to_vec().as_slice())
+            .context("failed to convert response")
     }
 }
