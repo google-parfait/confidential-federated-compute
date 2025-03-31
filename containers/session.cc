@@ -20,6 +20,7 @@
 namespace confidential_federated_compute {
 
 using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 
@@ -60,6 +61,15 @@ SessionResponse ToSessionWriteFinishedResponse(absl::Status status,
   response->mutable_status()->set_code(grpc_status.error_code());
   response->mutable_status()->set_message(grpc_status.error_message());
   response->set_committed_size_bytes(committed_size_bytes);
+  return session_response;
+}
+
+SessionResponse ToSessionCommitResponse(absl::Status status) {
+  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
+  SessionResponse session_response;
+  CommitResponse* response = session_response.mutable_commit();
+  response->mutable_status()->set_code(grpc_status.error_code());
+  response->mutable_status()->set_message(grpc_status.error_message());
   return session_response;
 }
 

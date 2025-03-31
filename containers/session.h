@@ -49,6 +49,10 @@ class SessionTracker {
 fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
     absl::Status status, long committed_size_bytes = 0);
 
+// Create a SessionResponse with a CommitResponse.
+fcp::confidentialcompute::SessionResponse ToSessionCommitResponse(
+    absl::Status status);
+
 // Interface for interacting with a session in a container. Implementations
 // may not be threadsafe.
 class Session {
@@ -56,7 +60,12 @@ class Session {
   // Initialize the session with the given configuration.
   virtual absl::Status ConfigureSession(
       fcp::confidentialcompute::SessionRequest configure_request) = 0;
-  // Incorporate a write request into the session.
+  // Incorporate any cached write requests into the session.
+  virtual absl::StatusOr<fcp::confidentialcompute::SessionResponse>
+  SessionCommit(
+      const fcp::confidentialcompute::CommitRequest& commit_request) = 0;
+  // Process a write request, optionally caching it to later incorporate into
+  // the session upon receiving commit request.
   virtual absl::StatusOr<fcp::confidentialcompute::SessionResponse>
   SessionWrite(const fcp::confidentialcompute::WriteRequest& write_request,
                std::string unencrypted_data) = 0;

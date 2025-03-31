@@ -51,6 +51,10 @@ class TffSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
       const fcp::confidentialcompute::WriteRequest& write_request,
       std::string unencrypted_data) override;
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
+      const fcp::confidentialcompute::CommitRequest& commit_request) override {
+    return absl::UnimplementedError("Commit handling is not yet implemented.");
+  }
   // Resolves all data URIs in the initial argument, embeds the argument into
   // the TFF stack, executes the computation, and encrypts and outputs the
   // result.
