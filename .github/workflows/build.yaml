@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
 
-    runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu20.04
+    runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu24.04
 
     steps:
       - name: Checkout
@@ -55,7 +55,7 @@ jobs:
       id-token: write
       attestations: write
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     strategy:
       # Continue attesting other artifacts even if one fails.
