@@ -25,7 +25,7 @@ platform(
         "@platforms//cpu:x86_64",
     ],
     exec_properties = create_rbe_exec_properties_dict(
-        container_image = "docker://gcr.io/cloud-marketplace/google/debian11@sha256:82cf3135ad7f0478870836b8bd303b383c151cb9d6c65512f6dd7b7bc8c70c40",
+        container_image = "docker://gcr.io/cloud-marketplace/google/debian12@sha256:be15f84c44c4ee68b4f187128f0278df1b0f424c04fb5f08b098967d5b896388",
         os_family = "Linux",
     ),
     parents = ["@local_config_platform//:host"],
