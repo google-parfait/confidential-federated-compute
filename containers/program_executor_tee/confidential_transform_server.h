@@ -61,13 +61,6 @@ class ProgramExecutorTeeConfidentialTransform final
       : ConfidentialTransformBase(crypto_stub) {};
 
  protected:
-  // Not supported.
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    return absl::UnimplementedError(
-        "Initialize is not supported in program executor TEE. Please use "
-        "StreamInitialize instead.");
-  }
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
     // TODO: Additional information necessary for the ledger to verify the

@@ -53,11 +53,23 @@ using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::StatusCode;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::Test;
+
+// Attempt to write the InitializeRequest to the client stream and then close
+// the stream, returning the result of Finish.
+bool TryWriteInitializeRequest(
+    InitializeRequest request,
+    std::unique_ptr<ClientWriter<StreamInitializeRequest>> init_stream) {
+  StreamInitializeRequest stream_request;
+  *stream_request.mutable_initialize_request() = std::move(request);
+  return init_stream->Write(stream_request) && init_stream->WritesDone() &&
+         init_stream->Finish().ok();
+}
 
 class TestConcatServerTest : public Test {
  public:
@@ -85,34 +97,24 @@ class TestConcatServerTest : public Test {
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
-TEST_F(TestConcatServerTest, ValidInitialize) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-
-  ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
-}
-
 TEST_F(TestConcatServerTest, ValidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
-  request.mutable_initialize_request()->set_max_num_sessions(8);
+  InitializeRequest request;
+  request.set_max_num_sessions(8);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_TRUE(TryWriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response)));
 }
 
 TEST_F(TestConcatServerTest, SessionConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
+  grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
   request.set_max_num_sessions(8);
 
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
+  ASSERT_TRUE(TryWriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response)));
 
   grpc::ClientContext session_context;
   SessionRequest session_request;
@@ -145,12 +147,13 @@ TEST_F(TestConcatServerTest, SessionBeforeInitialize) {
 class TestConcatServerSessionTest : public TestConcatServerTest {
  public:
   TestConcatServerSessionTest() {
-    grpc::ClientContext configure_context;
+    grpc::ClientContext context;
     InitializeRequest request;
     InitializeResponse response;
     request.set_max_num_sessions(8);
 
-    CHECK(stub_->Initialize(&configure_context, request, &response).ok());
+    CHECK(TryWriteInitializeRequest(
+        std::move(request), stub_->StreamInitialize(&context, &response)));
     public_key_ = response.public_key();
 
     SessionRequest session_request;

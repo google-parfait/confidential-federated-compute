@@ -51,13 +51,16 @@ rust_library(
     name = "key_management_service",
     srcs = ["key_management_service.rs"],
     deps = [
+        ":key_derivation",
         ":kms_prost_proto",
         ":storage_client",
         ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
+        "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:rand",
         "@oak_crates_index//:tonic",
     ],
 )
@@ -65,12 +68,16 @@ rust_library(
 rust_test(
     name = "key_management_service_test",
     srcs = ["key_management_service_test.rs"],
+    proc_macro_deps = ["@oak_crates_index//:async-trait"],
     deps = [
+        ":key_derivation",
         ":key_management_service",
         ":kms_prost_proto",
         ":storage",
         ":storage_client",
         ":storage_prost_proto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:googletest",
@@ -100,6 +107,7 @@ rust_binary(
     rustc_env = {
         "INSECURE_REFERENCE_VALUES": "$(location :insecure_reference_values)",
     },
+    rustc_flags = ["-Cpanic=abort"],
     deps = [
         ":key_management_service",
         ":kms_prost_proto",
@@ -291,6 +299,7 @@ rust_test(
         ":storage_client",
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
+        "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",

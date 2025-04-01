@@ -107,7 +107,7 @@ fn create_client_session(
         if let Some(response) = response.unwrap().response {
             assert_that!(
                 session.put_incoming_message(
-                    &SessionResponse::decode(response.encode_to_vec().as_slice())
+                    SessionResponse::decode(response.encode_to_vec().as_slice())
                         .expect("failed to convert SessionResponse")
                 ),
                 ok(anything())
@@ -154,10 +154,8 @@ fn decode_response(
     );
     assert_that!(
         session.put_incoming_message(
-            &SessionResponse::decode(
-                response.unwrap().response.unwrap().encode_to_vec().as_slice()
-            )
-            .expect("failed to convert SessionResponse")
+            SessionResponse::decode(response.unwrap().response.unwrap().encode_to_vec().as_slice())
+                .expect("failed to convert SessionResponse")
         ),
         ok(anything())
     );

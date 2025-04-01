@@ -139,3 +139,16 @@ message ClusterKeyValue {
   // Serialized P256 ECDSA private key (zero-padded, big-endian representation).
   bytes key = 1;
 }
+
+// A derivation key for a key in a keyset.
+message KeysetKeyValue {
+  // Initial keying material (IKM) for key derivation.
+  bytes ikm = 1;
+
+  // The COSE algorithm describing the type of the resulting keys. While only
+  // one algorithm is supported at present, this field enables future expansion.
+  sint64 algorithm = 2;
+
+  // The TTL of the derived keys.
+  google.protobuf.Duration ttl = 3;
+}

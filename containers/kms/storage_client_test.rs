@@ -111,7 +111,7 @@ impl OakSessionV1Service for FakeServer {
                 debug!("Server received SessionRequest: {:?}", msg);
                 session
                     .put_incoming_message(
-                        &oak_proto_rust::oak::session::v1::SessionRequest::decode(
+                        oak_proto_rust::oak::session::v1::SessionRequest::decode(
                             msg.unwrap().encode_to_vec().as_slice(),
                         )
                         .unwrap(),
@@ -153,6 +153,18 @@ impl OakSessionV1Service for FakeServer {
     }
 }
 
+/// A Signer that calls `block_on` to emulate
+/// `oak_sdk_containers::InstanceSigner`.
+#[derive(Clone)]
+struct BlockingSigner {
+    inner: FakeSigner,
+}
+impl oak_crypto::signer::Signer for BlockingSigner {
+    fn sign(&self, message: &[u8]) -> Vec<u8> {
+        tokio::runtime::Handle::current().block_on(async { self.inner.sign(message) })
+    }
+}
+
 /// Starts a fake server that delegates to the given MockStorage object. Returns
 /// a StorageClient connected to the server and a handle that will stop the
 /// server when dropped.
@@ -163,12 +175,14 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     let listener = TcpListener::bind("[::]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = FakeServer::new(storage);
+    // Test compatibility with `oak_sdk_containers::InstanceSigner`.
+    let signer = BlockingSigner { inner: server.signer.clone() };
     let client = GrpcStorageClient::new(
         OakSessionV1ServiceClient::connect(format!("http://{addr}")).await.unwrap(),
         init_fn,
         server.attester.clone(),
         server.endorser.clone(),
-        server.signer.clone(),
+        signer,
         server.reference_values.clone(),
         server.clock.clone(),
     );
@@ -262,7 +276,7 @@ async fn init_retries_other_errors() {
 
     let (client, _server_handle) = start_server(storage, init_fn).await;
     expect_that!(
-        timeout(Duration::from_secs(1), client.read(ReadRequest::default())).await,
+        timeout(Duration::from_secs(2), client.read(ReadRequest::default())).await,
         ok(ok(anything()))
     );
 }
@@ -456,8 +470,8 @@ async fn retry_on_connection_failure() {
 
     let (client, _server_handle) = start_server(storage, init_fn).await;
     let (read_response, update_response) = tokio::join!(
-        timeout(Duration::from_secs(1), client.read(read_request)),
-        timeout(Duration::from_secs(1), client.update(update_request)),
+        timeout(Duration::from_secs(2), client.read(read_request)),
+        timeout(Duration::from_secs(2), client.update(update_request)),
     );
     expect_that!(read_response, ok(ok(eq(ReadResponse::default()))));
     expect_that!(update_response, ok(ok(eq(UpdateResponse::default()))));

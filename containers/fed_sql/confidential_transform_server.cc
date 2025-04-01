@@ -85,6 +85,7 @@ using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
+using ::google::protobuf::Struct;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
@@ -467,8 +468,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
   return response;
 }
 
-absl::StatusOr<google::protobuf::Struct>
-FedSqlConfidentialTransform::InitializeTransform(
+absl::StatusOr<Struct> FedSqlConfidentialTransform::SetConfiguration(
     const InitializeRequest* request) {
   FedSqlContainerInitializeConfiguration config;
   if (!request->configuration().UnpackTo(&config)) {
@@ -481,14 +481,14 @@ FedSqlConfidentialTransform::InitializeTransform(
     absl::MutexLock l(&mutex_);
     if (intrinsics_ != std::nullopt) {
       return absl::FailedPreconditionError(
-          "Initialize can only be called once.");
+          "StreamInitialize can only be called once.");
     }
 
     FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
                          tensorflow_federated::aggregation::ParseFromConfig(
                              config.agg_configuration()));
     FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
-    google::protobuf::Struct config_properties;
+    Struct config_properties;
     (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
         intrinsics.at(0).uri);
     if (intrinsics.at(0).uri ==
@@ -523,17 +523,15 @@ FedSqlConfidentialTransform::InitializeTransform(
   }
 }
 
-absl::StatusOr<google::protobuf::Struct>
-FedSqlConfidentialTransform::StreamInitializeTransform(
+absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
     const InitializeRequest* request) {
-  FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
-                       InitializeTransform(request));
+  FCP_ASSIGN_OR_RETURN(Struct config_properties, SetConfiguration(request));
 
   FedSqlContainerInitializeConfiguration config;
   request->configuration().UnpackTo(&config);
 
-  // Check that all data blobs passed in through WriteConfigurationRequest are
-  // committed.
+  // Check that all data blobs passed in through WriteConfigurationRequest
+  // are committed.
   for (const auto& [config_id, config_metadata] : write_configuration_map_) {
     if (!config_metadata.commit) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -541,7 +539,6 @@ FedSqlConfidentialTransform::StreamInitializeTransform(
     }
   }
 
-  // Early return if there is no inference configuration.
   if (!config.has_inference_init_config()) {
     return config_properties;
   }

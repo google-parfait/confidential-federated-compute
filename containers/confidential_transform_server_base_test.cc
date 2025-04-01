@@ -193,50 +193,6 @@ class ConfidentialTransformServerBaseTest : public Test {
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
-TEST_F(ConfidentialTransformServerBaseTest, InitializeRequestWrongMessageType) {
-  grpc::ClientContext context;
-  google::protobuf::Value value;
-  InitializeRequest request;
-  InitializeResponse response;
-  request.mutable_configuration()->PackFrom(value);
-
-  auto status = stub_->Initialize(&context, request, &response);
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(), HasSubstr("Config cannot be unpacked."));
-}
-
-TEST_F(ConfidentialTransformServerBaseTest, InitializeMoreThanOnce) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  request.mutable_configuration()->PackFrom(config_status);
-
-  ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
-
-  grpc::ClientContext second_context;
-  auto status = stub_->Initialize(&second_context, request, &response);
-
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Initialize can only be called once"));
-}
-
-TEST_F(ConfidentialTransformServerBaseTest, ValidInitialize) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  request.mutable_configuration()->PackFrom(config_status);
-
-  ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
-
-  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
-}
-
 TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;
@@ -395,32 +351,6 @@ TEST_F(ConfidentialTransformServerBaseTest, StreamInitializeMoreThanOnce) {
               HasSubstr("StreamInitialize can only be called once"));
 }
 
-TEST_F(ConfidentialTransformServerBaseTest, InitializeBeforeStreamInitialize) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-
-  InitializeRequest initialize_request;
-  initialize_request.mutable_configuration()->PackFrom(config_status);
-  ASSERT_TRUE(stub_->Initialize(&context, initialize_request, &response).ok());
-
-  grpc::ClientContext second_context;
-  StreamInitializeRequest stream_initialize_request;
-  stream_initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&second_context, &response);
-  ASSERT_TRUE(writer->Write(stream_initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
-
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("StreamInitialize can only be called once"));
-}
-
 TEST_F(ConfidentialTransformServerBaseTest,
        StreamInitializeOnlyWriteConfiguration) {
   grpc::ClientContext context;
@@ -472,96 +402,6 @@ TEST_F(ConfidentialTransformServerBaseTest,
                 "configured with a InitializeRequest, found more than one."));
 }
 
-TEST_F(ConfidentialTransformServerBaseTest, SessionConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  request.mutable_configuration()->PackFrom(config_status);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
-
-  grpc::ClientContext session_context;
-  SessionRequest session_request;
-  SessionResponse session_response;
-  session_request.mutable_configure();
-
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(session_request));
-  ASSERT_TRUE(stream->Read(&session_response));
-
-  ASSERT_TRUE(session_response.has_configure());
-  ASSERT_GT(session_response.configure().nonce().size(), 0);
-
-  google::rpc::Status config;
-  config.set_code(grpc::StatusCode::OK);
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      config);
-  ASSERT_TRUE(stream->Write(finalize_request));
-  ASSERT_TRUE(stream->Read(&finalize_response));
-  ASSERT_TRUE(stream->Finish().ok());
-}
-
-TEST_F(ConfidentialTransformServerBaseTest,
-       SessionRejectsMoreThanMaximumNumSessions) {
-  grpc::ClientContext configure_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  request.mutable_configuration()->PackFrom(config_status);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
-
-  std::vector<std::unique_ptr<
-      ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>>
-      streams;
-  std::vector<std::unique_ptr<grpc::ClientContext>> contexts;
-  for (int i = 0; i < kMaxNumSessions; i++) {
-    std::unique_ptr<grpc::ClientContext> session_context =
-        std::make_unique<grpc::ClientContext>();
-    SessionRequest session_request;
-    SessionResponse session_response;
-    session_request.mutable_configure();
-
-    std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-        stream = stub_->Session(session_context.get());
-    ASSERT_TRUE(stream->Write(session_request));
-    ASSERT_TRUE(stream->Read(&session_response));
-
-    // Keep the context and stream so they don't go out of scope and end the
-    // session.
-    contexts.emplace_back(std::move(session_context));
-    streams.emplace_back(std::move(stream));
-  }
-
-  grpc::ClientContext rejected_context;
-  SessionRequest rejected_request;
-  SessionResponse rejected_response;
-  rejected_request.mutable_configure();
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&rejected_context);
-  ASSERT_TRUE(stream->Write(rejected_request));
-  ASSERT_FALSE(stream->Read(&rejected_response));
-  ASSERT_EQ(stream->Finish().error_code(),
-            grpc::StatusCode::FAILED_PRECONDITION);
-}
-
 TEST_F(ConfidentialTransformServerBaseTest, SessionBeforeInitialize) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -575,7 +415,7 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionBeforeInitialize) {
   auto status = stream->Finish();
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
-              HasSubstr("Initialize must be called before Session"));
+              HasSubstr("StreamInitialize must be called before Session"));
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
@@ -688,14 +528,20 @@ class InitializedConfidentialTransformServerBaseTest
  public:
   InitializedConfidentialTransformServerBaseTest() {
     grpc::ClientContext configure_context;
-    InitializeRequest request;
     InitializeResponse response;
+
     google::rpc::Status config_status;
     config_status.set_code(grpc::StatusCode::OK);
-    request.mutable_configuration()->PackFrom(config_status);
-    request.set_max_num_sessions(kMaxNumSessions);
+    StreamInitializeRequest request;
+    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+        config_status);
+    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
 
-    CHECK(stub_->Initialize(&configure_context, request, &response).ok());
+    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+        stub_->StreamInitialize(&configure_context, &response);
+    CHECK(writer->Write(request));
+    CHECK(writer->WritesDone());
+    CHECK(writer->Finish().ok());
     public_key_ = response.public_key();
   }
 
@@ -1081,87 +927,6 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       finalize_config);
   ASSERT_TRUE(stream_->Write(finalize_request));
   ASSERT_TRUE(stream_->Read(&finalize_response));
-
-  ASSERT_TRUE(finalize_response.has_read());
-  ASSERT_TRUE(finalize_response.read().finish_read());
-  ASSERT_GT(
-      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
-  ASSERT_TRUE(
-      finalize_response.read().first_response_metadata().has_unencrypted());
-}
-
-class StreamInitializedConfidentialTransformServerBaseTest
-    : public ConfidentialTransformServerBaseTest {
- public:
-  StreamInitializedConfidentialTransformServerBaseTest() {
-    grpc::ClientContext configure_context;
-    InitializeResponse response;
-
-    google::rpc::Status config_status;
-    config_status.set_code(grpc::StatusCode::OK);
-    StreamInitializeRequest request;
-    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-        config_status);
-    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
-
-    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-        stub_->StreamInitialize(&configure_context, &response);
-    CHECK(writer->Write(request));
-    CHECK(writer->WritesDone());
-    CHECK(writer->Finish().ok());
-  }
-
- protected:
-  void StartSession() {
-    SessionRequest session_request;
-    SessionResponse session_response;
-    session_request.mutable_configure();
-
-    stream_ = stub_->Session(&session_context_);
-    CHECK(stream_->Write(session_request));
-    CHECK(stream_->Read(&session_response));
-    nonce_generator_ =
-        std::make_unique<NonceGenerator>(session_response.configure().nonce());
-  }
-  grpc::ClientContext session_context_;
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream_;
-  std::unique_ptr<NonceGenerator> nonce_generator_;
-};
-
-TEST_F(StreamInitializedConfidentialTransformServerBaseTest,
-       SessionWritesAndFinalizes) {
-  std::string data = "test data";
-  SessionRequest write_request = CreateDefaultWriteRequest(data);
-  SessionResponse write_response;
-
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillRepeatedly(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
-  StartSession();
-
-  // Accumulate the same unencrypted blob twice.
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
-
-  google::rpc::Status config;
-  config.set_code(grpc::StatusCode::OK);
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_TRUE(stream_->Finish().ok());
 
   ASSERT_TRUE(finalize_response.has_read());
   ASSERT_TRUE(finalize_response.read().finish_read());

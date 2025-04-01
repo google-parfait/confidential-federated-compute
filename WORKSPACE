@@ -191,22 +191,22 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-XGBkZW+I+yN0q4+Vs+gG9879tf9+Lae8XRZCsghUbRA=",
-    strip_prefix = "oak-aa9cec7b610d01bc8c046d5837b06d522858da07",
-    url = "https://github.com/project-oak/oak/archive/aa9cec7b610d01bc8c046d5837b06d522858da07.tar.gz",
+    integrity = "sha256-43v+nQM0aST9pPgJTSjLd//WmITBP0gzw4MWDrXENas=",
+    strip_prefix = "oak-705c854b8cee04f12dcf583a490a10f1e4279617",
+    url = "https://github.com/project-oak/oak/archive/705c854b8cee04f12dcf583a490a10f1e4279617.tar.gz",
 )
 
 http_archive(
     name = "org_tensorflow",
+    integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
     patches = [
         "//third_party/org_tensorflow:cython.patch",
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
     ],
-    sha256 = "899533cb45ded37ef069ec18b9ae04401f2c9babee4dde3672343d63a83f3910",
-    strip_prefix = "tensorflow-0f3366971a0a78a71303167d14bc5c1659a4b632",
+    strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
     urls = [
-        "https://github.com/tensorflow/tensorflow/archive/0f3366971a0a78a71303167d14bc5c1659a4b632.tar.gz",
+        "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
     ],
 )
 
@@ -317,9 +317,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-WmVPr+/6C3NnAHIJcSbX5PkmtJMh1g4J8tiwAL5jtYk=",
-    strip_prefix = "trusted-computations-platform-ce026a2fc3082b25d12c640df44022ca81f2f4b3",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ce026a2fc3082b25d12c640df44022ca81f2f4b3.tar.gz",
+    integrity = "sha256-9v6HKhFNSjjHmlTPqajXvlP91CHwiqVZbvcuRoahQYE=",
+    strip_prefix = "trusted-computations-platform-af8d62c796b0b272a90d06feeede7e59531210f2",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/af8d62c796b0b272a90d06feeede7e59531210f2.tar.gz",
 )
 
 # TensorFlow pins an old version of upb that's compatible with their old
@@ -397,7 +397,14 @@ load(
 python_repository(name = "python_version_repo")
 
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "@local_xla//third_party/py:python_wheel.bzl",
+    "python_wheel_version_suffix_repository",
+)
+
+python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
+
+load(
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
 
@@ -409,7 +416,7 @@ load(
     "CUDNN_REDISTRIBUTIONS",
 )
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
     "cuda_redist_init_repositories",
     "cudnn_redist_init_repository",
 )
@@ -423,21 +430,21 @@ cudnn_redist_init_repository(
 )
 
 load(
-    "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
     "cuda_configure",
 )
 
 cuda_configure(name = "local_config_cuda")
 
 load(
-    "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
     "nccl_redist_init_repository",
 )
 
 nccl_redist_init_repository()
 
 load(
-    "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
+    "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
     "nccl_configure",
 )
 

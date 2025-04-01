@@ -105,6 +105,7 @@ using ::google::internal::federated::plan::
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::google::protobuf::RepeatedPtrField;
+using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
@@ -233,6 +234,24 @@ std::string ReadFileContent(std::string file_path) {
   return buffer.str();
 }
 
+// Attempt to write the InitializeRequest to the client stream and then close
+// the stream, returning the status of Finish.
+grpc::Status WriteInitializeRequest(
+    InitializeRequest request,
+    std::unique_ptr<ClientWriter<StreamInitializeRequest>> init_stream) {
+  StreamInitializeRequest stream_request;
+  *stream_request.mutable_initialize_request() = std::move(request);
+  if (!init_stream->Write(stream_request)) {
+    return grpc::Status(StatusCode::ABORTED,
+                        "Write to StreamInitialize failed.");
+  }
+  if (!init_stream->WritesDone()) {
+    return grpc::Status(StatusCode::ABORTED,
+                        "WritesDone to StreamInitialize failed.");
+  }
+  return init_stream->Finish();
+}
+
 class FedSqlServerTest : public Test {
  public:
   FedSqlServerTest() {
@@ -296,7 +315,20 @@ Configuration FedSqlServerTest::DefaultConfiguration() const {
   )pb");
 }
 
-TEST_F(FedSqlServerTest, InvalidInitializeRequest) {
+TEST_F(FedSqlServerTest, ValidStreamInitialize) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(FedSqlServerTest, InvalidStreamInitializeRequest) {
   grpc::ClientContext context;
   FedSqlContainerInitializeConfiguration invalid_config;
   invalid_config.mutable_agg_configuration()
@@ -306,39 +338,28 @@ TEST_F(FedSqlServerTest, InvalidInitializeRequest) {
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
 
-  auto status = stub_->Initialize(&context, request, &response);
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("is not a supported intrinsic_uri"));
 }
 
-TEST_F(FedSqlServerTest, InitializeRequestWrongMessageType) {
-  grpc::ClientContext context;
-  google::protobuf::Value value;
-  InitializeRequest request;
-  InitializeResponse response;
-  request.mutable_configuration()->PackFrom(value);
-
-  auto status = stub_->Initialize(&context, request, &response);
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Configuration cannot be unpacked."));
-}
-
-TEST_F(FedSqlServerTest, InitializeRequestNoIntrinsicConfigs) {
+TEST_F(FedSqlServerTest, StreamInitializeRequestNoIntrinsicConfigs) {
   grpc::ClientContext context;
   FedSqlContainerInitializeConfiguration invalid_config;
   InitializeRequest request;
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
 
-  auto status = stub_->Initialize(&context, request, &response);
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Configuration must have exactly one IntrinsicConfig"));
 }
 
-TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersInitialize) {
+TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersStreamInitialize) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -373,14 +394,15 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersInitialize) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  auto status = stub_->Initialize(&context, request, &response);
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
 
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("must both have type DT_DOUBLE"));
 }
 
-TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsInitialize) {
+TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsStreamInitialize) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -406,13 +428,14 @@ TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsInitialize) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  auto status = stub_->Initialize(&context, request, &response);
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Configuration must have exactly one IntrinsicConfig"));
 }
 
-TEST_F(FedSqlServerTest, InitializeMoreThanOnce) {
+TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -420,28 +443,21 @@ TEST_F(FedSqlServerTest, InitializeMoreThanOnce) {
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
 
-  ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
+  grpc::Status first_init_status = WriteInitializeRequest(
+      request, stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(first_init_status.ok());
 
   grpc::ClientContext second_context;
-  auto status = stub_->Initialize(&second_context, request, &response);
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&second_context, &response));
 
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Initialize can only be called once"));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("StreamInitialize can only be called once"));
 }
 
-TEST_F(FedSqlServerTest, ValidInitialize) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-
-  ASSERT_TRUE(stub_->Initialize(&context, request, &response).ok());
-}
-
-TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
+TEST_F(FedSqlServerTest,
+       FedSqlDpGroupByStreamInitializeGeneratesConfigProperties) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -479,8 +495,9 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  auto status = stub_->Initialize(&context, request, &response);
-  ASSERT_TRUE(status.ok());
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_TRUE(cwt.ok());
@@ -495,7 +512,7 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInitializeGeneratesConfigProperties) {
 }
 
 TEST_F(FedSqlServerTest,
-       FedSqlDpAggregatorBundleInitializeGeneratesConfigProperties) {
+       FedSqlDpAggregatorBundleStreamInitializeGeneratesConfigProperties) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -540,8 +557,9 @@ TEST_F(FedSqlServerTest,
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  auto status = stub_->Initialize(&context, request, &response);
-  ASSERT_TRUE(status.ok());
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_TRUE(cwt.ok());
@@ -558,25 +576,21 @@ TEST_F(FedSqlServerTest,
 TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
   grpc::ClientContext context;
   google::protobuf::Value value;
-  StreamInitializeRequest request;
+  InitializeRequest request;
   InitializeResponse response;
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      value);
+  request.mutable_configuration()->PackFrom(value);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Configuration cannot be unpacked."));
 }
 
-TEST_F(FedSqlServerTest, ValidStreamInitialize) {
+TEST_F(FedSqlServerTest, ValidStreamInitializeWithInferenceConfigs) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -630,11 +644,8 @@ TEST_F(FedSqlServerTest, ValidStreamInitialize) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   // Set tokenizer data blob.
   std::string expected_tokenizer_content = "test tokenizer content";
@@ -686,9 +697,10 @@ TEST_F(FedSqlServerTest, ValidStreamInitialize) {
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+  EXPECT_TRUE(status.ok());
 
   // Assert inference files are written to /tmp/ directory.
   ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
@@ -721,7 +733,7 @@ TEST_F(FedSqlServerTest, ValidStreamInitialize) {
 TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
+  InitializeRequest request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -771,15 +783,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
       }
     }
   )pb");
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      init_config);
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
               HasSubstr("model_init_config must be set."));
@@ -788,7 +796,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
 TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
+  InitializeRequest request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -835,15 +843,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
       }
     }
   )pb");
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      init_config);
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(), HasSubstr("model_config must be set."));
 }
@@ -851,7 +855,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
 TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
+  InitializeRequest request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -904,15 +908,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
       }
     }
   )pb");
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      init_config);
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+  request.mutable_configuration()->PackFrom(init_config);
+  request.set_max_num_sessions(kMaxNumSessions);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
               HasSubstr("inference_task.inference_logic must be set for all "
@@ -923,7 +923,7 @@ TEST_F(FedSqlServerTest,
        StreamInitializeWriteConfigurationRequestNotCommitted) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -977,11 +977,8 @@ TEST_F(FedSqlServerTest,
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   StreamInitializeRequest write_configuration;
   ConfigurationMetadata* metadata =
@@ -993,9 +990,9 @@ TEST_F(FedSqlServerTest,
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
@@ -1012,7 +1009,7 @@ TEST_F(FedSqlServerTest,
 TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -1066,11 +1063,8 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   StreamInitializeRequest write_configuration;
   ConfigurationMetadata* metadata =
@@ -1083,9 +1077,8 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1104,7 +1097,7 @@ TEST_F(FedSqlServerTest,
        StreamInitializeInvalidGemmaModelWeightConfigurationId) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -1158,11 +1151,8 @@ TEST_F(FedSqlServerTest,
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   StreamInitializeRequest tokenizer_write_config;
   ConfigurationMetadata* tokenizer_metadata =
@@ -1184,9 +1174,8 @@ TEST_F(FedSqlServerTest,
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(model_weight_write_config));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1205,7 +1194,7 @@ TEST_F(FedSqlServerTest,
 TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -1259,11 +1248,8 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   StreamInitializeRequest tokenizer_write_config;
   ConfigurationMetadata* tokenizer_metadata =
@@ -1277,9 +1263,8 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1297,7 +1282,7 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
 TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -1351,11 +1336,8 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   // Set tokenizer data blob.
   StreamInitializeRequest write_configuration;
@@ -1374,9 +1356,8 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("The total size of the data blob does not match "
@@ -1390,17 +1371,44 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
   std::filesystem::remove("/tmp/write_configuration_1");
 }
 
-TEST_F(FedSqlServerTest, InvalidConfigureRequest) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
+TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  configure_request.mutable_configure()->mutable_configuration();
 
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_FALSE(stream->Read(&configure_response));
+  auto status = stream->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Initialize must be called before Session"));
+}
 
+class InitializedFedSqlServerTest : public FedSqlServerTest {
+ public:
+  InitializedFedSqlServerTest() : FedSqlServerTest() {
+    grpc::ClientContext context;
+    InitializeRequest request;
+    InitializeResponse response;
+    FedSqlContainerInitializeConfiguration init_config;
+    *init_config.mutable_agg_configuration() = DefaultConfiguration();
+    request.mutable_configuration()->PackFrom(init_config);
+    request.set_max_num_sessions(kMaxNumSessions);
+
+    grpc::Status status = WriteInitializeRequest(
+        std::move(request), stub_->StreamInitialize(&context, &response));
+    EXPECT_TRUE(status.ok());
+    public_key_ = response.public_key();
+  }
+
+ protected:
+  std::string public_key_;
+};
+
+TEST_F(InitializedFedSqlServerTest, InvalidConfigureRequest) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -1413,22 +1421,12 @@ TEST_F(FedSqlServerTest, InvalidConfigureRequest) {
   ASSERT_FALSE(stream->Read(&session_response));
 
   grpc::Status status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(),
               HasSubstr("does not contain exactly one table schema"));
 }
 
-TEST_F(FedSqlServerTest, ConfigureRequestWrongMessageType) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, ConfigureRequestWrongMessageType) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -1446,17 +1444,7 @@ TEST_F(FedSqlServerTest, ConfigureRequestWrongMessageType) {
               HasSubstr("configuration cannot be unpacked"));
 }
 
-TEST_F(FedSqlServerTest, ConfigureInvalidTableSchema) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, ConfigureInvalidTableSchema) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -1476,17 +1464,7 @@ TEST_F(FedSqlServerTest, ConfigureInvalidTableSchema) {
               HasSubstr("SQL query input schema has no columns"));
 }
 
-TEST_F(FedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -1502,17 +1480,7 @@ TEST_F(FedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
   ASSERT_GT(session_response.configure().nonce().size(), 0);
 }
 
-TEST_F(FedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -1527,17 +1495,7 @@ TEST_F(FedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
   ASSERT_GT(session_response.configure().nonce().size(), 0);
 }
 
-TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
-  grpc::ClientContext configure_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&configure_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   std::vector<std::unique_ptr<
       ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>>
       streams;
@@ -1573,22 +1531,6 @@ TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   ASSERT_FALSE(stream->Read(&rejected_response));
   ASSERT_EQ(stream->Finish().error_code(),
             grpc::StatusCode::FAILED_PRECONDITION);
-}
-
-TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  configure_request.mutable_configure()->mutable_configuration();
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_FALSE(stream->Read(&configure_response));
-  auto status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Initialize must be called before Session"));
 }
 
 std::string BuildFedSqlGroupByCheckpoint(
@@ -1663,17 +1605,7 @@ std::string BuildSensitiveGroupByCheckpoint(
   return checkpoint_string;
 }
 
-TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
@@ -1707,17 +1639,7 @@ TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
               HasSubstr("Failed to accumulate SQL query results"));
 }
 
-TEST_F(FedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
-
+TEST_F(InitializedFedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
@@ -1766,8 +1688,77 @@ TEST_F(FedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 20);
 }
 
+TEST_F(InitializedFedSqlServerTest,
+       SerializeEncryptedInputsWithoutOutputNodeIdFails) {
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  configure_request.mutable_configure();
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+  ASSERT_TRUE(stream->Read(&configure_response));
+  auto nonce_generator =
+      std::make_unique<NonceGenerator>(configure_response.configure().nonce());
+
+  std::string input_col_name = "foo";
+  std::string output_col_name = "foo_out";
+
+  MessageDecryptor decryptor;
+  absl::StatusOr<std::string> reencryption_public_key =
+      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
+  ASSERT_TRUE(reencryption_public_key.ok());
+  std::string ciphertext_associated_data =
+      BlobHeader::default_instance().SerializeAsString();
+
+  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
+  ASSERT_TRUE(nonce_0.ok());
+  absl::StatusOr<Record> rewrapped_record_0 =
+      crypto_test_utils::CreateRewrappedRecord(
+          message_0, ciphertext_associated_data, public_key_,
+          nonce_0->blob_nonce, *reencryption_public_key);
+  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+
+  SessionRequest request_0;
+  WriteRequest* write_request_0 = request_0.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  *write_request_0->mutable_first_request_metadata() =
+      GetBlobMetadataFromRecord(*rewrapped_record_0);
+  write_request_0->mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_counter(nonce_0->counter);
+  write_request_0->mutable_first_request_configuration()->PackFrom(config);
+  write_request_0->set_commit(true);
+  write_request_0->set_data(
+      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+
+  SessionResponse response_0;
+
+  ASSERT_TRUE(stream->Write(request_0));
+  ASSERT_TRUE(stream->Read(&response_0));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_FALSE(stream->Read(&finalize_response));
+  grpc::Status finish_status = stream->Finish();
+  EXPECT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(
+      finish_status.error_message(),
+      HasSubstr("No output access policy node ID set for serialized outputs"));
+}
+
 TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
-  grpc::ClientContext init_context;
+  grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
@@ -1807,7 +1798,9 @@ TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1875,7 +1868,7 @@ TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
 }
 
 TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
-  grpc::ClientContext init_context;
+  grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
@@ -1915,7 +1908,9 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1967,96 +1962,20 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
   EXPECT_THAT(output_keys, Not(AnyOf(Contains("k1"), Contains("k2"))));
 }
 
-TEST_F(FedSqlServerTest, SerializeEncryptedInputsWithoutOutputNodeIdFails) {
-  grpc::ClientContext init_context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
-
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  configure_request.mutable_configure();
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_TRUE(stream->Read(&configure_response));
-  auto nonce_generator =
-      std::make_unique<NonceGenerator>(configure_response.configure().nonce());
-
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
-  MessageDecryptor decryptor;
-  absl::StatusOr<std::string> reencryption_public_key =
-      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
-  std::string ciphertext_associated_data =
-      BlobHeader::default_instance().SerializeAsString();
-
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
-  absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
-          message_0, ciphertext_associated_data, response.public_key(),
-          nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
-
-  SessionRequest request_0;
-  WriteRequest* write_request_0 = request_0.mutable_write();
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-  *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
-  write_request_0->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_0->counter);
-  write_request_0->mutable_first_request_configuration()->PackFrom(config);
-  write_request_0->set_commit(true);
-  write_request_0->set_data(
-      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
-
-  SessionResponse response_0;
-
-  ASSERT_TRUE(stream->Write(request_0));
-  ASSERT_TRUE(stream->Read(&response_0));
-
-  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_SERIALIZE
-  )pb");
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      finalize_config);
-  ASSERT_TRUE(stream->Write(finalize_request));
-  ASSERT_FALSE(stream->Read(&finalize_response));
-  grpc::Status finish_status = stream->Finish();
-  EXPECT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  EXPECT_THAT(
-      finish_status.error_message(),
-      HasSubstr("No output access policy node ID set for serialized outputs"));
-}
-
 TEST_F(FedSqlServerTest,
        ReportEncryptedInputsWithOutputNodeIdOutputsEncryptedResult) {
-  grpc::ClientContext init_context;
+  grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
   FedSqlContainerInitializeConfiguration init_config;
-  *init_config.mutable_agg_configuration() = DefaultConfiguration();
   init_config.set_report_output_access_policy_node_id(kReportOutputNodeId);
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  ASSERT_TRUE(stub_->Initialize(&init_context, request, &response).ok());
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -2146,7 +2065,7 @@ TEST_F(FedSqlServerTest,
 class FedSqlServerFederatedSumTest : public FedSqlServerTest {
  public:
   FedSqlServerFederatedSumTest() {
-    grpc::ClientContext configure_context;
+    grpc::ClientContext context;
     InitializeRequest request;
     InitializeResponse response;
     FedSqlContainerInitializeConfiguration init_config;
@@ -2156,7 +2075,9 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    CHECK(stub_->Initialize(&configure_context, request, &response).ok());
+    grpc::Status status = WriteInitializeRequest(
+        std::move(request), stub_->StreamInitialize(&context, &response));
+    CHECK(status.ok());
     public_key_ = response.public_key();
 
     SessionRequest session_request;
@@ -2855,7 +2776,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
 TEST_F(FedSqlServerTest, StreamInitializeWithSqlQuerySession) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -2890,17 +2811,13 @@ TEST_F(FedSqlServerTest, StreamInitializeWithSqlQuerySession) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request),
+                             stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
 
   // Set up Session.
   grpc::ClientContext session_context;
@@ -2980,7 +2897,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithSqlQuerySession) {
 TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -3039,11 +2956,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   // Set tokenizer data blob.
   std::string expected_tokenizer_content = "tokenizer content";
@@ -3092,9 +3006,10 @@ TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+  EXPECT_TRUE(status.ok());
 
   // Set up Session.
   grpc::ClientContext session_context;
@@ -3182,7 +3097,7 @@ TEST_F(FedSqlServerTest,
        StreamInitializeWithGemmaInferenceSessionInvalidGemmaModel) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest initialize_request;
+  InitializeRequest initialize_request;
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -3241,11 +3156,8 @@ TEST_F(FedSqlServerTest,
       }
     }
   )pb");
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(init_config);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  initialize_request.mutable_configuration()->PackFrom(init_config);
+  initialize_request.set_max_num_sessions(kMaxNumSessions);
 
   // Set tokenizer data blob.
   std::string expected_tokenizer_content = "tokenizer content";
@@ -3294,9 +3206,9 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  auto status = writer->Finish();
+
+  grpc::Status status =
+      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),

@@ -84,33 +84,6 @@ absl::Status HandleWrite(
 
 }  // namespace
 
-absl::Status ConfidentialTransformBase::InitializeInternal(
-    const InitializeRequest* request, InitializeResponse* response) {
-  FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
-                       InitializeTransform(request));
-  const BlobDecryptor* blob_decryptor;
-  {
-    absl::MutexLock l(&mutex_);
-    if (blob_decryptor_ != std::nullopt) {
-      return absl::FailedPreconditionError(
-          "Initialize can only be called once.");
-    }
-    blob_decryptor_.emplace(crypto_stub_, config_properties);
-    session_tracker_.emplace(request->max_num_sessions());
-
-    // Since blob_decryptor_ is set once in Initialize or StreamInitialize and
-    // never modified, and the underlying object is threadsafe, it is safe to
-    // store a local pointer to it and access the object without a lock after we
-    // check under the mutex that a value has been set for the std::optional
-    // wrapper.
-    blob_decryptor = &*blob_decryptor_;
-  }
-
-  FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
-                       blob_decryptor->GetPublicKey());
-  return absl::OkStatus();
-}
-
 absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
@@ -276,12 +249,6 @@ absl::Status ConfidentialTransformBase::SessionInternal(
       "Session failed to read client write or finalize message.");
 }
 
-grpc::Status ConfidentialTransformBase::Initialize(
-    ServerContext* context, const InitializeRequest* request,
-    InitializeResponse* response) {
-  return ToGrpcStatus(InitializeInternal(request, response));
-}
-
 grpc::Status ConfidentialTransformBase::StreamInitialize(
     ServerContext* context, grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
@@ -296,7 +263,7 @@ grpc::Status ConfidentialTransformBase::Session(
     absl::MutexLock l(&mutex_);
     if (session_tracker_ == std::nullopt) {
       return ToGrpcStatus(absl::FailedPreconditionError(
-          "Initialize must be called before Session."));
+          "StreamInitialize must be called before Session."));
     }
 
     // Since session_tracker_ is set once in Initialize and never

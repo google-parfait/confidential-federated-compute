@@ -3,9 +3,9 @@
 # multiple patch files, we instead augment their patch.
 --- third_party/protobuf/protobuf.patch
 +++ third_party/protobuf/protobuf.patch
-@@ -19,2 +19,12 @@
+@@ -61,3 +61,13 @@
           "//build_defs:config_msvc": [],
-+@@ -172,3 +174,9 @@
++@@ -172,3 +202,9 @@
 + )
 +
 ++filegroup(
@@ -15,4 +15,6 @@
 ++)
 ++
 + filegroup(
- diff --git a/python/google/protobuf/pyext/descriptor.cc b/python/google/protobuf/pyext/descriptor.cc
+-@@ -1074,7 +1104,8 @@
++@@ -1074,7 +1110,8 @@
+          "@com_google_protobuf//:type_proto",

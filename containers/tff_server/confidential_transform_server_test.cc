@@ -68,15 +68,16 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::FileInfo;
 using ::fcp::confidentialcompute::FinalizeRequest;
-using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::TffSessionWriteConfig;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
@@ -199,7 +200,7 @@ TffSessionConfig CreateSessionConfiguration(Value function, Value argument,
   return config;
 }
 
-TEST(TffConfidentialTransform, InitializeTransformSuccess) {
+TEST(TffConfidentialTransform, StreamInitializeTransformSuccess) {
   testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
   TffConfidentialTransform service(&mock_crypto_stub);
   std::unique_ptr<Server> server;
@@ -219,10 +220,14 @@ TEST(TffConfidentialTransform, InitializeTransformSuccess) {
                           grpc::InsecureChannelCredentials()));
 
   grpc::ClientContext context;
-  InitializeRequest request;
+  StreamInitializeRequest request;
   InitializeResponse response;
-  auto status = stub->Initialize(&context, request, &response);
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::OK);
+  request.mutable_initialize_request();
+  std::unique_ptr<ClientWriter<StreamInitializeRequest>> init_stream =
+      stub->StreamInitialize(&context, &response);
+  EXPECT_TRUE(init_stream->Write(request));
+  EXPECT_TRUE(init_stream->WritesDone());
+  EXPECT_TRUE(init_stream->Finish().ok());
 }
 
 TEST(TffSessionTest, ConfigureSessionSuccess) {

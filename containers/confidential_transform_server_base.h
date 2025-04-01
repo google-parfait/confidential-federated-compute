@@ -36,11 +36,6 @@ namespace confidential_federated_compute {
 class ConfidentialTransformBase
     : public fcp::confidentialcompute::ConfidentialTransform::Service {
  public:
-  grpc::Status Initialize(
-      grpc::ServerContext* context,
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response) override;
-
   grpc::Status StreamInitialize(
       grpc::ServerContext* context,
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
@@ -58,8 +53,6 @@ class ConfidentialTransformBase
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
       : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
 
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) = 0;
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) = 0;
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
@@ -74,10 +67,6 @@ class ConfidentialTransformBase
   CreateSession() = 0;
 
  private:
-  absl::Status InitializeInternal(
-      const fcp::confidentialcompute::InitializeRequest* request,
-      fcp::confidentialcompute::InitializeResponse* response);
-
   absl::Status StreamInitializeInternal(
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
           reader,
