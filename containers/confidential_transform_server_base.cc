@@ -39,6 +39,7 @@ namespace confidential_federated_compute {
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidential_compute::NonceChecker;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
@@ -200,7 +201,7 @@ absl::Status ConfidentialTransformBase::SessionInternal(
       nonce_checker.GetSessionNonce();
   stream->Write(configure_response);
 
-  // Initialze result_blob_metadata with unencrypted metadata since
+  // Initialize result_blob_metadata with unencrypted metadata since
   // EarliestExpirationTimeMetadata expects inputs to have either unencrypted or
   // hpke_plus_aead_data.
   BlobMetadata result_blob_metadata;
@@ -224,9 +225,15 @@ absl::Status ConfidentialTransformBase::SessionInternal(
           break;
         }
         result_blob_metadata = *earliest_expiration_metadata;
-        // TODO: spin up a thread to incorporate each blob.
         FCP_RETURN_IF_ERROR(HandleWrite(write_request, blob_decryptor,
                                         nonce_checker, stream, session.get()));
+        break;
+      }
+      case SessionRequest::kCommit: {
+        const CommitRequest& commit_request = session_request.commit();
+        FCP_ASSIGN_OR_RETURN(SessionResponse response,
+                             session->SessionCommit(commit_request));
+        stream->Write(response);
         break;
       }
       case SessionRequest::kFinalize: {

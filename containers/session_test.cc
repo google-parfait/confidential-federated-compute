@@ -73,6 +73,22 @@ TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
   EXPECT_TRUE(response.write().status().message().empty());
 }
 
+TEST(SessionTest, ErrorToSessionCommitResponseTest) {
+  SessionResponse response =
+      ToSessionCommitResponse(absl::InvalidArgumentError("invalid arg"));
+  ASSERT_TRUE(response.has_commit());
+  EXPECT_EQ(response.commit().status().code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_EQ(response.commit().status().message(), "invalid arg");
+}
+
+TEST(SessionTest, OkToSessionCommitResponseTest) {
+  SessionResponse response = ToSessionCommitResponse(absl::OkStatus());
+  ASSERT_TRUE(response.has_commit());
+  EXPECT_EQ(response.commit().status().code(), grpc::StatusCode::OK);
+  EXPECT_TRUE(response.commit().status().message().empty());
+}
+
 TEST(SessionTest, MaximumSessionsReachedConcurrentAddRemove) {
   SessionTracker session_tracker(1);
   EXPECT_THAT(session_tracker.AddSession(), IsOk());

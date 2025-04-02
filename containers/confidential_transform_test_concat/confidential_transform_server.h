@@ -50,6 +50,10 @@ class TestConcatSession final : public confidential_federated_compute::Session {
         absl::OkStatus(),
         write_request.first_request_metadata().total_size_bytes());
   }
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
+      const fcp::confidentialcompute::CommitRequest& commit_request) override {
+    return absl::UnimplementedError("Commit handling is not yet implemented.");
+  }
   // Run any session finalization logic and complete the session.
   // After finalization, the session state is no longer mutable.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(

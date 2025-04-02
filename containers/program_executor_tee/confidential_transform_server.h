@@ -46,6 +46,10 @@ class ProgramExecutorTeeSession final
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
       const fcp::confidentialcompute::WriteRequest& write_request,
       std::string unencrypted_data) override;
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
+      const fcp::confidentialcompute::CommitRequest& commit_request) override {
+    return absl::UnimplementedError("Commit handling is not yet implemented.");
+  }
   // Triggers program execution.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,

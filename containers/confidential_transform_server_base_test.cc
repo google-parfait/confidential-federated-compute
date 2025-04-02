@@ -49,6 +49,8 @@ using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::CommitRequest;
+using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigurationMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -78,6 +80,8 @@ class MockSession final : public confidential_federated_compute::Session {
   MOCK_METHOD(absl::StatusOr<SessionResponse>, SessionWrite,
               (const WriteRequest& write_request, std::string unencrypted_data),
               (override));
+  MOCK_METHOD(absl::StatusOr<SessionResponse>, SessionCommit,
+              (const CommitRequest& commit_request), (override));
   MOCK_METHOD(absl::StatusOr<SessionResponse>, FinalizeSession,
               (const FinalizeRequest& request,
                const BlobMetadata& input_metadata),
@@ -577,6 +581,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillRepeatedly(Return(
           ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
   service_.AddSession(std::move(mock_session));
@@ -618,6 +624,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
           Return(ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())))
       .WillOnce(Return(ToSessionWriteFinishedResponse(
           absl::InvalidArgumentError("Invalid argument"), 0)));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
   service_.AddSession(std::move(mock_session));
@@ -676,6 +684,26 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
+       SessionFailsIfCommitFails) {
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillOnce(Return(absl::InternalError("Internal Error")));
+  service_.AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest commit_request;
+  commit_request.mutable_commit();
+  SessionResponse commit_response;
+
+  ASSERT_TRUE(stream_->Write(commit_request));
+  ASSERT_FALSE(stream_->Read(&commit_response));
+  ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::INTERNAL);
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionFailsIfFinalizeFails) {
   std::string data = "test data";
   SessionRequest write_request = CreateDefaultWriteRequest(data);
@@ -688,6 +716,9 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillRepeatedly(Return(
           ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
+
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_.AddSession(std::move(mock_session));
@@ -727,6 +758,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
           ToSessionWriteFinishedResponse(absl::OkStatus(), message_1.size())))
       .WillOnce(Return(
           ToSessionWriteFinishedResponse(absl::OkStatus(), message_2.size())));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
   service_.AddSession(std::move(mock_session));
@@ -850,6 +883,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillOnce(Return(
           ToSessionWriteFinishedResponse(absl::OkStatus(), message_1.size())));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
   service_.AddSession(std::move(mock_session));
