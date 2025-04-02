@@ -34,23 +34,27 @@ set -x
 # bazel; this usage requires us to not quote ${BAZELISK} when used later.
 readonly BAZELISK="${BAZELISK:-bazelisk}"
 
+# Arguments common to all builds.
+readonly COMMON=(--remote_download_minimal)
+
 if [ "$1" == "continuous" ]; then
-  ${BAZELISK} test //... --config=asan
+  ${BAZELISK} test "${COMMON[@]}" //... --config=asan --keep_going
 elif [ "$1" == "sanitizers" ]; then
-  ${BAZELISK} test //... --config=asan
-  ${BAZELISK} test //... --config=tsan
-  ${BAZELISK} test //... --config=ubsan
+  ${BAZELISK} test "${COMMON[@]}" //... --config=asan
+  ${BAZELISK} test "${COMMON[@]}" //... --config=tsan
+  ${BAZELISK} test "${COMMON[@]}" //... --config=ubsan
 elif [ "$1" == "release" ]; then
-  ${BAZELISK} test //...
+  ${BAZELISK} test "${COMMON[@]}" //...
 
   # BINARY_OUTPUTS_DIR may be unset if this script is run manually; it'll
   # always be set during CI builds.
   if [[ -n "${BINARY_OUTPUTS_DIR}" ]]; then
-    ${BAZELISK} run -c opt //:install_all_binaries -- --destdir "${BINARY_OUTPUTS_DIR}"
+    ${BAZELISK} run "${COMMON[@]}" -c opt //:install_all_binaries -- \
+        --destdir "${BINARY_OUTPUTS_DIR}"
   else
     # If unset, verify the binaries can be built with -c opt.
-    ${BAZELISK} build -c opt //:install_all_binaries
+    ${BAZELISK} build "${COMMON[@]}" -c opt //:install_all_binaries
   fi
 else
-  ${BAZELISK} test //...
+  ${BAZELISK} test "${COMMON[@]}" //...
 fi
