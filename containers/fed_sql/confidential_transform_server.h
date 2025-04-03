@@ -136,9 +136,10 @@ class FedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,
       const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+  // Currently no action taken for commits.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
       const fcp::confidentialcompute::CommitRequest& commit_request) override {
-    return absl::UnimplementedError("Commit handling is not yet implemented.");
+    return ToSessionCommitResponse(absl::OkStatus());
   }
 
  private:
