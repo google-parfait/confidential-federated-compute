@@ -6,7 +6,8 @@ build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
-# Build TensorFlow with more optimizations to avoid linker OOM
+# Build TensorFlow and XLA with more optimizations to avoid linker OOM
+build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG
 build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
 # Build boringssl without exceptions since it's used from Rust.
 build --per_file_copt=external/boringssl/@-fno-exceptions
