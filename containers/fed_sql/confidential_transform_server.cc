@@ -201,17 +201,27 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
   return columns;
 }
 
-absl::StatusOr<absl::Cord> Serialize(std::vector<TensorColumn> columns) {
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-
-  for (auto& column : columns) {
-    FCP_RETURN_IF_ERROR(
-        ckpt_builder->Add(column.column_schema_.name(), column.tensor_));
+// A simple pass-through CheckpointParser.
+class InMemoryCheckpointParser : public CheckpointParser {
+ public:
+  explicit InMemoryCheckpointParser(std::vector<TensorColumn> columns) {
+    for (auto& column : columns) {
+      tensors_[column.column_schema_.name()] = std::move(column.tensor_);
+    }
   }
 
-  return ckpt_builder->Build();
-}
+  // Implementation of CheckpointParser::GetTensor.
+  absl::StatusOr<Tensor> GetTensor(const std::string& name) override {
+    auto it = tensors_.find(name);
+    if (it == tensors_.end()) {
+      return absl::NotFoundError(absl::StrCat("Tensor not found: ", name));
+    }
+    return std::move(it->second);
+  }
+
+ private:
+  absl::flat_hash_map<std::string, Tensor> tensors_;
+};
 
 absl::StatusOr<Record> EncryptSessionResult(
     const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
@@ -278,12 +288,7 @@ FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
   FCP_ASSIGN_OR_RETURN(
       std::vector<TensorColumn> result,
       sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
-  // TODO: stop serializing the query results once we implement an in-memory
-  // CheckpointParser.
-  FCP_ASSIGN_OR_RETURN(absl::Cord serialized_query_result,
-                       Serialize(std::move(result)));
-  FederatedComputeCheckpointParserFactory parser_factory;
-  return parser_factory.Create(serialized_query_result);
+  return std::make_unique<InMemoryCheckpointParser>(std::move(result));
 }
 
 absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
@@ -292,6 +297,9 @@ absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
   if (!write_request.first_request_configuration().UnpackTo(&write_config)) {
     return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
         "Failed to parse FedSqlContainerWriteConfiguration."));
+  }
+  if (!aggregator_) {
+    return absl::FailedPreconditionError("The aggregator is already released.");
   }
 
   // In case of an error with Accumulate or MergeWith, the session is
@@ -373,6 +381,10 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
     return absl::InvalidArgumentError(
         "Failed to parse FedSqlContainerFinalizeConfiguration.");
   }
+  if (!aggregator_) {
+    return absl::FailedPreconditionError("The aggregator is already released.");
+  }
+
   std::string result;
   BlobMetadata result_metadata;
   switch (finalize_config.type()) {
@@ -392,7 +404,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
             "This may be because inputs were ignored due to an earlier error.");
       }
 
-      // Extract unectrypted checkpoint from the aggregator.
+      // Extract unecrypted checkpoint from the aggregator.
       // Using the scope below ensures that both CheckpointBuilder and Cord
       // are promptly deleted.
       std::string unencrypted_result;
@@ -400,9 +412,8 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
         FederatedComputeCheckpointBuilderFactory builder_factory;
         std::unique_ptr<CheckpointBuilder> checkpoint_builder =
             builder_factory.Create();
-        // TODO: The aggregator should be released promptly after
-        // producing report.
         FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
+        aggregator_.reset();
         FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
                              checkpoint_builder->Build());
         absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
@@ -429,10 +440,9 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
     }
     case FINALIZATION_TYPE_SERIALIZE: {
       // Serialize the aggregator and bundle it with the private state.
-      // TODO: The aggregator should be released promptly after
-      // being serialized.
       FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                            std::move(*aggregator_).Serialize());
+      aggregator_.reset();
       serialized_data = BundlePrivateState(serialized_data, *private_state_);
       if (input_metadata.has_unencrypted()) {
         result = std::move(serialized_data);
