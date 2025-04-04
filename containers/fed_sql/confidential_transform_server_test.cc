@@ -178,34 +178,19 @@ ColumnSchema CreateColumnSchema(
   return schema;
 }
 
-SqlQuery GetDefaultSqlQuery() {
+SqlQuery DefaultSqlQuery() {
   TableSchema schema = CreateTableSchema(
-      "input", "CREATE TABLE input (foo INTEGER)",
-      {CreateColumnSchema("foo",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
+      "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
   return CreateSqlQuery(
-      schema, "SELECT foo * 2 AS foo FROM input",
-      std::vector{CreateColumnSchema(
-          "foo", ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
-}
-
-std::string BuildSingleInt32TensorCheckpoint(
-    std::string column_name, std::initializer_list<int32_t> input_values) {
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-
-  absl::StatusOr<Tensor> t1 =
-      Tensor::Create(DataType::DT_INT32,
-                     TensorShape({static_cast<int32_t>(input_values.size())}),
-                     CreateTestData<int32_t>(input_values));
-  CHECK_OK(t1);
-  CHECK_OK(ckpt_builder->Add(column_name, *t1));
-  auto checkpoint = ckpt_builder->Build();
-  CHECK_OK(checkpoint.status());
-
-  std::string checkpoint_string;
-  absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  return checkpoint_string;
+      schema, "SELECT key, val * 2 AS val FROM input",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
 }
 
 SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
@@ -224,6 +209,34 @@ SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
   write_request->set_commit(true);
   write_request->set_data(data);
   return request;
+}
+
+std::string BuildFedSqlGroupByCheckpoint(
+    std::initializer_list<uint64_t> key_col_values,
+    std::initializer_list<uint64_t> val_col_values,
+    const std::string& key_col_name = "key",
+    const std::string& val_col_name = "val") {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+
+  absl::StatusOr<Tensor> key =
+      Tensor::Create(DataType::DT_INT64,
+                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
+                     CreateTestData<uint64_t>(key_col_values));
+  absl::StatusOr<Tensor> val =
+      Tensor::Create(DataType::DT_INT64,
+                     TensorShape({static_cast<int64_t>(val_col_values.size())}),
+                     CreateTestData<uint64_t>(val_col_values));
+  CHECK_OK(key);
+  CHECK_OK(val);
+  CHECK_OK(ckpt_builder->Add(key_col_name, *key));
+  CHECK_OK(ckpt_builder->Add(val_col_name, *val));
+  auto checkpoint = ckpt_builder->Build();
+  CHECK_OK(checkpoint.status());
+
+  std::string checkpoint_string;
+  absl::CopyCordToString(*checkpoint, &checkpoint_string);
+  return checkpoint_string;
 }
 
 std::string ReadFileContent(std::string file_path) {
@@ -302,21 +315,35 @@ class FedSqlServerTest : public Test {
 };
 
 Configuration FedSqlServerTest::DefaultConfiguration() const {
-  // One "federated_sum" intrinsic with a single scalar int32 tensor.
   return PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs {
-      intrinsic_uri: "federated_sum"
+    intrinsic_configs: {
+      intrinsic_uri: "fedsql_group_by"
       intrinsic_args {
         input_tensor {
-          name: "foo"
-          dtype: DT_INT32
-          shape { dim_sizes: 1 }
+          name: "key"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
         }
       }
       output_tensors {
-        name: "foo_out"
-        dtype: DT_INT32
-        shape { dim_sizes: 1 }
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+      inner_intrinsics {
+        intrinsic_uri: "GoogleSQL:sum"
+        intrinsic_args {
+          input_tensor {
+            name: "val"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+        output_tensors {
+          name: "val_out"
+          dtype: DT_INT64
+          shape {}
+        }
       }
     }
   )pb");
@@ -971,32 +998,6 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
               HasSubstr("Initialize must be called before Session"));
 }
 
-std::string BuildFedSqlGroupByCheckpoint(
-    std::initializer_list<uint64_t> key_col_values,
-    std::initializer_list<uint64_t> val_col_values) {
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-
-  absl::StatusOr<Tensor> key =
-      Tensor::Create(DataType::DT_INT64,
-                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
-                     CreateTestData<uint64_t>(key_col_values));
-  absl::StatusOr<Tensor> val =
-      Tensor::Create(DataType::DT_INT64,
-                     TensorShape({static_cast<int64_t>(val_col_values.size())}),
-                     CreateTestData<uint64_t>(val_col_values));
-  CHECK_OK(key);
-  CHECK_OK(val);
-  CHECK_OK(ckpt_builder->Add("key", *key));
-  CHECK_OK(ckpt_builder->Add("val", *val));
-  auto checkpoint = ckpt_builder->Build();
-  CHECK_OK(checkpoint.status());
-
-  std::string checkpoint_string;
-  absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  return checkpoint_string;
-}
-
 std::string BuildFedSqlGroupByStringKeyCheckpoint(
     std::initializer_list<absl::string_view> key_col_values,
     std::string key_col_name) {
@@ -1041,116 +1042,6 @@ std::string BuildSensitiveGroupByCheckpoint(
   std::string checkpoint_string;
   absl::CopyCordToString(*checkpoint, &checkpoint_string);
   return checkpoint_string;
-}
-
-TEST_F(FedSqlServerTest, SessionExecutesQueryAndGroupByAggregation) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
-    agg_configuration {
-      intrinsic_configs: {
-        intrinsic_uri: "fedsql_group_by"
-        intrinsic_args {
-          input_tensor {
-            name: "key"
-            dtype: DT_INT64
-            shape { dim_sizes: -1 }
-          }
-        }
-        output_tensors {
-          name: "key_out"
-          dtype: DT_INT64
-          shape { dim_sizes: -1 }
-        }
-        inner_intrinsics {
-          intrinsic_uri: "GoogleSQL:sum"
-          intrinsic_args {
-            input_tensor {
-              name: "val"
-              dtype: DT_INT64
-              shape {}
-            }
-          }
-          output_tensors {
-            name: "val_out"
-            dtype: DT_INT64
-            shape {}
-          }
-        }
-      }
-    }
-  )pb");
-  request.mutable_configuration()->PackFrom(init_config);
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
-
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  TableSchema schema = CreateTableSchema(
-      "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
-  SqlQuery query = CreateSqlQuery(
-      schema, "SELECT key, val * 2 AS val FROM input",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
-  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
-      query);
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_TRUE(stream->Read(&configure_response));
-
-  SessionRequest write_request_1 = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      BuildFedSqlGroupByCheckpoint({1, 1, 2}, {1, 2, 5}));
-  SessionResponse write_response_1;
-
-  ASSERT_TRUE(stream->Write(write_request_1));
-  ASSERT_TRUE(stream->Read(&write_response_1));
-
-  SessionRequest write_request_2 =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}));
-  SessionResponse write_response_2;
-  ASSERT_TRUE(stream->Write(write_request_2));
-  ASSERT_TRUE(stream->Read(&write_response_2));
-
-  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
-  )pb");
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      finalize_config);
-  ASSERT_TRUE(stream->Write(finalize_request));
-  ASSERT_TRUE(stream->Read(&finalize_response));
-
-  ASSERT_TRUE(finalize_response.has_read());
-  ASSERT_TRUE(finalize_response.read().finish_read());
-  ASSERT_GT(
-      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
-  ASSERT_TRUE(
-      finalize_response.read().first_response_metadata().has_unencrypted());
-
-  FederatedComputeCheckpointParserFactory parser_factory;
-  absl::Cord wire_format_result(finalize_response.read().data());
-  auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("val_out");
-  // The SQL query doubles each `val`, and the aggregation sums the val
-  // column, grouping by key.
-  ASSERT_EQ(col_values->num_elements(), 3);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
 }
 
 TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
@@ -1275,9 +1166,6 @@ TEST_F(FedSqlServerTest,
   auto nonce_generator =
       std::make_unique<NonceGenerator>(configure_response.configure().nonce());
 
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
@@ -1285,7 +1173,7 @@ TEST_F(FedSqlServerTest,
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  std::string message_0 = BuildFedSqlGroupByCheckpoint({9}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
   absl::StatusOr<Record> rewrapped_record_0 =
@@ -1430,7 +1318,7 @@ TEST_F(InitializedFedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_configure()->mutable_configuration()->PackFrom(
-      GetDefaultSqlQuery());
+      DefaultSqlQuery());
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -1467,7 +1355,7 @@ TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
     SessionRequest session_request;
     SessionResponse session_response;
     session_request.mutable_configure()->mutable_configuration()->PackFrom(
-        GetDefaultSqlQuery());
+        DefaultSqlQuery());
 
     std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
         stream = stub_->Session(session_context.get());
@@ -1484,7 +1372,7 @@ TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   SessionRequest rejected_request;
   SessionResponse rejected_response;
   rejected_request.mutable_configure()->mutable_configuration()->PackFrom(
-      GetDefaultSqlQuery());
+      DefaultSqlQuery());
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&rejected_context);
@@ -1498,16 +1386,22 @@ TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
+
   TableSchema schema = CreateTableSchema(
-      "input", "CREATE TABLE input (val INTEGER)",
-      {CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
+      "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  SqlQuery query = CreateSqlQuery(
+      schema, "SELECT key, val * 2 AS val_double FROM input",
+      {CreateColumnSchema("key",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+       CreateColumnSchema("val_double",
+                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+
   // The output columns of the SQL query don't match the aggregation config, so
   // the results can't be aggregated.
-  SqlQuery query = CreateSqlQuery(
-      schema, "SELECT val * 2 AS half_val FROM input",
-      std::vector{CreateColumnSchema(
-          "half_val", ExampleQuerySpec_OutputVectorSpec_DataType_INT32)});
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
       query);
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1515,9 +1409,9 @@ TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_TRUE(stream->Read(&configure_response));
 
-  SessionRequest write_request_1 = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      BuildSingleInt32TensorCheckpoint("val", {10, 12}));
+  SessionRequest write_request_1 =
+      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
+                                BuildFedSqlGroupByCheckpoint({7, 9}, {10, 12}));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream->Write(write_request_1));
@@ -1540,9 +1434,8 @@ TEST_F(InitializedFedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_TRUE(stream->Read(&configure_response));
 
-  SessionRequest write_request_1 =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {10}));
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({9}, {10}));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream->Write(write_request_1));
@@ -1570,11 +1463,11 @@ TEST_F(InitializedFedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("foo_out");
-  // The aggregation sums the input column
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The aggregation sums the val column, grouping by the key column
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 20);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 20);
 }
 
 TEST_F(InitializedFedSqlServerTest,
@@ -1591,9 +1484,6 @@ TEST_F(InitializedFedSqlServerTest,
   auto nonce_generator =
       std::make_unique<NonceGenerator>(configure_response.configure().nonce());
 
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
@@ -1601,7 +1491,7 @@ TEST_F(InitializedFedSqlServerTest,
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  std::string message_0 = BuildFedSqlGroupByCheckpoint({8}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
   absl::StatusOr<Record> rewrapped_record_0 =
@@ -1646,9 +1536,9 @@ TEST_F(InitializedFedSqlServerTest,
       HasSubstr("No output access policy node ID set for serialized outputs"));
 }
 
-class FedSqlServerFederatedSumTest : public FedSqlServerTest {
+class FedSqlGroupByTest : public FedSqlServerTest {
  public:
-  FedSqlServerFederatedSumTest() {
+  FedSqlGroupByTest() {
     grpc::ClientContext context;
     InitializeRequest request;
     InitializeResponse response;
@@ -1667,7 +1557,7 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
     SessionRequest session_request;
     SessionResponse session_response;
     session_request.mutable_configure()->mutable_configuration()->PackFrom(
-        GetDefaultSqlQuery());
+        DefaultSqlQuery());
 
     stream_ = stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
@@ -1684,10 +1574,54 @@ class FedSqlServerFederatedSumTest : public FedSqlServerTest {
   std::string public_key_;
 };
 
-TEST_F(FedSqlServerFederatedSumTest, SessionWriteAccumulateCommitsBlob) {
+TEST_F(FedSqlGroupByTest, SessionExecutesSqlQueryAndAggregation) {
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE,
+      BuildFedSqlGroupByCheckpoint({1, 1, 2}, {1, 2, 5}));
+  SessionResponse write_response_1;
+
+  ASSERT_TRUE(stream_->Write(write_request_1));
+  ASSERT_TRUE(stream_->Read(&write_response_1));
+
+  SessionRequest write_request_2 =
+      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
+                                BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}));
+  SessionResponse write_response_2;
+  ASSERT_TRUE(stream_->Write(write_request_2));
+  ASSERT_TRUE(stream_->Read(&write_response_2));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&finalize_response));
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(
+      finalize_response.read().first_response_metadata().has_unencrypted());
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::Cord wire_format_result(finalize_response.read().data());
+  auto parser = parser_factory.Create(wire_format_result);
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The SQL query doubles each `val`, and the aggregation sums the val
+  // column, grouping by key.
+  ASSERT_EQ(col_values->num_elements(), 3);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(14, 10, 0));
+}
+
+TEST_F(FedSqlGroupByTest, SessionWriteAccumulateCommitsBlob) {
   FederatedComputeCheckpointParserFactory parser_factory;
 
-  std::string data = BuildSingleInt32TensorCheckpoint("foo", {1});
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   SessionRequest write_request =
       CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE, data);
   SessionResponse write_response;
@@ -1700,10 +1634,9 @@ TEST_F(FedSqlServerFederatedSumTest, SessionWriteAccumulateCommitsBlob) {
   ASSERT_EQ(write_response.write().status().code(), grpc::OK);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndReports) {
-  SessionRequest write_request =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {1}));
+TEST_F(FedSqlGroupByTest, SessionAccumulatesAndReports) {
+  SessionRequest write_request = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({7}, {1}));
   SessionResponse write_response;
 
   // Accumulate the same unencrypted blob twice.
@@ -1732,17 +1665,16 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndReports) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("foo_out");
+  auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles each input and the aggregation sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
-  SessionRequest write_request =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {1}));
+TEST_F(FedSqlGroupByTest, SessionAccumulatesAndSerializes) {
+  SessionRequest write_request = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({9}, {1}));
   SessionResponse write_response;
 
   // Accumulate the same unencrypted blob twice.
@@ -1781,18 +1713,17 @@ TEST_F(FedSqlServerFederatedSumTest, SessionAccumulatesAndSerializes) {
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("foo_out");
+  auto col_values = (*parser)->GetTensor("val_out");
   // The query sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
+TEST_F(FedSqlGroupByTest, SessionMergesAndReports) {
   FederatedComputeCheckpointParserFactory parser_factory;
   auto input_parser =
-      parser_factory
-          .Create(absl::Cord(BuildSingleInt32TensorCheckpoint("foo", {3})))
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
@@ -1826,19 +1757,14 @@ TEST_F(FedSqlServerFederatedSumTest, SessionMergesAndReports) {
 
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("foo_out");
+  auto col_values = (*parser)->GetTensor("val_out");
   // The input aggregator should be merged with the session aggregator
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 3);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
-  SessionRequest write_request =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {1}));
-  SessionResponse write_response;
-
+TEST_F(FedSqlGroupByTest, SerializeZeroInputsProducesEmptyOutput) {
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
   )pb");
@@ -1878,8 +1804,7 @@ TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
   // have no effect on the output of the other aggregator.
   FederatedComputeCheckpointParserFactory parser_factory;
   auto input_parser =
-      parser_factory
-          .Create(absl::Cord(BuildSingleInt32TensorCheckpoint("foo", {3})))
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({2}, {3})))
           .value();
   std::unique_ptr<CheckpointAggregator> other_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
@@ -1890,14 +1815,14 @@ TEST_F(FedSqlServerFederatedSumTest, SerializeZeroInputsProducesEmptyOutput) {
   ASSERT_TRUE((*other_aggregator).Report(*checkpoint_builder).ok());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("foo_out");
-  // A column with a sum of 3 is returned.
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The value from other_aggregator is unchanged by deserialized_agg
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 3);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 3);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, ReportZeroInputsReturnsInvalidArgument) {
+TEST_F(FedSqlGroupByTest, ReportZeroInputsReturnsInvalidArgument) {
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
@@ -1911,25 +1836,25 @@ TEST_F(FedSqlServerFederatedSumTest, ReportZeroInputsReturnsInvalidArgument) {
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
-  SessionRequest write_request_1 =
-      CreateDefaultWriteRequest(AGGREGATION_TYPE_ACCUMULATE,
-                                BuildSingleInt32TensorCheckpoint("foo", {7}));
+TEST_F(FedSqlGroupByTest, SessionIgnoresUnparseableInputs) {
+  SessionRequest write_request_1 = CreateDefaultWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({8}, {7}));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream_->Write(write_request_1));
   ASSERT_TRUE(stream_->Read(&write_response_1));
 
-  SessionRequest write_request_2 = CreateDefaultWriteRequest(
+  SessionRequest invalid_write = CreateDefaultWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, "invalid checkpoint");
-  SessionResponse write_response_2;
+  SessionResponse invalid_write_response;
 
-  ASSERT_TRUE(stream_->Write(write_request_2));
-  ASSERT_TRUE(stream_->Read(&write_response_2));
+  ASSERT_TRUE(stream_->Write(invalid_write));
+  ASSERT_TRUE(stream_->Read(&invalid_write_response));
 
-  ASSERT_TRUE(write_response_2.has_write());
-  ASSERT_EQ(write_response_2.write().committed_size_bytes(), 0);
-  ASSERT_EQ(write_response_2.write().status().code(), grpc::INVALID_ARGUMENT);
+  ASSERT_TRUE(invalid_write_response.has_write());
+  ASSERT_EQ(invalid_write_response.write().committed_size_bytes(), 0);
+  ASSERT_EQ(invalid_write_response.write().status().code(),
+            grpc::INVALID_ARGUMENT);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -1951,17 +1876,17 @@ TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresUnparseableInputs) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor("foo_out");
+  auto col_values = (*parser)->GetTensor("val_out");
   // The invalid input should be ignored
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 14);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 14);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresInputThatCannotBeQueried) {
+TEST_F(FedSqlGroupByTest, SessionIgnoresInputThatCannotBeQueried) {
   SessionRequest write_request_1 = CreateDefaultWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
-      BuildSingleInt32TensorCheckpoint("bad_col_name", {7}));
+      BuildFedSqlGroupByCheckpoint({9}, {7}, "bad_key_col_name"));
   SessionResponse write_response_1;
 
   ASSERT_TRUE(stream_->Write(write_request_1));
@@ -1970,10 +1895,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionIgnoresInputThatCannotBeQueried) {
             grpc::StatusCode::NOT_FOUND);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
+TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
@@ -1981,7 +1903,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  std::string message_0 = BuildFedSqlGroupByCheckpoint({9}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
@@ -2012,7 +1934,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   ASSERT_TRUE(stream_->Read(&response_0));
   ASSERT_EQ(response_0.write().status().code(), grpc::OK);
 
-  std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
+  std::string message_1 = BuildFedSqlGroupByCheckpoint({9}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_1.ok());
@@ -2040,7 +1962,7 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   ASSERT_TRUE(stream_->Read(&response_1));
   ASSERT_EQ(response_1.write().status().code(), grpc::OK);
 
-  std::string message_2 = BuildSingleInt32TensorCheckpoint(input_col_name, {3});
+  std::string message_2 = BuildFedSqlGroupByCheckpoint({9}, {3});
   absl::StatusOr<NonceAndCounter> nonce_2 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_2.ok());
@@ -2088,18 +2010,14 @@ TEST_F(FedSqlServerFederatedSumTest, SessionDecryptsMultipleRecordsAndReports) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor(output_col_name);
+  auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles every input and the aggregation sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 12);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 12);
 }
 
-TEST_F(FedSqlServerFederatedSumTest,
-       SessionDecryptsMultipleRecordsAndSerializes) {
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
+TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   MessageDecryptor earliest_decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       earliest_decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
@@ -2115,7 +2033,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  std::string message_0 = BuildFedSqlGroupByCheckpoint({7}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
@@ -2146,7 +2064,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   ASSERT_TRUE(stream_->Read(&response_0));
   ASSERT_EQ(response_0.write().status().code(), grpc::OK);
 
-  std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
+  std::string message_1 = BuildFedSqlGroupByCheckpoint({7}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_1.ok());
@@ -2190,8 +2108,7 @@ TEST_F(FedSqlServerFederatedSumTest,
   // Unencrypted request should be incorporated, but the serialized result
   // should still be encrypted.
   SessionRequest unencrypted_request = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      BuildSingleInt32TensorCheckpoint(input_col_name, {3}));
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({7}, {3}));
   SessionResponse unencrypted_response;
 
   ASSERT_TRUE(stream_->Write(unencrypted_request));
@@ -2253,17 +2170,14 @@ TEST_F(FedSqlServerFederatedSumTest,
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor(output_col_name);
+  auto col_values = (*parser)->GetTensor("val_out");
   // The query sums the input column
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 12);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 12);
 }
 
-TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
-  std::string input_col_name = "foo";
-  std::string output_col_name = "foo_out";
-
+TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
@@ -2272,7 +2186,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
 
   // Create one record that will fail to decrypt and one record that can be
   // successfully decrypted.
-  std::string message_0 = BuildSingleInt32TensorCheckpoint(input_col_name, {1});
+  std::string message_0 = BuildFedSqlGroupByCheckpoint({42}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
@@ -2302,7 +2216,7 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   ASSERT_TRUE(stream_->Read(&response_0));
   ASSERT_EQ(response_0.write().status().code(), grpc::INVALID_ARGUMENT);
 
-  std::string message_1 = BuildSingleInt32TensorCheckpoint(input_col_name, {2});
+  std::string message_1 = BuildFedSqlGroupByCheckpoint({42}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_1.ok());
@@ -2350,14 +2264,14 @@ TEST_F(FedSqlServerFederatedSumTest, TransformIgnoresUndecryptableInputs) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::Cord wire_format_result(finalize_response.read().data());
   auto parser = parser_factory.Create(wire_format_result);
-  auto col_values = (*parser)->GetTensor(output_col_name);
+  auto col_values = (*parser)->GetTensor("val_out");
   // The undecryptable write is ignored, and only the valid write is aggregated.
   ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT32);
-  ASSERT_EQ(col_values->AsSpan<int32_t>().at(0), 4);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
 }
 
-TEST_F(FedSqlServerTest, StreamInitializeWithGemmaInferenceSession) {
+TEST_F(FedSqlServerTest, SessionExecutesInferenceAndAggregation) {
   grpc::ClientContext context;
   InitializeResponse response;
   InitializeRequest initialize_request;
