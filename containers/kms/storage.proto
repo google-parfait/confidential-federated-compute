@@ -152,3 +152,9 @@ message KeysetKeyValue {
   // The TTL of the derived keys.
   google.protobuf.Duration ttl = 3;
 }
+
+// The persisted state of a logical pipeline.
+message LogicalPipelineStateValue {
+  // The current state, which is opaque to the KMS.
+  bytes state = 1;
+}

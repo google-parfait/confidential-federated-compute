@@ -76,6 +76,7 @@ rust_test(
         ":storage",
         ":storage_client",
         ":storage_prost_proto",
+        "@boringssl//rust/bssl-crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",

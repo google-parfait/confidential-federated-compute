@@ -17,6 +17,7 @@ use std::sync::{
     Arc,
 };
 
+use bssl_crypto::digest::Sha256;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
@@ -27,7 +28,8 @@ use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
 use key_management_service::{get_init_request, KeyManagementService, StorageKey};
 use kms_proto::fcp::confidentialcompute::{
     key_management_service_server::KeyManagementService as _, keyset::Key, DeriveKeysRequest,
-    DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest, Keyset, RotateKeysetRequest,
+    DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
+    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState, RotateKeysetRequest,
 };
 use oak_proto_rust::oak::crypto::v1::Signature;
 use prost::Message;
@@ -35,7 +37,8 @@ use storage::Storage;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        update_request, ClusterKeyValue, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
+        update_request, ClusterKeyValue, LogicalPipelineStateValue, ReadRequest, ReadResponse,
+        UpdateRequest, UpdateResponse,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -331,6 +334,52 @@ async fn rotate_and_derive_keys() {
     expect_that!(key_ids[1], eq([expected_prefix.as_slice(), b"bar"].concat()));
 }
 
+#[googletest::test]
+#[tokio::test]
+async fn get_logical_pipeline_state_with_empty_state() {
+    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    let response = kms.get_logical_pipeline_state(request.into_request()).await;
+    expect_that!(
+        response,
+        err(all!(
+            property!(Status.code(), eq(Code::NotFound)),
+            displays_as(contains_substring("logical pipeline has no saved state")),
+        ))
+    );
+}
+
+// This test modifies the storage directly since ReleaseResults hasn't yet been
+// implemented, so it's not possible to modify the stored state through the KMS.
+// TODO: b/398874186 - Use ReleaseResults once it's implemented.
+#[googletest::test]
+#[tokio::test]
+async fn get_logical_pipeline_state_with_existing_state() {
+    let storage_client = FakeStorageClient::default();
+    let key =
+        StorageKey::LogicalPipelineState { id: Sha256::hash(b"test")[..16].try_into().unwrap() };
+    storage_client
+        .update(UpdateRequest {
+            updates: vec![update_request::Update {
+                key: key.try_into().unwrap(),
+                value: Some(LogicalPipelineStateValue { state: b"state".into() }.encode_to_vec()),
+                ..Default::default()
+            }],
+        })
+        .await
+        .expect("failed to initialize storage");
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    let response =
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner);
+    expect_that!(
+        response,
+        ok(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") }))
+    );
+}
+
 mod storage_key {
     use googletest::prelude::*;
     use key_management_service::StorageKey;
@@ -349,6 +398,21 @@ mod storage_key {
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
         expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+    }
+
+    #[googletest::test]
+    fn round_trip_logical_pipeline_state() {
+        let storage_key = StorageKey::LogicalPipelineState { id: *b"\x80123456789abcdef" };
+        let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
+        assert_that!(encoded, ok(anything()));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+    }
+
+    #[googletest::test]
+    fn encode_invalid_logical_pipeline_state() {
+        let storage_key = StorageKey::LogicalPipelineState { id: *b"0123456789abcdef" };
+        let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
+        expect_that!(encoded, err(displays_as(contains_substring("invalid LogicalPipeline id"))));
     }
 
     #[googletest::test]

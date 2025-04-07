@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, ensure};
-use bssl_crypto::{ec, ecdsa};
+use anyhow::{anyhow, ensure, Context};
+use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimsSetBuilder, Timestamp as CwtTimestamp},
@@ -33,7 +33,8 @@ use prost::Message;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, update_request, ClusterKeyValue, KeysetKeyValue, ReadRequest, UpdateRequest,
+        read_request, update_request, ClusterKeyValue, KeysetKeyValue, LogicalPipelineStateValue,
+        ReadRequest, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -128,6 +129,16 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
             start: start.try_into()?,
             end: end.map(TryInto::try_into).transpose()?,
         })
+    }
+
+    /// Constructs the StorageKey::LogicalPipelineState for the specified
+    /// logical pipeline name.
+    fn get_logical_pipeline_storage_key(name: &str) -> StorageKey {
+        let mut id = [0; 16];
+        id.copy_from_slice(&Sha256::hash(name.as_bytes())[..16]);
+        // The most significant bit of the first byte must be 1.
+        id[0] |= 0x80;
+        StorageKey::LogicalPipelineState { id }
     }
 }
 
@@ -313,9 +324,28 @@ where
 
     async fn get_logical_pipeline_state(
         &self,
-        _request: Request<GetLogicalPipelineStateRequest>,
+        request: Request<GetLogicalPipelineStateRequest>,
     ) -> Result<Response<LogicalPipelineState>, tonic::Status> {
-        todo!()
+        let request = request.into_inner();
+        let response = self
+            .storage_client
+            .read(ReadRequest {
+                ranges: vec![Self::create_range(
+                    Self::get_logical_pipeline_storage_key(&request.name),
+                    None,
+                )
+                .unwrap()],
+            })
+            .await
+            .map_err(Self::convert_error)?;
+        let entry = response
+            .entries
+            .first()
+            .ok_or_else(|| tonic::Status::not_found("logical pipeline has no saved state"))?;
+        let value = LogicalPipelineStateValue::decode(entry.value.as_slice())
+            .context("failed to decode LogicalPipelineStateValue")
+            .map_err(Self::convert_error)?;
+        Ok(Response::new(LogicalPipelineState { name: request.name, value: value.state }))
     }
 
     async fn register_pipeline_invocation(
@@ -349,6 +379,10 @@ pub enum StorageKey {
 
     /// Identifies a keyset.
     KeysetKey { keyset_id: u64, key_id: [u8; 4] },
+
+    /// Identifies a logical pipeline. The most significant bit of the first
+    /// byte is always 1.
+    LogicalPipelineState { id: [u8; 16] },
 }
 
 impl TryFrom<&[u8]> for StorageKey {
@@ -362,6 +396,7 @@ impl TryFrom<&[u8]> for StorageKey {
                 keyset_id: u64::from_be_bytes(value[4..12].try_into()?),
                 key_id: value[12..16].try_into()?,
             }),
+            x if x >= 0x80000000 => Ok(StorageKey::LogicalPipelineState { id: value.try_into()? }),
             _ => Err(anyhow!("unsupported StorageKey encoding")),
         }
     }
@@ -378,6 +413,10 @@ impl TryFrom<StorageKey> for Vec<u8> {
                 x[4..12].copy_from_slice(&keyset_id.to_be_bytes());
                 x[12..16].copy_from_slice(&key_id);
                 Ok(x)
+            }
+            StorageKey::LogicalPipelineState { id } => {
+                anyhow::ensure!(id[0] >= 0x80, "invalid LogicalPipeline id");
+                Ok(id.to_vec())
             }
         }
     }
