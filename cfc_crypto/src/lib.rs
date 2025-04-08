@@ -330,14 +330,12 @@ mod tests {
                 .map(|(_, value)| value),
             Some(&Value::from(iana::EllipticCurve::X25519 as u64))
         );
-        assert!(
-            public_key
-                .params
-                .iter()
-                .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
-                .map(|(_, value)| value)
-                .is_some()
-        );
+        assert!(public_key
+            .params
+            .iter()
+            .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
+            .map(|(_, value)| value)
+            .is_some());
     }
 
     #[test]

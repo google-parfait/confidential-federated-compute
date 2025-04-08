@@ -295,16 +295,14 @@ mod tests {
     fn test_configure_and_attest_with_invalid_config() {
         let mut service = create_square_service();
 
-        assert!(
-            service
-                .configure_and_attest(ConfigureAndAttestRequest {
-                    configuration: Some(Any {
-                        type_url: "type.googleapis.com/google.protobuf.DoubleValue".into(),
-                        value: 3.0.encode_to_vec(),
-                    }),
-                })
-                .is_err()
-        );
+        assert!(service
+            .configure_and_attest(ConfigureAndAttestRequest {
+                configuration: Some(Any {
+                    type_url: "type.googleapis.com/google.protobuf.DoubleValue".into(),
+                    value: 3.0.encode_to_vec(),
+                }),
+            })
+            .is_err());
     }
 
     #[test]
