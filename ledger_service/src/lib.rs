@@ -454,6 +454,7 @@ impl LedgerService {
     pub fn apply_authorize_access_event(
         &mut self,
         event: AuthorizeAccessEvent,
+        rewrap_keys: bool,
     ) -> Result<AuthorizeAccessResponse, micro_rpc::Status> {
         // Update the current time.
         self.update_current_time(&event.event_time).map_err(|err| {
@@ -594,12 +595,14 @@ impl LedgerService {
         // Find the earliest expiring ledger key to be used for reencrypting derived
         // objects.
         let mut reencryption_public_key = Vec::default();
-        let mut reencryption_public_key_expiration: Duration = Duration::MAX;
-        for (key_id, _) in &blob_indices_per_key_id {
-            let per_key_ledger = self.get_per_key_ledger(key_id)?;
-            if per_key_ledger.expiration < reencryption_public_key_expiration {
-                reencryption_public_key_expiration = per_key_ledger.expiration;
-                reencryption_public_key = per_key_ledger.public_key.clone();
+        if rewrap_keys {
+            let mut reencryption_public_key_expiration: Duration = Duration::MAX;
+            for (key_id, _) in &blob_indices_per_key_id {
+                let per_key_ledger = self.get_per_key_ledger(key_id)?;
+                if per_key_ledger.expiration < reencryption_public_key_expiration {
+                    reencryption_public_key_expiration = per_key_ledger.expiration;
+                    reencryption_public_key = per_key_ledger.public_key.clone();
+                }
             }
         }
 
@@ -607,31 +610,35 @@ impl LedgerService {
             let per_key_ledger = self.get_per_key_ledger(&key_id)?;
             let private_key = &per_key_ledger.private_key;
             // Rewrap symmetric keys for every blob for the current ledger key.
-            for i in blob_indices {
-                match Self::rewrap_symmetric_key(
-                    &blob_metadata[i],
-                    &reencryption_public_key,
-                    private_key,
-                    &recipient_public_key,
-                ) {
-                    Ok((encapsulated_key, encrypted_symmetric_key)) => {
-                        authorized_blob_keys[i] = AuthorizedBlobKeys {
-                            encapsulated_key,
-                            encrypted_symmetric_key,
-                            status: Some(Status { code: 0, ..Default::default() }),
-                            ..Default::default()
-                        };
-                        num_authorized_blobs += 1;
-                    }
-                    Err(error) => {
-                        if legacy_mode {
-                            return Err(error);
+            if rewrap_keys {
+                for i in blob_indices {
+                    match Self::rewrap_symmetric_key(
+                        &blob_metadata[i],
+                        &reencryption_public_key,
+                        private_key,
+                        &recipient_public_key,
+                    ) {
+                        Ok((encapsulated_key, encrypted_symmetric_key)) => {
+                            authorized_blob_keys[i] = AuthorizedBlobKeys {
+                                encapsulated_key,
+                                encrypted_symmetric_key,
+                                status: Some(Status { code: 0, ..Default::default() }),
+                                ..Default::default()
+                            };
+                            num_authorized_blobs += 1;
                         }
-                        authorized_blob_keys[i].status =
-                            Some(Status { code: error.code as i32, message: error.message.into() });
-                        num_authorized_blobs += 1;
-                    }
-                };
+                        Err(error) => {
+                            if legacy_mode {
+                                return Err(error);
+                            }
+                            authorized_blob_keys[i].status = Some(Status {
+                                code: error.code as i32,
+                                message: error.message.into(),
+                            });
+                            num_authorized_blobs += 1;
+                        }
+                    };
+                }
             }
             let mut policy_budget_tracker = per_key_ledger.budget_tracker.get_policy_budget(
                 &access_policy_sha256,
@@ -642,12 +649,17 @@ impl LedgerService {
             policy_budget_tracker.update_budget(&blob_range);
         }
 
+        if !rewrap_keys {
+            return Ok(AuthorizeAccessResponse::default());
+        }
+
         if num_authorized_blobs != blob_metadata.len() {
             return Err(micro_rpc::Status::new_with_message(
                 micro_rpc::StatusCode::FailedPrecondition,
                 "num_authorized_blobs must match blob_metadata.len(). This is likely an internal bug.",
             ));
         }
+
         // TODO: b/288282266 - Include the selected transform's destination node id in
         // the response.
         if legacy_mode {
@@ -890,7 +902,7 @@ impl Ledger for LedgerService {
         request: AuthorizeAccessRequest,
     ) -> Result<AuthorizeAccessResponse, micro_rpc::Status> {
         let authorize_access_event = self.attest_and_produce_authorize_access_event(request)?;
-        self.apply_authorize_access_event(authorize_access_event)
+        self.apply_authorize_access_event(authorize_access_event, true)
     }
 
     fn revoke_access(
@@ -2701,6 +2713,122 @@ mod tests {
     }
 
     #[test]
+    fn test_authorize_access_updates_budget_event_single_blob_event_no_rewrap_keys() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let plaintext = b"plaintext";
+        let blob_header = BlobHeader {
+            blob_id: b"blob-id".to_vec(),
+            key_id: cose_key.key_id.clone(),
+            access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let (_, encapsulated_key, encrypted_symmetric_key) =
+            cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+        // Create the event.
+        let authorize_access_event = ledger
+            .attest_and_produce_authorize_access_event(AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                blob_header: blob_header.clone(),
+                encapsulated_key: encapsulated_key.clone(),
+                encrypted_symmetric_key: encrypted_symmetric_key.clone(),
+                recipient_public_key: create_recipient_cwt(cfc_crypto::gen_keypair(b"key-id").1),
+                recipient_tag: "tag".to_owned(),
+                recipient_nonce: b"nonce1".to_vec(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Apply the event.
+        let authorized_access_response =
+            ledger.apply_authorize_access_event(authorize_access_event.clone(), false).unwrap();
+
+        assert_eq!(authorized_access_response, AuthorizeAccessResponse::default());
+
+        // The second should fail because the budget has been exhausted.
+        assert_err!(
+            ledger.apply_authorize_access_event(authorize_access_event, false),
+            micro_rpc::StatusCode::PermissionDenied,
+            ""
+        );
+    }
+
+    #[test]
+    fn test_authorize_access_updates_budget_multiple_blobs_event_no_rewrap_keys() {
+        let (mut ledger, public_key) = create_ledger_service();
+        let cose_key = extract_key_from_cwt(&public_key).unwrap();
+        let recipient_tag = "tag";
+        let access_policy = DataAccessPolicy {
+            transforms: vec![Transform {
+                application: Some(ApplicationMatcher {
+                    tag: Some(recipient_tag.to_owned()),
+                    ..Default::default()
+                }),
+                access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+
+        // Construct multiple client messages
+        let plaintext = b"plaintext";
+        let mut blob_metadata = Vec::with_capacity(4);
+        let recipient_nonce: &[u8] = b"nonce";
+        for i in 0..4 {
+            let blob_header = BlobHeader {
+                blob_id: BlobId::from(i as u128).to_vec(),
+                key_id: cose_key.key_id.clone(),
+                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec();
+
+            let (_, encapsulated_key, encrypted_symmetric_key) =
+                cfc_crypto::encrypt_message(plaintext, &cose_key, &blob_header).unwrap();
+
+            blob_metadata.push(BlobMetadata {
+                blob_header: blob_header.clone(),
+                encapsulated_key,
+                encrypted_symmetric_key,
+                recipient_nonce: recipient_nonce.to_vec(),
+            });
+        }
+
+        let (_, recipient_public_key) = cfc_crypto::gen_keypair(b"key-id");
+
+        // Create the event.
+        let authorize_access_event = ledger
+            .attest_and_produce_authorize_access_event(AuthorizeAccessRequest {
+                access_policy: access_policy.clone(),
+                recipient_public_key: create_recipient_cwt(recipient_public_key.clone()),
+                recipient_tag: recipient_tag.to_owned(),
+                blob_metadata: blob_metadata.clone(),
+                blob_range: Some(Range {
+                    start: BlobId::from(0).to_vec(),
+                    end: BlobId::from(4).to_vec(),
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Apply the event.
+        let response_1 =
+            ledger.apply_authorize_access_event(authorize_access_event.clone(), false).unwrap();
+        assert_eq!(response_1, AuthorizeAccessResponse::default());
+    }
+
+    #[test]
     fn test_revoke_access() {
         let (mut ledger, public_key) = create_ledger_service();
         let cose_key = extract_key_from_cwt(&public_key).unwrap();
@@ -2921,7 +3049,7 @@ mod tests {
         // Apply authorize_access_event. It should fail because the key has now expired
         // and no longer known.
         assert_err!(
-            ledger.apply_authorize_access_event(authorize_access_event),
+            ledger.apply_authorize_access_event(authorize_access_event, true),
             micro_rpc::StatusCode::NotFound,
             "public key not found"
         );
@@ -2981,7 +3109,7 @@ mod tests {
 
         // Now applying the event for the first request must fail.
         assert_err!(
-            ledger.apply_authorize_access_event(authorize_access_event),
+            ledger.apply_authorize_access_event(authorize_access_event, true),
             micro_rpc::StatusCode::PermissionDenied,
             "no budget remaining"
         );

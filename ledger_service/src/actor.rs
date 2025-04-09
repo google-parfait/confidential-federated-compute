@@ -152,8 +152,9 @@ impl LedgerActor {
 
         let response = match ledger_event.event {
             Some(Event::AuthorizeAccess(authorize_access_event)) => {
-                let authorize_access_response =
-                    self.mut_ledger().apply_authorize_access_event(authorize_access_event)?;
+                let authorize_access_response = self
+                    .mut_ledger()
+                    .apply_authorize_access_event(authorize_access_event, context.owned)?;
                 if !context.owned {
                     return Ok(EventOutcome::with_none());
                 }
