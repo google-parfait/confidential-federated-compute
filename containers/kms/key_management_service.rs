@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use access_policies::validate_pipeline_invocation_policies;
 use anyhow::{anyhow, ensure, Context};
 use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
@@ -34,7 +35,7 @@ use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_request, update_request, ClusterKeyValue, KeysetKeyValue, LogicalPipelineStateValue,
-        ReadRequest, UpdateRequest,
+        PipelineInvocationStateValue, ReadRequest, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -350,9 +351,78 @@ where
 
     async fn register_pipeline_invocation(
         &self,
-        _request: Request<RegisterPipelineInvocationRequest>,
+        request: Request<RegisterPipelineInvocationRequest>,
     ) -> Result<Response<RegisterPipelineInvocationResponse>, tonic::Status> {
-        todo!()
+        let request = request.into_inner();
+        validate_pipeline_invocation_policies(
+            &request.logical_pipeline_name,
+            &request.pipeline_variant_policy,
+            request.authorized_logical_pipeline_policies.as_slice(),
+        )
+        .context("invalid pipeline policies")
+        .context(Code::InvalidArgument)
+        .map_err(Self::convert_error)?;
+
+        // Create a future that writes the pipeline invocation state to storage.
+        // We don't worry about retring on collision because the probability is
+        // so low.
+        let write_invocation_state_fut = async {
+            let id = rand::random();
+            let ttl = request.intermediates_ttl.unwrap_or_default();
+            let authorized_logical_pipeline_policies_hashes = request
+                .authorized_logical_pipeline_policies
+                .into_iter()
+                .map(|policy| Sha256::hash(policy.as_slice()).into())
+                .collect();
+            let value = PipelineInvocationStateValue {
+                logical_pipeline_name: request.logical_pipeline_name.clone(),
+                pipeline_variant_policy_hash: Sha256::hash(&request.pipeline_variant_policy).into(),
+                intermediates_key: Some(KeysetKeyValue {
+                    ikm: bssl_crypto::rand_array::<32>().into(),
+                    algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+                    ttl: Some(ttl.clone()),
+                }),
+                keyset_ids: request.keyset_ids,
+                authorized_logical_pipeline_policies_hashes,
+            };
+            self.storage_client
+                .update(UpdateRequest {
+                    updates: vec![update_request::Update {
+                        key: StorageKey::PipelineInvocationState { id }.try_into().unwrap(),
+                        value: Some(value.encode_to_vec()),
+                        ttl: Some(ttl),
+                        preconditions: Some(update_request::Preconditions {
+                            exists: Some(false),
+                            ..Default::default()
+                        }),
+                    }],
+                })
+                .await
+                .map_err(Self::convert_error)?;
+            Ok(id.into())
+        };
+
+        // Create a future to retrieve the current logical pipeline state (if
+        // any).
+        let logical_pipeline_state_fut = async {
+            let response = self
+                .get_logical_pipeline_state(Request::new(GetLogicalPipelineStateRequest {
+                    name: request.logical_pipeline_name.clone(),
+                }))
+                .await;
+            match response {
+                Ok(response) => Ok(Some(response.into_inner())),
+                Err(err) if err.code() == Code::NotFound => Ok(None),
+                Err(err) => Err(err),
+            }
+        };
+
+        let (invocation_id, logical_pipeline_state) =
+            tokio::try_join!(write_invocation_state_fut, logical_pipeline_state_fut)?;
+        Ok(Response::new(RegisterPipelineInvocationResponse {
+            invocation_id,
+            logical_pipeline_state,
+        }))
     }
 
     async fn authorize_confidential_transform(
@@ -380,6 +450,9 @@ pub enum StorageKey {
     /// Identifies a keyset.
     KeysetKey { keyset_id: u64, key_id: [u8; 4] },
 
+    /// Identifies a pipeline invocation.
+    PipelineInvocationState { id: [u8; 12] },
+
     /// Identifies a logical pipeline. The most significant bit of the first
     /// byte is always 1.
     LogicalPipelineState { id: [u8; 16] },
@@ -396,6 +469,7 @@ impl TryFrom<&[u8]> for StorageKey {
                 keyset_id: u64::from_be_bytes(value[4..12].try_into()?),
                 key_id: value[12..16].try_into()?,
             }),
+            2 => Ok(StorageKey::PipelineInvocationState { id: (&value[4..16]).try_into()? }),
             x if x >= 0x80000000 => Ok(StorageKey::LogicalPipelineState { id: value.try_into()? }),
             _ => Err(anyhow!("unsupported StorageKey encoding")),
         }
@@ -412,6 +486,11 @@ impl TryFrom<StorageKey> for Vec<u8> {
                 let mut x = vec![0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                 x[4..12].copy_from_slice(&keyset_id.to_be_bytes());
                 x[12..16].copy_from_slice(&key_id);
+                Ok(x)
+            }
+            StorageKey::PipelineInvocationState { id } => {
+                let mut x = vec![0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                x[4..16].copy_from_slice(&id);
                 Ok(x)
             }
             StorageKey::LogicalPipelineState { id } => {

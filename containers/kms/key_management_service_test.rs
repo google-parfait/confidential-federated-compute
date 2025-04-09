@@ -17,6 +17,10 @@ use std::sync::{
     Arc,
 };
 
+use access_policy_proto::fcp::confidentialcompute::{
+    pipeline_variant_policy::Transform, DataAccessPolicy as AuthorizedLogicalPipelinePolicies,
+    LogicalPipelinePolicy, PipelineVariantPolicy,
+};
 use bssl_crypto::digest::Sha256;
 use coset::{
     cbor::value::Value,
@@ -29,7 +33,8 @@ use key_management_service::{get_init_request, KeyManagementService, StorageKey}
 use kms_proto::fcp::confidentialcompute::{
     key_management_service_server::KeyManagementService as _, keyset::Key, DeriveKeysRequest,
     DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
-    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState, RotateKeysetRequest,
+    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
+    RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, RotateKeysetRequest,
 };
 use oak_proto_rust::oak::crypto::v1::Signature;
 use prost::Message;
@@ -380,6 +385,145 @@ async fn get_logical_pipeline_state_with_existing_state() {
     );
 }
 
+// This test modifies the storage directly since ReleaseResults hasn't yet been
+// implemented, so it's not possible to modify the stored state through the KMS.
+// TODO: b/398874186 - Use ReleaseResults once it's implemented.
+#[googletest::test]
+#[tokio::test]
+async fn register_pipeline_invocation_with_existing_state() {
+    let storage_client = FakeStorageClient::default();
+    let key =
+        StorageKey::LogicalPipelineState { id: Sha256::hash(b"test")[..16].try_into().unwrap() };
+    storage_client
+        .update(UpdateRequest {
+            updates: vec![update_request::Update {
+                key: key.try_into().unwrap(),
+                value: Some(LogicalPipelineStateValue { state: b"state".into() }.encode_to_vec()),
+                ..Default::default()
+            }],
+        })
+        .await
+        .expect("failed to initialize storage");
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform { src: 1, ..Default::default() }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234, 5678],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response =
+        kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
+    expect_that!(
+        response,
+        ok(matches_pattern!(RegisterPipelineInvocationResponse {
+            invocation_id: not(empty()),
+            logical_pipeline_state: some(matches_pattern!(LogicalPipelineState {
+                name: eq("test"),
+                value: eq(b"state"),
+            })),
+        }))
+    );
+
+    // TODO: b/398874186 - Check the stored state by seeing if it can be used by
+    // AuthorizeConfidentialTransform & ReleaseResults they're once implemented.
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn register_pipeline_invocation_without_existing_state() {
+    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform { src: 1, ..Default::default() }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234, 5678],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response =
+        kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
+    expect_that!(
+        response,
+        ok(matches_pattern!(RegisterPipelineInvocationResponse {
+            invocation_id: not(empty()),
+            logical_pipeline_state: none(),
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn register_pipeline_invocation_with_invalid_policies() {
+    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform { src: 1, ..Default::default() }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy {
+                // Use a different policy that doesn't match `variant_policy`.
+                instances: vec![PipelineVariantPolicy {
+                    transforms: vec![Transform { src: 2, ..Default::default() }],
+                    ..Default::default()
+                }],
+            },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234, 5678],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response =
+        kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
+    expect_that!(
+        response,
+        err(all!(
+            property!(Status.code(), eq(Code::InvalidArgument)),
+            displays_as(contains_substring("invalid pipeline policies")),
+        ))
+    );
+
+    // TODO: b/398874186 - Verify that nothing was written to storage by
+    // checking that AuthorizeConfidentialTransform fails (once implemented).
+}
+
 mod storage_key {
     use googletest::prelude::*;
     use key_management_service::StorageKey;
@@ -395,6 +539,14 @@ mod storage_key {
     #[googletest::test]
     fn round_trip_keyset_key() {
         let storage_key = StorageKey::KeysetKey { keyset_id: 1234, key_id: *b"abcd" };
+        let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
+        assert_that!(encoded, ok(anything()));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+    }
+
+    #[googletest::test]
+    fn round_trip_pipeline_invocation_state() {
+        let storage_key = StorageKey::PipelineInvocationState { id: *b"0123456789ab" };
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
         expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));

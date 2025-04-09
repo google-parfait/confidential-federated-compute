@@ -153,6 +153,25 @@ message KeysetKeyValue {
   google.protobuf.Duration ttl = 3;
 }
 
+// Information about an active pipeline invocation.
+message PipelineInvocationStateValue {
+  // The name of the corresponding logical pipeline.
+  string logical_pipeline_name = 1;
+
+  // The SHA-256 hash of the invocation's PipelineVariantPolicy.
+  bytes pipeline_variant_policy_hash = 2;
+
+  // The derivation key used for pipeline intermediates.
+  KeysetKeyValue intermediates_key = 3;
+
+  // The keyset(s) used to encrypt client uploads.
+  repeated uint64 keyset_ids = 4;
+
+  // SHA-256 hashes of the AuthorizedLogicalPipelinePolicies authorizing this
+  // pipeline invocation.
+  repeated bytes authorized_logical_pipeline_policies_hashes = 5;
+}
+
 // The persisted state of a logical pipeline.
 message LogicalPipelineStateValue {
   // The current state, which is opaque to the KMS.
