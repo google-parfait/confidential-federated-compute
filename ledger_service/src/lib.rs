@@ -156,7 +156,7 @@ impl LedgerService {
                     // Convert legacy DataAccessPolicy::Transform to
                     // PipelineVariantPolicy::Transform.
                     pipeline_variant_policy::Transform {
-                        src: legacy_transform.src,
+                        src_node_ids: vec![legacy_transform.src],
                         application: legacy_transform.application,
                         access_budget: legacy_transform.access_budget,
                         shared_access_budget_indices: legacy_transform.shared_access_budget_indices,

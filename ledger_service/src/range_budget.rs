@@ -321,7 +321,13 @@ impl BudgetTracker {
     ) -> Result<usize, micro_rpc::Status> {
         let mut matched_index: Option<usize> = None;
         for (i, transform) in policy.transforms.iter().enumerate() {
-            if transform.src != node_id || !app.matches(&transform.application, now) {
+            // If src_node_ids isn't set, fall back to checking the src field.
+            let src_matches = if transform.src_node_ids.is_empty() {
+                transform.src == node_id
+            } else {
+                transform.src_node_ids.contains(&node_id)
+            };
+            if !src_matches || !app.matches(&transform.application, now) {
                 continue;
             }
             if matched_index.is_some() {
@@ -658,6 +664,71 @@ mod tests {
             transforms: vec![
                 // This transform won't match because the src index is wrong.
                 Transform {
+                    src_node_ids: vec![0],
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform won't match because the tag is wrong.
+                Transform {
+                    src_node_ids: vec![1],
+                    application: Some(ApplicationMatcher {
+                        tag: Some("other".to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                // This transform should match.
+                Transform {
+                    src_node_ids: vec![1, 2],
+                    application: Some(ApplicationMatcher {
+                        tag: Some(app.tag.to_owned()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 0,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            Ok(0)
+        );
+        assert_eq!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 1,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            Ok(2)
+        );
+        assert_eq!(
+            BudgetTracker::find_matching_transform(
+                /* node_id= */ 2,
+                &policy,
+                &app,
+                Duration::default()
+            ),
+            Ok(2)
+        );
+    }
+
+    #[test]
+    fn test_find_matching_transform_with_src() {
+        let app = Application { tag: "foo", ..Default::default() };
+        let policy = PipelineVariantPolicy {
+            transforms: vec![
+                // This transform won't match because the src index is wrong.
+                Transform {
                     src: 0,
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
@@ -714,7 +785,7 @@ mod tests {
             transforms: vec![
                 // This transform won't match because the src index is wrong.
                 Transform {
-                    src: 0,
+                    src_node_ids: vec![0],
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
                         ..Default::default()
@@ -723,7 +794,7 @@ mod tests {
                 },
                 // This transform won't match because the tag is wrong.
                 Transform {
-                    src: 1,
+                    src_node_ids: vec![1],
                     application: Some(ApplicationMatcher {
                         tag: Some("other".to_owned()),
                         ..Default::default()
@@ -732,7 +803,7 @@ mod tests {
                 },
                 // This transform should match.
                 Transform {
-                    src: 1,
+                    src_node_ids: vec![1],
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
                         ..Default::default()
@@ -741,7 +812,7 @@ mod tests {
                 },
                 // This transform would also match, but the earlier match should take precedence.
                 Transform {
-                    src: 1,
+                    src_node_ids: vec![1],
                     application: Some(ApplicationMatcher {
                         tag: Some(app.tag.to_owned()),
                         ..Default::default()
@@ -769,7 +840,7 @@ mod tests {
         let app = Application { tag: "foo", ..Default::default() };
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 1,
+                src_node_ids: vec![1],
                 application: Some(ApplicationMatcher {
                     tag: Some("other".to_owned()),
                     ..Default::default()
@@ -806,7 +877,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
@@ -825,9 +896,13 @@ mod tests {
         // The second Transform has invalid shared_access_budget_indices.
         let policy = PipelineVariantPolicy {
             transforms: vec![
-                Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
                 Transform {
-                    src: 1,
+                    src_node_ids: vec![0],
+                    shared_access_budget_indices: vec![0],
+                    ..Default::default()
+                },
+                Transform {
+                    src_node_ids: vec![1],
                     shared_access_budget_indices: vec![0, 1],
                     ..Default::default()
                 },
@@ -847,7 +922,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
@@ -888,7 +963,7 @@ mod tests {
 
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
@@ -917,8 +992,16 @@ mod tests {
         // Two transforms share the same shared budget.
         let policy = PipelineVariantPolicy {
             transforms: vec![
-                Transform { src: 0, shared_access_budget_indices: vec![0], ..Default::default() },
-                Transform { src: 1, shared_access_budget_indices: vec![0], ..Default::default() },
+                Transform {
+                    src_node_ids: vec![0],
+                    shared_access_budget_indices: vec![0],
+                    ..Default::default()
+                },
+                Transform {
+                    src_node_ids: vec![1],
+                    shared_access_budget_indices: vec![0],
+                    ..Default::default()
+                },
             ],
             shared_access_budgets: vec![AccessBudget { kind: Some(AccessBudgetKind::Times(1)) }],
             ..Default::default()
@@ -957,7 +1040,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy1 = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget {
                     kind: Some(AccessBudgetKind::Times(1)),
                     ..Default::default()
@@ -981,7 +1064,7 @@ mod tests {
 
         let policy2 = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget {
                     kind: Some(AccessBudgetKind::Times(1)),
                     ..Default::default()
@@ -1008,7 +1091,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
@@ -1052,7 +1135,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
@@ -1164,7 +1247,7 @@ mod tests {
         let mut tracker = BudgetTracker::default();
         let policy = PipelineVariantPolicy {
             transforms: vec![Transform {
-                src: 0,
+                src_node_ids: vec![0],
                 access_budget: Some(AccessBudget { kind: Some(AccessBudgetKind::Times(2)) }),
                 ..Default::default()
             }],
