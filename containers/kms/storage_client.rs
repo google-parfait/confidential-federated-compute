@@ -20,12 +20,10 @@ use log::{error, info, warn};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
 use oak_crypto::signer::Signer;
-use oak_proto_rust::oak::{
-    attestation::v1::ReferenceValues,
-    session::v1::{PlaintextMessage, SessionResponse},
-};
+use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
 use oak_session::{ClientSession, ProtocolEngine, Session};
 use prost::Message;
+use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use session_v1_service_proto::{
     oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient,
@@ -204,7 +202,7 @@ where
                         self.pending_requests.insert(msg.correlation_id, (msg, tx));
                         session.write(PlaintextMessage { plaintext: encoded_msg })?;
                         while let Some(request) = session.get_outgoing_message()? {
-                            server_tx.send(Self::convert_request(&request)?).await?;
+                            server_tx.send(request.convert()?).await?;
                         }
                     }
                     None => bail!("StorageClient stream unexpectedly closed"),
@@ -213,7 +211,7 @@ where
                 // Forward responses from the remote server back to the local caller.
                 event = responses.message() => match event? {
                     Some(response) => {
-                        session.put_incoming_message(Self::convert_response(&response)?)?;
+                        session.put_incoming_message(response.convert()?)?;
                         let response = session.read()?
                             .ok_or_else(|| anyhow!("ClientSession::read returned None"))?;
                         let msg = StorageResponse::decode(response.plaintext.as_slice())
@@ -267,7 +265,7 @@ where
         // that this may block until the server sends a response, so this MUST
         // happen after an initial message is added to `server_tx`.
         let (server_tx, rx) = mpsc::channel(1);
-        server_tx.send(Self::convert_request(&request)?).await?;
+        server_tx.send(request.convert()?).await?;
         let mut responses = self.client.stream(ReceiverStream::new(rx)).await?.into_inner();
 
         // Perform the initial handshake.
@@ -283,10 +281,10 @@ where
             let requests;
             (session, requests) = tokio::task::spawn_blocking(
                 move || -> Result<(ClientSession, Vec<SessionRequest>)> {
-                    session.put_incoming_message(Self::convert_response(&response)?)?;
+                    session.put_incoming_message(response.convert()?)?;
                     let mut requests = Vec::with_capacity(1);
                     while let Some(request) = session.get_outgoing_message()? {
-                        requests.push(Self::convert_request(&request)?);
+                        requests.push(request.convert()?);
                     }
                     Ok((session, requests))
                 },
@@ -306,7 +304,7 @@ where
             .encode_to_vec(),
         })?;
         while let Some(request) = session.get_outgoing_message()? {
-            server_tx.send(Self::convert_request(&request)?).await?;
+            server_tx.send(request.convert()?).await?;
         }
 
         // Process the initialization response. Initialization should only be
@@ -316,7 +314,7 @@ where
             .message()
             .await?
             .ok_or_else(|| anyhow!("server unexpectedly closed stream"))?;
-        session.put_incoming_message(Self::convert_response(&response)?)?;
+        session.put_incoming_message(response.convert()?)?;
         let response =
             session.read()?.ok_or_else(|| anyhow!("ClientSession::read returned None"))?;
         match StorageResponse::decode(response.plaintext.as_slice()) {
@@ -342,20 +340,5 @@ where
         }
 
         Ok((session, server_tx, responses))
-    }
-
-    /// Converts an `oak_proto_rust` session request to a `kms_proto` request.
-    fn convert_request(
-        msg: &oak_proto_rust::oak::session::v1::SessionRequest,
-    ) -> Result<SessionRequest> {
-        SessionRequest::decode(msg.encode_to_vec().as_slice()).context("failed to convert request")
-    }
-
-    /// Converts an `oak_proto_rust` session response to a `kms_proto` response.
-    fn convert_response(
-        msg: &session_v1_service_proto::session_proto::oak::session::v1::SessionResponse,
-    ) -> Result<SessionResponse> {
-        SessionResponse::decode(msg.encode_to_vec().as_slice())
-            .context("failed to convert response")
     }
 }

@@ -189,6 +189,16 @@ oci_runtime_bundle(
 )
 
 rust_library(
+    name = "prost_proto_conversion",
+    srcs = ["prost_proto_conversion.rs"],
+    deps = [
+        ":session_v1_service_prost_proto",
+        "@oak//oak_proto_rust",
+        "@oak_crates_index//:prost",
+    ],
+)
+
+rust_library(
     name = "session_config",
     srcs = ["session_config.rs"],
     deps = [
@@ -250,6 +260,7 @@ rust_library(
     srcs = ["storage_actor.rs"],
     deps = [
         ":kms_prost_proto",
+        ":prost_proto_conversion",
         ":session_config",
         ":storage",
         ":storage_prost_proto",
@@ -298,6 +309,7 @@ rust_library(
     srcs = ["storage_client.rs"],
     rustc_flags = ["-Zpolonius"],
     deps = [
+        ":prost_proto_conversion",
         ":session_config",
         ":session_v1_service_prost_proto",
         ":storage_prost_proto",

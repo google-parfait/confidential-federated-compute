@@ -26,6 +26,7 @@ use oak_proto_rust::oak::{
 };
 use oak_session::{config::SessionConfig, ProtocolEngine, ServerSession, Session};
 use prost::{bytes::Bytes, Message};
+use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use slog::{debug, error, warn};
 use storage::Storage;
@@ -418,14 +419,10 @@ impl Actor for StorageActor {
                     )))
                 }
                 HandleSessionRequestOutcome::Response(response) => {
-                    // Until Oak uses `rust_prost_library`, the types in `oak_proto_rust` are
-                    // not the same as the types in `kms_proto`.
-                    use kms_proto::session_proto::oak::session::v1::SessionResponse;
-                    let response = SessionResponse::decode(response.encode_to_vec().as_slice())?;
                     Ok(CommandOutcome::with_command(ActorCommand::with_header(
                         command.correlation_id,
                         &SessionResponseWithStatus {
-                            response: Some(response),
+                            response: Some(response.convert()?),
                             ..Default::default()
                         },
                     )))
@@ -470,13 +467,12 @@ impl Actor for StorageActor {
                 return Ok(EventOutcome::with_none());
             }
 
-            // Until Oak uses `rust_prost_library`, the types in `oak_proto_rust` are not
-            // the same as the types in `kms_proto`.
-            use kms_proto::session_proto::oak::session::v1::SessionResponse;
-            let response = SessionResponse::decode(response.unwrap().encode_to_vec().as_slice())?;
             Ok(EventOutcome::with_command(ActorCommand::with_header(
                 event.correlation_id,
-                &SessionResponseWithStatus { response: Some(response), ..Default::default() },
+                &SessionResponseWithStatus {
+                    response: Some(response.unwrap().convert()?),
+                    ..Default::default()
+                },
             )))
         }();
 
