@@ -43,6 +43,7 @@ pub fn validate_pipeline_invocation_policies(
             transform.shared_access_budget_indices.is_empty(),
             "shared_access_budget_indices are not supported"
         );
+        ensure!(!transform.dst_node_ids.contains(&0), "0 is not a valid dst_node_id");
         Ok(())
     })?;
 

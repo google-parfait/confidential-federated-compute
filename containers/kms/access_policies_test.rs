@@ -124,6 +124,20 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
         ),
         err(displays_as(contains_substring("shared_access_budget_indices are not supported")))
     );
+
+    // dst_node_id 0 is not allowed.
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform { dst_node_ids: vec![0, 1, 2], ..Default::default() }],
+        ..Default::default()
+    };
+    expect_that!(
+        validate_pipeline_invocation_policies(
+            LOGICAL_PIPELINE_NAME,
+            &variant_policy.encode_to_vec(),
+            &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
+        ),
+        err(displays_as(contains_substring("0 is not a valid dst_node_id")))
+    );
 }
 
 #[googletest::test]
