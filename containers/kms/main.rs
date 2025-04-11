@@ -18,6 +18,7 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+use env_logger;
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_verification_types::util::Clock;
@@ -46,14 +47,13 @@ fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> 
 
 #[tokio::main]
 async fn main() {
-    stderrlog::new()
-        .show_level(true)
-        .show_module_names(true)
-        // TODO: b/398874186 - Review whether this should be increased to Warn.
-        .verbosity(log::LevelFilter::Info)
-        .color(stderrlog::ColorChoice::Never)
-        .init()
-        .expect("failed to initialize logging");
+    env_logger::Builder::from_env(
+        env_logger::Env::default()
+            // TODO: b/398874186 - Review whether this should be increased to Warn.
+            .default_filter_or("info"),
+    )
+    .write_style(env_logger::WriteStyle::Never)
+    .init();
     log::info!("KMS starting...");
 
     let channel = oak_sdk_containers::default_orchestrator_channel()
