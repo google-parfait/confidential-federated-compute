@@ -212,13 +212,13 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-b4otiykPp40xuWHkvZX7tHUulemclQ0a35ToQWc5+dc=",
+    integrity = "sha256-pn62f5TSprspJWcc5majzsTNuFahSloYjDx3i+36osE=",
     patches = [
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    strip_prefix = "tensorflow-federated-db65018acc3e368536d1949ac18d8a9cfa5714e1",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/db65018acc3e368536d1949ac18d8a9cfa5714e1.tar.gz",
+    strip_prefix = "tensorflow-federated-f402563eb37264708ffd566281c386e0d7c51ccb",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/f402563eb37264708ffd566281c386e0d7c51ccb.tar.gz",
 )
 
 http_archive(
