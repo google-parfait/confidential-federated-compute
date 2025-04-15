@@ -89,6 +89,7 @@ rust_library(
         ":key_derivation",
         ":kms_prost_proto",
         ":prost_proto_conversion",
+        ":release_tokens",
         ":storage_client",
         ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
@@ -213,6 +214,29 @@ rust_library(
         ":session_v1_service_prost_proto",
         "@oak//oak_proto_rust",
         "@oak_crates_index//:prost",
+    ],
+)
+
+rust_library(
+    name = "release_tokens",
+    srcs = ["release_tokens.rs"],
+    deps = [
+        ":key_derivation",
+        "@boringssl//rust/bssl-crypto",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:coset",
+    ],
+)
+
+rust_test(
+    name = "release_tokens_test",
+    srcs = ["release_tokens_test.rs"],
+    deps = [
+        ":key_derivation",
+        ":release_tokens",
+        "@boringssl//rust/bssl-crypto",
+        "@oak_crates_index//:coset",
+        "@oak_crates_index//:googletest",
     ],
 )
 

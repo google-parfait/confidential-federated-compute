@@ -26,7 +26,7 @@ use access_policy_proto::{
     },
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
-use bssl_crypto::{digest::Sha256, hpke};
+use bssl_crypto::{digest::Sha256, ec, ecdsa, hpke};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
@@ -34,7 +34,10 @@ use coset::{
 };
 use googletest::prelude::*;
 use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
-use key_management_service::{get_init_request, KeyManagementService, StorageKey};
+use key_management_service::{
+    get_init_request, KeyManagementService, StorageKey, DST_NODE_IDS_CLAIM, INVOCATION_ID_CLAIM,
+    LOGICAL_PIPELINE_NAME_CLAIM, TRANSFORM_INDEX_CLAIM,
+};
 use kms_proto::{
     endorsement_proto::oak::attestation::v1::Endorsements,
     evidence_proto::oak::attestation::v1::Evidence,
@@ -923,6 +926,126 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
         &protected_response.result_encryption_keys[0],
     )
     .and_log_failure();
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_endorses_transform_signing_key() {
+    let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(1000)));
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1, 2],
+            dst_node_ids: vec![2, 3, 4],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+    let invocation_id = response.into_inner().invocation_id;
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: invocation_id.clone(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .expect("authorize_confidential_transform failed")
+        .into_inner();
+
+    // Convert the cluster public key into a bssl-crypto public key.
+    let cluster_public_key = kms
+        .get_cluster_public_key(GetClusterPublicKeyRequest::default().into_request())
+        .await
+        .expect("get_cluster_public_key failed");
+    let public_key_params: std::collections::BTreeMap<_, _> =
+        CoseKey::from_slice(&cluster_public_key.into_inner().public_key)
+            .expect("failed to decode cluster public key")
+            .params
+            .into_iter()
+            .collect();
+    // X9.62 has the format "\x04<x><y>".
+    let x962_public_key = [
+        b"\x04",
+        public_key_params
+            .get(&Label::Int(iana::Ec2KeyParameter::X as i64))
+            .unwrap()
+            .as_bytes()
+            .unwrap()
+            .as_slice(),
+        public_key_params
+            .get(&Label::Int(iana::Ec2KeyParameter::Y as i64))
+            .unwrap()
+            .as_bytes()
+            .unwrap()
+            .as_slice(),
+    ]
+    .concat();
+    let public_key = ecdsa::PublicKey::<ec::P256>::from_x962_uncompressed(&x962_public_key)
+        .expect("invalid public key");
+
+    // The signing key endorsement should be a valid CoseSign1 object signed by
+    // the cluster key.
+    let cwt = CoseSign1::from_slice(&response.signing_key_endorsement)
+        .expect("failed to decode signing key endorsement");
+    expect_that!(
+        ClaimsSet::from_slice(cwt.payload.as_ref().unwrap()),
+        ok(matches_pattern!(ClaimsSet {
+            issued_at: some(eq(CwtTimestamp::WholeSeconds(1000))),
+            rest: contains_each![
+                (
+                    eq(ClaimName::PrivateUse(LOGICAL_PIPELINE_NAME_CLAIM)),
+                    matches_pattern!(Value::Text(eq("test"))),
+                ),
+                (
+                    eq(ClaimName::PrivateUse(INVOCATION_ID_CLAIM)),
+                    matches_pattern!(Value::Bytes(eq(invocation_id))),
+                ),
+                (eq(ClaimName::PrivateUse(TRANSFORM_INDEX_CLAIM)), eq(Value::from(0)),),
+                (
+                    eq(ClaimName::PrivateUse(DST_NODE_IDS_CLAIM)),
+                    matches_pattern!(Value::Array(elements_are![
+                        eq(Value::from(2)),
+                        eq(Value::from(3)),
+                        eq(Value::from(4)),
+                    ])),
+                ),
+            ],
+        }))
+    );
+    expect_that!(
+        cwt.verify_signature(b"", |signature, data| public_key.verify(data, signature)),
+        ok(anything())
+    );
 }
 
 #[googletest::test]

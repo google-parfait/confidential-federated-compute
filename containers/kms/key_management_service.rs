@@ -16,6 +16,7 @@ use access_policies::{authorize_transform, validate_pipeline_invocation_policies
 use anyhow::{anyhow, ensure, Context};
 use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
+    cbor::value::Value,
     cwt::{ClaimsSetBuilder, Timestamp as CwtTimestamp},
     iana::{Algorithm, EllipticCurve},
     CborSerializable, CoseKeyBuilder,
@@ -36,6 +37,7 @@ use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
+use release_tokens::endorse_transform_signing_key;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
@@ -46,6 +48,13 @@ use storage_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use tonic::{Code, Request, Response};
+
+// Private CWT claims; see
+// https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
+pub const LOGICAL_PIPELINE_NAME_CLAIM: i64 = -65539;
+pub const INVOCATION_ID_CLAIM: i64 = -65540;
+pub const TRANSFORM_INDEX_CLAIM: i64 = -65541;
+pub const DST_NODE_IDS_CLAIM: i64 = -65542;
 
 /// Key id prefix for intermediate keys.
 const INTERMEDIATE_KEY_ID: &[u8] = b"intr";
@@ -566,6 +575,9 @@ where
         }
 
         // Check whether the transform is authorized by the policy.
+        let now = response
+            .now
+            .ok_or_else(|| tonic::Status::internal("StorageResponse missing timestamp"))?;
         let authorized_transform = authorize_transform(
             &request.pipeline_variant_policy,
             request
@@ -577,9 +589,7 @@ where
                 .as_ref()
                 .ok_or_else(|| tonic::Status::invalid_argument("endorsements are required"))?,
             &request.tag,
-            &response
-                .now
-                .ok_or_else(|| tonic::Status::internal("StorageResponse missing timestamp"))?,
+            &now,
         )
         .context(Code::InvalidArgument)
         .map_err(Self::convert_error)?;
@@ -616,10 +626,34 @@ where
                 .context("failed to encrypt response")
                 .map_err(Self::convert_error)?;
 
+        // Endorse the transform's application signing key, attaching claims
+        // describing how the transform matched the access policy. Several of
+        // these claims are needed by `release_results` (e.g. the logical
+        // pipeline name, invocation id, and destination node ids), and others
+        // may be useful for pipelines that want to inspect provenance or
+        // debugging.
+        let signing_key_endorsement = endorse_transform_signing_key(
+            &authorized_transform.extracted_evidence.signing_public_key,
+            &cluster_key,
+            ClaimsSetBuilder::new()
+                .issued_at(CwtTimestamp::WholeSeconds(now.seconds))
+                .private_claim(LOGICAL_PIPELINE_NAME_CLAIM, state.logical_pipeline_name.into())
+                .private_claim(INVOCATION_ID_CLAIM, request.invocation_id.into())
+                .private_claim(TRANSFORM_INDEX_CLAIM, (authorized_transform.index as u64).into())
+                .private_claim(
+                    DST_NODE_IDS_CLAIM,
+                    Value::Array(
+                        authorized_transform.dst_node_ids.iter().map(|id| (*id).into()).collect(),
+                    ),
+                )
+                .build(),
+        )
+        .context("failed to endorse transform signing key")
+        .map_err(Self::convert_error)?;
+
         Ok(Response::new(AuthorizeConfidentialTransformResponse {
             protected_response: Some(encrypted_message),
-            // TODO: b/398874186 - Populate the signing key endorsement.
-            signing_key_endorsement: vec![],
+            signing_key_endorsement,
         }))
     }
 
