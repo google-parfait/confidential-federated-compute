@@ -18,7 +18,6 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-use env_logger;
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_attestation_verification_types::util::Clock;
