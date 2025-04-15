@@ -21,7 +21,8 @@ use coset::{
 };
 use googletest::prelude::*;
 use key_derivation::{
-    derive_private_keys, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM,
+    PUBLIC_KEY_CLAIM,
 };
 use oak_proto_rust::oak::crypto::v1::Signature;
 
@@ -127,9 +128,43 @@ fn derive_private_keys_fails_with_invalid_algorithm() {
 }
 
 #[googletest::test]
+fn derive_public_keys_produces_cose_key() {
+    let public_keys =
+        derive_public_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
+    assert_that!(public_keys, ok(elements_are!(not(empty()))));
+
+    expect_that!(
+        CoseKey::from_slice(&public_keys.unwrap()[0]),
+        ok(matches_pattern!(CoseKey {
+            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_id: eq(b"key-idfoo"),
+            params: unordered_elements_are![
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                ),
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::X as i64)),
+                    matches_pattern!(Value::Bytes(not(empty()))),
+                ),
+            ],
+        })),
+    );
+}
+
+#[googletest::test]
+fn derive_public_keys_fails_with_invalid_algorithm() {
+    expect_that!(
+        derive_public_keys(0, b"key-id", &[0; 32], [b"foo"]),
+        err(displays_as(contains_substring("unsupported algorithm"))),
+    );
+}
+
+#[googletest::test]
 #[tokio::test]
-async fn derive_public_keys_produces_cwt() {
-    let public_keys = derive_public_keys(
+async fn derive_public_cwts_produces_cwt() {
+    let cwts = derive_public_cwts(
         HPKE_BASE_X25519_SHA256_AES128GCM,
         b"key-id",
         &[0; 32],
@@ -138,9 +173,9 @@ async fn derive_public_keys_produces_cwt() {
         &FakeSigner {},
     )
     .await;
-    assert_that!(public_keys, ok(elements_are!(not(empty()))));
+    assert_that!(cwts, ok(elements_are!(not(empty()))));
 
-    let cwt = CoseSign1::from_slice(&public_keys.unwrap()[0]);
+    let cwt = CoseSign1::from_slice(&cwts.unwrap()[0]);
     assert_that!(
         cwt,
         ok(matches_pattern!(CoseSign1 {
@@ -164,50 +199,25 @@ async fn derive_public_keys_produces_cwt() {
     );
 
     let claims = ClaimsSet::from_slice(&cwt.unwrap().payload.unwrap());
+    let public_keys =
+        derive_public_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
     assert_that!(
         claims,
         ok(matches_pattern!(ClaimsSet {
             issuer: some(eq("test")),
             rest: contains((
                 eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
-                matches_pattern!(Value::Bytes(anything())),
+                matches_pattern!(Value::Bytes(eq(public_keys.unwrap()[0].as_slice()))),
             )),
-        })),
-    );
-
-    let key = claims.and_then(|claims| {
-        claims
-            .rest
-            .iter()
-            .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
-            .map(|(_, value)| CoseKey::from_slice(value.as_bytes().unwrap()))
-            .unwrap()
-    });
-    expect_that!(
-        key,
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-            key_id: eq(b"key-idfoo"),
-            params: unordered_elements_are![
-                (
-                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
-                ),
-                (
-                    eq(Label::Int(iana::OkpKeyParameter::X as i64)),
-                    matches_pattern!(Value::Bytes(not(empty()))),
-                ),
-            ],
         })),
     );
 }
 
 #[googletest::test]
 #[tokio::test]
-async fn derive_public_keys_fails_with_invalid_algorithm() {
+async fn derive_public_cwts_fails_with_invalid_algorithm() {
     expect_that!(
-        derive_public_keys(
+        derive_public_cwts(
             0,
             b"key-id",
             &[0; 32],
@@ -221,35 +231,17 @@ async fn derive_public_keys_fails_with_invalid_algorithm() {
 }
 
 #[googletest::test]
-#[tokio::test]
-async fn public_and_private_keys_are_paired() {
+fn public_and_private_keys_are_paired() {
     let private_keys =
         derive_private_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
     assert_that!(private_keys, ok(elements_are!(anything())));
     let recipient_private_key =
         extract_raw_key(&private_keys.unwrap()[0], /* public= */ false);
 
-    let public_keys = derive_public_keys(
-        HPKE_BASE_X25519_SHA256_AES128GCM,
-        b"key-id",
-        &[0; 32],
-        ClaimsSet::default(),
-        &[b"foo"],
-        &FakeSigner {},
-    )
-    .await;
+    let public_keys =
+        derive_public_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
     assert_that!(public_keys, ok(elements_are!(anything())));
-    let cwt = CoseSign1::from_slice(&public_keys.as_ref().unwrap()[0]).unwrap();
-    let claims = ClaimsSet::from_slice(&cwt.payload.unwrap()).unwrap();
-    let recipient_public_key = extract_raw_key(
-        claims
-            .rest
-            .iter()
-            .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
-            .and_then(|(_, value)| value.as_bytes())
-            .unwrap(),
-        /* public= */ true,
-    );
+    let recipient_public_key = extract_raw_key(&public_keys.unwrap()[0], /* public= */ true);
 
     let params = hpke::Params::new(
         hpke::Kem::X25519HkdfSha256,

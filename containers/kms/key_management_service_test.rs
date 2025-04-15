@@ -17,11 +17,16 @@ use std::sync::{
     Arc,
 };
 
-use access_policy_proto::fcp::confidentialcompute::{
-    pipeline_variant_policy::Transform, DataAccessPolicy as AuthorizedLogicalPipelinePolicies,
-    LogicalPipelinePolicy, PipelineVariantPolicy,
+use access_policy_proto::{
+    any_proto::google::protobuf::Any,
+    fcp::confidentialcompute::{
+        pipeline_variant_policy::Transform, ApplicationMatcher,
+        DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
+        PipelineVariantPolicy,
+    },
+    reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
-use bssl_crypto::digest::Sha256;
+use bssl_crypto::{digest::Sha256, hpke};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
@@ -30,14 +35,26 @@ use coset::{
 use googletest::prelude::*;
 use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
 use key_management_service::{get_init_request, KeyManagementService, StorageKey};
-use kms_proto::fcp::confidentialcompute::{
-    key_management_service_server::KeyManagementService as _, keyset::Key, DeriveKeysRequest,
-    DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
-    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
-    RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, RotateKeysetRequest,
+use kms_proto::{
+    endorsement_proto::oak::attestation::v1::Endorsements,
+    evidence_proto::oak::attestation::v1::Evidence,
+    fcp::confidentialcompute::{
+        authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
+        key_management_service_server::KeyManagementService as _,
+        keyset::Key,
+        AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
+        DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
+        GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
+        RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, RotateKeysetRequest,
+    },
 };
+use oak_attestation_types::{attester::Attester, endorser::Endorser};
+use oak_crypto::encryptor::ServerEncryptor;
 use oak_proto_rust::oak::crypto::v1::Signature;
+use oak_restricted_kernel_sdk::testing::MockEncryptionKeyHandle;
 use prost::Message;
+use prost_proto_conversion::ProstProtoConversionExt;
+use session_test_utils::{FakeAttester, FakeEndorser};
 use storage::Storage;
 use storage_client::StorageClient;
 use storage_proto::{
@@ -79,6 +96,81 @@ impl oak_sdk_containers::Signer for FakeSigner {
     async fn sign(&self, _data: &[u8]) -> anyhow::Result<Signature> {
         Ok(Signature { signature: b"signature".into() })
     }
+}
+
+fn get_test_evidence() -> Evidence {
+    FakeAttester::create().unwrap().quote().unwrap().convert().unwrap()
+}
+
+fn get_test_endorsements() -> Endorsements {
+    FakeEndorser::default().endorse(None).unwrap().convert().unwrap()
+}
+
+fn get_test_reference_values() -> ReferenceValues {
+    session_test_utils::test_reference_values().convert().unwrap()
+}
+
+/// Verifies that a HPKE private key and public key form a pair.
+fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
+    let private_key = CoseKey::from_slice(private_key);
+    verify_that!(
+        private_key,
+        ok(matches_pattern!(CoseKey {
+            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_id: not(empty()),
+            params: contains_each![
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                ),
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::D as i64)),
+                    matches_pattern!(Value::Bytes(not(empty()))),
+                ),
+            ],
+        }))
+    )?;
+    let raw_private_key = private_key
+        .as_ref()
+        .unwrap()
+        .params
+        .iter()
+        .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::D as i64))
+        .map(|(_, value)| value.as_bytes().unwrap())
+        .unwrap();
+
+    let public_key = CoseKey::from_slice(public_key);
+    verify_that!(
+        public_key,
+        ok(matches_pattern!(CoseKey {
+            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_id: eq(private_key.as_ref().unwrap().key_id.as_slice()),
+            params: contains_each![
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                ),
+                (
+                    eq(Label::Int(iana::OkpKeyParameter::X as i64)),
+                    matches_pattern!(Value::Bytes(not(empty()))),
+                ),
+            ],
+        }))
+    )?;
+    let raw_public_key = public_key
+        .unwrap()
+        .params
+        .into_iter()
+        .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
+        .map(|(_, value)| value.into_bytes().unwrap())
+        .unwrap();
+
+    verify_that!(
+        hpke::Kem::X25519HkdfSha256.public_from_private(raw_private_key),
+        some(eq(raw_public_key))
+    )
 }
 
 #[googletest::test]
@@ -407,7 +499,14 @@ async fn register_pipeline_invocation_with_existing_state() {
     let kms = KeyManagementService::new(storage_client, FakeSigner {});
 
     let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform { src: 1, ..Default::default() }],
+        transforms: vec![Transform {
+            src: 1,
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
         ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
@@ -438,9 +537,6 @@ async fn register_pipeline_invocation_with_existing_state() {
             })),
         }))
     );
-
-    // TODO: b/398874186 - Check the stored state by seeing if it can be used by
-    // AuthorizeConfidentialTransform & ReleaseResults they're once implemented.
 }
 
 #[googletest::test]
@@ -449,7 +545,14 @@ async fn register_pipeline_invocation_without_existing_state() {
     let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
 
     let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform { src: 1, ..Default::default() }],
+        transforms: vec![Transform {
+            src: 1,
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
         ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
@@ -494,7 +597,15 @@ async fn register_pipeline_invocation_with_invalid_policies() {
             LogicalPipelinePolicy {
                 // Use a different policy that doesn't match `variant_policy`.
                 instances: vec![PipelineVariantPolicy {
-                    transforms: vec![Transform { src: 2, ..Default::default() }],
+                    transforms: vec![Transform {
+                        src: 2,
+                        application: Some(ApplicationMatcher {
+                            reference_values: Some(get_test_reference_values()),
+                            ..Default::default()
+                        }),
+
+                        ..Default::default()
+                    }],
                     ..Default::default()
                 }],
             },
@@ -519,9 +630,419 @@ async fn register_pipeline_invocation_with_invalid_policies() {
             displays_as(contains_substring("invalid pipeline policies")),
         ))
     );
+}
 
-    // TODO: b/398874186 - Verify that nothing was written to storage by
-    // checking that AuthorizeConfidentialTransform fails (once implemented).
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_success() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1, 2],
+            dst_node_ids: vec![2, 3, 4],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            config_constraints: Some(Any { value: b"config".into(), ..Default::default() }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.into_inner().invocation_id,
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .map(Response::into_inner);
+    assert_that!(
+        response,
+        ok(matches_pattern!(AuthorizeConfidentialTransformResponse {
+            protected_response: some(anything()),
+        }))
+    );
+    let response = response.unwrap();
+
+    let (_, plaintext, associated_data) = ServerEncryptor::decrypt(
+        &response.protected_response.unwrap().convert().unwrap(),
+        &MockEncryptionKeyHandle::create().unwrap(),
+    )
+    .expect("failed to decrypt response");
+
+    // Verify the ProtectedResponse.
+    expect_that!(
+        ProtectedResponse::decode(plaintext.as_slice()),
+        ok(matches_pattern!(ProtectedResponse {
+            decryption_keys: len(eq(2)),
+            result_encryption_keys: len(eq(3)),
+        }))
+    );
+
+    // Verify the AssociatedData.
+    let cluster_public_key = kms
+        .get_cluster_public_key(GetClusterPublicKeyRequest::default().into_request())
+        .await
+        .expect("get_cluster_public_key failed");
+    expect_that!(
+        AssociatedData::decode(associated_data.as_slice()),
+        ok(matches_pattern!(AssociatedData {
+            cluster_public_key: eq(cluster_public_key.into_inner().public_key),
+            config_constraints: some(matches_pattern!(Any { value: eq(b"config") })),
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_with_keyset_keys() {
+    let now = Arc::new(AtomicI64::new(0));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![0, 1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    }
+    .encode_to_vec();
+
+    // Add three keys to keyset 123, one of which expires before the pipeline
+    // invocation intermediates. Add one key to keyset 456, and none to keyset
+    // 789. Save the encryption keys for use later.
+    let intermediates_exp = 100;
+    let mut encryption_keys = Vec::new();
+    for (keyset_id, exp) in [(123, 90), (123, 100), (123, 110), (456, 120)] {
+        now.fetch_add(1, Ordering::Relaxed); // Avoid ambiguous creation times.
+        let request = RotateKeysetRequest {
+            keyset_id,
+            ttl: Some(Duration { seconds: exp - now.load(Ordering::Relaxed), nanos: 0 }),
+        };
+        kms.rotate_keyset(request.into_request()).await.expect("rotate_keyset failed");
+        if exp >= intermediates_exp {
+            let request = DeriveKeysRequest {
+                keyset_id,
+                authorized_logical_pipelines_hashes: vec![
+                    Sha256::hash(&logical_pipeline_policies).into()
+                ],
+            };
+            let response =
+                kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
+            let cwt =
+                CoseSign1::from_slice(response.into_inner().public_keys.first().unwrap()).unwrap();
+            let cose_key = ClaimsSet::from_slice(&cwt.payload.unwrap())
+                .unwrap()
+                .rest
+                .into_iter()
+                .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
+                .and_then(|(_, value)| value.into_bytes().ok())
+                .unwrap();
+            encryption_keys.push((CoseKey::from_slice(&cose_key).unwrap().key_id, cose_key));
+        }
+    }
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration {
+            seconds: intermediates_exp - now.load(Ordering::Relaxed),
+            nanos: 0,
+        }),
+        keyset_ids: vec![123, 456, 789],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.clone()],
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.into_inner().invocation_id,
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .expect("authorize_confidential_transform failed")
+        .into_inner();
+
+    let (_, plaintext, _) = ServerEncryptor::decrypt(
+        &response.protected_response.unwrap().convert().unwrap(),
+        &MockEncryptionKeyHandle::create().unwrap(),
+    )
+    .expect("failed to decrypt response");
+
+    // Verify the ProtectedResponse. There should be 2 decryption keys for
+    // keyset 123, 1 for keyset 456, and 1 for src_node_id 1.
+    let protected_response = ProtectedResponse::decode(plaintext.as_slice())
+        .expect("failed to decode ProtectedResponse");
+    assert_that!(
+        protected_response,
+        matches_pattern!(ProtectedResponse {
+            decryption_keys: len(eq(4)),
+            result_encryption_keys: len(eq(1)),
+        })
+    );
+
+    // For each public key that doesn't expire before the pipeline invocation,
+    // there should be a corresponding decryption key.
+    let decryption_keys = protected_response
+        .decryption_keys
+        .into_iter()
+        .map(|key| (CoseKey::from_slice(&key).unwrap().key_id, key))
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_that!(
+        decryption_keys.keys().cloned().collect::<Vec<_>>(),
+        superset_of(encryption_keys.iter().map(|(key_id, _)| key_id.clone()).collect::<Vec<_>>())
+    );
+    for (key_id, key) in encryption_keys {
+        verify_hpke_keypair(decryption_keys.get(&key_id).unwrap(), &key).and_log_failure();
+    }
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_with_intermediate_keys() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1, 2],
+            dst_node_ids: vec![2, 3, 4],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.into_inner().invocation_id,
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .expect("authorize_confidential_transform failed")
+        .into_inner();
+
+    let (_, plaintext, _) = ServerEncryptor::decrypt(
+        &response.protected_response.unwrap().convert().unwrap(),
+        &MockEncryptionKeyHandle::create().unwrap(),
+    )
+    .expect("failed to decrypt response");
+
+    // Verify the ProtectedResponse.
+    let protected_response = ProtectedResponse::decode(plaintext.as_slice())
+        .expect("failed to decode ProtectedResponse");
+    assert_that!(
+        protected_response,
+        matches_pattern!(ProtectedResponse {
+            decryption_keys: len(eq(2)),
+            result_encryption_keys: len(eq(3)),
+        })
+    );
+
+    // Encryption and decryption keys with the same node id should be paired.
+    verify_hpke_keypair(
+        &protected_response.decryption_keys[1],
+        &protected_response.result_encryption_keys[0],
+    )
+    .and_log_failure();
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_with_invalid_invocation_id() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: b"invalid".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    expect_that!(
+        kms.authorize_confidential_transform(request.into_request()).await,
+        err(displays_as(contains_substring("invocation_id is invalid")))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_without_registered_invocation() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: [0; 12].into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    expect_that!(
+        kms.authorize_confidential_transform(request.into_request()).await,
+        err(displays_as(contains_substring("pipeline invocation not found")))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn authorize_confidential_transform_without_authorization() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                // These reference values won't match the test evidence.
+                reference_values: Some(ReferenceValues::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
+        keyset_ids: vec![1234],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.into_inner().invocation_id,
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    expect_that!(
+        kms.authorize_confidential_transform(request.into_request()).await,
+        err(displays_as(contains_substring("no transforms matched")))
+    );
 }
 
 mod storage_key {

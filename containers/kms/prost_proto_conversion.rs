@@ -24,15 +24,37 @@ pub trait ProstProtoConversionExt<T: Message + Default>: Message + Sized {
 
 /// The `cbs` module contains messages built using `cargo_build_script`.
 mod cbs {
-    pub use oak_proto_rust::oak::session::v1::{SessionRequest, SessionResponse};
+    pub use oak_proto_rust::oak::{
+        attestation::v1::{Endorsements, Evidence, ReferenceValues},
+        crypto::v1::EncryptedRequest,
+        session::v1::{SessionRequest, SessionResponse},
+    };
 }
 
 /// The `ppl` module contains messages built using `prost_proto_library`.
 mod ppl {
+    pub use access_policy_proto::reference_value_proto::oak::attestation::v1::ReferenceValues;
+    pub use kms_proto::{
+        crypto_proto::oak::crypto::v1::EncryptedRequest,
+        endorsement_proto::oak::attestation::v1::Endorsements,
+        evidence_proto::oak::attestation::v1::Evidence,
+    };
     pub use session_v1_service_proto::session_proto::oak::session::v1::{
         SessionRequest, SessionResponse,
     };
 }
+
+impl ProstProtoConversionExt<cbs::EncryptedRequest> for ppl::EncryptedRequest {}
+impl ProstProtoConversionExt<ppl::EncryptedRequest> for cbs::EncryptedRequest {}
+
+impl ProstProtoConversionExt<cbs::Endorsements> for ppl::Endorsements {}
+impl ProstProtoConversionExt<ppl::Endorsements> for cbs::Endorsements {}
+
+impl ProstProtoConversionExt<cbs::Evidence> for ppl::Evidence {}
+impl ProstProtoConversionExt<ppl::Evidence> for cbs::Evidence {}
+
+impl ProstProtoConversionExt<cbs::ReferenceValues> for ppl::ReferenceValues {}
+impl ProstProtoConversionExt<ppl::ReferenceValues> for cbs::ReferenceValues {}
 
 impl ProstProtoConversionExt<cbs::SessionRequest> for ppl::SessionRequest {}
 impl ProstProtoConversionExt<ppl::SessionRequest> for cbs::SessionRequest {}

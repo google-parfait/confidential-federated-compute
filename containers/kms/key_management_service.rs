@@ -12,35 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use access_policies::validate_pipeline_invocation_policies;
+use access_policies::{authorize_transform, validate_pipeline_invocation_policies};
 use anyhow::{anyhow, ensure, Context};
 use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
-    cbor::value::Value,
     cwt::{ClaimsSetBuilder, Timestamp as CwtTimestamp},
-    iana, Algorithm, CborSerializable, CoseKey, KeyType, Label,
+    iana::{Algorithm, EllipticCurve},
+    CborSerializable, CoseKeyBuilder,
 };
-use key_derivation::{derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM};
+use key_derivation::{
+    derive_private_keys, derive_public_cwts, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM,
+};
 use kms_proto::fcp::confidentialcompute::{
-    key_management_service_server, keyset, AuthorizeConfidentialTransformRequest,
-    AuthorizeConfidentialTransformResponse, ClusterPublicKey, DeriveKeysRequest,
-    DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
-    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
+    authorize_confidential_transform_response, key_management_service_server, keyset,
+    AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
+    ClusterPublicKey, DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest,
+    GetKeysetRequest, GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
     RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
     ReleaseResultsResponse, RotateKeysetRequest, RotateKeysetResponse,
 };
+use log::warn;
+use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
 use prost::Message;
+use prost_proto_conversion::ProstProtoConversionExt;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, update_request, ClusterKeyValue, KeysetKeyValue, LogicalPipelineStateValue,
-        PipelineInvocationStateValue, ReadRequest, UpdateRequest,
+        read_request, read_response, update_request, ClusterKeyValue, KeysetKeyValue,
+        LogicalPipelineStateValue, PipelineInvocationStateValue, ReadRequest, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
 };
 use tonic::{Code, Request, Response};
+
+/// Key id prefix for intermediate keys.
+const INTERMEDIATE_KEY_ID: &[u8] = b"intr";
 
 /// Returns an UpdateRequest for initializing the storage.
 pub fn get_init_request() -> UpdateRequest {
@@ -83,17 +91,33 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
     }
 
     /// Returns the cluster's signing key.
-    async fn get_cluster_key(&self) -> anyhow::Result<ecdsa::PrivateKey<ec::P256>> {
-        let response = self
-            .storage_client
-            .read(ReadRequest {
-                ranges: vec![Self::create_range(StorageKey::ClusterKey, None).unwrap()],
-            })
-            .await?;
-        ensure!(response.entries.len() == 1, "cluster key not found");
-        let cluster_key = ClusterKeyValue::decode(response.entries[0].value.as_slice())?;
+    fn decode_cluster_key(
+        entries: &[read_response::Entry],
+    ) -> anyhow::Result<ecdsa::PrivateKey<ec::P256>> {
+        let key: Vec<u8> = StorageKey::ClusterKey.try_into().unwrap();
+        let entry = entries
+            .iter()
+            .find(|entry| entry.key == key)
+            .ok_or_else(|| anyhow::Error::msg("cluster key not found"))?;
+        let cluster_key = ClusterKeyValue::decode(entry.value.as_slice())?;
         ecdsa::PrivateKey::from_big_endian(cluster_key.key.as_slice())
             .ok_or_else(|| anyhow::Error::msg("failed to parse cluster key"))
+    }
+
+    /// Encodes the cluster's signing key as a COSE key.
+    fn build_cluster_cose_key(key: &ecdsa::PublicKey<ec::P256>) -> Vec<u8> {
+        let encoded_point = key.to_x962_uncompressed();
+        // Uncompressed X9.62 starts with 0x04, then contains the x and y coordinates.
+        // For P256, each coordinate is 32 bytes.
+        let x = &encoded_point.as_ref()[1..33];
+        let y = &encoded_point.as_ref()[33..];
+        CoseKeyBuilder::new_ec2_pub_key(EllipticCurve::P_256, x.into(), y.into())
+            .algorithm(Algorithm::ES256)
+            // The key id is not required to be unique, so we use the beginning of the x coord.
+            .key_id(x[0..4].into())
+            .build()
+            .to_vec()
+            .unwrap()
     }
 
     /// Returns the creation time for a keyset key, derived from the expiration
@@ -141,6 +165,90 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
         id[0] |= 0x80;
         StorageKey::LogicalPipelineState { id }
     }
+
+    /// Derives a transform's decryption keys (`src_node_ids`) and result
+    /// encryption keys (`dst_node_ids`).
+    async fn derive_transform_keys(
+        &self,
+        state: &PipelineInvocationStateValue,
+        state_expiration: &Option<Timestamp>,
+        src_node_ids: &[u32],
+        dst_node_ids: &[u32],
+    ) -> anyhow::Result<(Vec<Vec<u8>>, Vec<Vec<u8>>)> {
+        let intermediates_key = state
+            .intermediates_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("PipelineInvocationState missing intermediates_key"))?;
+
+        let mut decryption_keys = derive_private_keys(
+            intermediates_key.algorithm,
+            INTERMEDIATE_KEY_ID,
+            &intermediates_key.ikm,
+            &src_node_ids
+                .iter()
+                .filter(|id| **id != 0)
+                .map(|id| id.to_be_bytes())
+                .collect::<Vec<_>>(),
+        )
+        .context("failed to derive decryption keys")?;
+        // If the transform reads from initial uploads (src 0), then we need to
+        // provide non-intermediate keys.
+        if src_node_ids.contains(&0) {
+            let ranges = state
+                .keyset_ids
+                .iter()
+                .map(|id| {
+                    Self::create_range(
+                        StorageKey::KeysetKey { keyset_id: *id, key_id: [0; 4] },
+                        Some(StorageKey::KeysetKey { keyset_id: *id, key_id: [255; 4] }),
+                    )
+                    .unwrap()
+                })
+                .collect();
+            let response = self.storage_client.read(ReadRequest { ranges }).await?;
+            for entry in response.entries {
+                // Skip entries that expire before the pipeline invocation
+                // expires. None means that the entity doesn't expire.
+                match (&entry.expiration, &state_expiration) {
+                    (Some(a), Some(b)) if (a.seconds, a.nanos) < (b.seconds, b.nanos) => continue,
+                    (Some(_), None) => continue,
+                    _ => {}
+                }
+
+                let key_id = match entry.key.as_slice().try_into() {
+                    Ok(StorageKey::KeysetKey { key_id, .. }) => key_id,
+                    _ => unreachable!(),
+                };
+                let key = match KeysetKeyValue::decode(entry.value.as_slice()) {
+                    Ok(key) => key,
+                    Err(err) => {
+                        // Skip keys that cannot be decoded.
+                        warn!("failed to decode keyset key: {:?}", err);
+                        continue;
+                    }
+                };
+                decryption_keys.append(
+                    &mut derive_private_keys(
+                        key.algorithm,
+                        &key_id,
+                        &key.ikm,
+                        &state.authorized_logical_pipeline_policies_hashes,
+                    )
+                    .context("failed to derive decryption keys")?,
+                );
+            }
+        }
+
+        let result_encryption_keys = derive_public_keys(
+            intermediates_key.algorithm,
+            INTERMEDIATE_KEY_ID,
+            &intermediates_key.ikm,
+            &dst_node_ids.iter().map(|id| id.to_be_bytes()).collect::<Vec<_>>(),
+        )
+        .context("failed to derive result encryption keys")?;
+
+        Ok((decryption_keys, result_encryption_keys))
+    }
 }
 
 #[tonic::async_trait]
@@ -153,28 +261,17 @@ where
         &self,
         _request: Request<GetClusterPublicKeyRequest>,
     ) -> Result<Response<ClusterPublicKey>, tonic::Status> {
-        let cluster_key = self.get_cluster_key().await.map_err(Self::convert_error)?;
-        let encoded_point = cluster_key.to_public_key().to_x962_uncompressed();
-        // Uncompressed X9.62 starts with 0x04, then contains the x and y coordinates.
-        // For P256, each coordinate is 32 bytes.
-        let x = &encoded_point.as_ref()[1..33];
-        let y = &encoded_point.as_ref()[33..];
-        let public_key = CoseKey {
-            kty: KeyType::Assigned(iana::KeyType::EC2),
-            alg: Some(Algorithm::Assigned(iana::Algorithm::ES256)),
-            // The key id is not required to be unique, so we use the beginning of the x coord.
-            key_id: x[0..4].into(),
-            params: vec![
-                (
-                    Label::Int(iana::Ec2KeyParameter::Crv as i64),
-                    Value::from(iana::EllipticCurve::P_256 as u64),
-                ),
-                (Label::Int(iana::Ec2KeyParameter::X as i64), Value::Bytes(x.into())),
-                (Label::Int(iana::Ec2KeyParameter::Y as i64), Value::Bytes(y.into())),
-            ],
-            ..Default::default()
-        };
-        Ok(Response::new(ClusterPublicKey { public_key: public_key.to_vec().unwrap() }))
+        let response = self
+            .storage_client
+            .read(ReadRequest {
+                ranges: vec![Self::create_range(StorageKey::ClusterKey, None).unwrap()],
+            })
+            .await
+            .map_err(Self::convert_error)?;
+        let cluster_key =
+            Self::decode_cluster_key(&response.entries).map_err(Self::convert_error)?;
+        let public_key = Self::build_cluster_cose_key(&cluster_key.to_public_key());
+        Ok(Response::new(ClusterPublicKey { public_key }))
     }
 
     async fn get_keyset(
@@ -304,7 +401,7 @@ where
             .max_by_key(|entry| (entry.2.seconds, entry.2.nanos))
             .ok_or_else(|| tonic::Status::not_found("no keys found in keyset"))?;
 
-        let public_keys = derive_public_keys(
+        let public_keys = derive_public_cwts(
             value.algorithm,
             &key_id,
             &value.ikm,
@@ -427,9 +524,103 @@ where
 
     async fn authorize_confidential_transform(
         &self,
-        _request: Request<AuthorizeConfidentialTransformRequest>,
+        request: Request<AuthorizeConfidentialTransformRequest>,
     ) -> Result<Response<AuthorizeConfidentialTransformResponse>, tonic::Status> {
-        todo!()
+        let request = request.into_inner();
+
+        // Look up the cluster signing key and the pipeline invocation state.
+        let id = request
+            .invocation_id
+            .as_slice()
+            .try_into()
+            .map_err(|_| tonic::Status::invalid_argument("invocation_id is invalid"))?;
+        let response = self
+            .storage_client
+            .read(ReadRequest {
+                ranges: vec![
+                    Self::create_range(StorageKey::ClusterKey, None).unwrap(),
+                    Self::create_range(StorageKey::PipelineInvocationState { id }, None).unwrap(),
+                ],
+            })
+            .await
+            .map_err(Self::convert_error)?;
+        let cluster_key =
+            Self::decode_cluster_key(&response.entries).map_err(Self::convert_error)?;
+        let (state, state_expiration) = response
+            .entries
+            .iter()
+            .find_map(|entry| match entry.key.as_slice().try_into() {
+                Ok(StorageKey::PipelineInvocationState { .. }) => Some(
+                    PipelineInvocationStateValue::decode(entry.value.as_slice())
+                        .map(|state| (state, entry.expiration.clone()))
+                        .context("failed to decode PipelineInvocationStateValue")
+                        .map_err(Self::convert_error),
+                ),
+                _ => None,
+            })
+            .unwrap_or_else(|| Err(tonic::Status::not_found("pipeline invocation not found")))?;
+        if Sha256::hash(&request.pipeline_variant_policy) != *state.pipeline_variant_policy_hash {
+            return Err(tonic::Status::invalid_argument(
+                "request does not match registered pipeline variant policy",
+            ));
+        }
+
+        // Check whether the transform is authorized by the policy.
+        let authorized_transform = authorize_transform(
+            &request.pipeline_variant_policy,
+            request
+                .evidence
+                .as_ref()
+                .ok_or_else(|| tonic::Status::invalid_argument("evidence is required"))?,
+            request
+                .endorsements
+                .as_ref()
+                .ok_or_else(|| tonic::Status::invalid_argument("endorsements are required"))?,
+            &request.tag,
+            &response
+                .now
+                .ok_or_else(|| tonic::Status::internal("StorageResponse missing timestamp"))?,
+        )
+        .context(Code::InvalidArgument)
+        .map_err(Self::convert_error)?;
+
+        // Generate the transform's encryption and decryption keys.
+        let (decryption_keys, result_encryption_keys) = self
+            .derive_transform_keys(
+                &state,
+                &state_expiration,
+                &authorized_transform.src_node_ids,
+                &authorized_transform.dst_node_ids,
+            )
+            .await
+            .map_err(Self::convert_error)?;
+
+        // Construct the encrypted portion of the response.
+        let protected_response = authorize_confidential_transform_response::ProtectedResponse {
+            decryption_keys,
+            result_encryption_keys,
+        };
+        let associated_data = authorize_confidential_transform_response::AssociatedData {
+            cluster_public_key: Self::build_cluster_cose_key(&cluster_key.to_public_key()),
+            config_constraints: authorized_transform.config_constraints,
+        };
+        let encrypted_message =
+            ClientEncryptor::create(&authorized_transform.extracted_evidence.encryption_public_key)
+                .and_then(|mut encryptor| {
+                    encryptor.encrypt(
+                        &protected_response.encode_to_vec(),
+                        &associated_data.encode_to_vec(),
+                    )
+                })
+                .and_then(|msg| Ok(msg.convert()?))
+                .context("failed to encrypt response")
+                .map_err(Self::convert_error)?;
+
+        Ok(Response::new(AuthorizeConfidentialTransformResponse {
+            protected_response: Some(encrypted_message),
+            // TODO: b/398874186 - Populate the signing key endorsement.
+            signing_key_endorsement: vec![],
+        }))
     }
 
     async fn release_results(

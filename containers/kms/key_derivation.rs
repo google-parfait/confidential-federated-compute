@@ -49,8 +49,26 @@ pub fn derive_private_keys(
         .collect()
 }
 
+/// Derives a public key, encoded as a CoseKey, for each HKDF info value.
+pub fn derive_public_keys(
+    alg: i64,
+    key_id: &[u8],
+    ikm: &[u8],
+    infos: impl IntoIterator<Item = impl AsRef<[u8]>> + Copy,
+) -> anyhow::Result<Vec<Vec<u8>>> {
+    let private_keys = derive_raw_private_keys(alg, ikm, infos)?;
+    infos
+        .into_iter()
+        .zip(private_keys)
+        .map(|(info, private_key)| {
+            let public_key = get_public_key(alg, &private_key)?;
+            build_cose_key(alg, key_id, info.as_ref(), /* public= */ true, public_key)
+        })
+        .collect()
+}
+
 /// Derives a public key, encoded as a CWT, for each HKDF info value.
-pub async fn derive_public_keys<S: Signer>(
+pub async fn derive_public_cwts<S: Signer>(
     alg: i64,
     key_id: &[u8],
     ikm: &[u8],
@@ -58,12 +76,8 @@ pub async fn derive_public_keys<S: Signer>(
     infos: impl IntoIterator<Item = impl AsRef<[u8]>> + Copy,
     signer: &S,
 ) -> anyhow::Result<Vec<Vec<u8>>> {
-    let private_keys = derive_raw_private_keys(alg, ikm, infos)?;
     let mut cwts = FuturesOrdered::new();
-    for (info, private_key) in infos.into_iter().zip(private_keys.iter()) {
-        let public_key = get_public_key(alg, private_key)?;
-        let cose_key =
-            build_cose_key(alg, key_id, info.as_ref(), /* public= */ true, public_key)?;
+    for cose_key in derive_public_keys(alg, key_id, ikm, infos)? {
         cwts.push_back(build_cwt(cose_key, claims.clone(), signer));
     }
     cwts.try_collect().await

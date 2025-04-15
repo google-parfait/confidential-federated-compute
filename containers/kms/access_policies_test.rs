@@ -12,22 +12,56 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use access_policies::validate_pipeline_invocation_policies;
-use access_policy_proto::fcp::confidentialcompute::{
-    pipeline_variant_policy::Transform, ApplicationMatcher,
-    DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
-    PipelineVariantPolicy,
+use access_policies::{
+    authorize_transform, validate_pipeline_invocation_policies, AuthorizedTransform,
+};
+use access_policy_proto::{
+    fcp::confidentialcompute::{
+        pipeline_variant_policy::Transform, ApplicationMatcher,
+        DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
+        PipelineVariantPolicy,
+    },
+    reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
 use googletest::prelude::*;
+use kms_proto::{
+    any_proto::google::protobuf::Any, endorsement_proto::oak::attestation::v1::Endorsements,
+    evidence_proto::oak::attestation::v1::Evidence,
+};
+use oak_attestation_types::{attester::Attester, endorser::Endorser};
+use oak_proto_rust::oak::attestation::v1::ExtractedEvidence;
 use prost::Message;
+use session_test_utils::{FakeAttester, FakeEndorser};
 
 /// Builds a PipelineVariantPolicy with the given source transform. This is not
 /// a representative policy, but it's sufficient for testing.
 fn build_test_variant_policy(src: u32) -> PipelineVariantPolicy {
     PipelineVariantPolicy {
-        transforms: vec![Transform { src, ..Default::default() }],
+        transforms: vec![Transform {
+            src,
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
         ..Default::default()
     }
+}
+
+fn get_test_evidence() -> Evidence {
+    let evidence = FakeAttester::create().unwrap().quote().unwrap();
+    Evidence::decode(evidence.encode_to_vec().as_slice()).unwrap()
+}
+
+fn get_test_endorsements() -> Endorsements {
+    let endorsements = FakeEndorser::default().endorse(None).unwrap();
+    Endorsements::decode(endorsements.encode_to_vec().as_slice()).unwrap()
+}
+
+fn get_test_reference_values() -> ReferenceValues {
+    let rv = session_test_utils::test_reference_values();
+    ReferenceValues::decode(rv.encode_to_vec().as_slice()).unwrap()
 }
 
 #[googletest::test]
@@ -74,17 +108,22 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
         }
     }
 
+    // ApplicationMatcher.reference_values is required.
+    let mut variant_policy = build_test_variant_policy(1);
+    variant_policy.transforms[0].application.as_mut().unwrap().reference_values = None;
+    expect_that!(
+        validate_pipeline_invocation_policies(
+            LOGICAL_PIPELINE_NAME,
+            &variant_policy.encode_to_vec(),
+            &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
+        ),
+        err(displays_as(contains_substring("reference_values are required")))
+    );
+
     // ApplicationMatcher.config_properties is not supported.
-    let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform {
-            application: Some(ApplicationMatcher {
-                config_properties: Some(Default::default()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
+    let mut variant_policy = build_test_variant_policy(1);
+    variant_policy.transforms[0].application.as_mut().unwrap().config_properties =
+        Some(Default::default());
     expect_that!(
         validate_pipeline_invocation_policies(
             LOGICAL_PIPELINE_NAME,
@@ -95,13 +134,8 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
     );
 
     // Transform.access_budget is not supported.
-    let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform {
-            access_budget: Some(Default::default()),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
+    let mut variant_policy = build_test_variant_policy(1);
+    variant_policy.transforms[0].access_budget = Some(Default::default());
     expect_that!(
         validate_pipeline_invocation_policies(
             LOGICAL_PIPELINE_NAME,
@@ -112,10 +146,8 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
     );
 
     // Transform.shared_access_budget_indices is not supported.
-    let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform { shared_access_budget_indices: vec![0], ..Default::default() }],
-        ..Default::default()
-    };
+    let mut variant_policy = build_test_variant_policy(1);
+    variant_policy.transforms[0].shared_access_budget_indices = vec![0];
     expect_that!(
         validate_pipeline_invocation_policies(
             LOGICAL_PIPELINE_NAME,
@@ -126,10 +158,8 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
     );
 
     // dst_node_id 0 is not allowed.
-    let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform { dst_node_ids: vec![0, 1, 2], ..Default::default() }],
-        ..Default::default()
-    };
+    let mut variant_policy = build_test_variant_policy(1);
+    variant_policy.transforms[0].dst_node_ids = vec![0, 1, 2];
     expect_that!(
         validate_pipeline_invocation_policies(
             LOGICAL_PIPELINE_NAME,
@@ -270,4 +300,211 @@ fn validate_pipeline_invocation_policies_fails_with_malformed_policies() {
             logical_pipeline_policies.len()
         );
     }
+}
+
+#[googletest::test]
+fn authorize_transform_success() {
+    let policy = PipelineVariantPolicy {
+        transforms: vec![
+            Transform {
+                src_node_ids: vec![1, 2],
+                dst_node_ids: vec![3, 4],
+                application: Some(ApplicationMatcher {
+                    tag: Some("tagA".into()),
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                config_constraints: Some(Any { value: b"config1".into(), ..Default::default() }),
+                ..Default::default()
+            },
+            Transform {
+                src_node_ids: vec![5, 6],
+                dst_node_ids: vec![7, 8],
+                application: Some(ApplicationMatcher {
+                    tag: Some("tagB".into()),
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                config_constraints: Some(Any { value: b"config2".into(), ..Default::default() }),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    expect_that!(
+        authorize_transform(
+            &policy.encode_to_vec(),
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tagB",
+            &Default::default(),
+        ),
+        ok(matches_pattern!(AuthorizedTransform {
+            index: eq(1),
+            src_node_ids: elements_are!(eq(5), eq(6)),
+            dst_node_ids: elements_are!(eq(7), eq(8)),
+            config_constraints: some(matches_pattern!(Any { value: eq(b"config2") })),
+            extracted_evidence: matches_pattern!(ExtractedEvidence {
+                encryption_public_key: not(empty()),
+                signing_public_key: not(empty()),
+            }),
+        }))
+    );
+}
+
+#[googletest::test]
+fn authorize_transform_with_src_fallback() {
+    let policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src: 1,
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    expect_that!(
+        authorize_transform(
+            &policy.encode_to_vec(),
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tag",
+            &Default::default(),
+        ),
+        ok(matches_pattern!(AuthorizedTransform {
+            index: eq(0),
+            src_node_ids: elements_are!(eq(1)),
+        }))
+    );
+}
+
+#[googletest::test]
+fn authorize_transform_without_explicit_reference_values() {
+    let policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            application: Some(ApplicationMatcher { reference_values: None, ..Default::default() }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    expect_that!(
+        authorize_transform(
+            &policy.encode_to_vec(),
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tag",
+            &Default::default(),
+        ),
+        err(displays_as(contains_substring("no transforms matched")))
+    );
+}
+
+#[googletest::test]
+fn authorize_transform_returns_first_match() {
+    let policy = PipelineVariantPolicy {
+        transforms: vec![
+            Transform {
+                src: 1,
+                application: Some(ApplicationMatcher {
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Transform {
+                src: 2,
+                application: Some(ApplicationMatcher {
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Transform {
+                src: 3,
+                application: Some(ApplicationMatcher {
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    expect_that!(
+        authorize_transform(
+            &policy.encode_to_vec(),
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tag",
+            &Default::default(),
+        ),
+        ok(matches_pattern!(AuthorizedTransform {
+            index: eq(0),
+            src_node_ids: elements_are!(eq(1)),
+        }))
+    );
+}
+
+#[googletest::test]
+fn authorize_transform_fails_with_invalid_policy() {
+    expect_that!(
+        authorize_transform(
+            b"invalid-policy",
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tag",
+            &Default::default(),
+        ),
+        err(displays_as(contains_substring("failed to decode PipelineVariantPolicy")))
+    );
+}
+
+#[googletest::test]
+fn authorize_transform_fails_without_match() {
+    let policy = PipelineVariantPolicy {
+        transforms: vec![
+            Transform {
+                src_node_ids: vec![1, 2],
+                dst_node_ids: vec![3, 4],
+                application: Some(ApplicationMatcher {
+                    tag: Some("tagA".into()),
+                    reference_values: Some(get_test_reference_values()),
+                    ..Default::default()
+                }),
+                config_constraints: Some(Any { value: b"config1".into(), ..Default::default() }),
+                ..Default::default()
+            },
+            Transform {
+                src_node_ids: vec![5, 6],
+                dst_node_ids: vec![7, 8],
+                application: Some(ApplicationMatcher {
+                    tag: Some("tagB".into()),
+                    reference_values: Some(ReferenceValues::default()), // Empty RV are invalid.
+                    ..Default::default()
+                }),
+                config_constraints: Some(Any { value: b"config2".into(), ..Default::default() }),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    expect_that!(
+        authorize_transform(
+            &policy.encode_to_vec(),
+            &get_test_evidence(),
+            &get_test_endorsements(),
+            "tagB",
+            &Default::default(),
+        ),
+        err(displays_as(matches_regex(
+            "(?ms).*no transforms matched.+tag mismatch.+reference_values mismatch.*"
+        )))
+    );
 }
