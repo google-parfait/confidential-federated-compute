@@ -173,6 +173,12 @@ message PipelineInvocationStateValue {
 }
 
 // The persisted state of a logical pipeline.
+//
+// The serialized form of this message is compared by during ReleaseResult's
+// test-and-set operations; it's therefore essential that the serialized form
+// remain stable. Proto serialization isn't canonical, though it should be with
+// a single field. Future changes to this message need to be considered *very*
+// carefully and may require instroducing a custom serializer.
 message LogicalPipelineStateValue {
   // The current state, which is opaque to the KMS.
   bytes state = 1;

@@ -17,10 +17,11 @@ use anyhow::{anyhow, ensure, Context};
 use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
     cbor::value::Value,
-    cwt::{ClaimsSetBuilder, Timestamp as CwtTimestamp},
+    cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder, Timestamp as CwtTimestamp},
     iana::{Algorithm, EllipticCurve},
-    CborSerializable, CoseKeyBuilder,
+    CborSerializable, CoseEncrypt0, CoseKeyBuilder,
 };
+use hashbrown::HashMap;
 use key_derivation::{
     derive_private_keys, derive_public_cwts, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM,
 };
@@ -37,7 +38,10 @@ use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
-use release_tokens::endorse_transform_signing_key;
+use release_tokens::{
+    compute_logical_pipeline_updates, decrypt_release_token, endorse_transform_signing_key,
+    verify_release_token,
+};
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
@@ -667,9 +671,131 @@ where
 
     async fn release_results(
         &self,
-        _request: Request<ReleaseResultsRequest>,
+        request: Request<ReleaseResultsRequest>,
     ) -> Result<Response<ReleaseResultsResponse>, tonic::Status> {
-        todo!()
+        let request = request.into_inner();
+
+        // Decode and verify the release tokens. We cannot verify the signing
+        // key endorsements yet because we haven't retrieved the cluster key.
+        let releasable_results: Vec<(CoseEncrypt0, ClaimsSet, _)> = request
+            .releasable_results
+            .iter()
+            .map(|rr| verify_release_token(&rr.release_token, &rr.signing_key_endorsement))
+            .collect::<anyhow::Result<Vec<_>>>()
+            .context("releasable_results are invalid")
+            .context(Code::InvalidArgument)
+            .map_err(Self::convert_error)?;
+
+        // Look up the cluster key and the pipeline invocation states for all
+        // invocations specified in the endorsement claims.
+        let mut ranges = vec![Self::create_range(StorageKey::ClusterKey, None).unwrap()];
+        let invocation_ids: Vec<[u8; 12]> = releasable_results
+            .iter()
+            .map(|(_, claims, _)| {
+                claims
+                    .rest
+                    .iter()
+                    .find(|(name, _)| name == &ClaimName::PrivateUse(INVOCATION_ID_CLAIM))
+                    .and_then(|(_, value)| value.as_bytes())
+                    .context("endorsement missing invocation id")
+                    .and_then(|value| value.as_slice().try_into().context("invalid invocation id"))
+            })
+            .collect::<Result<_, _>>()
+            .context(Code::InvalidArgument)
+            .map_err(Self::convert_error)?;
+        let mut unique_invocation_ids = invocation_ids.clone();
+        unique_invocation_ids.sort();
+        unique_invocation_ids.dedup();
+        ranges.extend(unique_invocation_ids.into_iter().map(|id| {
+            Self::create_range(StorageKey::PipelineInvocationState { id }, None).unwrap()
+        }));
+        let response =
+            self.storage_client.read(ReadRequest { ranges }).await.map_err(Self::convert_error)?;
+
+        // Now that we have the cluster key, verify the endorsements.
+        let cluster_key =
+            Self::decode_cluster_key(&response.entries).map_err(Self::convert_error)?;
+        let cluster_public_key = cluster_key.to_public_key();
+        releasable_results
+            .iter()
+            .try_for_each(|(_, _, verify_fn)| verify_fn(&cluster_public_key))
+            .context("releasable_results are invalid")
+            .context(Code::InvalidArgument)
+            .map_err(Self::convert_error)?;
+
+        // Also decrypt the release tokens. We do this before updating the
+        // logical pipeline states in case there's a failure.
+        let invocation_states: HashMap<_, _> = response
+            .entries
+            .iter()
+            .filter_map(|entry| match entry.key.as_slice().try_into() {
+                Ok(StorageKey::PipelineInvocationState { id }) => {
+                    Some((id, PipelineInvocationStateValue::decode(entry.value.as_slice()).ok()?))
+                }
+                _ => None,
+            })
+            .collect();
+        let decryption_keys = invocation_ids
+            .iter()
+            .zip(&releasable_results)
+            .map(|(invocation_id, (token_payload, claims, _))| {
+                let state = invocation_states.get(invocation_id).with_context(|| {
+                    format!("pipeline invocation {:?} not found", invocation_id)
+                })?;
+                let dst_node_ids = claims
+                    .rest
+                    .iter()
+                    .find(|(name, _)| name == &ClaimName::PrivateUse(DST_NODE_IDS_CLAIM))
+                    .and_then(|(_, value)| value.as_array())
+                    .context("endorsement claims missing dst node ids")?;
+                decrypt_release_token(token_payload, dst_node_ids, state, INTERMEDIATE_KEY_ID)
+            })
+            .collect::<Result<_, _>>()
+            .context(Code::InvalidArgument)
+            .map_err(Self::convert_error)?;
+
+        // Update the logical pipeline states.
+        let names_and_tokens = invocation_ids.iter().zip(&releasable_results).map(
+            |(invocation_id, (token_payload, _, _))| {
+                let name = &invocation_states.get(invocation_id).unwrap().logical_pipeline_name;
+                (name.as_str(), token_payload)
+            },
+        );
+        let state_changes = compute_logical_pipeline_updates(names_and_tokens)
+            .context("releasable results are incompatible")
+            .context(Code::InvalidArgument)
+            .map_err(Self::convert_error)?;
+        let mut updates = Vec::with_capacity(state_changes.len());
+        let mut logical_pipeline_states = Vec::with_capacity(state_changes.len());
+        for update in state_changes {
+            let src_value =
+                update.src_state.map(|state| LogicalPipelineStateValue { state: state.into() });
+            let dst_value = LogicalPipelineStateValue { state: update.dst_state.into() };
+            updates.push(update_request::Update {
+                key: Self::get_logical_pipeline_storage_key(update.logical_pipeline_name)
+                    .try_into()
+                    .unwrap(),
+                value: Some(dst_value.encode_to_vec()),
+                // TODO: b/398874186 - Set a TTL for logical pipeline states.
+                ttl: None,
+                preconditions: Some(update_request::Preconditions {
+                    // Ensure there's no existing state if `src_value` is None.
+                    exists: if src_value.is_none() { Some(false) } else { None },
+                    value: src_value.map(|m| m.encode_to_vec()),
+                }),
+            });
+            logical_pipeline_states.push(LogicalPipelineState {
+                name: update.logical_pipeline_name.into(),
+                value: update.dst_state.into(),
+            });
+        }
+        self.storage_client
+            .update(UpdateRequest { updates })
+            .await
+            .context("failed to update logical pipeline states")
+            .map_err(Self::convert_error)?;
+
+        Ok(Response::new(ReleaseResultsResponse { decryption_keys, logical_pipeline_states }))
     }
 }
 

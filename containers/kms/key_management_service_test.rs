@@ -26,12 +26,14 @@ use access_policy_proto::{
     },
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
+use anyhow::Context;
 use bssl_crypto::{digest::Sha256, ec, ecdsa, hpke};
 use bssl_utils::p1363_signature_to_asn1;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyType, Label, ProtectedHeader,
+    iana, Algorithm, CborSerializable, CoseEncrypt0Builder, CoseKey, CoseSign1, CoseSign1Builder,
+    Header, HeaderBuilder, KeyType, Label, ProtectedHeader,
 };
 use googletest::prelude::*;
 use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
@@ -46,25 +48,29 @@ use kms_proto::{
         authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
         key_management_service_server::KeyManagementService as _,
         keyset::Key,
+        release_results_request::ReleasableResult,
         AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
         DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
         GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
-        RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, RotateKeysetRequest,
+        RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse,
+        ReleaseResultsRequest, ReleaseResultsResponse, RotateKeysetRequest,
     },
 };
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_crypto::encryptor::ServerEncryptor;
 use oak_proto_rust::oak::crypto::v1::Signature;
-use oak_restricted_kernel_sdk::testing::MockEncryptionKeyHandle;
+use oak_restricted_kernel_sdk::{testing::MockEncryptionKeyHandle, Signer};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
+use release_tokens::{
+    ENCAPSULATED_KEY_PARAM, RELEASE_TOKEN_DST_STATE_PARAM, RELEASE_TOKEN_SRC_STATE_PARAM,
+};
 use session_test_utils::{FakeAttester, FakeEndorser};
 use storage::Storage;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        update_request, ClusterKeyValue, LogicalPipelineStateValue, ReadRequest, ReadResponse,
-        UpdateRequest, UpdateResponse,
+        update_request, ClusterKeyValue, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -451,101 +457,9 @@ async fn get_logical_pipeline_state_with_empty_state() {
     );
 }
 
-// This test modifies the storage directly since ReleaseResults hasn't yet been
-// implemented, so it's not possible to modify the stored state through the KMS.
-// TODO: b/398874186 - Use ReleaseResults once it's implemented.
 #[googletest::test]
 #[tokio::test]
-async fn get_logical_pipeline_state_with_existing_state() {
-    let storage_client = FakeStorageClient::default();
-    let key =
-        StorageKey::LogicalPipelineState { id: Sha256::hash(b"test")[..16].try_into().unwrap() };
-    storage_client
-        .update(UpdateRequest {
-            updates: vec![update_request::Update {
-                key: key.try_into().unwrap(),
-                value: Some(LogicalPipelineStateValue { state: b"state".into() }.encode_to_vec()),
-                ..Default::default()
-            }],
-        })
-        .await
-        .expect("failed to initialize storage");
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
-
-    let request = GetLogicalPipelineStateRequest { name: "test".into() };
-    let response =
-        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner);
-    expect_that!(
-        response,
-        ok(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") }))
-    );
-}
-
-// This test modifies the storage directly since ReleaseResults hasn't yet been
-// implemented, so it's not possible to modify the stored state through the KMS.
-// TODO: b/398874186 - Use ReleaseResults once it's implemented.
-#[googletest::test]
-#[tokio::test]
-async fn register_pipeline_invocation_with_existing_state() {
-    let storage_client = FakeStorageClient::default();
-    let key =
-        StorageKey::LogicalPipelineState { id: Sha256::hash(b"test")[..16].try_into().unwrap() };
-    storage_client
-        .update(UpdateRequest {
-            updates: vec![update_request::Update {
-                key: key.try_into().unwrap(),
-                value: Some(LogicalPipelineStateValue { state: b"state".into() }.encode_to_vec()),
-                ..Default::default()
-            }],
-        })
-        .await
-        .expect("failed to initialize storage");
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
-
-    let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform {
-            src: 1,
-            application: Some(ApplicationMatcher {
-                reference_values: Some(get_test_reference_values()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
-        pipelines: [(
-            "test".into(),
-            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
-        )]
-        .into(),
-        ..Default::default()
-    };
-
-    let request = RegisterPipelineInvocationRequest {
-        logical_pipeline_name: "test".into(),
-        pipeline_variant_policy: variant_policy.encode_to_vec(),
-        intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
-        keyset_ids: vec![1234, 5678],
-        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
-    };
-    let response =
-        kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
-    expect_that!(
-        response,
-        ok(matches_pattern!(RegisterPipelineInvocationResponse {
-            invocation_id: not(empty()),
-            logical_pipeline_state: some(matches_pattern!(LogicalPipelineState {
-                name: eq("test"),
-                value: eq(b"state"),
-            })),
-        }))
-    );
-}
-
-#[googletest::test]
-#[tokio::test]
-async fn register_pipeline_invocation_without_existing_state() {
+async fn register_pipeline_invocation_success() {
     let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
 
     let variant_policy = PipelineVariantPolicy {
@@ -581,7 +495,7 @@ async fn register_pipeline_invocation_without_existing_state() {
         response,
         ok(matches_pattern!(RegisterPipelineInvocationResponse {
             invocation_id: not(empty()),
-            logical_pipeline_state: none(),
+            logical_pipeline_state: none(), // There shouldn't be existing state.
         }))
     );
 }
@@ -1169,6 +1083,527 @@ async fn authorize_confidential_transform_without_authorization() {
     expect_that!(
         kms.authorize_confidential_transform(request.into_request()).await,
         err(displays_as(contains_substring("no transforms matched")))
+    );
+}
+
+/// Helper function to register a pipeline invocation and authorize a transform.
+/// Returns a tuple containing the current logical pipeline state,
+/// ProtectedResponse containing encryption keys, and signing key endorsement.
+///
+/// This function is used to avoid repetitive (and complex) setup in tests
+/// exercising the ReleaseResults flow.
+async fn register_and_authorize<SC, S>(
+    kms: &KeyManagementService<SC, S>,
+    logical_pipeline_name: &str,
+    policy: &PipelineVariantPolicy,
+) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, Vec<u8>)>
+where
+    SC: StorageClient + Send + Sync + 'static,
+    S: oak_sdk_containers::Signer + Send + Sync + 'static,
+{
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            logical_pipeline_name.into(),
+            LogicalPipelinePolicy { instances: vec![policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    };
+
+    // Register the pipeline invocation.
+    let register_invocation_request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: logical_pipeline_name.into(),
+        pipeline_variant_policy: policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration { seconds: 300, nanos: 0 }),
+        keyset_ids: vec![],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+    };
+    let response = kms
+        .register_pipeline_invocation(register_invocation_request.into_request())
+        .await
+        .context("register_pipeline_invocation failed")?
+        .into_inner();
+    let logical_pipeline_state = response.logical_pipeline_state;
+
+    // Authorize the transform.
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.invocation_id,
+        pipeline_variant_policy: policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        ..Default::default()
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .context("authorize_confidential_transform failed")?
+        .into_inner();
+
+    // Decrypt the ProtectedResponse.
+    let (_, plaintext, _) = ServerEncryptor::decrypt(
+        &response.protected_response.unwrap_or_default().convert().unwrap(),
+        &MockEncryptionKeyHandle::create().unwrap(),
+    )
+    .context("failed to decrypt response")?;
+    let protected_response = ProtectedResponse::decode(plaintext.as_slice())
+        .context("failed to decode ProtectedResponse")?;
+
+    Ok((logical_pipeline_state, protected_response, response.signing_key_endorsement))
+}
+
+/// Creates an encrypted release token with the given plaintext, source state,
+/// and destination state.
+fn create_release_token(
+    plaintext: &[u8],
+    src_state: Option<&[u8]>,
+    dst_state: &[u8],
+    cose_key: &[u8],
+) -> anyhow::Result<Vec<u8>> {
+    let cose_key = CoseKey::from_slice(cose_key)
+        .map_err(anyhow::Error::msg)
+        .context("CoseKey::from_slice failed")?;
+    let encryption_key = cose_key
+        .params
+        .into_iter()
+        .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
+        .and_then(|(_, value)| value.into_bytes().ok())
+        .context("public key missing")?;
+    let (mut context, encapsulated_key) = hpke::SenderContext::new(
+        &hpke::Params::new(
+            hpke::Kem::X25519HkdfSha256,
+            hpke::Kdf::HkdfSha256,
+            hpke::Aead::Aes128Gcm,
+        ),
+        &encryption_key,
+        b"",
+    )
+    .context("failed to create SenderContext")?;
+
+    CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(
+            CoseEncrypt0Builder::new()
+                .protected(Header {
+                    alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+                    rest: vec![
+                        (
+                            Label::Int(RELEASE_TOKEN_SRC_STATE_PARAM),
+                            src_state.map(|s| Value::Bytes(s.into())).unwrap_or(Value::Null),
+                        ),
+                        (Label::Int(RELEASE_TOKEN_DST_STATE_PARAM), Value::Bytes(dst_state.into())),
+                    ],
+                    ..Default::default()
+                })
+                .unprotected(
+                    HeaderBuilder::new()
+                        .key_id(cose_key.key_id)
+                        .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                        .build(),
+                )
+                .create_ciphertext(plaintext, b"", move |plaintext, aad| {
+                    context.seal(plaintext, aad)
+                })
+                .build()
+                .to_vec()
+                .map_err(anyhow::Error::msg)
+                .context("failed to build CoseEncrypt0")?,
+        )
+        .create_signature(b"", |msg| session_test_utils::FakeSigner::create().unwrap().sign(msg))
+        .build()
+        .to_vec()
+        .map_err(anyhow::Error::msg)
+        .context("failed to build CoseSign1")
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_success() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (logical_pipeline_state, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+    expect_that!(logical_pipeline_state, none());
+
+    // Call ReleaseResults to update the saved logical pipeline state.
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult {
+            release_token,
+            signing_key_endorsement: signing_key_endorsement.clone(),
+        }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(ReleaseResultsResponse {
+            decryption_keys: elements_are![eq(b"plaintext")],
+            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+                name: eq("test"),
+                value: eq(b"state")
+            })],
+        }))
+    );
+
+    // The logical pipeline state should now be updated. It should be returned
+    // by subsequent calls to GetLogicalPipelineState and
+    // RegisterPipelineInvocation.
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    expect_that!(
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") }))
+    );
+    expect_that!(
+        register_and_authorize(&kms, "test", &variant_policy).await.map(|t| t.0),
+        ok(some(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") })))
+    );
+
+    // Another ReleaseResults call should update the state again. This verifies
+    // that an update with initial state produces the right precondition.
+    let release_token = create_release_token(
+        b"plaintext2",
+        /* src_state= */ Some(b"state"),
+        /* dst_state= */ b"state2",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    assert_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(ReleaseResultsResponse {
+            decryption_keys: elements_are![eq(b"plaintext2")],
+            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+                name: eq("test"),
+                value: eq(b"state2")
+            })],
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_src_state_not_matching() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // ReleaseResults should fail if the initial state doesn't match the current
+    // value (None).
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ Some(b"doesn't match"),
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_substring("failed to update logical pipeline states")))
+    );
+
+    // The logical pipeline state should not have been set.
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    expect_that!(
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+        err(property!(Status.code(), eq(Code::NotFound)))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_src_state_none_not_matching() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // Set the logical pipeline state to "initial".
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"initial",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult {
+            release_token,
+            signing_key_endorsement: signing_key_endorsement.clone(),
+        }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        ok(anything())
+    );
+
+    // ReleaseResults with an initial state that doesn't match the current
+    // value ("initial").
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_substring("failed to update logical pipeline states")))
+    );
+
+    // The logical pipeline state should not have been changed.
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    expect_that!(
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(LogicalPipelineState { value: eq(b"initial") }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_missing_invocation_id() {
+    let now = Arc::new(AtomicI64::new(1000));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // Advance the clock and trigger a storage update to ensure that the
+    // invocation expires.
+    now.fetch_add(3600, Ordering::Relaxed);
+    register_and_authorize(&kms, "test", &variant_policy)
+        .await
+        .expect("failed to register and authorize pipeline transform");
+
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_regex("pipeline invocation .+ not found")))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_modified_release_token() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // Tamper with the release token.
+    let mut release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    for i in 0..release_token.len() {
+        if release_token[i..].starts_with(b"state") {
+            release_token[i..i + 5].copy_from_slice(b"other");
+            break;
+        }
+    }
+
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_substring("releasable_results are invalid")))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_undecryptable_release_token() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // Create a release token that cannot be decrypted.
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let mut token = CoseSign1::from_slice(&release_token).unwrap();
+    token.payload.as_mut().unwrap()[0] ^= 0xFF;
+    let release_token = token.to_vec().unwrap();
+
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_substring("releasable_results are invalid")))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_fails_with_modified_signing_key_endorsement() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            dst_node_ids: vec![2],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) =
+        register_and_authorize(&kms, "test", &variant_policy)
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+    // Tamper with the signing key endorsement. Modifications to the signature
+    // won't be caught until later in the flow.
+    let mut cwt = CoseSign1::from_slice(&signing_key_endorsement)
+        .expect("failed to parse signing key endorsement");
+    cwt.signature[0] ^= 0xFF;
+    let signing_key_endorsement = cwt.to_vec().unwrap();
+
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        err(displays_as(contains_substring("releasable_results are invalid")))
     );
 }
 
