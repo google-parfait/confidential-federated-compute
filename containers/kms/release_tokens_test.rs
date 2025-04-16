@@ -13,15 +13,16 @@
 // limitations under the License.
 
 use bssl_crypto::{ec, ecdsa};
-use bssl_utils::p1363_signature_to_asn1;
+use bssl_utils::{asn1_signature_to_p1363, p1363_signature_to_asn1};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyType, Label, ProtectedHeader,
+    iana, Algorithm, CborSerializable, CoseEncrypt0, CoseEncrypt0Builder, CoseKey, CoseSign1,
+    CoseSign1Builder, Header, HeaderBuilder, KeyType, Label, ProtectedHeader,
 };
 use googletest::prelude::*;
 use key_derivation::PUBLIC_KEY_CLAIM;
-use release_tokens::endorse_transform_signing_key;
+use release_tokens::{endorse_transform_signing_key, verify_release_token};
 
 #[googletest::test]
 fn endorse_transform_signing_key_succeeds() {
@@ -114,5 +115,124 @@ fn endorse_transform_signing_key_succeeds() {
     expect_that!(
         x962_public_key,
         eq(transform_signing_key.to_public_key().to_x962_uncompressed().as_ref()),
+    );
+}
+
+#[googletest::test]
+fn verify_release_token_succeeds() {
+    let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let payload =
+        CoseEncrypt0Builder::new().ciphertext(b"ciphertext".into()).build().to_vec().unwrap();
+    let token = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(payload.clone())
+        .create_signature(b"", |msg| {
+            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap()
+        })
+        .build()
+        .to_vec()
+        .unwrap();
+    let endorsement = endorse_transform_signing_key(
+        transform_signing_key.to_public_key().to_x962_uncompressed().as_ref(),
+        &cluster_key,
+        ClaimsSetBuilder::new().issuer("test".into()).build(),
+    )
+    .expect("endorse_transform_signing_key failed");
+
+    let (token_payload, claims, verify_signature_fn) =
+        verify_release_token(&token, &endorsement).expect("verify_release_token failed");
+    expect_that!(token_payload, eq(CoseEncrypt0::from_slice(&payload).unwrap()));
+    expect_that!(claims, matches_pattern!(ClaimsSet { issuer: some(eq("test")) }));
+    // The signature verification function should succeed with the right key
+    // and fail with the wrong one.
+    expect_that!(verify_signature_fn(&cluster_key.to_public_key()), ok(anything()));
+    expect_that!(verify_signature_fn(&transform_signing_key.to_public_key()), err(anything()));
+}
+
+#[googletest::test]
+fn verify_release_token_fails_with_invalid_endorsement() {
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let token = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(CoseEncrypt0::default().to_vec().unwrap())
+        .create_signature(b"", |msg| {
+            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap()
+        })
+        .build()
+        .to_vec()
+        .unwrap();
+
+    expect_that!(
+        verify_release_token(&token, b"invalid").err(),
+        some(displays_as(contains_substring("failed to parse endorsement")))
+    );
+}
+
+#[googletest::test]
+fn verify_release_token_fails_with_invalid_token() {
+    let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let endorsement = endorse_transform_signing_key(
+        transform_signing_key.to_public_key().to_x962_uncompressed().as_ref(),
+        &cluster_key,
+        ClaimsSet::default(),
+    )
+    .expect("endorse_transform_signing_key failed");
+
+    expect_that!(
+        verify_release_token(b"invalid", &endorsement).err(),
+        some(displays_as(contains_substring("failed to parse release token")))
+    );
+}
+
+#[googletest::test]
+fn verify_release_token_fails_with_invalid_token_signature() {
+    let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let other_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let token = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(CoseEncrypt0::default().to_vec().unwrap())
+        .create_signature(b"", |msg| asn1_signature_to_p1363(&other_key.sign(msg)).unwrap())
+        .build()
+        .to_vec()
+        .unwrap();
+    let endorsement = endorse_transform_signing_key(
+        transform_signing_key.to_public_key().to_x962_uncompressed().as_ref(),
+        &cluster_key,
+        ClaimsSet::default(),
+    )
+    .expect("endorse_transform_signing_key failed");
+
+    expect_that!(
+        verify_release_token(&token, &endorsement).err(),
+        some(displays_as(contains_substring("invalid release token signature")))
+    );
+}
+
+#[googletest::test]
+fn verify_release_token_fails_with_invalid_token_payload() {
+    let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let token = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(b"invalid".into())
+        .create_signature(b"", |msg| {
+            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap()
+        })
+        .build()
+        .to_vec()
+        .unwrap();
+    let endorsement = endorse_transform_signing_key(
+        transform_signing_key.to_public_key().to_x962_uncompressed().as_ref(),
+        &cluster_key,
+        ClaimsSetBuilder::new().issuer("test".into()).build(),
+    )
+    .expect("endorse_transform_signing_key failed");
+
+    expect_that!(
+        verify_release_token(&token, &endorsement).err(),
+        some(displays_as(contains_substring("invalid release token payload")))
     );
 }
