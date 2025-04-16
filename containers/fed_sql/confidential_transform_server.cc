@@ -31,6 +31,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/sensitive_columns.h"
+#include "containers/fed_sql/session_utils.h"
 #include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
@@ -130,115 +131,6 @@ absl::Status ValidateTopLevelIntrinsics(
         "Configuration must have exactly one IntrinsicConfig.");
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<std::vector<TensorColumn>> Deserialize(
-    const TableSchema& table_schema, CheckpointParser* parser,
-    std::optional<SessionInferenceConfiguration> inference_configuration =
-        std::nullopt) {
-  absl::flat_hash_set<std::string> input_column_names;
-  absl::flat_hash_set<std::string> output_column_names;
-  if (inference_configuration.has_value()) {
-    for (const auto& inference_task :
-         inference_configuration->initialize_configuration.inference_config()
-             .inference_task()) {
-      input_column_names.insert(
-          inference_task.column_config().input_column_name());
-      output_column_names.insert(
-          inference_task.column_config().output_column_name());
-    }
-  }
-
-  // The table schema has inference output columns listed, but the checkpoint
-  // does not contain these, as they are generated during inference. Besides
-  // that, input columns are not listed in the table schema, but are present in
-  // the checkpoint, and have to be unpacked.
-  std::vector<TensorColumn> columns(table_schema.column_size() -
-                                    output_column_names.size() +
-                                    input_column_names.size());
-  std::optional<size_t> num_rows;
-  int tensor_column_index = 0;
-  for (int i = 0; i < table_schema.column_size(); i++) {
-    if (output_column_names.contains(table_schema.column(i).name())) {
-      // Inference output columns do not exist in the checkpoint.
-      continue;
-    }
-    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
-                         parser->GetTensor(table_schema.column(i).name()));
-    if (!num_rows.has_value()) {
-      num_rows.emplace(tensor_column_values.num_elements());
-    } else if (num_rows.value() != tensor_column_values.num_elements()) {
-      return absl::InvalidArgumentError(
-          "Checkpoint has columns with differing numbers of rows.");
-    }
-    FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
-                         TensorColumn::Create(table_schema.column(i),
-                                              std::move(tensor_column_values)));
-    columns[tensor_column_index] = std::move(tensor_column);
-    tensor_column_index++;
-  }
-  for (const auto& column_name : input_column_names) {
-    // Input columns are not listed in the per-client table schema, and have to
-    // be added manually.
-    FCP_ASSIGN_OR_RETURN(Tensor tensor_column_values,
-                         parser->GetTensor(column_name));
-    if (!num_rows.has_value()) {
-      num_rows.emplace(tensor_column_values.num_elements());
-    } else if (num_rows.value() != tensor_column_values.num_elements()) {
-      return absl::InvalidArgumentError(
-          "Checkpoint has columns with differing numbers of rows.");
-    }
-    ColumnSchema input_col_schema;
-    input_col_schema.set_name(column_name);
-    input_col_schema.set_type(
-        ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-    FCP_ASSIGN_OR_RETURN(TensorColumn tensor_column,
-                         TensorColumn::Create(input_col_schema,
-                                              std::move(tensor_column_values)));
-    columns[tensor_column_index] = std::move(tensor_column);
-    tensor_column_index++;
-  }
-  return columns;
-}
-
-// A simple pass-through CheckpointParser.
-class InMemoryCheckpointParser : public CheckpointParser {
- public:
-  explicit InMemoryCheckpointParser(std::vector<TensorColumn> columns) {
-    for (auto& column : columns) {
-      tensors_[column.column_schema_.name()] = std::move(column.tensor_);
-    }
-  }
-
-  // Implementation of CheckpointParser::GetTensor.
-  absl::StatusOr<Tensor> GetTensor(const std::string& name) override {
-    auto it = tensors_.find(name);
-    if (it == tensors_.end()) {
-      return absl::NotFoundError(absl::StrCat("Tensor not found: ", name));
-    }
-    return std::move(it->second);
-  }
-
- private:
-  absl::flat_hash_map<std::string, Tensor> tensors_;
-};
-
-absl::StatusOr<Record> EncryptSessionResult(
-    const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
-    uint32_t output_access_policy_node_id) {
-  RecordEncryptor encryptor;
-  BlobHeader previous_header;
-  if (!previous_header.ParseFromString(
-          input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
-    return absl::InvalidArgumentError(
-        "Failed to parse the BlobHeader when trying to encrypt outputs.");
-  }
-  return encryptor.EncryptRecord(unencrypted_result,
-                                 input_metadata.hpke_plus_aead_data()
-                                     .rewrapped_symmetric_key_associated_data()
-                                     .reencryption_public_key(),
-                                 previous_header.access_policy_sha256(),
-                                 output_access_policy_node_id);
 }
 
 std::string CreateTempFilePath(std::string directory,

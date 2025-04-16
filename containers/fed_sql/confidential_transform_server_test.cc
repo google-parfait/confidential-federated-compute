@@ -26,6 +26,8 @@
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/testing/mocks.h"
+#include "containers/fed_sql/testing/test_utils.h"
 #include "containers/private_state.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -34,7 +36,6 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
-#include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -56,6 +57,9 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::fed_sql::testing::
+    BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -93,9 +97,6 @@ using ::fcp::confidentialcompute::TransformRequest;
 using ::fcp::confidentialcompute::TransformResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
-using ::gcpp::Gemma;
-using ::gcpp::ModelInfo;
-using ::gcpp::NestedPools;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::internal::federated::plan::
@@ -137,19 +138,6 @@ inline constexpr int kMaxNumSessions = 8;
 inline constexpr int kSerializeOutputNodeId = 1;
 inline constexpr int kReportOutputNodeId = 2;
 
-class MockInferenceModel : public InferenceModel {
- public:
-  MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
-              (const ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config,
-               NestedPools& pools),
-              (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
-              (const std::string& prompt, const absl::string_view& column_value,
-               const std::string& column_name),
-              (override));
-};
-
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               std::vector<ColumnSchema> columns) {
   TableSchema schema;
@@ -176,6 +164,41 @@ ColumnSchema CreateColumnSchema(
   schema.set_name(name);
   schema.set_type(type);
   return schema;
+}
+
+Configuration DefaultConfiguration() {
+  return PARSE_TEXT_PROTO(R"pb(
+    intrinsic_configs: {
+      intrinsic_uri: "fedsql_group_by"
+      intrinsic_args {
+        input_tensor {
+          name: "key"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+      }
+      output_tensors {
+        name: "key_out"
+        dtype: DT_INT64
+        shape { dim_sizes: -1 }
+      }
+      inner_intrinsics {
+        intrinsic_uri: "GoogleSQL:sum"
+        intrinsic_args {
+          input_tensor {
+            name: "val"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+        output_tensors {
+          name: "val_out"
+          dtype: DT_INT64
+          shape {}
+        }
+      }
+    }
+  )pb");
 }
 
 SqlQuery DefaultSqlQuery() {
@@ -209,34 +232,6 @@ SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
   write_request->set_commit(true);
   write_request->set_data(data);
   return request;
-}
-
-std::string BuildFedSqlGroupByCheckpoint(
-    std::initializer_list<uint64_t> key_col_values,
-    std::initializer_list<uint64_t> val_col_values,
-    const std::string& key_col_name = "key",
-    const std::string& val_col_name = "val") {
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-
-  absl::StatusOr<Tensor> key =
-      Tensor::Create(DataType::DT_INT64,
-                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
-                     CreateTestData<uint64_t>(key_col_values));
-  absl::StatusOr<Tensor> val =
-      Tensor::Create(DataType::DT_INT64,
-                     TensorShape({static_cast<int64_t>(val_col_values.size())}),
-                     CreateTestData<uint64_t>(val_col_values));
-  CHECK_OK(key);
-  CHECK_OK(val);
-  CHECK_OK(ckpt_builder->Add(key_col_name, *key));
-  CHECK_OK(ckpt_builder->Add(val_col_name, *val));
-  auto checkpoint = ckpt_builder->Build();
-  CHECK_OK(checkpoint.status());
-
-  std::string checkpoint_string;
-  absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  return checkpoint_string;
 }
 
 std::string ReadFileContent(std::string file_path) {
@@ -299,10 +294,7 @@ class FedSqlServerTest : public Test {
   }
 
  protected:
-  // Returns default configuration.
-  Configuration DefaultConfiguration() const;
   InferenceInitializeConfiguration DefaultInferenceConfig() const;
-
   // Returns the default BlobMetadata
   BlobMetadata DefaultBlobMetadata() const;
 
@@ -314,40 +306,6 @@ class FedSqlServerTest : public Test {
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
-Configuration FedSqlServerTest::DefaultConfiguration() const {
-  return PARSE_TEXT_PROTO(R"pb(
-    intrinsic_configs: {
-      intrinsic_uri: "fedsql_group_by"
-      intrinsic_args {
-        input_tensor {
-          name: "key"
-          dtype: DT_INT64
-          shape { dim_sizes: -1 }
-        }
-      }
-      output_tensors {
-        name: "key_out"
-        dtype: DT_INT64
-        shape { dim_sizes: -1 }
-      }
-      inner_intrinsics {
-        intrinsic_uri: "GoogleSQL:sum"
-        intrinsic_args {
-          input_tensor {
-            name: "val"
-            dtype: DT_INT64
-            shape {}
-          }
-        }
-        output_tensors {
-          name: "val_out"
-          dtype: DT_INT64
-          shape {}
-        }
-      }
-    }
-  )pb");
-}
 InferenceInitializeConfiguration FedSqlServerTest::DefaultInferenceConfig()
     const {
   return PARSE_TEXT_PROTO(R"pb(

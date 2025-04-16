@@ -24,6 +24,7 @@ cc_library(
     deps = [
         ":inference_model",
         ":sensitive_columns",
+        ":session_utils",
         "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
@@ -155,6 +156,8 @@ cc_test(
         "//containers:crypto",
         "//containers:crypto_test_utils",
         "//containers:private_state",
+        "//containers/fed_sql/testing:mocks",
+        "//containers/fed_sql/testing:test_utils",
         "//testing:matchers",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
@@ -165,11 +168,47 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
-        "@gemma//:gemma_lib",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
+
+cc_test(
+    name = "session_utils_test",
+    srcs = ["session_utils_test.cc"],
+    deps = [
+        ":inference_model",
+        ":session_utils",
+        "//containers/fed_sql/testing:test_utils",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@gemma//:gemma_lib",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
+
+cc_library(
+    name = "session_utils",
+    srcs = ["session_utils.cc"],
+    hdrs = ["session_utils.h"],
+    deps = [
+        ":inference_model",
+        "//containers:crypto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@gemma//:gemma_lib",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
     ],
 )
 
