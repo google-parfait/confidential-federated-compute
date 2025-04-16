@@ -177,6 +177,7 @@ async fn build_cwt<S: Signer>(
             to_be_signed.extend_from_slice(msg);
             Vec::with_capacity(0)
         })
+        // The Signer produces raw `r|s` signatures, so no conversion is needed.
         .signature(
             signer.sign(to_be_signed.as_slice()).await.context("failed to sign CWT")?.signature,
         )

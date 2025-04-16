@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bssl_crypto::{ec, ecdsa};
+use bssl_utils::p1363_signature_to_asn1;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
@@ -48,7 +49,7 @@ fn endorse_transform_signing_key_succeeds() {
     expect_that!(
         cwt.as_ref().unwrap().verify_signature(b"", |signature, data| cluster_key
             .to_public_key()
-            .verify(data, signature)),
+            .verify(data, &p1363_signature_to_asn1(signature).expect("invalid signature"))),
         ok(anything())
     );
 

@@ -18,6 +18,7 @@
 
 use anyhow::{ensure, Context};
 use bssl_crypto::{ec, ecdsa};
+use bssl_utils::asn1_signature_to_p1363;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
@@ -58,9 +59,10 @@ pub fn endorse_transform_signing_key(
     CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(Algorithm::ES256).build())
         .payload(claims.to_vec().map_err(anyhow::Error::msg).context("failed to encode ClaimsSet")?)
-        // TODO: b/398874186 - bssl produces an ASN.1 DER signature, but the COSE
-        // spec requires a raw `r|s` signature.
-        .create_signature(b"", |msg| cluster_key.sign(msg))
+        .try_create_signature(b"", |msg| {
+            asn1_signature_to_p1363(&cluster_key.sign(msg))
+                .context("failed to convert signature to P1363")
+        })?
         .build()
         .to_vec()
         .map_err(anyhow::Error::msg)

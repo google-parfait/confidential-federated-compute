@@ -27,6 +27,7 @@ use access_policy_proto::{
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
 use bssl_crypto::{digest::Sha256, ec, ecdsa, hpke};
+use bssl_utils::p1363_signature_to_asn1;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
@@ -1043,7 +1044,8 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
         }))
     );
     expect_that!(
-        cwt.verify_signature(b"", |signature, data| public_key.verify(data, signature)),
+        cwt.verify_signature(b"", |signature, data| public_key
+            .verify(data, &p1363_signature_to_asn1(signature).unwrap())),
         ok(anything())
     );
 }
