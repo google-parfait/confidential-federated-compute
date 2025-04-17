@@ -24,6 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -163,8 +164,9 @@ absl::StatusOr<tensorflow_federated::v0::Value> TffSession::FetchData(
     const std::string& uri) {
   auto data = data_by_uri_.find(uri);
   if (data == data_by_uri_.end()) {
-    return absl::InvalidArgumentError(
-        "Data in argument was not provided to the transform.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Data in argument was not provided to the transform. Requested uri:", 
+        uri));
   }
   return data->second;
 }
@@ -173,8 +175,9 @@ absl::StatusOr<tensorflow_federated::v0::Value> TffSession::FetchClientData(
     const std::string& uri, const std::string& key) {
   auto parser = client_checkpoint_parser_by_uri_.find(uri);
   if (parser == client_checkpoint_parser_by_uri_.end()) {
-    return absl::InvalidArgumentError(
-        "Data in argument was not provided to the transform.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Data in argument was not provided to the transform. Requested uri:", 
+        uri));
   }
   // Note that each key can only be accessed a single time from the parser. So,
   // this relies on the fact that a given uri, key pair will only appear once in
