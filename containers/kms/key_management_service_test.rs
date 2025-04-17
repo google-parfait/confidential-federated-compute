@@ -1022,6 +1022,8 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
         ClaimsSet::from_slice(cwt.payload.as_ref().unwrap()),
         ok(matches_pattern!(ClaimsSet {
             issued_at: some(eq(CwtTimestamp::WholeSeconds(1000))),
+            not_before: some(eq(CwtTimestamp::WholeSeconds(1000))),
+            expiration_time: some(eq(CwtTimestamp::WholeSeconds(1100))),
             rest: contains_each![
                 (
                     eq(ClaimName::PrivateUse(LOGICAL_PIPELINE_NAME_CLAIM)),
