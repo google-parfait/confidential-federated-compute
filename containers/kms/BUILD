@@ -56,7 +56,7 @@ rust_prost_library(
 rust_library(
     name = "bssl_utils",
     srcs = ["bssl_utils.rs"],
-    deps = ["@oak_crates_index//:p256"],
+    deps = ["@boringssl//rust/bssl-sys"],
 )
 
 rust_test(

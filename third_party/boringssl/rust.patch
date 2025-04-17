@@ -30,7 +30,7 @@
 +    compile_data = [":bindgen"],
 +    rustc_env = {"BINDGEN_RS_FILE": "$(execpath :bindgen)"},
 +    rustc_flags = ["--cfg=bindgen_rs_file"],
-+    visibility = ["//rust/bssl-crypto:__pkg__"],
++    visibility = ["//visibility:public"],
 +    deps = [":bindgen_c_thunks_library"],
 +)
 +

@@ -49,7 +49,7 @@ fn endorse_transform_signing_key_succeeds() {
     expect_that!(
         cwt.as_ref().unwrap().verify_signature(b"", |signature, data| cluster_key
             .to_public_key()
-            .verify(data, &p1363_signature_to_asn1(signature).expect("invalid signature"))),
+            .verify(data, &p1363_signature_to_asn1(signature.try_into().unwrap()))),
         ok(anything())
     );
 

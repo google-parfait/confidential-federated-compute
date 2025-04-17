@@ -1045,7 +1045,7 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
     );
     expect_that!(
         cwt.verify_signature(b"", |signature, data| public_key
-            .verify(data, &p1363_signature_to_asn1(signature).unwrap())),
+            .verify(data, &p1363_signature_to_asn1(signature.try_into().unwrap()))),
         ok(anything())
     );
 }

@@ -28,7 +28,7 @@ fn asn1_signature_to_p1363_success() {
         Vec::from_iter(32..64).as_slice(),
     ]
     .concat();
-    let expected = Vec::from_iter(0..64);
+    let expected: [u8; 64] = Vec::from_iter(0..64).try_into().unwrap();
     expect_that!(asn1_signature_to_p1363(&signature), some(eq(expected)));
 }
 
@@ -39,7 +39,7 @@ fn asn1_signature_to_p1363_fails_with_invalid_signature() {
 
 #[googletest::test]
 fn p1363_signature_to_asn1_success() {
-    let signature = Vec::from_iter(0..64);
+    let signature = Vec::from_iter(0..64).try_into().unwrap();
     let expected = [
         &[48, 67, 2, 31],
         Vec::from_iter(1..32).as_slice(),
@@ -47,10 +47,5 @@ fn p1363_signature_to_asn1_success() {
         Vec::from_iter(32..64).as_slice(),
     ]
     .concat();
-    expect_that!(p1363_signature_to_asn1(&signature), some(eq(expected)));
-}
-
-#[googletest::test]
-fn p1363_signature_to_asn1_fails_with_invalid_signature() {
-    expect_that!(p1363_signature_to_asn1(b"invalid"), none());
+    expect_that!(p1363_signature_to_asn1(&signature), eq(expected));
 }
