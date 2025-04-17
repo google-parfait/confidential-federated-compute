@@ -62,6 +62,7 @@ pub fn endorse_transform_signing_key(
         .try_create_signature(b"", |msg| {
             asn1_signature_to_p1363(&cluster_key.sign(msg))
                 .context("failed to convert signature to P1363")
+                .map(Into::into)
         })?
         .build()
         .to_vec()
