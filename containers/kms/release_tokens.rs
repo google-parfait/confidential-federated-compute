@@ -129,7 +129,7 @@ pub fn verify_release_token(
     token
         .verify_signature(b"", |signature, data| {
             let signature =
-                p1363_signature_to_asn1(signature).context("ASN.1 conversion failed")?;
+                p1363_signature_to_asn1(signature.try_into().context("invalid signature")?);
             public_key
                 .verify(data, &signature)
                 .map_err(|_| anyhow!("signature verification failed"))
@@ -145,7 +145,7 @@ pub fn verify_release_token(
         endorsement
             .verify_signature(b"", |signature, data| {
                 let signature =
-                    p1363_signature_to_asn1(signature).context("ASN.1 conversion failed")?;
+                    p1363_signature_to_asn1(signature.try_into().context("invalid signature")?);
                 cluster_key
                     .verify(data, &signature)
                     .map_err(|_| anyhow!("signature verification failed"))
