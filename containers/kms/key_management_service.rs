@@ -129,9 +129,9 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
             .unwrap()
     }
 
-    /// Returns the creation time for a keyset key, derived from the expiration
+    /// Returns the creation time for an entity, derived from the expiration
     /// time and TTL.
-    fn get_key_creation_time(ttl: &Option<Duration>, expiration: &Option<Timestamp>) -> Timestamp {
+    fn get_creation_time(ttl: &Option<Duration>, expiration: &Option<Timestamp>) -> Timestamp {
         let ttl = ttl
             .as_ref()
             .map(|ttl| {
@@ -313,7 +313,7 @@ where
                 let value = KeysetKeyValue::decode(entry.value.as_slice()).ok()?;
                 Some(keyset::Key {
                     key_id: key_id.into(),
-                    created: Some(Self::get_key_creation_time(&value.ttl, &entry.expiration)),
+                    created: Some(Self::get_creation_time(&value.ttl, &entry.expiration)),
                     expiration: entry.expiration,
                 })
             })
@@ -404,7 +404,7 @@ where
                 };
                 // Skip keys that cannot be decoded.
                 let value = KeysetKeyValue::decode(entry.value.as_slice()).ok()?;
-                let created = Self::get_key_creation_time(&value.ttl, &entry.expiration);
+                let created = Self::get_creation_time(&value.ttl, &entry.expiration);
                 Some((key_id, value, created, entry.expiration))
             })
             .max_by_key(|entry| (entry.2.seconds, entry.2.nanos))
@@ -632,11 +632,19 @@ where
         // pipeline name, invocation id, and destination node ids), and others
         // may be useful for pipelines that want to inspect provenance or
         // debugging.
+        let creation_time = Self::get_creation_time(
+            &state.intermediates_key.and_then(|key| key.ttl),
+            &state_expiration,
+        );
         let signing_key_endorsement = endorse_transform_signing_key(
             &authorized_transform.extracted_evidence.signing_public_key,
             &cluster_key,
             ClaimsSetBuilder::new()
                 .issued_at(CwtTimestamp::WholeSeconds(now.seconds))
+                .not_before(CwtTimestamp::WholeSeconds(creation_time.seconds))
+                .expiration_time(CwtTimestamp::WholeSeconds(
+                    state_expiration.map(|t| t.seconds).unwrap_or(0),
+                ))
                 .private_claim(LOGICAL_PIPELINE_NAME_CLAIM, state.logical_pipeline_name.into())
                 .private_claim(INVOCATION_ID_CLAIM, request.invocation_id.into())
                 .private_claim(TRANSFORM_INDEX_CLAIM, (authorized_transform.index as u64).into())
