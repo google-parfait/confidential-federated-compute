@@ -240,6 +240,7 @@ rust_library(
     deps = [
         ":bssl_utils",
         ":key_derivation",
+        ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
@@ -253,6 +254,7 @@ rust_test(
         ":bssl_utils",
         ":key_derivation",
         ":release_tokens",
+        ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:googletest",

@@ -16,8 +16,8 @@
 //! generating the transform signing key endorsement used to establish the
 //! provenance of a release token.
 
-use anyhow::{anyhow, ensure, Context};
-use bssl_crypto::{ec, ecdsa};
+use anyhow::{anyhow, bail, ensure, Context};
+use bssl_crypto::{ec, ecdsa, hpke};
 use bssl_utils::{asn1_signature_to_p1363, p1363_signature_to_asn1};
 use coset::{
     cbor::value::Value,
@@ -25,7 +25,12 @@ use coset::{
     iana, Algorithm, CborSerializable, CoseEncrypt0, CoseKey, CoseKeyBuilder, CoseSign1,
     CoseSign1Builder, HeaderBuilder, KeyType, Label,
 };
-use key_derivation::PUBLIC_KEY_CLAIM;
+use key_derivation::{derive_private_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
+use storage_proto::confidential_federated_compute::kms::PipelineInvocationStateValue;
+
+// Private COSE Header parameters; see
+// https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
+pub const ENCAPSULATED_KEY_PARAM: i64 = -65537;
 
 /// Generates the signing key endorsement for a transform.
 ///
@@ -157,4 +162,79 @@ pub fn verify_release_token(
         .map_err(anyhow::Error::msg)
         .context("invalid release token payload")?;
     Ok((token_payload, claims, verify_signature_fn))
+}
+
+/// Decrypts and returns the protected contents of a release token.
+///
+/// Decryption will not be performed if the payload was encrypted with a key
+/// derived from a node id that is not in `dst_node_ids`.
+pub fn decrypt_release_token(
+    token_payload: &CoseEncrypt0,
+    dst_node_ids: &[Value],
+    invocation_state: &PipelineInvocationStateValue,
+    intermediate_key_id_prefix: &[u8],
+) -> anyhow::Result<Vec<u8>> {
+    // Determine the node id used to derive the encryption key. Key derivation
+    // sets the key_id to the prefix followed by the node id as a big-endian
+    // 32-bit integer.
+    let node_id = token_payload
+        .unprotected
+        .key_id
+        .as_slice()
+        .strip_prefix(intermediate_key_id_prefix)
+        .and_then(|id| Some(u32::from_be_bytes(id.try_into().ok()?)))
+        .context("invalid key id")?;
+    ensure!(
+        dst_node_ids.contains(&Value::from(node_id)),
+        "endorsement doesn't include dst_node_id {}",
+        node_id
+    );
+
+    // Derive the decryption key.
+    let intermediates_key = invocation_state
+        .intermediates_key
+        .as_ref()
+        .context("PipelineInvocationState missing intermediates_key")?;
+    let private_keys = derive_private_keys(
+        intermediates_key.algorithm,
+        intermediate_key_id_prefix,
+        &intermediates_key.ikm,
+        [node_id.to_be_bytes()],
+    )?;
+    let cose_key = CoseKey::from_slice(private_keys.first().map(Vec::as_slice).unwrap_or_default())
+        .map_err(anyhow::Error::msg)
+        .context("derive_private_keys produced invalid key")?;
+    ensure!(
+        token_payload.protected.header.alg == cose_key.alg,
+        "release token has wrong algorithm"
+    );
+
+    // Decrypt the release token.
+    let params = match intermediates_key.algorithm {
+        HPKE_BASE_X25519_SHA256_AES128GCM => hpke::Params::new(
+            hpke::Kem::X25519HkdfSha256,
+            hpke::Kdf::HkdfSha256,
+            hpke::Aead::Aes128Gcm,
+        ),
+        _ => bail!("unsupported release token algorithm"),
+    };
+    let private_key = cose_key
+        .params
+        .iter()
+        .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::D as i64))
+        .and_then(|(_, value)| value.as_bytes())
+        .context("derived key missing private key parameter")?;
+    let encapsulated_key = token_payload
+        .unprotected
+        .rest
+        .iter()
+        .find(|(name, _)| name == &Label::Int(ENCAPSULATED_KEY_PARAM))
+        .and_then(|(_, value)| value.as_bytes())
+        .context("release token missing encapsulated key")?;
+    ensure!(token_payload.ciphertext.is_some(), "release token missing ciphertext");
+    token_payload.decrypt(b"", |ciphertext, aad| {
+        hpke::RecipientContext::new(&params, private_key, encapsulated_key, b"")
+            .and_then(|mut context| context.open(ciphertext, aad))
+            .context("failed to decrypt release token")
+    })
 }

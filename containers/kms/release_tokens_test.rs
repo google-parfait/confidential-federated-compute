@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bssl_crypto::{ec, ecdsa};
+use bssl_crypto::{ec, ecdsa, hpke};
 use bssl_utils::{asn1_signature_to_p1363, p1363_signature_to_asn1};
 use coset::{
     cbor::value::Value,
@@ -21,8 +21,44 @@ use coset::{
     CoseSign1Builder, Header, HeaderBuilder, KeyType, Label, ProtectedHeader,
 };
 use googletest::prelude::*;
-use key_derivation::PUBLIC_KEY_CLAIM;
-use release_tokens::{endorse_transform_signing_key, verify_release_token};
+use key_derivation::{derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
+use release_tokens::{
+    decrypt_release_token, endorse_transform_signing_key, verify_release_token,
+    ENCAPSULATED_KEY_PARAM,
+};
+use storage_proto::confidential_federated_compute::kms::{
+    KeysetKeyValue, PipelineInvocationStateValue,
+};
+
+const KEY_PREFIX: &[u8] = b"prefix";
+
+/// Derives the HPKE SenderContext for a node.
+fn derive_hpke_sender_context(ikm: &[u8], node_id: u32) -> (hpke::SenderContext, Vec<u8>) {
+    let public_keys = derive_public_keys(
+        HPKE_BASE_X25519_SHA256_AES128GCM,
+        KEY_PREFIX,
+        ikm,
+        [node_id.to_be_bytes()],
+    )
+    .expect("derive_public_keys failed");
+    let public_key = CoseKey::from_slice(&public_keys[0])
+        .expect("CoseKey::from_slice failed")
+        .params
+        .into_iter()
+        .find(|(label, _)| label == &Label::Int(iana::OkpKeyParameter::X as i64))
+        .and_then(|(_, value)| value.into_bytes().ok())
+        .expect("public key missing");
+    hpke::SenderContext::new(
+        &hpke::Params::new(
+            hpke::Kem::X25519HkdfSha256,
+            hpke::Kdf::HkdfSha256,
+            hpke::Aead::Aes128Gcm,
+        ),
+        &public_key,
+        b"",
+    )
+    .expect("failed to create SenderContext")
+}
 
 #[googletest::test]
 fn endorse_transform_signing_key_succeeds() {
@@ -234,5 +270,344 @@ fn verify_release_token_fails_with_invalid_token_payload() {
     expect_that!(
         verify_release_token(&token, &endorsement).err(),
         some(displays_as(contains_substring("invalid release token payload")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_succeeds() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        ok(eq(b"plaintext"))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_with_invalid_key_id() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+    let mut token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    // Decryption should fail with the wrong prefix.
+    token_payload.unprotected.key_id = [b"wrong-prefix", node_id.to_be_bytes().as_slice()].concat();
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("invalid key id")))
+    );
+
+    // Decryption should fail if the key id is too short.
+    token_payload.unprotected.key_id = [KEY_PREFIX, &node_id.to_be_bytes()[..3]].concat();
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("invalid key id")))
+    );
+
+    // Decryption should fail if the key id is too long.
+    token_payload.unprotected.key_id = [KEY_PREFIX, &node_id.to_be_bytes(), b"x"].concat();
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("invalid key id")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_with_unauthorized_key_id() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    // If the key id is not in `dst_node_ids`, decryption should fail.
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id - 1), Value::from(node_id + 1)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("endorsement doesn't include dst_node_id 1234")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_without_intermediates_key() {
+    let invocation_state =
+        PipelineInvocationStateValue { intermediates_key: None, ..Default::default() };
+    let node_id = 1234;
+    let (mut context, encapsulated_key) = derive_hpke_sender_context(&[0; 32], node_id);
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("PipelineInvocationState missing intermediates_key")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_with_wrong_algorithm() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("release token has wrong algorithm")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_without_encapsulated_key() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, _) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                // Don't attach the encapsulated key.
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("release token missing encapsulated key")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_without_ciphertext() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (_, encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("release token missing ciphertext")))
+    );
+}
+
+#[googletest::test]
+fn decrypt_release_token_fails_with_decryption_error() {
+    let invocation_state = PipelineInvocationStateValue {
+        intermediates_key: Some(KeysetKeyValue {
+            algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+            ikm: vec![0; 32],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let node_id = 1234;
+    let (mut context, mut encapsulated_key) = derive_hpke_sender_context(
+        &invocation_state.intermediates_key.as_ref().unwrap().ikm,
+        node_id,
+    );
+    encapsulated_key[0] ^= 0xff;
+
+    let token_payload = CoseEncrypt0Builder::new()
+        .protected(Header {
+            alg: Some(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM)),
+            ..Default::default()
+        })
+        .unprotected(
+            HeaderBuilder::new()
+                .key_id([KEY_PREFIX, &node_id.to_be_bytes()].concat())
+                .value(ENCAPSULATED_KEY_PARAM, Value::Bytes(encapsulated_key))
+                .build(),
+        )
+        .create_ciphertext(b"plaintext", b"", move |plaintext, aad| context.seal(plaintext, aad))
+        .build();
+
+    expect_that!(
+        decrypt_release_token(
+            &token_payload,
+            &[Value::from(node_id)],
+            &invocation_state,
+            KEY_PREFIX
+        ),
+        err(displays_as(contains_substring("failed to decrypt release token")))
     );
 }
