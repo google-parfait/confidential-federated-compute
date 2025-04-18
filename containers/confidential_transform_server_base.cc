@@ -54,11 +54,9 @@ namespace {
 // Decrypts and parses a record and incorporates the record into the session.
 //
 // Reports status to the client in WriteFinishedResponse.
-//
-// TODO: handle blobs that span multiple WriteRequests.
 absl::Status HandleWrite(
-    const WriteRequest& request, BlobDecryptor* blob_decryptor,
-    NonceChecker& nonce_checker,
+    const WriteRequest& request, absl::Cord blob_data,
+    BlobDecryptor* blob_decryptor, NonceChecker& nonce_checker,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
     Session* session) {
   if (absl::Status nonce_status =
@@ -68,12 +66,16 @@ absl::Status HandleWrite(
     return absl::OkStatus();
   }
 
+  // TODO: Avoid flattening the cord, which requires the downstream
+  // code to parse directly from the chunked cord.
   absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
-      request.first_request_metadata(), request.data());
+      request.first_request_metadata(), blob_data.Flatten());
   if (!unencrypted_data.ok()) {
     stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
     return absl::OkStatus();
   }
+  // Clear the memory used by the original encrypted data.
+  blob_data.Clear();
 
   FCP_ASSIGN_OR_RETURN(
       SessionResponse response,
@@ -207,29 +209,73 @@ absl::Status ConfidentialTransformBase::SessionInternal(
   BlobMetadata result_blob_metadata;
   result_blob_metadata.mutable_unencrypted();
   SessionRequest session_request;
+
+  // Describes in-progress write state when it arrives in multiple chunks.
+  struct WriteState {
+    // The request from the first chunk containing metadata and configuration
+    // but with emptied out data field.
+    WriteRequest first_request;
+    // The data combined from all chunks.
+    absl::Cord data;
+  };
+  std::optional<WriteState> write_state = std::nullopt;
+
   while (stream->Read(&session_request)) {
     switch (session_request.kind_case()) {
       case SessionRequest::kWrite: {
-        const WriteRequest& write_request = session_request.write();
-        // Use the metadata with the earliest expiration timestamp for
-        // encrypting any results.
-        absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
-            EarliestExpirationTimeMetadata(
-                result_blob_metadata, write_request.first_request_metadata());
-        if (!earliest_expiration_metadata.ok()) {
-          stream->Write(ToSessionWriteFinishedResponse(absl::Status(
-              earliest_expiration_metadata.status().code(),
-              absl::StrCat("Failed to extract expiration timestamp from "
-                           "BlobMetadata with encryption: ",
-                           earliest_expiration_metadata.status().message()))));
-          break;
+        WriteRequest& write_request = *session_request.mutable_write();
+        bool is_commit = write_request.commit();
+        if (write_state.has_value()) {
+          // This is a continuation of an in-progress chunked blob write.
+          // This request isn't supposed to have metadata.
+          if (write_request.has_first_request_metadata()) {
+            return absl::FailedPreconditionError(
+                "Session expected a continuation of chunked blob Write request "
+                "but received a Write request for another blob");
+          }
+          // Append the chunk.
+          write_state->data.Append(std::move(*write_request.mutable_data()));
+        } else {
+          // This is a write request for a new blob i.e. the first chunk of a
+          // multi-chunk blob or a small blob consisting of a single chunk of
+          // data.
+
+          // Use the metadata with the earliest expiration timestamp for
+          // encrypting any results.
+          absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
+              EarliestExpirationTimeMetadata(
+                  result_blob_metadata, write_request.first_request_metadata());
+          if (!earliest_expiration_metadata.ok()) {
+            stream->Write(ToSessionWriteFinishedResponse(absl::Status(
+                earliest_expiration_metadata.status().code(),
+                absl::StrCat(
+                    "Failed to extract expiration timestamp from "
+                    "BlobMetadata with encryption: ",
+                    earliest_expiration_metadata.status().message()))));
+            break;
+          }
+          std::swap(result_blob_metadata, *earliest_expiration_metadata);
+          absl::Cord data(std::move(*write_request.mutable_data()));
+          write_state = WriteState{.first_request = std::move(write_request),
+                                   .data = std::move(data)};
         }
-        result_blob_metadata = *earliest_expiration_metadata;
-        FCP_RETURN_IF_ERROR(HandleWrite(write_request, blob_decryptor,
-                                        nonce_checker, stream, session.get()));
+
+        if (is_commit) {
+          FCP_RETURN_IF_ERROR(HandleWrite(
+              write_state->first_request, std::move(write_state->data),
+              blob_decryptor, nonce_checker, stream, session.get()));
+          write_state.reset();
+        }
+
         break;
       }
       case SessionRequest::kCommit: {
+        if (write_state.has_value()) {
+          return absl::FailedPreconditionError(
+              "Session expected a continuation of chunked blob Write request "
+              "but received a Commit request");
+        }
+
         const CommitRequest& commit_request = session_request.commit();
         FCP_ASSIGN_OR_RETURN(SessionResponse response,
                              session->SessionCommit(commit_request));
@@ -237,6 +283,12 @@ absl::Status ConfidentialTransformBase::SessionInternal(
         break;
       }
       case SessionRequest::kFinalize: {
+        if (write_state.has_value()) {
+          return absl::FailedPreconditionError(
+              "Session expected a continuation of chunked blob Write request "
+              "but received a Finalize request");
+        }
+
         FCP_ASSIGN_OR_RETURN(
             SessionResponse finalize_response,
             session->FinalizeSession(session_request.finalize(),

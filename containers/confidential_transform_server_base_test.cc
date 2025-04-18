@@ -613,6 +613,67 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
+       SessionWritesChunkedBlobAndFinalizes) {
+  std::string chunk1 = "abcdef";
+  std::string chunk2 = "ghijkl";
+  std::string chunk3 = "mno";
+  std::string data = chunk1 + chunk2 + chunk3;
+
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock_session, SessionWrite(_, data))
+      .WillOnce(Return(
+          ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
+  EXPECT_CALL(*mock_session, SessionCommit(_))
+      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
+      .WillOnce(Return(GetDefaultFinalizeResponse()));
+  service_.AddSession(std::move(mock_session));
+  StartSession();
+
+  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
+    compression_type: COMPRESSION_TYPE_NONE
+    unencrypted {}
+  )pb");
+  metadata.set_total_size_bytes(data.size());
+  SessionRequest write_request1;
+  *write_request1.mutable_write()->mutable_first_request_metadata() = metadata;
+  write_request1.mutable_write()->set_data(chunk1);
+  ASSERT_TRUE(stream_->Write(write_request1));
+
+  SessionRequest write_request2;
+  write_request2.mutable_write()->set_data(chunk2);
+  ASSERT_TRUE(stream_->Write(write_request2));
+
+  SessionRequest write_request3;
+  write_request3.mutable_write()->set_data(chunk3);
+  write_request3.mutable_write()->set_commit(true);
+  ASSERT_TRUE(stream_->Write(write_request3));
+
+  SessionResponse write_response;
+  ASSERT_TRUE(stream_->Read(&write_response));
+
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&finalize_response));
+  ASSERT_TRUE(stream_->Finish().ok());
+
+  ASSERT_TRUE(finalize_response.has_read());
+  ASSERT_TRUE(finalize_response.read().finish_read());
+  ASSERT_GT(
+      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
+  ASSERT_TRUE(
+      finalize_response.read().first_response_metadata().has_unencrypted());
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionIgnoresInvalidInputs) {
   std::string data = "test data";
   auto mock_session =
@@ -681,6 +742,53 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_TRUE(stream_->Write(write_request_1));
   ASSERT_FALSE(stream_->Read(&write_response_1));
   ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::INTERNAL);
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest,
+       SessionFailsIfIncompleteChunkedBlobWriteFollowedByWrite) {
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  service_.AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest write_request_1 = CreateDefaultWriteRequest("test data");
+  SessionRequest write_request_2 = CreateDefaultWriteRequest("test data");
+  SessionResponse write_response;
+
+  write_request_1.mutable_write()->set_commit(false);
+  ASSERT_TRUE(stream_->Write(write_request_1));
+  ASSERT_TRUE(stream_->Write(write_request_2));
+  ASSERT_FALSE(stream_->Read(&write_response));
+  ASSERT_EQ(stream_->Finish().error_code(),
+            grpc::StatusCode::FAILED_PRECONDITION);
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest,
+       SessionFailsIfIncompleteChunkedBlobWriteFollowedByFinalize) {
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  service_.AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest write_request = CreateDefaultWriteRequest("test data");
+  SessionRequest finalize_request;
+  SessionResponse finalize_response;
+
+  write_request.mutable_write()->set_commit(false);
+  ASSERT_TRUE(stream_->Write(write_request));
+
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_FALSE(stream_->Read(&finalize_response));
+  ASSERT_EQ(stream_->Finish().error_code(),
+            grpc::StatusCode::FAILED_PRECONDITION);
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,

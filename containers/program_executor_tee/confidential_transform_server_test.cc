@@ -172,6 +172,7 @@ TEST_F(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
   )pb");
   WriteRequest* write_request = session_request.mutable_write();
   *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
 
   ASSERT_TRUE(stream_->Write(session_request));
   ASSERT_FALSE(stream_->Read(&session_response));
