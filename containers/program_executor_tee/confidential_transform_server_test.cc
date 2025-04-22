@@ -117,7 +117,7 @@ TEST_F(ProgramExecutorTeeTest, SessionEmptyConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
-  session_request.mutable_configure();
+  session_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -146,7 +146,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
 
     SessionRequest session_request;
     SessionResponse session_response;
-    session_request.mutable_configure();
+    session_request.mutable_configure()->set_chunk_size(1000);
 
     stream_ = stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));

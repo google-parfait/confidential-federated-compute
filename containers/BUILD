@@ -192,6 +192,7 @@ cc_test(
         ":confidential_transform_server_base",
         ":crypto",
         ":crypto_test_utils",
+        "//testing:matchers",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",

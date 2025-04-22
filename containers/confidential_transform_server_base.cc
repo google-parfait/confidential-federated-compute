@@ -193,6 +193,12 @@ absl::Status ConfidentialTransformBase::SessionInternal(
         "Session must be configured with a ConfigureRequest before any other "
         "requests.");
   }
+  uint32_t chunk_size = configure_request.configure().chunk_size();
+  if (chunk_size == 0) {
+    return absl::FailedPreconditionError(
+        "chunk_size must be specified in the session ConfigureRequest.");
+  }
+
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
       CreateSession());
@@ -293,7 +299,32 @@ absl::Status ConfidentialTransformBase::SessionInternal(
             SessionResponse finalize_response,
             session->FinalizeSession(session_request.finalize(),
                                      result_blob_metadata));
+        if (finalize_response.read().data().size() > chunk_size) {
+          // Chunked write implemented by splitting the provided
+          // finalize response.
+          finalize_response.mutable_read()->set_finish_read(false);
+          absl::Cord data(
+              std::move(*finalize_response.mutable_read()->mutable_data()));
+          do {
+            absl::CopyCordToString(
+                data.Subcord(0, chunk_size),
+                finalize_response.mutable_read()->mutable_data());
+            data.RemovePrefix(chunk_size);
+            stream->Write(finalize_response);
+            finalize_response.mutable_read()
+                ->clear_first_response_configuration();
+            finalize_response.mutable_read()->clear_first_response_metadata();
+          } while (data.size() > chunk_size);
+
+          absl::CopyCordToString(
+              data, finalize_response.mutable_read()->mutable_data());
+          finalize_response.mutable_read()->set_finish_read(true);
+        }
+
+        // Final chunk of data (or the only chunk if the data was smaller or
+        // equal than the chunk size).
         stream->Write(finalize_response);
+
         return absl::OkStatus();
       }
       case SessionRequest::kConfigure:
