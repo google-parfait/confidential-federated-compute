@@ -944,6 +944,7 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
+  configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration();
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1062,6 +1063,7 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
                           ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
        CreateColumnSchema("val",
                           ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
       query);
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1115,7 +1117,7 @@ TEST_F(FedSqlServerTest,
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
-  configure_request.mutable_configure();
+  configure_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -1220,6 +1222,7 @@ TEST_F(InitializedFedSqlServerTest, InvalidConfigureRequest) {
   SessionRequest session_request;
   SessionResponse session_response;
   SqlQuery query;
+  session_request.mutable_configure()->set_chunk_size(1000);
   session_request.mutable_configure()->mutable_configuration()->PackFrom(query);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1238,6 +1241,7 @@ TEST_F(InitializedFedSqlServerTest, ConfigureRequestWrongMessageType) {
   SessionRequest session_request;
   SessionResponse session_response;
   google::protobuf::Value value;
+  session_request.mutable_configure()->set_chunk_size(1000);
   session_request.mutable_configure()->mutable_configuration()->PackFrom(value);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1258,6 +1262,7 @@ TEST_F(InitializedFedSqlServerTest, ConfigureInvalidTableSchema) {
   SqlQuery query;
   DatabaseSchema* input_schema = query.mutable_database_schema();
   input_schema->add_table();
+  session_request.mutable_configure()->set_chunk_size(1000);
   session_request.mutable_configure()->mutable_configuration()->PackFrom(query);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1275,6 +1280,7 @@ TEST_F(InitializedFedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
+  session_request.mutable_configure()->set_chunk_size(1000);
   session_request.mutable_configure()->mutable_configuration()->PackFrom(
       DefaultSqlQuery());
 
@@ -1291,7 +1297,7 @@ TEST_F(InitializedFedSqlServerTest, SessionEmptyConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
-  session_request.mutable_configure();
+  session_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -1312,6 +1318,7 @@ TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
         std::make_unique<grpc::ClientContext>();
     SessionRequest session_request;
     SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(1000);
     session_request.mutable_configure()->mutable_configuration()->PackFrom(
         DefaultSqlQuery());
 
@@ -1329,6 +1336,7 @@ TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
   grpc::ClientContext rejected_context;
   SessionRequest rejected_request;
   SessionResponse rejected_response;
+  rejected_request.mutable_configure()->set_chunk_size(1000);
   rejected_request.mutable_configure()->mutable_configuration()->PackFrom(
       DefaultSqlQuery());
 
@@ -1360,6 +1368,7 @@ TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
 
   // The output columns of the SQL query don't match the aggregation config, so
   // the results can't be aggregated.
+  configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
       query);
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -1385,7 +1394,7 @@ TEST_F(InitializedFedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
   SessionRequest configure_request;
   SessionResponse configure_response;
   // No SQL query is configured.
-  configure_request.mutable_configure();
+  configure_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -1433,7 +1442,7 @@ TEST_F(InitializedFedSqlServerTest,
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
-  configure_request.mutable_configure();
+  configure_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -1514,6 +1523,7 @@ class FedSqlGroupByTest : public FedSqlServerTest {
 
     SessionRequest session_request;
     SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(1000);
     session_request.mutable_configure()->mutable_configuration()->PackFrom(
         DefaultSqlQuery());
 
@@ -2364,6 +2374,7 @@ TEST_F(FedSqlServerTest, SessionExecutesInferenceAndAggregation) {
                           ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
        CreateColumnSchema("topic_count",
                           ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+  configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
       query);
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>

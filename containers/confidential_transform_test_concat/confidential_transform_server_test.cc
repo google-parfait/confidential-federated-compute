@@ -119,7 +119,7 @@ TEST_F(TestConcatServerTest, SessionConfigureGeneratesNonce) {
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
-  session_request.mutable_configure();
+  session_request.mutable_configure()->set_chunk_size(1000);
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -158,7 +158,7 @@ class TestConcatServerSessionTest : public TestConcatServerTest {
 
     SessionRequest session_request;
     SessionResponse session_response;
-    session_request.mutable_configure();
+    session_request.mutable_configure()->set_chunk_size(1000);
 
     stream_ = stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
