@@ -23,8 +23,9 @@ use coset::{
 use googletest::prelude::*;
 use key_derivation::{derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
 use release_tokens::{
-    decrypt_release_token, endorse_transform_signing_key, verify_release_token,
-    ENCAPSULATED_KEY_PARAM,
+    compute_logical_pipeline_updates, decrypt_release_token, endorse_transform_signing_key,
+    verify_release_token, LogicalPipelineUpdate, ENCAPSULATED_KEY_PARAM,
+    RELEASE_TOKEN_DST_STATE_PARAM, RELEASE_TOKEN_SRC_STATE_PARAM,
 };
 use storage_proto::confidential_federated_compute::kms::{
     KeysetKeyValue, PipelineInvocationStateValue,
@@ -609,5 +610,119 @@ fn decrypt_release_token_fails_with_decryption_error() {
             KEY_PREFIX
         ),
         err(displays_as(contains_substring("failed to decrypt release token")))
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_succeeds() {
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline1",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Null)
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"1-A".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline2",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"2-A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"2-B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        ok(unordered_elements_are![
+            matches_pattern!(LogicalPipelineUpdate {
+                logical_pipeline_name: eq("pipeline1"),
+                src_state: none(),
+                dst_state: eq(b"1-A"),
+            }),
+            matches_pattern!(LogicalPipelineUpdate {
+                logical_pipeline_name: eq("pipeline2"),
+                src_state: some(eq(b"2-A")),
+                dst_state: eq(b"2-B"),
+            }),
+        ])
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_succeeds_with_empty_list() {
+    expect_that!(compute_logical_pipeline_updates([]), ok(empty()));
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_fails_with_multiple_updates() {
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        err(displays_as(contains_substring(
+            "multiple release tokens per logical pipeline are not yet supported"
+        )))
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_fails_with_missing_src_state() {
+    expect_that!(
+        compute_logical_pipeline_updates([(
+            "pipeline",
+            &CoseEncrypt0Builder::new()
+                .protected(
+                    HeaderBuilder::new()
+                        .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"dst".into()))
+                        .build()
+                )
+                .build()
+        ),]),
+        err(displays_as(contains_substring("release token missing src state")))
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_fails_with_missing_dst_state() {
+    expect_that!(
+        compute_logical_pipeline_updates([(
+            "pipeline",
+            &CoseEncrypt0Builder::new()
+                .protected(
+                    HeaderBuilder::new()
+                        .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"src".into()))
+                        .build()
+                )
+                .build()
+        ),]),
+        err(displays_as(contains_substring("release token missing dst state")))
     );
 }

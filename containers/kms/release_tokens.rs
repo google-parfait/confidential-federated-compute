@@ -25,12 +25,15 @@ use coset::{
     iana, Algorithm, CborSerializable, CoseEncrypt0, CoseKey, CoseKeyBuilder, CoseSign1,
     CoseSign1Builder, HeaderBuilder, KeyType, Label,
 };
+use hashbrown::HashMap;
 use key_derivation::{derive_private_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
 use storage_proto::confidential_federated_compute::kms::PipelineInvocationStateValue;
 
 // Private COSE Header parameters; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
 pub const ENCAPSULATED_KEY_PARAM: i64 = -65537;
+pub const RELEASE_TOKEN_SRC_STATE_PARAM: i64 = -65538;
+pub const RELEASE_TOKEN_DST_STATE_PARAM: i64 = -65539;
 
 /// Generates the signing key endorsement for a transform.
 ///
@@ -237,4 +240,67 @@ pub fn decrypt_release_token(
             .and_then(|mut context| context.open(ciphertext, aad))
             .context("failed to decrypt release token")
     })
+}
+
+/// An atomic update to the state of a logical pipeline.
+#[derive(Clone, Debug)]
+pub struct LogicalPipelineUpdate<'a> {
+    pub logical_pipeline_name: &'a str,
+    pub src_state: Option<&'a [u8]>,
+    pub dst_state: &'a [u8],
+}
+
+/// Computes the set of storage updates implied by the release tokens, as well
+/// as the resulting state of each logical pipeline after the updates are
+/// applied.
+///
+/// `release_tokens` is a stream of (logical pipeline name, token payload)
+/// tuples.
+///
+/// Multiple release tokens for the same logical pipeline are not yet supported.
+/// TODO: b/398874186 - Add support or update the API documentation.
+pub fn compute_logical_pipeline_updates<'a>(
+    release_tokens: impl IntoIterator<Item = (&'a str, &'a CoseEncrypt0)>,
+) -> anyhow::Result<Vec<LogicalPipelineUpdate<'a>>> {
+    // Collect the set of state changes for each logical pipeline. Note that
+    // while the src state can be None, the dst cannot.
+    type StateChange<'a> = (Option<&'a [u8]>, &'a [u8]);
+    let mut state_changes: HashMap<&str, Vec<StateChange>> = HashMap::new();
+    for (logical_pipeline_name, token_payload) in release_tokens {
+        let (mut src_state, mut dst_state) = (None, None);
+        for (label, value) in &token_payload.protected.header.rest {
+            match (label, value) {
+                (Label::Int(l), Value::Null) if l == &RELEASE_TOKEN_SRC_STATE_PARAM => {
+                    src_state = Some(None);
+                }
+                (Label::Int(l), Value::Bytes(v)) if l == &RELEASE_TOKEN_SRC_STATE_PARAM => {
+                    src_state = Some(Some(v.as_slice()));
+                }
+                (Label::Int(l), Value::Bytes(v)) if l == &RELEASE_TOKEN_DST_STATE_PARAM => {
+                    dst_state = Some(v.as_slice());
+                }
+                _ => {}
+            }
+        }
+        state_changes.entry(logical_pipeline_name).or_default().push((
+            src_state.context("release token missing src state")?,
+            dst_state.context("release token missing dst state")?,
+        ));
+    }
+
+    // Determine the net change for each logical pipeline.
+    state_changes
+        .into_iter()
+        .map(|(logical_pipeline_name, transitions)| {
+            ensure!(
+                transitions.len() == 1,
+                "multiple release tokens per logical pipeline are not yet supported"
+            );
+            Ok(LogicalPipelineUpdate {
+                logical_pipeline_name,
+                src_state: transitions[0].0,
+                dst_state: transitions[0].1,
+            })
+        })
+        .collect()
 }

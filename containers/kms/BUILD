@@ -244,6 +244,7 @@ rust_library(
         "@boringssl//rust/bssl-crypto",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
+        "@oak_crates_index//:hashbrown",
     ],
 )
 
