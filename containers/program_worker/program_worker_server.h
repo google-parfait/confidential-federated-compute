@@ -14,7 +14,13 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PROGRAM_WORKER_PROGRAM_WORKER_SERVER_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PROGRAM_WORKER_PROGRAM_WORKER_SERVER_H_
 
+#include <memory>
+#include <utility>
+
 #include "absl/log/die_if_null.h"
+#include "cc/oak_session/config.h"
+#include "cc/oak_session/server_session.h"
+#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/program_worker.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/program_worker.pb.h"
 #include "grpcpp/server_context.h"
@@ -27,9 +33,14 @@ namespace confidential_federated_compute::program_worker {
 class ProgramWorkerTee
     : public fcp::confidentialcompute::ProgramWorker::Service {
  public:
-  ProgramWorkerTee(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
+  static absl::StatusOr<std::unique_ptr<ProgramWorkerTee>> Create(
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      oak::session::SessionConfig* session_config) {
+    FCP_ASSIGN_OR_RETURN(auto server_session,
+                         oak::session::ServerSession::Create(session_config));
+    return absl::WrapUnique(
+        new ProgramWorkerTee(crypto_stub, std::move(server_session)));
+  }
 
   grpc::Status Execute(
       grpc::ServerContext* context,
@@ -37,7 +48,20 @@ class ProgramWorkerTee
       fcp::confidentialcompute::ComputationResponse* response);
 
  private:
+  ProgramWorkerTee(
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::unique_ptr<oak::session::ServerSession> server_session)
+      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
+        server_session_(std::move(server_session)) {}
+
+  absl::StatusOr<oak::session::v1::PlaintextMessage> DecryptRequest(
+      const oak::session::v1::SessionRequest& session_request);
+
+  absl::StatusOr<oak::session::v1::SessionResponse> EncryptResult(
+      const oak::session::v1::PlaintextMessage& plaintext_response);
+
   oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
+  std::unique_ptr<oak::session::ServerSession> server_session_;
 };
 
 }  // namespace confidential_federated_compute::program_worker

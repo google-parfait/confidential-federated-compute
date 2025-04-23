@@ -19,6 +19,7 @@
 #include "fcp/protos/confidentialcompute/program_worker.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/program_worker.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
+#include "proto/session/session.pb.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
@@ -33,6 +34,9 @@ using ::fcp::confidentialcompute::ComputationResponse;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::grpc::ServerContext;
 using ::grpc::Status;
+using ::oak::session::v1::PlaintextMessage;
+using ::oak::session::v1::SessionRequest;
+using ::oak::session::v1::SessionResponse;
 
 namespace {
 
@@ -59,14 +63,73 @@ InitializeTffExecutor(const TffSessionConfig& comp_request) {
 
 }  // namespace
 
+absl::StatusOr<PlaintextMessage> ProgramWorkerTee::DecryptRequest(
+    const SessionRequest& session_request) {
+  FCP_RETURN_IF_ERROR(server_session_->PutIncomingMessage(session_request));
+  FCP_ASSIGN_OR_RETURN(auto plaintext_request, server_session_->Read());
+  if (!plaintext_request.has_value()) {
+    return absl::InvalidArgumentError(
+        "Could not read plaintext message from the request.");
+  }
+  return plaintext_request.value();
+}
+
+absl::StatusOr<SessionResponse> ProgramWorkerTee::EncryptResult(
+    const PlaintextMessage& plaintext_response) {
+  FCP_RETURN_IF_ERROR(server_session_->Write(plaintext_response));
+  FCP_ASSIGN_OR_RETURN(auto session_response,
+                       server_session_->GetOutgoingMessage());
+  if (!session_response.has_value()) {
+    return absl::InvalidArgumentError(
+        "Could not generate SessionResponse for the request.");
+  }
+  return session_response.value();
+}
+
 grpc::Status ProgramWorkerTee::Execute(ServerContext* context,
                                        const ComputationRequest* request,
                                        ComputationResponse* response) {
-  // We now use the TffSessionConfig as the request message.
+  SessionRequest session_request;
+  if (!request->computation().UnpackTo(&session_request)) {
+    return grpc::Status(
+        grpc::StatusCode::INVALID_ARGUMENT,
+        "ComputationRequest cannot be unpacked to noise SessionRequest.");
+  }
+
+  // Perform handshake until the channel is open.
+  if (!server_session_->IsOpen()) {
+    auto put_incoming_message_status =
+        server_session_->PutIncomingMessage(session_request);
+    if (!put_incoming_message_status.ok()) {
+      return ToGrpcStatus(put_incoming_message_status);
+    }
+    absl::StatusOr<std::optional<SessionResponse>> session_response =
+        server_session_->GetOutgoingMessage();
+    if (!session_response.ok()) {
+      return ToGrpcStatus(session_response.status());
+    }
+    // There wasn't exactly 1:1 mapping between the handshake requests and
+    // responses. For example, when the client sends the handshake request with
+    // the attestation binding, the server will accept the request and open a
+    // session, and no response will be sent back. We will return an empty
+    // ComputationResponse in this case.
+    if (session_response->has_value()) {
+      response->mutable_result()->PackFrom(session_response->value());
+    }
+    return grpc::Status::OK;
+  }
+
+  // Handle the computation request.
+  auto plaintext_request = DecryptRequest(session_request);
+  if (!plaintext_request.ok()) {
+    return ToGrpcStatus(plaintext_request.status());
+  }
   TffSessionConfig comp_request;
-  if (!request->computation().UnpackTo(&comp_request)) {
+  bool parse_success =
+      comp_request.ParseFromString(plaintext_request->plaintext());
+  if (!parse_success) {
     return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                        "ComputationRequest invalid.");
+                        "Could not parse TffSessionConfig from the request.");
   }
 
   // Initialize the TFF executor according to the TffSessionConfig embedded in
@@ -113,9 +176,15 @@ grpc::Status ProgramWorkerTee::Execute(ServerContext* context,
   if (!materialize_status.ok()) {
     return ToGrpcStatus(materialize_status);
   }
-  // TODO b/378243349 - Encrypt the result into a blob with the
+  // TODO: b/378243349 - Encrypt the result into a blob with the
   // output_access_policy_node_id set in the request.
-  response->mutable_result()->PackFrom(call_result);
+  PlaintextMessage plaintext_result;
+  plaintext_result.set_plaintext(call_result.SerializeAsString());
+  auto session_response = EncryptResult(plaintext_result);
+  if (!session_response.ok()) {
+    return ToGrpcStatus(session_response.status());
+  }
+  response->mutable_result()->PackFrom(*session_response);
 
   return grpc::Status::OK;
 }

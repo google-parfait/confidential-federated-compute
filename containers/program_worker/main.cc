@@ -17,6 +17,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "cc/oak_session/config.h"
 #include "containers/oak_orchestrator_client.h"
 #include "containers/program_worker/program_worker_server.h"
 #include "grpcpp/channel.h"
@@ -34,6 +35,10 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::Orchestrator;
 using ::oak::containers::v1::OrchestratorCrypto;
+using ::oak::session::AttestationType;
+using ::oak::session::HandshakeType;
+using ::oak::session::SessionConfig;
+using ::oak::session::SessionConfigBuilder;
 
 // Increase gRPC message size limit to 2GB
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
@@ -44,12 +49,23 @@ void RunServer() {
       CreateOakOrchestratorChannel();
 
   OrchestratorCrypto::Stub orchestrator_crypto_stub(orchestrator_channel);
-  ProgramWorkerTee service(&orchestrator_crypto_stub);
+
+  // TODO: b/378243349 - Add more configuration options for the session config.
+  auto* session_config =
+      SessionConfigBuilder(AttestationType::kSelfUnidirectional,
+                           HandshakeType::kNoiseNN)
+          .Build();
+
+  auto service =
+      ProgramWorkerTee::Create(&orchestrator_crypto_stub, session_config);
+  CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
+                    << service.status();
+
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
   builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
+  builder.RegisterService(service->get());
   std::unique_ptr<Server> server = builder.BuildAndStart();
   LOG(INFO) << "Program Worker Server listening on " << server_address << "\n";
 

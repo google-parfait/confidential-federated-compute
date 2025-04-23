@@ -191,9 +191,9 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-CjdQteNqEPhXTKrQIZun9XINEkpvO5ofEOCQP+J71io=",
-    strip_prefix = "oak-0568da108dc751efb0c79d992cf231e245ee2526",
-    url = "https://github.com/project-oak/oak/archive/0568da108dc751efb0c79d992cf231e245ee2526.tar.gz",
+    integrity = "sha256-zJ0Km91oa8jHSyZl2NUneuGxl+SwC/fu429awcxVzGA=",
+    strip_prefix = "oak-5332eb16f0a7e29acec62fc22c2b06adbbb4f943",
+    url = "https://github.com/project-oak/oak/archive/5332eb16f0a7e29acec62fc22c2b06adbbb4f943.tar.gz",
 )
 
 http_archive(
