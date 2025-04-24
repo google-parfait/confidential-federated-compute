@@ -65,6 +65,7 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
+using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -145,6 +146,10 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
   // error.
   switch (write_config.type()) {
     case AGGREGATION_TYPE_ACCUMULATE: {
+      // TODO: Use
+      // https://github.com/google-parfait/federated-compute/blob/main/fcp/base/scheduler.h
+      // to asynchronously handle deserializing the checkpoint when it is
+      // initially written to the session.
       FederatedComputeCheckpointParserFactory parser_factory;
       absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
           parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
@@ -166,18 +171,15 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
         }
         parser = std::move(sql_result_parser);
       }
-      absl::Status accumulate_status = aggregator_->Accumulate(*parser.value());
-      if (!accumulate_status.ok()) {
-        if (absl::IsNotFound(accumulate_status)) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Failed to accumulate SQL query results: ",
-                           accumulate_status.message()));
-        }
-        return accumulate_status;
-      }
+
+      // Queue the blob so it can be processed on commit.
+      uncommitted_inputs_.push_back(
+          {.parser = std::move(*parser),
+           .metadata = write_request.first_request_metadata()});
       break;
     }
     case AGGREGATION_TYPE_MERGE: {
+      //  Merges can be immediately processed.
       FCP_ASSIGN_OR_RETURN(std::unique_ptr<PrivateState> other_private_state,
                            UnbundlePrivateState(unencrypted_data));
       FCP_RETURN_IF_ERROR(private_state_->Merge(*other_private_state));
@@ -201,6 +203,25 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
   return ToSessionWriteFinishedResponse(
       absl::OkStatus(),
       write_request.first_request_metadata().total_size_bytes());
+}
+
+absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
+    const CommitRequest& commit_request) {
+  for (UncommittedInput& uncommitted_input : uncommitted_inputs_) {
+    absl::Status accumulate_status =
+        aggregator_->Accumulate(*uncommitted_input.parser);
+    if (!accumulate_status.ok()) {
+      if (absl::IsNotFound(accumulate_status)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to accumulate SQL query results: ",
+                         accumulate_status.message()));
+      }
+      return accumulate_status;
+    }
+  }
+  SessionResponse response = ToSessionCommitResponse(absl::OkStatus());
+  uncommitted_inputs_.clear();
+  return response;
 }
 
 // Runs the requested finalization operation and write the uncompressed result

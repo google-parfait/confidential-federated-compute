@@ -44,6 +44,7 @@ using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -243,7 +244,7 @@ TEST_F(KmsFedSqlSessionWriteTest, InvalidWriteConfigurationFails) {
               Eq(grpc::StatusCode::INVALID_ARGUMENT));
 }
 
-TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializeSucceeds) {
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   WriteRequest write_request;
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -266,6 +267,12 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializeSucceeds) {
               Eq(grpc::StatusCode::OK));
   EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
               Eq(data.size()));
+
+  CommitRequest commit_request;
+  auto commit_response = session_->SessionCommit(commit_request);
+  EXPECT_THAT(commit_response, IsOk());
+  EXPECT_THAT(commit_response->commit().status().code(),
+              Eq(grpc::StatusCode::OK));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
@@ -307,7 +314,8 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializeSucceeds) {
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
 }
-TEST_F(KmsFedSqlSessionWriteTest, AccumulateReportSucceeds) {
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   WriteRequest write_request;
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -330,6 +338,12 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateReportSucceeds) {
               Eq(grpc::StatusCode::OK));
   EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
               Eq(data.size()));
+
+  CommitRequest commit_request;
+  auto commit_response = session_->SessionCommit(commit_request);
+  EXPECT_THAT(commit_response, IsOk());
+  EXPECT_THAT(commit_response->commit().status().code(),
+              Eq(grpc::StatusCode::OK));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -356,10 +370,69 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateReportSucceeds) {
   absl::Cord wire_format_result(finalize_response->read().data());
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("val_out");
-  // The SQL query doubles each input and the aggregation sums the input column
+  // The SQL query doubles each input and the aggregation sums the
+  // input column
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateSerializeWithoutCommitReturnsEmptyCheckpoint) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  WriteRequest write_request;
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  write_request.mutable_first_request_metadata()->set_total_size_bytes(
+      data.size());
+
+  auto write_result = session_->SessionWrite(write_request, data);
+  EXPECT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result.value().write().status().code(),
+              Eq(grpc::StatusCode::OK));
+  EXPECT_THAT(write_result.value().write().committed_size_bytes(),
+              Eq(data.size()));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE
+  )pb");
+
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
+    compression_type: COMPRESSION_TYPE_NONE
+    unencrypted {}
+  )pb");
+  auto finalize_response =
+      session_->FinalizeSession(finalize_request, metadata);
+
+  EXPECT_THAT(finalize_response, IsOk());
+  ASSERT_TRUE(finalize_response->read().finish_read());
+  ASSERT_GT(
+      finalize_response->read().first_response_metadata().total_size_bytes(),
+      0);
+  ASSERT_TRUE(
+      finalize_response->read().first_response_metadata().has_unencrypted());
+
+  std::string result_data = finalize_response->read().data();
+  ASSERT_THAT(UnbundlePrivateState(result_data), IsOk());
+  absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
+      CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
+  ASSERT_THAT(deserialized_agg, IsOk());
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+      builder_factory.Create();
+  ASSERT_TRUE((*deserialized_agg)->Report(*checkpoint_builder).ok());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(*checkpoint);
+  // The checkpoint contains the correct columns but they're empty since no
+  // writes were committed.
+  auto col_values = (*parser)->GetTensor("val_out");
+  ASSERT_EQ(col_values->num_elements(), 0);
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
