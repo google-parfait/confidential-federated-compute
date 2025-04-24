@@ -136,6 +136,7 @@ http_archive(
 http_archive(
     name = "federated_language",
     patches = [
+        "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
         "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
         "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
         "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
@@ -143,9 +144,9 @@ http_archive(
     repo_mapping = {
         "@protobuf": "@com_google_protobuf",
     },
-    sha256 = "e2b13844d56233616d8ed664d15e155dbc6bb45743b6e5ce775a8553026b34a6",
-    strip_prefix = "federated-language-b685d2243891f9d7ca3c5820cfd690b4ecdb9697",
-    url = "https://github.com/google-parfait/federated-language/archive/b685d2243891f9d7ca3c5820cfd690b4ecdb9697.tar.gz",
+    sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
+    strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
+    url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
 )
 
 http_archive(
@@ -212,13 +213,13 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-pn62f5TSprspJWcc5majzsTNuFahSloYjDx3i+36osE=",
+    integrity = "sha256-yZej3NjL3olu0UOtOkVod2TNdI43mHFb4wB+u67Tk1I=",
     patches = [
         # Patch to make TFF compatible with TF 2.18.
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    strip_prefix = "tensorflow-federated-f402563eb37264708ffd566281c386e0d7c51ccb",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/f402563eb37264708ffd566281c386e0d7c51ccb.tar.gz",
+    strip_prefix = "tensorflow-federated-54b11d35484d54972d7fd369107613c25f18464b",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/54b11d35484d54972d7fd369107613c25f18464b.tar.gz",
 )
 
 http_archive(
