@@ -257,8 +257,10 @@ pub struct LogicalPipelineUpdate<'a> {
 /// `release_tokens` is a stream of (logical pipeline name, token payload)
 /// tuples.
 ///
-/// Multiple release tokens for the same logical pipeline are not yet supported.
-/// TODO: b/398874186 - Add support or update the API documentation.
+/// If multiple release tokens affect the same logical pipeline, this function
+/// will combine their mutations to produce a single update. For example,
+/// updates A -> B, B -> C, and C -> D will be combined to A -> D. The release
+/// tokens may be provided in any order.
 pub fn compute_logical_pipeline_updates<'a>(
     release_tokens: impl IntoIterator<Item = (&'a str, &'a CoseEncrypt0)>,
 ) -> anyhow::Result<Vec<LogicalPipelineUpdate<'a>>> {
@@ -288,19 +290,82 @@ pub fn compute_logical_pipeline_updates<'a>(
         ));
     }
 
-    // Determine the net change for each logical pipeline.
+    // For each logical pipeline, find the Eulerian trail (if any): the sequence
+    // of state changes that uses every edge (state change) exactly once. To
+    // avoid ambiguity, we additionally require that this path is not a circuit:
+    // its start and end states must be different.
     state_changes
         .into_iter()
         .map(|(logical_pipeline_name, transitions)| {
-            ensure!(
-                transitions.len() == 1,
-                "multiple release tokens per logical pipeline are not yet supported"
-            );
-            Ok(LogicalPipelineUpdate {
-                logical_pipeline_name,
-                src_state: transitions[0].0,
-                dst_state: transitions[0].1,
-            })
+            let (src_state, dst_state) = find_eulerian_trail(&transitions)
+                .with_context(|| format!("invalid state changes for {}", logical_pipeline_name))?;
+            Ok(LogicalPipelineUpdate { logical_pipeline_name, src_state, dst_state })
         })
         .collect()
+}
+
+/// Returns the start and end of a Eulerian trail over the given directed
+/// multigraph. This trail will not be a circuit.
+fn find_eulerian_trail<'a>(
+    edges: &[(Option<&'a [u8]>, &'a [u8])],
+) -> anyhow::Result<(Option<&'a [u8]>, &'a [u8])> {
+    // As described by https://en.wikipedia.org/wiki/Eulerian_path, the graph
+    // will contain a Eulerian trail (that's not a circuit) if (a) it's
+    // connected, (b) exactly one vertex has `outdegree - indegree = 1` and
+    // exactly one vertex has `outdegree - indegree = -1`, and (c) all other
+    // vertices have equal indegree and outdegree.
+
+    // Process the list of edges into per-node information.
+    #[derive(Default)]
+    struct Entry<'a> {
+        /// The nodes adjacent to this node, ignoring edge directionality.
+        adjacent_nodes: Vec<Option<&'a [u8]>>,
+        /// The node's `outdegree - indegree`.
+        degree_difference: i32,
+    }
+    let mut nodes: HashMap<Option<&[u8]>, Entry> = HashMap::with_capacity(edges.len());
+    for (src, dst) in edges {
+        let entry = nodes.entry(*src).or_default();
+        entry.adjacent_nodes.push(Some(dst));
+        entry.degree_difference += 1;
+        let entry = nodes.entry(Some(dst)).or_default();
+        entry.adjacent_nodes.push(*src);
+        entry.degree_difference -= 1;
+    }
+
+    // Run a DFS over the graph.
+    let mut stack = vec![edges.first().context("no state changes found")?.0];
+    while let Some(node) = stack.pop() {
+        // `Vec::append` moves all elements, leaving `adjacent_nodes` empty.
+        // Conveniently, this ensures that we don't traverse the same edge
+        // twice. It also means that after the DFS completes, a node was reached
+        // iff it has an empty adjacency list -- and the graph is connected iff
+        // all adjacency lists are empty.
+        stack.append(&mut nodes.get_mut(&node).unwrap().adjacent_nodes);
+    }
+
+    // Check the results to determine whether the graph contains a Eulerian
+    // trail, and if so, what its start and end states are.
+    let mut src = None;
+    let mut dst = None;
+    for (node, Entry { adjacent_nodes, degree_difference }) in nodes {
+        ensure!(adjacent_nodes.is_empty(), "state changes do not form a connected graph");
+        match degree_difference {
+            -1 => {
+                ensure!(dst.is_none(), "multiple dst states");
+                dst = Some(node);
+            }
+            0 => {}
+            1 => {
+                ensure!(src.is_none(), "multiple src states");
+                src = Some(node);
+            }
+            _ => bail!("state used multiple times"),
+        }
+    }
+    if let (Some(src), Some(Some(dst))) = (src, dst) {
+        Ok((src, dst))
+    } else {
+        Err(anyhow!("cycle in states"))
+    }
 }

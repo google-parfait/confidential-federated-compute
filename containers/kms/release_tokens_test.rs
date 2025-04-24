@@ -639,12 +639,34 @@ fn compute_logical_pipeline_updates_succeeds() {
                     )
                     .build()
             ),
+            (
+                "pipeline1",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"1-B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"1-C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline1",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"1-A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"1-B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
         ]),
         ok(unordered_elements_are![
             matches_pattern!(LogicalPipelineUpdate {
                 logical_pipeline_name: eq("pipeline1"),
                 src_state: none(),
-                dst_state: eq(b"1-A"),
+                dst_state: eq(b"1-C"),
             }),
             matches_pattern!(LogicalPipelineUpdate {
                 logical_pipeline_name: eq("pipeline2"),
@@ -661,7 +683,66 @@ fn compute_logical_pipeline_updates_succeeds_with_empty_list() {
 }
 
 #[googletest::test]
-fn compute_logical_pipeline_updates_fails_with_multiple_updates() {
+fn compute_logical_pipeline_updates_fails_with_conflicting_updates() {
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        err(displays_as(contains_substring("invalid state changes for pipeline")))
+    );
+
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        err(displays_as(contains_substring("invalid state changes for pipeline")))
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_fails_with_cycle() {
     expect_that!(
         compute_logical_pipeline_updates([
             (
@@ -686,10 +767,187 @@ fn compute_logical_pipeline_updates_fails_with_multiple_updates() {
                     )
                     .build()
             ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .build()
+                    )
+                    .build()
+            ),
         ]),
-        err(displays_as(contains_substring(
-            "multiple release tokens per logical pipeline are not yet supported"
-        )))
+        err(displays_as(contains_substring("invalid state changes for pipeline")))
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_succeeds_with_unambiguous_cycle() {
+    // While the path contains a cycle, there are unambiguous start and end
+    // states, so `compute_logical_pipeline_updates` should succeed.
+
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"D".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"D".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        ok(elements_are![matches_pattern!(LogicalPipelineUpdate {
+            src_state: some(eq(b"A")),
+            dst_state: eq(b"B"),
+        })])
+    );
+
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"D".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        ok(elements_are![matches_pattern!(LogicalPipelineUpdate {
+            src_state: some(eq(b"A")),
+            dst_state: eq(b"D"),
+        })])
+    );
+}
+
+#[googletest::test]
+fn compute_logical_pipeline_updates_fails_if_not_connected() {
+    // Despite only one node have a degree difference of 1 and one node having
+    // a degree difference of -1, the state changes don't form a trail because
+    // they're not connected: (A, B, C) and (X, Y) form separate subgraphs.
+    expect_that!(
+        compute_logical_pipeline_updates([
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"A".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"B".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"C".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"X".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"Y".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+            (
+                "pipeline",
+                &CoseEncrypt0Builder::new()
+                    .protected(
+                        HeaderBuilder::new()
+                            .value(RELEASE_TOKEN_SRC_STATE_PARAM, Value::Bytes(b"Y".into()))
+                            .value(RELEASE_TOKEN_DST_STATE_PARAM, Value::Bytes(b"X".into()))
+                            .build()
+                    )
+                    .build()
+            ),
+        ]),
+        err(displays_as(contains_substring("invalid state changes for pipeline")))
     );
 }
 
