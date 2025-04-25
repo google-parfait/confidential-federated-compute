@@ -54,25 +54,9 @@ rust_prost_library(
 )
 
 rust_library(
-    name = "bssl_utils",
-    srcs = ["bssl_utils.rs"],
-    deps = ["@boringssl//rust/bssl-sys"],
-)
-
-rust_test(
-    name = "bssl_utils_test",
-    srcs = ["bssl_utils_test.rs"],
-    deps = [
-        ":bssl_utils",
-        "@oak_crates_index//:googletest",
-    ],
-)
-
-rust_library(
     name = "key_derivation",
     srcs = ["key_derivation.rs"],
     deps = [
-        ":bssl_utils",
         "@boringssl//rust/bssl-crypto",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
@@ -128,7 +112,6 @@ rust_test(
     proc_macro_deps = ["@oak_crates_index//:async-trait"],
     deps = [
         ":access_policy_prost_proto",
-        ":bssl_utils",
         ":key_derivation",
         ":key_management_service",
         ":kms_prost_proto",
@@ -240,7 +223,6 @@ rust_library(
     name = "release_tokens",
     srcs = ["release_tokens.rs"],
     deps = [
-        ":bssl_utils",
         ":key_derivation",
         ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
@@ -254,7 +236,6 @@ rust_test(
     name = "release_tokens_test",
     srcs = ["release_tokens_test.rs"],
     deps = [
-        ":bssl_utils",
         ":key_derivation",
         ":release_tokens",
         ":storage_prost_proto",

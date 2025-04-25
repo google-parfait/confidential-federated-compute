@@ -28,7 +28,6 @@ use access_policy_proto::{
 };
 use anyhow::Context;
 use bssl_crypto::{digest::Sha256, ec, ecdsa, hpke};
-use bssl_utils::p1363_signature_to_asn1;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
@@ -960,8 +959,7 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
         }))
     );
     expect_that!(
-        cwt.verify_signature(b"", |signature, data| public_key
-            .verify(data, &p1363_signature_to_asn1(signature.try_into().unwrap()))),
+        cwt.verify_signature(b"", |signature, data| public_key.verify_p1363(data, signature)),
         ok(anything())
     );
 }

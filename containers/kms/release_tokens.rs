@@ -18,7 +18,6 @@
 
 use anyhow::{anyhow, bail, ensure, Context};
 use bssl_crypto::{ec, ecdsa, hpke};
-use bssl_utils::{asn1_signature_to_p1363, p1363_signature_to_asn1};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
@@ -67,11 +66,7 @@ pub fn endorse_transform_signing_key(
     CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
         .payload(claims.to_vec().map_err(anyhow::Error::msg).context("failed to encode ClaimsSet")?)
-        .try_create_signature(b"", |msg| {
-            asn1_signature_to_p1363(&cluster_key.sign(msg))
-                .context("failed to convert signature to P1363")
-                .map(Into::into)
-        })?
+        .create_signature(b"", |msg| cluster_key.sign_p1363(msg))
         .build()
         .to_vec()
         .map_err(anyhow::Error::msg)
@@ -136,10 +131,8 @@ pub fn verify_release_token(
     ensure!(token.protected.header.alg == cose_key.alg, "release token algorithm mismatch");
     token
         .verify_signature(b"", |signature, data| {
-            let signature =
-                p1363_signature_to_asn1(signature.try_into().context("invalid signature")?);
             public_key
-                .verify(data, &signature)
+                .verify_p1363(data, signature)
                 .map_err(|_| anyhow!("signature verification failed"))
         })
         .context("invalid release token signature")?;
@@ -152,10 +145,8 @@ pub fn verify_release_token(
     let verify_signature_fn = move |cluster_key: &ecdsa::PublicKey<ec::P256>| {
         endorsement
             .verify_signature(b"", |signature, data| {
-                let signature =
-                    p1363_signature_to_asn1(signature.try_into().context("invalid signature")?);
                 cluster_key
-                    .verify(data, &signature)
+                    .verify_p1363(data, signature)
                     .map_err(|_| anyhow!("signature verification failed"))
             })
             .context("invalid endorsement signature")

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use bssl_crypto::{ec, ecdsa, hpke};
-use bssl_utils::{asn1_signature_to_p1363, p1363_signature_to_asn1};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
@@ -87,7 +86,7 @@ fn endorse_transform_signing_key_succeeds() {
     expect_that!(
         cwt.as_ref().unwrap().verify_signature(b"", |signature, data| cluster_key
             .to_public_key()
-            .verify(data, &p1363_signature_to_asn1(signature.try_into().unwrap()))),
+            .verify_p1363(data, signature)),
         ok(anything())
     );
 
@@ -164,9 +163,7 @@ fn verify_release_token_succeeds() {
     let token = CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
         .payload(payload.clone())
-        .create_signature(b"", |msg| {
-            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap().into()
-        })
+        .create_signature(b"", |msg| transform_signing_key.sign_p1363(msg))
         .build()
         .to_vec()
         .unwrap();
@@ -193,9 +190,7 @@ fn verify_release_token_fails_with_invalid_endorsement() {
     let token = CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
         .payload(CoseEncrypt0::default().to_vec().unwrap())
-        .create_signature(b"", |msg| {
-            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap().into()
-        })
+        .create_signature(b"", |msg| transform_signing_key.sign_p1363(msg))
         .build()
         .to_vec()
         .unwrap();
@@ -231,7 +226,7 @@ fn verify_release_token_fails_with_invalid_token_signature() {
     let token = CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
         .payload(CoseEncrypt0::default().to_vec().unwrap())
-        .create_signature(b"", |msg| asn1_signature_to_p1363(&other_key.sign(msg)).unwrap().into())
+        .create_signature(b"", |msg| other_key.sign_p1363(msg))
         .build()
         .to_vec()
         .unwrap();
@@ -255,9 +250,7 @@ fn verify_release_token_fails_with_invalid_token_payload() {
     let token = CoseSign1Builder::new()
         .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
         .payload(b"invalid".into())
-        .create_signature(b"", |msg| {
-            asn1_signature_to_p1363(&transform_signing_key.sign(msg)).unwrap().into()
-        })
+        .create_signature(b"", |msg| transform_signing_key.sign_p1363(msg))
         .build()
         .to_vec()
         .unwrap();
