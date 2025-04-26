@@ -1089,7 +1089,7 @@ TEST(TffSessionTest, FinalizeEncryptOutputRecordErrorFailure) {
   FinalizeRequest finalize_request;
   auto status = session.FinalizeSession(finalize_request, metadata).status();
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
-  ASSERT_THAT(status.message(), HasSubstr("failed to decode CWT"));
+  ASSERT_THAT(status.message(), HasSubstr("failed to decode COSE_Sign"));
 }
 
 }  // namespace
