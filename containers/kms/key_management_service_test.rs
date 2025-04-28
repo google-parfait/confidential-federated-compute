@@ -309,7 +309,7 @@ async fn derive_keys_with_empty_keyset() {
 
     let request = DeriveKeysRequest {
         keyset_id: 1234,
-        authorized_logical_pipelines_hashes: vec![b"foo".into(), b"bar".into()],
+        authorized_logical_pipeline_policies_hashes: vec![b"foo".into(), b"bar".into()],
     };
     let response = kms.derive_keys(request.into_request()).await;
     expect_that!(
@@ -350,7 +350,7 @@ async fn rotate_and_derive_keys() {
 
     let request = DeriveKeysRequest {
         keyset_id: 1234,
-        authorized_logical_pipelines_hashes: vec![b"foo".into(), b"bar".into()],
+        authorized_logical_pipeline_policies_hashes: vec![b"foo".into(), b"bar".into()],
     };
     let response = kms.derive_keys(request.into_request()).await.map(Response::into_inner);
     assert_that!(
@@ -686,9 +686,10 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         if exp >= intermediates_exp {
             let request = DeriveKeysRequest {
                 keyset_id,
-                authorized_logical_pipelines_hashes: vec![
-                    Sha256::hash(&logical_pipeline_policies).into()
-                ],
+                authorized_logical_pipeline_policies_hashes: vec![Sha256::hash(
+                    &logical_pipeline_policies,
+                )
+                .into()],
             };
             let response =
                 kms.derive_keys(request.into_request()).await.expect("derive_keys failed");

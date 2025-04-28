@@ -124,13 +124,13 @@ cc_library(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-RUzOuFNLa+Cv/fof+QdG/Oyfl7PrzvkV/Z+VMjdr0gk=",
+    integrity = "sha256-FLW1JgXRim/C2XAFYWRgfwMjLx2eMuywkDzQYAkx6z8=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
-    strip_prefix = "federated-compute-b448065859a118746fab36b765f2260ae731a45b",
-    url = "https://github.com/google/federated-compute/archive/b448065859a118746fab36b765f2260ae731a45b.tar.gz",
+    strip_prefix = "federated-compute-0925faecc06a904446ec7ee8bdf76f9c3af248b1",
+    url = "https://github.com/google/federated-compute/archive/0925faecc06a904446ec7ee8bdf76f9c3af248b1.tar.gz",
 )
 
 http_archive(

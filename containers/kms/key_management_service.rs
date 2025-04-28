@@ -425,7 +425,7 @@ where
                     expiration.map(|t| t.seconds).unwrap_or(0),
                 ))
                 .build(),
-            &request.authorized_logical_pipelines_hashes,
+            &request.authorized_logical_pipeline_policies_hashes,
             &self.signer,
         )
         .await
