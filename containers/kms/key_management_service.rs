@@ -617,6 +617,8 @@ where
         let associated_data = authorize_confidential_transform_response::AssociatedData {
             cluster_public_key: Self::build_cluster_cose_key(&cluster_key.to_public_key()),
             config_constraints: authorized_transform.config_constraints,
+            authorized_logical_pipeline_policies_hashes: state
+                .authorized_logical_pipeline_policies_hashes,
         };
         let encrypted_message =
             ClientEncryptor::create(&authorized_transform.extracted_evidence.encryption_public_key)

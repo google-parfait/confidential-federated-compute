@@ -634,6 +634,9 @@ async fn authorize_confidential_transform_success() {
         ok(matches_pattern!(AssociatedData {
             cluster_public_key: eq(cluster_public_key.into_inner().public_key),
             config_constraints: some(matches_pattern!(Any { value: eq(b"config") })),
+            authorized_logical_pipeline_policies_hashes: elements_are![eq(Sha256::hash(
+                &logical_pipeline_policies.encode_to_vec()
+            ))],
         }))
     );
 }
