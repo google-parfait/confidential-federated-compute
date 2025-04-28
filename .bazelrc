@@ -16,7 +16,6 @@ build --define xnn_enable_avx512amx=false
 build --define xnn_enable_avxvnni=false
 build --define xnn_enable_avxvnniint8=false
 build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
-build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
 common --repo_env=TF_PYTHON_VERSION=3.10
