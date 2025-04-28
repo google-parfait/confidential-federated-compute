@@ -33,6 +33,10 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
+// TODO: Determine the port of the DataReadWrite service from the config
+// provided at initialization time, instead of using a hardcoded port.
+inline constexpr int kDataReadWriteServicePort = 500051;
+
 // Program executor TEE implementation of Session interface. Not threadsafe.
 class ProgramExecutorTeeSession final
     : public confidential_federated_compute::Session {
