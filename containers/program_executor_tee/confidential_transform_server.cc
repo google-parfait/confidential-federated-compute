@@ -13,8 +13,6 @@
 // limitations under the License.
 #include "containers/program_executor_tee/confidential_transform_server.h"
 
-#include <pybind11/embed.h>
-
 #include <execution>
 #include <memory>
 #include <optional>
@@ -56,53 +54,9 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::SessionWrite(
 
 absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
     const FinalizeRequest& request, const BlobMetadata& input_metadata) {
-  // TODO: Run the program in the config provided at initialization time,
-  // instead of using a hardcoded program.
-  auto program = R"(
-import federated_language
-import numpy as np
-
-async def trusted_program(release_manager):
-
-  client_data_type = federated_language.FederatedType(
-      np.int32, federated_language.CLIENTS
-  )
-
-  @federated_language.federated_computation(client_data_type)
-  def my_comp(client_data):
-    return federated_language.federated_sum(client_data)
-
-  result = await my_comp([1, 2])
-
-  await release_manager.release(result, "result1")
-  )";
-
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
-
-  pybind11::scoped_interpreter guard{};
-  try {
-    // Load the python function for running the program.
-    auto run_program =
-        pybind11::module::import(
-            "containers.program_executor_tee.program_context.program_runner")
-            .attr("run_program");
-
-    // Schedule execution of the program as a Task.
-    pybind11::object task = pybind11::module::import("asyncio").attr(
-        "ensure_future")(run_program(program, kDataReadWriteServicePort));
-
-    // Run the task in the event loop and get the result.
-    pybind11::object loop =
-        pybind11::module::import("asyncio").attr("get_event_loop")();
-    pybind11::object result = loop.attr("run_until_complete")(task);
-
-    read_response->set_finish_read(true);
-  } catch (const std::exception& e) {
-    LOG(INFO) << "Error executing federated program: " << e.what();
-    read_response->set_finish_read(false);
-  }
-
+  read_response->set_finish_read(true);
   return response;
 }
 }  // namespace confidential_federated_compute::program_executor_tee

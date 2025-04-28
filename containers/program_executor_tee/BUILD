@@ -16,27 +16,11 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("//containers:python_runtime.bzl", "trusted_py_runtime")
-
-trusted_py_runtime(
-    name = "trusted_program_py_runtime",
-    py_deps = [
-        "//containers/program_executor_tee/program_context:program_runner",
-    ],
-    source_repo_names = [
-        "federated_language",
-        "federated-compute",
-        "org_tensorflow_federated",
-        "oak",
-    ],
-)
 
 cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
-    # Include py runfiles needed to execute the federated program.
-    data = [":trusted_program_py_runtime"],
     deps = [
         "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
@@ -54,8 +38,6 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@pybind11",
-        "@rules_python//python/cc:current_py_cc_libs",
     ],
 )
 
@@ -63,12 +45,7 @@ cc_test(
     name = "confidential_transform_server_test",
     size = "medium",
     srcs = ["confidential_transform_server_test.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
     tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
         "//containers:blob_metadata",
@@ -81,23 +58,15 @@ cc_test(
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@googletest//:gtest_main",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
     tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
         "//containers:oak_orchestrator_client",

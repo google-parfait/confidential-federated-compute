@@ -29,8 +29,6 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -41,7 +39,6 @@
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
 #include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
-#include "tensorflow_federated/proto/v0/executor.pb.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -66,36 +63,6 @@ using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
 
-// Fake DataReadWrite service that records call args and returns empty
-// responses.
-class FakeDataReadWriteService
-    : public fcp::confidentialcompute::outgoing::DataReadWrite::Service {
- public:
-  grpc::Status Write(
-      ::grpc::ServerContext*,
-      ::grpc::ServerReader<fcp::confidentialcompute::outgoing::WriteRequest>*
-          request_reader,
-      fcp::confidentialcompute::outgoing::WriteResponse*) override {
-    // Append the stream of requests to write_call_args_.
-    std::vector<fcp::confidentialcompute::outgoing::WriteRequest> requests;
-    fcp::confidentialcompute::outgoing::WriteRequest request;
-    while (request_reader->Read(&request)) {
-      requests.push_back(request);
-    }
-    write_call_args_.push_back(requests);
-    return grpc::Status::OK;
-  }
-
-  std::vector<std::vector<fcp::confidentialcompute::outgoing::WriteRequest>>
-  getWriteCallArgs() {
-    return write_call_args_;
-  }
-
- private:
-  std::vector<std::vector<fcp::confidentialcompute::outgoing::WriteRequest>>
-      write_call_args_;
-};
-
 class ProgramExecutorTeeTest : public Test {
  public:
   ProgramExecutorTeeTest() {
@@ -106,21 +73,11 @@ class ProgramExecutorTeeTest : public Test {
                              grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service_);
     server_ = builder.BuildAndStart();
-    LOG(INFO) << "ConfidentialTransform server listening on "
-              << server_address + std::to_string(port) << std::endl;
+    LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
+              << std::endl;
     stub_ = ConfidentialTransform::NewStub(
         grpc::CreateChannel(server_address + std::to_string(port),
                             grpc::InsecureChannelCredentials()));
-
-    ServerBuilder data_read_write_builder;
-    data_read_write_builder.AddListeningPort(
-        server_address + std::to_string(kDataReadWriteServicePort),
-        grpc::InsecureServerCredentials());
-    data_read_write_builder.RegisterService(&fake_data_read_write_service_);
-    fake_data_read_write_server_ = data_read_write_builder.BuildAndStart();
-    LOG(INFO) << "DataReadWrite server listening on "
-              << server_address + std::to_string(kDataReadWriteServicePort)
-              << std::endl;
   }
 
   ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
@@ -130,9 +87,6 @@ class ProgramExecutorTeeTest : public Test {
   ProgramExecutorTeeConfidentialTransform service_{&mock_crypto_stub_};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
-
-  FakeDataReadWriteService fake_data_read_write_service_;
-  std::unique_ptr<Server> fake_data_read_write_server_;
 };
 
 TEST_F(ProgramExecutorTeeTest, ValidStreamInitialize) {
@@ -236,24 +190,6 @@ TEST_F(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
 
   ASSERT_TRUE(stream_->Write(session_request));
   ASSERT_TRUE(stream_->Read(&session_response));
-
-  auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
-  expected_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id("result1");
-  expected_request.set_commit(true);
-
-  auto write_call_args = fake_data_read_write_service_.getWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result1");
-  ASSERT_TRUE(write_request.commit());
-  tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(write_request.data());
-  ASSERT_THAT(released_value.array().int32_list().value(),
-              ::testing::ElementsAreArray({3}));
 
   ASSERT_TRUE(session_response.has_read());
   ASSERT_TRUE(session_response.read().finish_read());
