@@ -67,6 +67,7 @@ rust_library(
         "REFERENCE_VALUES": "$(execpath //reference_values/ledger:reference_values)",
         "INSECURE_REFERENCE_VALUES": "$(execpath :insecure_reference_values)",
     },
+    tags = ["no-clippy"],
     visibility = [
         "//ledger_enclave_app:__pkg__",
         "//replicated_ledger_enclave_app:__pkg__",
@@ -116,6 +117,7 @@ rust_test(
         "ENDORSEMENTS": "$(execpath //ledger_service/testdata:endorsements.binarypb)",
         "EVIDENCE": "$(execpath //ledger_service/testdata:evidence.binarypb)",
     },
+    tags = ["no-clippy"],
     deps = [
         "@oak_crates_index//:googletest",
     ],

@@ -17,6 +17,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 rust_library(
     name = "square_service",
     srcs = glob(["src/*.rs"]),
+    tags = ["no-clippy"],
     visibility = ["//examples/square_enclave_app:__pkg__"],
     deps = [
         "//pipeline_transforms",
@@ -32,6 +33,7 @@ rust_library(
 rust_test(
     name = "square_service_test",
     crate = ":square_service",
+    tags = ["no-clippy"],
     deps = [
         "//cfc_crypto",
         "@oak//oak_attestation",

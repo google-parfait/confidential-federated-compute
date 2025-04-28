@@ -20,6 +20,10 @@ common --experimental_repo_remote_exec
 common --noenable_bzlmod
 common --repo_env=TF_PYTHON_VERSION=3.10
 
+# Enable Rust clippy checks when building with `--config=clippy`.
+build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
+build:clippy --output_groups=+clippy_checks
+
 build:asan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan --compilation_mode=dbg
 build:asan --strip=never
