@@ -17,6 +17,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 rust_library(
     name = "sum_service",
     srcs = glob(["src/*.rs"]),
+    tags = ["no-clippy"],
     visibility = ["//examples/sum_enclave_app:__pkg__"],
     deps = [
         "//pipeline_transforms",
@@ -29,6 +30,7 @@ rust_library(
 rust_test(
     name = "sum_service_test",
     crate = ":sum_service",
+    tags = ["no-clippy"],
     deps = [
         "@oak//oak_attestation",
         "@oak//oak_restricted_kernel_sdk",

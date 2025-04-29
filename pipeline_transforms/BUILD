@@ -21,6 +21,7 @@ rust_library(
         "@platforms//os:linux": ["test"],
         "//conditions:default": [],
     }),
+    tags = ["no-clippy"],
     visibility = ["//:__subpackages__"],
     deps = [
         "//cfc_crypto",
@@ -40,6 +41,7 @@ rust_test(
     name = "pipeline_transforms_test",
     crate = ":pipeline_transforms",
     crate_features = ["test"],
+    tags = ["no-clippy"],
     deps = [
         "@oak_crates_index//:googletest",
         "@oak_crates_index//:sha2",

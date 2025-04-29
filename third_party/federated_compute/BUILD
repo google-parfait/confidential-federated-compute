@@ -42,6 +42,7 @@ rust_library(
     name = "federated_compute",
     srcs = glob(["src/**"]),
     proc_macro_deps = ["@oak_crates_index//:prost-derive"],
+    tags = ["no-clippy"],
     visibility = ["//visibility:public"],
     deps = [
         ":build",

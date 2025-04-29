@@ -32,6 +32,7 @@ rust_library(
         ["src/**"],
         exclude = ["src/main.rs"],
     ),
+    tags = ["no-clippy"],
     deps = [
         "//third_party/federated_compute",
         "@oak//oak_attestation_explain",
@@ -53,6 +54,7 @@ rust_test(
         "EXPLAIN_TOOL": "$(rootpath :main)",
         "INSTA_WORKSPACE_ROOT": ".",
     },
+    tags = ["no-clippy"],
     deps = [
         ":explain_fcp_attestation_record",
         "//third_party/federated_compute",

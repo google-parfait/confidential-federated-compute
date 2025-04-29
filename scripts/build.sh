@@ -56,5 +56,5 @@ elif [ "$1" == "release" ]; then
     ${BAZELISK} build "${COMMON[@]}" -c opt //:install_all_binaries
   fi
 else
-  ${BAZELISK} test "${COMMON[@]}" //...
+  ${BAZELISK} test "${COMMON[@]}" --config=clippy //...
 fi
