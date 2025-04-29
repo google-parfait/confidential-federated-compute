@@ -40,31 +40,28 @@ use key_management_service::{
     get_init_request, KeyManagementService, StorageKey, DST_NODE_IDS_CLAIM, INVOCATION_ID_CLAIM,
     LOGICAL_PIPELINE_NAME_CLAIM, TRANSFORM_INDEX_CLAIM,
 };
-use kms_proto::{
-    endorsement_proto::oak::attestation::v1::Endorsements,
-    evidence_proto::oak::attestation::v1::Evidence,
-    fcp::confidentialcompute::{
-        authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
-        key_management_service_server::KeyManagementService as _,
-        keyset::Key,
-        release_results_request::ReleasableResult,
-        AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
-        DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
-        GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
-        RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse,
-        ReleaseResultsRequest, ReleaseResultsResponse, RotateKeysetRequest,
-    },
+use kms_proto::fcp::confidentialcompute::{
+    authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
+    key_management_service_server::KeyManagementService as _,
+    keyset::Key,
+    release_results_request::ReleasableResult,
+    AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
+    DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
+    GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
+    RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
+    ReleaseResultsResponse, RotateKeysetRequest,
 };
-use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_crypto::encryptor::ServerEncryptor;
+use oak_crypto::{encryptor::ServerEncryptor, signer::Signer};
 use oak_proto_rust::oak::crypto::v1::Signature;
-use oak_restricted_kernel_sdk::{testing::MockEncryptionKeyHandle, Signer};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use release_tokens::{
     ENCAPSULATED_KEY_PARAM, RELEASE_TOKEN_DST_STATE_PARAM, RELEASE_TOKEN_SRC_STATE_PARAM,
 };
-use session_test_utils::{FakeAttester, FakeEndorser};
+use session_test_utils::{
+    get_test_encryption_key_handle, get_test_endorsements, get_test_evidence,
+    get_test_reference_values, get_test_signer,
+};
 use storage::Storage;
 use storage_client::StorageClient;
 use storage_proto::{
@@ -105,18 +102,6 @@ impl oak_sdk_containers::Signer for FakeSigner {
     async fn sign(&self, _data: &[u8]) -> anyhow::Result<Signature> {
         Ok(Signature { signature: b"signature".into() })
     }
-}
-
-fn get_test_evidence() -> Evidence {
-    FakeAttester::create().unwrap().quote().unwrap().convert().unwrap()
-}
-
-fn get_test_endorsements() -> Endorsements {
-    FakeEndorser::default().endorse(None).unwrap().convert().unwrap()
-}
-
-fn get_test_reference_values() -> ReferenceValues {
-    session_test_utils::test_reference_values().convert().unwrap()
 }
 
 /// Verifies that a HPKE private key and public key form a pair.
@@ -609,10 +594,11 @@ async fn authorize_confidential_transform_success() {
     );
     let response = response.unwrap();
 
-    let (_, plaintext, associated_data) = ServerEncryptor::decrypt(
+    let (_, plaintext, associated_data) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap().convert().unwrap(),
-        &MockEncryptionKeyHandle::create().unwrap(),
+        &get_test_encryption_key_handle(),
     )
+    .await
     .expect("failed to decrypt response");
 
     // Verify the ProtectedResponse.
@@ -734,10 +720,11 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .expect("authorize_confidential_transform failed")
         .into_inner();
 
-    let (_, plaintext, _) = ServerEncryptor::decrypt(
+    let (_, plaintext, _) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap().convert().unwrap(),
-        &MockEncryptionKeyHandle::create().unwrap(),
+        &get_test_encryption_key_handle(),
     )
+    .await
     .expect("failed to decrypt response");
 
     // Verify the ProtectedResponse. There should be 2 decryption keys for
@@ -821,10 +808,11 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
         .expect("authorize_confidential_transform failed")
         .into_inner();
 
-    let (_, plaintext, _) = ServerEncryptor::decrypt(
+    let (_, plaintext, _) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap().convert().unwrap(),
-        &MockEncryptionKeyHandle::create().unwrap(),
+        &get_test_encryption_key_handle(),
     )
+    .await
     .expect("failed to decrypt response");
 
     // Verify the ProtectedResponse.
@@ -1142,10 +1130,11 @@ where
         .into_inner();
 
     // Decrypt the ProtectedResponse.
-    let (_, plaintext, _) = ServerEncryptor::decrypt(
+    let (_, plaintext, _) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap_or_default().convert().unwrap(),
-        &MockEncryptionKeyHandle::create().unwrap(),
+        &get_test_encryption_key_handle(),
     )
+    .await
     .context("failed to decrypt response")?;
     let protected_response = ProtectedResponse::decode(plaintext.as_slice())
         .context("failed to decode ProtectedResponse")?;
@@ -1210,7 +1199,7 @@ fn create_release_token(
                 .map_err(anyhow::Error::msg)
                 .context("failed to build CoseEncrypt0")?,
         )
-        .create_signature(b"", |msg| session_test_utils::FakeSigner::create().unwrap().sign(msg))
+        .create_signature(b"", |msg| get_test_signer().sign(msg))
         .build()
         .to_vec()
         .map_err(anyhow::Error::msg)

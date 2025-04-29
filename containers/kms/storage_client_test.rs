@@ -22,9 +22,11 @@ use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
 use oak_session::{ProtocolEngine, ServerSession, Session};
 use prost::Message;
+use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use session_test_utils::{
-    test_reference_values, FakeAttester, FakeClock, FakeEndorser, FakeSigner,
+    get_test_attester, get_test_endorser, get_test_reference_values, get_test_signer, FakeClock,
+    TestSigner,
 };
 use session_v1_service_proto::{
     oak::services::{
@@ -66,7 +68,7 @@ struct FakeServer {
     storage: Arc<MockStorage>,
     attester: Arc<dyn Attester>,
     endorser: Arc<dyn Endorser>,
-    signer: FakeSigner,
+    signer: TestSigner,
     reference_values: ReferenceValues,
     clock: Arc<FakeClock>,
 }
@@ -75,10 +77,10 @@ impl FakeServer {
     fn new(storage: MockStorage) -> Self {
         Self {
             storage: Arc::new(storage),
-            attester: Arc::new(FakeAttester::create().unwrap()),
-            endorser: Arc::new(FakeEndorser::default()),
-            signer: FakeSigner::create().unwrap(),
-            reference_values: test_reference_values(),
+            attester: get_test_attester(),
+            endorser: get_test_endorser(),
+            signer: get_test_signer(),
+            reference_values: get_test_reference_values().convert().unwrap(),
             clock: Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
         }
     }
@@ -157,7 +159,7 @@ impl OakSessionV1Service for FakeServer {
 /// `oak_sdk_containers::InstanceSigner`.
 #[derive(Clone)]
 struct BlockingSigner {
-    inner: FakeSigner,
+    inner: TestSigner,
 }
 impl oak_crypto::signer::Signer for BlockingSigner {
     fn sign(&self, message: &[u8]) -> Vec<u8> {

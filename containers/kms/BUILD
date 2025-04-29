@@ -39,9 +39,7 @@ rust_test(
     deps = [
         ":access_policies",
         ":access_policy_prost_proto",
-        ":kms_prost_proto",
         ":session_test_utils",
-        "@oak//oak_attestation_types",
         "@oak//oak_proto_rust",
         "@oak_crates_index//:googletest",
         "@oak_crates_index//:prost",
@@ -122,10 +120,8 @@ rust_test(
         ":storage_client",
         ":storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
-        "@oak//oak_attestation_types",
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",
-        "@oak//oak_restricted_kernel_sdk",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
@@ -263,11 +259,16 @@ rust_library(
     testonly = True,
     srcs = ["session_test_utils.rs"],
     deps = [
+        ":access_policy_prost_proto",
+        ":kms_prost_proto",
+        ":prost_proto_conversion",
         "@oak//oak_attestation_types",
         "@oak//oak_attestation_verification_types",
-        "@oak//oak_proto_rust",
-        "@oak//oak_restricted_kernel_sdk",
+        "@oak//oak_sdk/common:oak_sdk_common",
+        "@oak//oak_sdk/standalone:oak_sdk_standalone",
         "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:p256",
+        "@oak_crates_index//:rand_core",
     ],
 )
 
@@ -331,6 +332,7 @@ rust_test(
     env = {"RUST_LOG": "debug"},
     deps = [
         ":kms_prost_proto",
+        ":prost_proto_conversion",
         ":session_config",
         ":session_test_utils",
         ":storage_actor",
@@ -382,6 +384,7 @@ rust_test(
     env = {"RUST_LOG": "debug"},
     deps = [
         ":matchers",
+        ":prost_proto_conversion",
         ":session_config",
         ":session_test_utils",
         ":session_v1_service_prost_proto",

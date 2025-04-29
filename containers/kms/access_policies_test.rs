@@ -16,6 +16,7 @@ use access_policies::{
     authorize_transform, validate_pipeline_invocation_policies, AuthorizedTransform,
 };
 use access_policy_proto::{
+    any_proto::google::protobuf::Any,
     fcp::confidentialcompute::{
         pipeline_variant_policy::Transform, ApplicationMatcher,
         DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
@@ -24,14 +25,9 @@ use access_policy_proto::{
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
 use googletest::prelude::*;
-use kms_proto::{
-    any_proto::google::protobuf::Any, endorsement_proto::oak::attestation::v1::Endorsements,
-    evidence_proto::oak::attestation::v1::Evidence,
-};
-use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::attestation::v1::ExtractedEvidence;
 use prost::Message;
-use session_test_utils::{FakeAttester, FakeEndorser};
+use session_test_utils::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
 /// Builds a PipelineVariantPolicy with the given source transform. This is not
 /// a representative policy, but it's sufficient for testing.
@@ -47,21 +43,6 @@ fn build_test_variant_policy(src: u32) -> PipelineVariantPolicy {
         }],
         ..Default::default()
     }
-}
-
-fn get_test_evidence() -> Evidence {
-    let evidence = FakeAttester::create().unwrap().quote().unwrap();
-    Evidence::decode(evidence.encode_to_vec().as_slice()).unwrap()
-}
-
-fn get_test_endorsements() -> Endorsements {
-    let endorsements = FakeEndorser::default().endorse(None).unwrap();
-    Endorsements::decode(endorsements.encode_to_vec().as_slice()).unwrap()
-}
-
-fn get_test_reference_values() -> ReferenceValues {
-    let rv = session_test_utils::test_reference_values();
-    ReferenceValues::decode(rv.encode_to_vec().as_slice()).unwrap()
 }
 
 #[googletest::test]
