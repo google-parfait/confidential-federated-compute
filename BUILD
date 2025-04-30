@@ -15,8 +15,21 @@
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
 load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 exports_files([".rustfmt.toml"])
+
+# This rule adds a convenient way to update the requirements file.
+compile_pip_requirements(
+    name = "requirements",
+    timeout = "moderate",
+    extra_args = [
+        "--allow-unsafe",
+        "--resolver=backtracking",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock.txt",
+)
 
 platform(
     name = "remote_platform",
