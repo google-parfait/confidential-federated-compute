@@ -213,13 +213,13 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-yZej3NjL3olu0UOtOkVod2TNdI43mHFb4wB+u67Tk1I=",
+    integrity = "sha256-P6fttyEO6Sv3cZlQUaWwUFebriOs1zCme6HNN4wBhzI=",
     patches = [
         "//third_party/org_tensorflow_federated:dp_accounting.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
-    strip_prefix = "tensorflow-federated-54b11d35484d54972d7fd369107613c25f18464b",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/54b11d35484d54972d7fd369107613c25f18464b.tar.gz",
+    strip_prefix = "tensorflow-federated-258e46387d13e66b4dca7a06f8dc5d54761c5c83",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/258e46387d13e66b4dca7a06f8dc5d54761c5c83.tar.gz",
 )
 
 http_archive(

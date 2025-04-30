@@ -79,6 +79,15 @@ diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federate
 index 57f1c05d7..05bdcd907 100644
 --- tensorflow_federated/cc/core/impl/executors/BUILD
 +++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -326,7 +326,7 @@ cc_library(
+         "@com_google_absl//absl/types:span",
+         "@com_google_absl//absl/utility",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+-        "@org_tensorflow//tensorflow/tsl/profiler/lib:traceme",
++        "@local_tsl//tsl/profiler/lib:traceme",
+     ],
+ )
+
 @@ -1157,19 +1157,19 @@ cc_library(
          "@com_google_absl//absl/strings:string_view",
          "@com_google_absl//absl/types:span",
@@ -348,3 +357,18 @@ index f9b00096f..5a34339b0 100644
  #include "tensorflow_federated/cc/core/impl/executors/array_shape_test_utils.h"
  #include "tensorflow_federated/cc/core/impl/executors/array_test_utils.h"
  #include "tensorflow_federated/cc/testing/protobuf_matchers.h"
+diff --git tensorflow_federated/cc/core/impl/executors/executor.h tensorflow_federated/cc/core/impl/executors/executor.h
+index 7e875dc74..f331b3554 100644
+--- tensorflow_federated/cc/core/impl/executors/executor.h
++++ tensorflow_federated/cc/core/impl/executors/executor.h
+@@ -37,9 +37,9 @@ limitations under the License
+ #include "absl/types/span.h"
+ #include "absl/utility/utility.h"
+ #include "federated_language/proto/computation.pb.h"
+-#include "tensorflow/tsl/profiler/lib/traceme.h"
+ #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
+ #include "tensorflow_federated/proto/v0/executor.pb.h"
++#include "tsl/profiler/lib/traceme.h"
+
+ namespace tensorflow_federated {
+
