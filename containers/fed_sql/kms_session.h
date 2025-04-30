@@ -66,8 +66,11 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
       fcp::confidentialcompute::SessionRequest configure_request) override;
-  // Accumulates a record into the state of the CheckpointAggregator
-  // `aggregator`.
+  // Incorporates an input into a session. In the case of a client upload,
+  // the blob is queued to be eventually processed, but the processing may not
+  // finish until SessionCommit is called. In the case of an intermediate
+  // partial aggregate, merging with the session state is done
+  // promptly without requiring a SessionCommit call.
   //
   // Returns an error if the aggcore state may be invalid and the session
   // needs to be shut down.
@@ -79,11 +82,11 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,
       const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
-  // Currently no action taken for commits.
+  // Accumulates queued blobs into the session state.
+  // Returns an error if the aggcore state may be invalid and the session needs
+  // to be shut down.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
-      const fcp::confidentialcompute::CommitRequest& commit_request) override {
-    return ToSessionCommitResponse(absl::OkStatus());
-  }
+      const fcp::confidentialcompute::CommitRequest& commit_request) override;
 
  private:
   // Configuration of the per-client SQL query step.
@@ -92,6 +95,12 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
     fcp::confidentialcompute::TableSchema input_schema;
     google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
         output_columns;
+  };
+
+  // A partially processed but uncommitted input, along with its metadata.
+  struct UncommittedInput {
+    std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser> parser;
+    const fcp::confidentialcompute::BlobMetadata metadata;
   };
 
   absl::StatusOr<
@@ -113,6 +122,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Key used to hash sensitive values. In the future we could instead hold an
   // HMAC_CTX to reuse, which might improve performance.
   absl::string_view sensitive_values_key_;
+  // SQL query results that will be accumulated the next time SessionCommit is
+  // called.
+  std::vector<UncommittedInput> uncommitted_inputs_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
