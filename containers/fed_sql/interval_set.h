@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <optional>
+#include <ostream>
 #include <type_traits>
 
 #include "absl/container/btree_set.h"
@@ -61,12 +62,16 @@ class Interval {
   T end_;
 };
 
-// Ordered set of non-overlapping intervals.
-// This class implements union of overlapping or contiguous intervals into
-// a single interval.
-//   For example: [1, 2) and [2, 3) -> [1, 3)
-//                [1, 5) and [3, 7) -> [1, 7)
-//                [1, 9) and [3, 5) -> [1, 9)
+template <typename T>
+auto operator<<(std::ostream &out, const Interval<T> &i)
+    -> decltype(out << i.start()) {
+  return out << "[" << i.start() << ", " << i.end() << ")";
+}
+
+// Ordered set of non-overlapping, non-adjacent intervals.
+// This invariant is maintained when adding new intervals or joining with
+// another set of intervals.
+// Adding or merging overlapping intervals isn't allowed.
 template <typename T, typename>
 class IntervalSet {
  private:
@@ -99,8 +104,11 @@ class IntervalSet {
   using value_type = Interval<T>;
 
   IntervalSet() = default;
+
+  // Creates IntervalSet from a list of non-overlapping and ordered
+  // intervals.
   IntervalSet(std::initializer_list<Interval<T>> il) {
-    Assign(il.begin(), il.end());
+    CHECK(Assign(il.begin(), il.end()));
   }
 
   // IntervalSet's begin() iterator.
@@ -114,10 +122,21 @@ class IntervalSet {
 
   void Clear() { set_.clear(); }
 
+  // Populates this IntervalSet with the specified intervals.
+  // Intervals must be non-overlapping and ordered.
   template <typename Iter>
-  void Assign(Iter first, Iter last) {
-    Clear();
-    for (; first != last; ++first) Add(*first);
+  bool Assign(Iter first, Iter last) {
+    InnerSet set;
+    std::optional<T> prev_end;
+    for (; first != last; ++first) {
+      if (prev_end.has_value() && first->start() <= *prev_end) {
+        return false;
+      }
+      prev_end = first->end();
+      set.insert(set.end(), *first);
+    }
+    std::swap(set_, set);
+    return true;
   }
 
   // Checks if the value is contained in the set.
@@ -134,77 +153,64 @@ class IntervalSet {
     return it_prev->end() > v;
   }
 
-  // Adds a new interval to the set. If the new interval overlaps or contiguous
-  // with any of existing intervals, it gets merged.
-  void Add(Interval<T> interval) {
-    // This method implements the following cases:
-    // 1) Overlap with the interval before the start of inserted interval.
-    // 2) Overlap with the interval before the end of the inserted interval.
-    // 3) Inserted interval is Within a single existing interval.
-    // 4) No overlap between the inserted interval and any existing interval.
-
-    // In cases (1) or (2) there may be one or more intervals that need to
-    // be merged.
-    // In general, we need to do the following:
-    // * If the preceding interval overlaps with `interval`, extend the
-    //   preceding interval to cover all overlapping intervals.
-    // * If the preceding interval does not overlap with `interval`,
-    //   extend `interval` to cover any overlapping intervals and insert
-    //  `interval`
-    // * Delete all other intervals that overlap with `interval
-
+  // Adds a new interval to the set assuming that the interval doesn't already
+  // exist or overlaps any existing interval. If the new interval overlaps with
+  // any of existing intervals, this function returns false. If the new
+  // interval is adjacent with any of existing intervals, it gets merged.
+  bool Add(Interval<T> interval) {
     // Empty intervals are ignored.
     if (interval.empty()) {
-      return;
+      return true;
     }
 
-    // The first interval that starts after the end of the inserted interval.
-    auto it_next = set_.upper_bound(interval.end());
-    if (it_next == set_.begin()) {
-      // The inserted interval is before the first interval in the set.
-      set_.insert(interval);
-      return;
-    }
+    // The new interval is inserted in all cases except when it is adjacent
+    // to the previous interval.
+    bool insert_new = true;
+    // The next interval (following the inserted interval, if any) is erased
+    // when the new interval is adjacent to it.
+    bool erase_next = false;
 
-    // The interval that starts before the end of the inserted interval and
-    // potentially overlaps it.
-    auto it_end = std::prev(it_next);
-    interval.extend_end(it_end->end());
-
-    // The interval that starts after the start of the inserted interval.
-    auto it_start = set_.upper_bound(interval.start());
-    bool insert = false;
-    if (it_start == set_.begin()) {
-      // There is no preceding interval.
-      insert = true;
-    } else {
-      // Preceding interval that starts before the start of the inserted
-      // interval.
-      auto it_prev = std::prev(it_start);
-      if (it_prev->end() < interval.start()) {
-        // The inserted interval does not overlap with the preceding interval.
-        insert = true;
-      } else {
-        // The inserted interval overlaps with the preceding interval.
-        // Merge the two intervals.
-        it_prev->extend_end(interval.end());
+    // The first interval that starts after the start of the inserted interval.
+    auto it_next = set_.upper_bound(interval.start());
+    if (it_next != set_.end()) {
+      if (it_next->start() < interval.end()) {
+        // The inserted interval overlaps with the next interval.
+        return false;
+      } else if (it_next->start() == interval.end()) {
+        // The inserted interval is adjacent to the next interval.
+        interval.extend_end(it_next->end());
+        erase_next = true;
       }
     }
-    // Delete all intervals after the start of the inserted or merged interval
-    // and up to but not including the end of the inserted or merged interval.
-    set_.erase(it_start, it_next);
-    if (insert) {
-      // If necessary, insert the new interval.
+
+    // Check if there is a previous interval
+    if (it_next != set_.begin()) {
+      auto it_prev = std::prev(it_next);
+      if (it_prev->end() > interval.start()) {
+        // The inserted interval overlaps with the previous interval.
+        return false;
+      } else if (it_prev->end() == interval.start()) {
+        // The inserted interval is adjacent to the previous interval.
+        it_prev->extend_end(interval.end());
+        insert_new = false;
+      }
+    }
+
+    if (erase_next) {
+      set_.erase(it_next);
+    }
+    if (insert_new) {
       set_.insert(interval);
     }
+    return true;
   }
 
   // Merges this IntervalSet with another interval set.
-  void Merge(const IntervalSet<T> &other) {
-    InnerSet this_set;
-    std::swap(this_set, set_);
-    const_iterator this_it = this_set.begin();
-    const_iterator this_end = this_set.end();
+  // This returns false if there is any overlap between the two sets.
+  bool Merge(const IntervalSet<T> &other) {
+    InnerSet merged_set;
+    const_iterator this_it = set_.begin();
+    const_iterator this_end = set_.end();
     const_iterator other_it = other.set_.begin();
     const_iterator other_end = other.set_.end();
 
@@ -213,19 +219,26 @@ class IntervalSet {
     while (next = NextOfTwoSets(this_it, this_end, other_it, other_end),
            next.has_value()) {
       if (cur.has_value()) {
-        if (next->start() <= cur->end()) {
+        if (next->start() < cur->end()) {
+          // Overlap.
+          return false;
+        }
+        if (next->start() == cur->end()) {
           cur->extend_end(next->end());
           continue;
         } else {
-          set_.insert(set_.end(), *std::move(cur));
+          merged_set.insert(merged_set.end(), *std::move(cur));
         }
       }
       std::swap(cur, next);
     }
 
     if (cur.has_value()) {
-      set_.insert(set_.end(), *std::move(cur));
+      merged_set.insert(merged_set.end(), *std::move(cur));
     }
+
+    std::swap(merged_set, set_);
+    return true;
   }
 
  private:
@@ -247,6 +260,7 @@ class IntervalSet {
     // Reached the end of both sets.
     return std::nullopt;
   }
+
   // Internal set of intervals.
   InnerSet set_;
 };
