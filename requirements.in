@@ -1,0 +1,37 @@
+# The dependency versions in this file are not able to be in sync with the
+# dependency versions in the corresponding repos. This is due to additional
+# restrictions caused by this repo (notably pybind issues that arise when
+# dm-tree=0.1.8 is used). This lack of being in sync may lead to compatibility
+# issues; hopefully we will be able to catch such issues with the tests in
+# this repo and adjust versions as needed to resolve such incompatibilities.
+
+# Dependencies for federated_language pip package.
+# Although federated_language uses dm-tree=0.1.8, we cannot use dm-tree>0.1.7
+# because it causes a "free(): invalid pointer" when pybind is used to go from
+# C++ to python in the program_executor_tee container.
+absl-py~=1.0.0
+attrs~=23.1.0
+dm-tree==0.1.7
+ml_dtypes~=0.3.2
+numpy~=1.26
+protobuf~=4.21
+typing-extensions~=4.5
+
+# Additional dependencies for TFF pip package.
+# Use TF==2.15.* for now for compatibility with tensorflow-estimator and
+# protobuf, although the C++ code in this repo is using a version of TF>2.18.
+# Also use an earlier version of tensorflow-privacy for compatibility with
+# dm-tree==0.1.7. It does not seem possible to find a compatible version of
+# dp_accounting, so this dependency is removed from TFF in dp_accounting.patch.
+# Once the program_executor_tee container is executing computations using XLA, 
+# many of these dependencies should be able to be removed.
+tensorflow==2.15.*
+tensorflow-privacy==0.7.3
+tensorflow-estimator==2.15.0
+tensorflow-model-optimization==0.7.3
+tensorflow-probability==0.23.0
+portpicker~=1.6
+google-vizier==0.1.11
+tqdm~=4.64
+jax==0.4.14
+jaxlib==0.4.14

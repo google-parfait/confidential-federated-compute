@@ -214,7 +214,7 @@ http_archive(
     name = "org_tensorflow_federated",
     integrity = "sha256-pn62f5TSprspJWcc5majzsTNuFahSloYjDx3i+36osE=",
     patches = [
-        # Patch to make TFF compatible with TF 2.18.
+        "//third_party/org_tensorflow_federated:dp_accounting.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
     ],
     strip_prefix = "tensorflow-federated-f402563eb37264708ffd566281c386e0d7c51ccb",
@@ -356,6 +356,19 @@ python_register_toolchains(
     ignore_root_user_error = True,
     python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
 )
+
+load("@python//:defs.bzl", "interpreter")
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+pip_parse(
+    name = "pypi",
+    python_interpreter_target = interpreter,
+    requirements_lock = "//:requirements_lock.txt",
+)
+
+load("@pypi//:requirements.bzl", "install_deps")
+
+install_deps()
 
 # The following is copied from TensorFlow's own WORKSPACE, see
 # https://github.com/tensorflow/tensorflow/blob/v2.19.0-rc0/WORKSPACE#L68
