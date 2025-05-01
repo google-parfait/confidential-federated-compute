@@ -140,10 +140,9 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
     return absl::FailedPreconditionError("The aggregator is already released.");
   }
 
-  // In case of an error with Accumulate or MergeWith, the session is
-  // terminated, since we can't guarantee that the aggregator is in a valid
-  // state. If this changes, consider changing this logic to no longer return an
-  // error.
+  // In case of an error with MergeWith, the session is terminated, since we
+  // can't guarantee that the aggregator is in a valid state. If this changes,
+  // consider changing this logic to no longer return an error.
   switch (write_config.type()) {
     case AGGREGATION_TYPE_ACCUMULATE: {
       // TODO: Use
@@ -207,6 +206,9 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
 
 absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
     const CommitRequest& commit_request) {
+  // In case of an error with Accumulate, the session is terminated, since we
+  // can't guarantee that the aggregator is in a valid state. If this changes,
+  // consider changing this logic to no longer return an error.
   for (UncommittedInput& uncommitted_input : uncommitted_inputs_) {
     absl::Status accumulate_status =
         aggregator_->Accumulate(*uncommitted_input.parser);
