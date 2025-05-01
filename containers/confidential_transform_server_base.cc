@@ -24,6 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "cc/crypto/server_encryptor.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -31,13 +32,14 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
-
 namespace confidential_federated_compute {
 
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidential_compute::NonceChecker;
+using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConfidentialTransform;
@@ -48,6 +50,8 @@ using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::ServerContext;
+using ::oak::crypto::DecryptionResult;
+using ::oak::crypto::ServerEncryptor;
 
 namespace {
 
@@ -109,8 +113,41 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         const InitializeRequest& initialize_request =
             request.initialize_request();
         max_num_sessions = initialize_request.max_num_sessions();
-        FCP_ASSIGN_OR_RETURN(config_properties,
-                             StreamInitializeTransform(&initialize_request));
+        kms_enabled_ = initialize_request.has_protected_response();
+        if (kms_enabled_) {
+          if (oak_encryption_key_handle_ == nullptr) {
+            return absl::FailedPreconditionError(
+                "Oak Encryption Key Handle must be specified when using KMS.");
+          }
+
+          ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
+          FCP_ASSIGN_OR_RETURN(DecryptionResult decryption_result,
+                               server_encryptor.Decrypt(
+                                   initialize_request.protected_response()));
+          AuthorizeConfidentialTransformResponse::ProtectedResponse
+              protected_response;
+          if (!protected_response.ParseFromString(
+                  decryption_result.plaintext)) {
+            return absl::InvalidArgumentError(
+                "Failed to parse ProtectedResponse from decrypted data.");
+          }
+          AuthorizeConfidentialTransformResponse::AssociatedData
+              associated_data;
+          if (!associated_data.ParseFromString(
+                  decryption_result.associated_data)) {
+            return absl::InvalidArgumentError(
+                "Failed to parse AssociatedData from decrypted data.");
+          }
+          FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
+              initialize_request.configuration(),
+              associated_data.config_constraints(),
+              std::vector<std::string>(
+                  protected_response.result_encryption_keys().begin(),
+                  protected_response.result_encryption_keys().end())));
+        } else {
+          FCP_ASSIGN_OR_RETURN(config_properties,
+                               StreamInitializeTransform(&initialize_request));
+        }
         contain_initialize_request = true;
         break;
       }

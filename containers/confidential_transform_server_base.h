@@ -21,10 +21,12 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "cc/crypto/encryption_key.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "google/protobuf/any.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
@@ -50,11 +52,26 @@ class ConfidentialTransformBase
 
  protected:
   ConfidentialTransformBase(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)) {}
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
+          encryption_key_handle = nullptr)
+      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
+        oak_encryption_key_handle_(std::move(encryption_key_handle)) {}
 
+  // Initialize the transform with legacy ledger.
+  // Either one of `StreamInitializeTransform` or
+  // `StreamInitializeTransformWithKms` should be invoked but never both.
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) = 0;
+  // Initialize the transform when KMS is enabled for this worker.
+  // Either one of `StreamInitializeTransform` or
+  // `StreamInitializeTransformWithKms` should be invoked but never both.
+  virtual absl::Status StreamInitializeTransformWithKms(
+      const ::google::protobuf::Any& configuration,
+      const ::google::protobuf::Any& config_constraints,
+      std::vector<std::string> reencryption_keys) {
+    return absl::OkStatus();
+  };
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
   // blob used for container initialization. Must be implemented by a subclass.
   // The first WriteConfigurationRequest for each blob must contain the metadata
@@ -86,6 +103,9 @@ class ConfidentialTransformBase
       ABSL_GUARDED_BY(mutex_);
   std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);
+  bool kms_enabled_;
+  std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
+      oak_encryption_key_handle_;
 };
 
 }  // namespace confidential_federated_compute

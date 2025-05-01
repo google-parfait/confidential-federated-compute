@@ -22,6 +22,8 @@
 #include "absl/log/log.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
+#include "cc/crypto/client_encryptor.h"
+#include "cc/crypto/encryption_key.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -34,6 +36,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
@@ -69,6 +72,7 @@ using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::AggCoreAggregationType;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
+using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
@@ -77,6 +81,7 @@ using ::fcp::confidentialcompute::ConfigurationMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::DatabaseSchema;
+using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -112,6 +117,8 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
+using ::oak::crypto::ClientEncryptor;
+using ::oak::crypto::EncryptionKeyProvider;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::Configuration;
@@ -270,8 +277,14 @@ class FedSqlServerTest : public Test {
         .WillByDefault(Return(ByMove(nullptr)));
     ON_CALL(*mock_inference_model_, RunGemmaInference)
         .WillByDefault(Return("topic_value"));
+    auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
+        EncryptionKeyProvider::Create().value());
+    oak_client_encryptor_ =
+        ClientEncryptor::Create(encryption_key_handle->GetSerializedPublicKey())
+            .value();
     service_ = std::make_unique<FedSqlConfidentialTransform>(
-        &mock_crypto_stub_, mock_inference_model_);
+        &mock_crypto_stub_, std::move(encryption_key_handle),
+        mock_inference_model_);
 
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
@@ -304,6 +317,7 @@ class FedSqlServerTest : public Test {
   std::unique_ptr<FedSqlConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
+  std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
 };
 
 InferenceInitializeConfiguration FedSqlServerTest::DefaultInferenceConfig()
@@ -473,7 +487,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
 
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
-              HasSubstr("StreamInitialize can only be called once"));
+              HasSubstr("SetIntrinsics can only be called once"));
 }
 
 TEST_F(FedSqlServerTest,
@@ -589,6 +603,318 @@ TEST_F(FedSqlServerTest,
             42);
   ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
             7);
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    epsilon: 1.1
+    delta: 2.2
+    intrinsic_uri: "fedsql_dp_group_by")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_uri: "fedsql_group_by")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    epsilon: 1.1
+    delta: 2.2
+    intrinsic_uri: "my_intrinsic_uri")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Invalid intrinsic URI for DP configuration."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    epsilon: 1.2
+    delta: 2.2
+    intrinsic_uri: "fedsql_dp_group_by")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Epsilon value does not match the expected value."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    epsilon: 1.1
+    delta: 2.3
+    intrinsic_uri: "fedsql_dp_group_by")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Delta value does not match the expected value."));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+    serialize_output_access_policy_node_id: 42
+    report_output_access_policy_node_id: 7
+  )pb");
+  request.mutable_configuration()->PackFrom(init_config);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  google::protobuf::Value value;
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(value);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("FedSqlContainerConfigConstraints cannot be unpacked."));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {

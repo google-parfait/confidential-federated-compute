@@ -19,6 +19,8 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "cc/crypto/client_encryptor.h"
+#include "cc/crypto/encryption_key.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -27,6 +29,7 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -48,6 +51,7 @@ using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::NonceAndCounter;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -67,6 +71,8 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::oak::containers::v1::MockOrchestratorCryptoStub;
+using ::oak::crypto::ClientEncryptor;
+using ::oak::crypto::EncryptionKeyProvider;
 using ::testing::_;
 using ::testing::HasSubstr;
 using ::testing::Return;
@@ -125,8 +131,10 @@ class FakeConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   FakeConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : ConfidentialTransformBase(crypto_stub) {};
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::unique_ptr<::oak::crypto::EncryptionKeyHandle> encryption_key_handle)
+      : ConfidentialTransformBase(crypto_stub,
+                                  std::move(encryption_key_handle)) {};
 
   void AddSession(
       std::unique_ptr<confidential_federated_compute::MockSession> session) {
@@ -180,10 +188,17 @@ class ConfidentialTransformServerBaseTest : public Test {
   ConfidentialTransformServerBaseTest() {
     int port;
     const std::string server_address = "[::1]:";
+    auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
+        EncryptionKeyProvider::Create().value());
+    oak_client_encryptor_ =
+        ClientEncryptor::Create(encryption_key_handle->GetSerializedPublicKey())
+            .value();
+    service_ = std::make_unique<FakeConfidentialTransform>(
+        &mock_crypto_stub_, std::move(encryption_key_handle));
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(&service_);
+    builder.RegisterService(service_.get());
     server_ = builder.BuildAndStart();
     LOG(INFO) << "Server listening on " << server_address + std::to_string(port)
               << std::endl;
@@ -196,9 +211,10 @@ class ConfidentialTransformServerBaseTest : public Test {
 
  protected:
   testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  FakeConfidentialTransform service_{&mock_crypto_stub_};
+  std::unique_ptr<FakeConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
+  std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
 };
 
 TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
@@ -251,6 +267,40 @@ TEST_F(ConfidentialTransformServerBaseTest,
       ->PackFrom(config_status);
   initialize_request.mutable_initialize_request()->set_max_num_sessions(
       kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(initialize_request));
+  ASSERT_TRUE(writer->WritesDone());
+  ASSERT_TRUE(writer->Finish().ok());
+  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
+  ASSERT_TRUE(cwt.ok());
+}
+
+TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitializeKmsEnabled) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  google::rpc::Status config_status;
+  config_status.set_code(grpc::StatusCode::OK);
+  StreamInitializeRequest initialize_request;
+  initialize_request.mutable_initialize_request()
+      ->mutable_configuration()
+      ->PackFrom(config_status);
+  initialize_request.mutable_initialize_request()->set_max_num_sessions(
+      kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  *associated_data.add_authorized_logical_pipeline_policies_hashes() =
+      "policy_hash";
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *initialize_request.mutable_initialize_request()
+       ->mutable_protected_response() = encrypted_request;
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
@@ -457,7 +507,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
@@ -623,7 +673,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   // Accumulate the same unencrypted blob twice.
@@ -672,7 +722,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
@@ -731,7 +781,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetFinalizeResponse("abcdefghijklmno")));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession(/*chunk_size=*/6);
 
   google::rpc::Status config;
@@ -777,7 +827,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest(data);
@@ -825,7 +875,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillOnce(Return(absl::InternalError("Internal Error")));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest("test data");
@@ -842,7 +892,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       std::make_unique<confidential_federated_compute::MockSession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest("test data");
@@ -863,7 +913,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       std::make_unique<confidential_federated_compute::MockSession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   SessionRequest write_request = CreateDefaultWriteRequest("test data");
@@ -891,7 +941,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillOnce(Return(absl::InternalError("Internal Error")));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   SessionRequest commit_request;
@@ -921,7 +971,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(absl::InternalError("Internal Error")));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   // Accumulate the same unencrypted blob twice.
@@ -962,7 +1012,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   MessageDecryptor decryptor;
@@ -1091,7 +1141,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeResponse()));
-  service_.AddSession(std::move(mock_session));
+  service_->AddSession(std::move(mock_session));
   StartSession();
 
   MessageDecryptor decryptor;

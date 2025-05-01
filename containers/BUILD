@@ -179,6 +179,9 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
+        "@oak//cc/crypto:encryption_key",
+        "@oak//cc/crypto:server_encryptor",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
@@ -201,7 +204,10 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:client_encryptor",
+        "@oak//cc/crypto:encryption_key",
     ],
 )
 
