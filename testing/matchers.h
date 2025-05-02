@@ -79,13 +79,21 @@ inline StatusMatcher IsCode(absl::StatusCode code) {
 
 inline StatusMatcher IsOk() { return StatusMatcher(absl::StatusCode::kOk); }
 
+using RepeatedFieldComparison =
+    google::protobuf::util::MessageDifferencer::RepeatedFieldComparison;
+
 template <typename T>
 class ProtoMatcherImpl : public ::testing::MatcherInterface<T> {
  public:
-  explicit ProtoMatcherImpl(const google::protobuf::Message& arg)
-      : arg_(CloneMessage(arg)) {}
+  explicit ProtoMatcherImpl(const google::protobuf::Message& arg,
+                            RepeatedFieldComparison repeated_field_comparison)
+      : arg_(CloneMessage(arg)),
+        repeated_field_comparison_(repeated_field_comparison) {}
 
-  explicit ProtoMatcherImpl(const std::string& arg) : arg_(ParseMessage(arg)) {}
+  explicit ProtoMatcherImpl(const std::string& arg,
+                            RepeatedFieldComparison repeated_field_comparison)
+      : arg_(ParseMessage(arg)),
+        repeated_field_comparison_(repeated_field_comparison) {}
 
   void DescribeTo(::std::ostream* os) const override {
     *os << "is " << arg_->DebugString();
@@ -104,6 +112,7 @@ class ProtoMatcherImpl : public ::testing::MatcherInterface<T> {
     }
 
     google::protobuf::util::MessageDifferencer differencer;
+    differencer.set_repeated_field_comparison(repeated_field_comparison_);
     std::string reported_differences;
     differencer.ReportDifferencesToString(&reported_differences);
     if (!differencer.Compare(*arg_, x)) {
@@ -131,23 +140,29 @@ class ProtoMatcherImpl : public ::testing::MatcherInterface<T> {
   }
 
   std::unique_ptr<google::protobuf::Message> arg_;
+  RepeatedFieldComparison repeated_field_comparison_;
 };
 
 template <typename T>
 class ProtoMatcher {
  public:
-  explicit ProtoMatcher(const T& arg) : arg_(arg) {}
+  explicit ProtoMatcher(const T& arg,
+                        RepeatedFieldComparison repeated_field_comparison =
+                            RepeatedFieldComparison::AS_LIST)
+      : arg_(arg), repeated_field_comparison_(repeated_field_comparison) {}
 
   template <typename U>
   operator testing::Matcher<U>() const {  // NOLINT
     using V = std::remove_cv_t<std::remove_reference_t<U>>;
     static_assert(std::is_base_of<google::protobuf::Message, V>::value &&
                   !std::is_same<google::protobuf::Message, V>::value);
-    return ::testing::MakeMatcher(new ProtoMatcherImpl<U>(arg_));
+    return ::testing::MakeMatcher(
+        new ProtoMatcherImpl<U>(arg_, repeated_field_comparison_));
   }
 
  private:
   T arg_;
+  RepeatedFieldComparison repeated_field_comparison_;
 };
 
 // Proto matcher that takes another proto message reference as an argument.
@@ -159,9 +174,26 @@ inline ProtoMatcher<T> EqualsProto(const T& arg) {
   return ProtoMatcher<T>(arg);
 }
 
+// Proto matcher that takes another proto message reference as an argument and
+// ignores repeated field order.
+template <class T, typename std::enable_if<
+                       std::is_base_of<google::protobuf::Message, T>::value &&
+                           !std::is_same<google::protobuf::Message, T>::value,
+                       int>::type = 0>
+inline ProtoMatcher<T> EqualsProtoIgnoringRepeatedFieldOrder(const T& arg) {
+  return ProtoMatcher<T>(arg, RepeatedFieldComparison::AS_SET);
+}
+
 // Proto matcher that takes a text proto as an argument.
 inline ProtoMatcher<std::string> EqualsProto(const std::string& arg) {
   return ProtoMatcher<std::string>(arg);
+}
+
+// Proto matcher that takes a text proto as an argument and ignores repeated
+// field order.
+inline ProtoMatcher<std::string> EqualsProtoIgnoringRepeatedFieldOrder(
+    const std::string& arg) {
+  return ProtoMatcher<std::string>(arg, RepeatedFieldComparison::AS_SET);
 }
 
 }  // namespace confidential_federated_compute
