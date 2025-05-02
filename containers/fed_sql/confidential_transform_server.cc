@@ -66,6 +66,7 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
+using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -370,68 +371,115 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
   return response;
 }
 
-absl::StatusOr<Struct> FedSqlConfidentialTransform::SetConfiguration(
-    const InitializeRequest* request) {
-  FedSqlContainerInitializeConfiguration config;
-  if (!request->configuration().UnpackTo(&config)) {
-    return absl::InvalidArgumentError(
-        "FedSqlContainerInitializeConfiguration cannot be unpacked.");
+absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(
+    const FedSqlContainerInitializeConfiguration& config) {
+  absl::MutexLock l(&mutex_);
+  if (intrinsics_ != std::nullopt) {
+    return absl::FailedPreconditionError(
+        "SetIntrinsics can only be called once.");
   }
   FCP_RETURN_IF_ERROR(
       CheckpointAggregator::ValidateConfig(config.agg_configuration()));
-  {
-    absl::MutexLock l(&mutex_);
-    if (intrinsics_ != std::nullopt) {
-      return absl::FailedPreconditionError(
-          "StreamInitialize can only be called once.");
-    }
 
-    FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
-                         tensorflow_federated::aggregation::ParseFromConfig(
-                             config.agg_configuration()));
-    FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
-    Struct config_properties;
-    (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
-        intrinsics.at(0).uri);
-    if (intrinsics.at(0).uri ==
-            tensorflow_federated::aggregation::kDPGroupByUri ||
-        intrinsics.at(0).uri ==
-            tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
-      const Intrinsic& fedsql_dp_intrinsic = intrinsics.at(0);
-      FCP_RETURN_IF_ERROR(ValidateFedSqlOuterDpParameters(fedsql_dp_intrinsic));
-      double epsilon = fedsql_dp_intrinsic.parameters.at(kEpsilonIndex)
-                           .CastToScalar<double>();
-      double delta =
-          fedsql_dp_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
-      (*config_properties.mutable_fields())["epsilon"].set_number_value(
-          epsilon);
-      (*config_properties.mutable_fields())["delta"].set_number_value(delta);
-    }
-    if (config.serialize_output_access_policy_node_id() > 0) {
-      (*config_properties.mutable_fields())["serialize_dest"].set_number_value(
-          config.serialize_output_access_policy_node_id());
-      serialize_output_access_policy_node_id_.emplace(
-          config.serialize_output_access_policy_node_id());
-    }
-    if (config.report_output_access_policy_node_id() > 0) {
-      (*config_properties.mutable_fields())["report_dest"].set_number_value(
-          config.report_output_access_policy_node_id());
-      report_output_access_policy_node_id_.emplace(
-          config.report_output_access_policy_node_id());
-    }
-
-    intrinsics_.emplace(std::move(intrinsics));
-    return config_properties;
+  FCP_ASSIGN_OR_RETURN(std::vector<Intrinsic> intrinsics,
+                       tensorflow_federated::aggregation::ParseFromConfig(
+                           config.agg_configuration()));
+  FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
+  const Intrinsic& fedsql_intrinsic = intrinsics.at(0);
+  if (fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPGroupByUri ||
+      fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
+    FCP_RETURN_IF_ERROR(ValidateFedSqlOuterDpParameters(fedsql_intrinsic));
   }
+
+  intrinsics_.emplace(std::move(intrinsics));
+  return absl::OkStatus();
 }
 
-absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
-    const InitializeRequest* request) {
-  FCP_ASSIGN_OR_RETURN(Struct config_properties, SetConfiguration(request));
+absl::StatusOr<Struct> FedSqlConfidentialTransform::GetConfigConstraints(
+    const FedSqlContainerInitializeConfiguration& config) {
+  const std::vector<Intrinsic>* intrinsics;
+  {
+    absl::MutexLock l(&mutex_);
+    if (intrinsics_ == std::nullopt) {
+      return absl::FailedPreconditionError(
+          "Intrinsics have not been initialized.");
+    }
+    intrinsics = &*intrinsics_;
+  }
 
-  FedSqlContainerInitializeConfiguration config;
-  request->configuration().UnpackTo(&config);
+  const Intrinsic& fedsql_intrinsic = intrinsics->at(0);
+  Struct config_properties;
+  (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
+      fedsql_intrinsic.uri);
+  if (fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPGroupByUri ||
+      fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
+    double epsilon =
+        fedsql_intrinsic.parameters.at(kEpsilonIndex).CastToScalar<double>();
+    double delta =
+        fedsql_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
+    (*config_properties.mutable_fields())["epsilon"].set_number_value(epsilon);
+    (*config_properties.mutable_fields())["delta"].set_number_value(delta);
+  }
+  if (config.serialize_output_access_policy_node_id() > 0) {
+    (*config_properties.mutable_fields())["serialize_dest"].set_number_value(
+        config.serialize_output_access_policy_node_id());
+    serialize_output_access_policy_node_id_.emplace(
+        config.serialize_output_access_policy_node_id());
+  }
+  if (config.report_output_access_policy_node_id() > 0) {
+    (*config_properties.mutable_fields())["report_dest"].set_number_value(
+        config.report_output_access_policy_node_id());
+    report_output_access_policy_node_id_.emplace(
+        config.report_output_access_policy_node_id());
+  }
+  return config_properties;
+}
 
+absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
+    const FedSqlContainerConfigConstraints& config_constraints) {
+  const std::vector<Intrinsic>* intrinsics;
+  {
+    absl::MutexLock l(&mutex_);
+    if (intrinsics_ == std::nullopt) {
+      return absl::FailedPreconditionError(
+          "Intrinsics have not been initialized.");
+    }
+    intrinsics = &*intrinsics_;
+  }
+
+  const Intrinsic& fedsql_intrinsic = intrinsics->at(0);
+  if (fedsql_intrinsic.uri != config_constraints.intrinsic_uri()) {
+    return absl::FailedPreconditionError(
+        "Invalid intrinsic URI for DP configuration.");
+  }
+
+  if (fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPGroupByUri ||
+      fedsql_intrinsic.uri ==
+          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
+    double epsilon =
+        fedsql_intrinsic.parameters.at(kEpsilonIndex).CastToScalar<double>();
+    if (config_constraints.epsilon() != epsilon) {
+      return absl::FailedPreconditionError(
+          "Epsilon value does not match the expected value.");
+    }
+
+    double delta =
+        fedsql_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
+    if (config_constraints.delta() != delta) {
+      return absl::FailedPreconditionError(
+          "Delta value does not match the expected value.");
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status FedSqlConfidentialTransform::InitializeInferenceModel(
+    const InferenceInitializeConfiguration& inference_init_config) {
   // Check that all data blobs passed in through WriteConfigurationRequest
   // are committed.
   for (const auto& [config_id, config_metadata] : write_configuration_map_) {
@@ -440,13 +488,6 @@ absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
           "Data blob with configuration_id ", config_id, " is not committed."));
     }
   }
-
-  if (!config.has_inference_init_config()) {
-    return config_properties;
-  }
-
-  const InferenceInitializeConfiguration& inference_init_config =
-      config.inference_init_config();
 
   if (inference_init_config.model_init_config_case() ==
       InferenceInitializeConfiguration::MODEL_INIT_CONFIG_NOT_SET) {
@@ -517,7 +558,46 @@ absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
                            .model_init_config_case()));
   }
 
-  FCP_RETURN_IF_ERROR(inference_model_->BuildModel(*inference_configuration_));
+  return inference_model_->BuildModel(*inference_configuration_);
+}
+
+absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
+    const ::google::protobuf::Any& configuration,
+    const ::google::protobuf::Any& config_constraints,
+    std::vector<std::string> reencryption_keys) {
+  FedSqlContainerInitializeConfiguration fed_sql_config;
+  if (!configuration.UnpackTo(&fed_sql_config)) {
+    return absl::InvalidArgumentError(
+        "FedSqlContainerInitializeConfiguration cannot be unpacked.");
+  }
+  FedSqlContainerConfigConstraints fed_sql_config_constraints;
+  if (!config_constraints.UnpackTo(&fed_sql_config_constraints)) {
+    return absl::InvalidArgumentError(
+        "FedSqlContainerConfigConstraints cannot be unpacked.");
+  }
+  FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(fed_sql_config));
+  FCP_RETURN_IF_ERROR(ValidateConfigConstraints(fed_sql_config_constraints));
+  if (fed_sql_config.has_inference_init_config()) {
+    FCP_RETURN_IF_ERROR(
+        InitializeInferenceModel(fed_sql_config.inference_init_config()));
+  }
+  reencryption_keys_ = std::move(reencryption_keys);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
+    const InitializeRequest* request) {
+  FedSqlContainerInitializeConfiguration config;
+  if (!request->configuration().UnpackTo(&config)) {
+    return absl::InvalidArgumentError(
+        "FedSqlContainerInitializeConfiguration cannot be unpacked.");
+  }
+  FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(config));
+  FCP_ASSIGN_OR_RETURN(Struct config_properties, GetConfigConstraints(config));
+  if (config.has_inference_init_config()) {
+    FCP_RETURN_IF_ERROR(
+        InitializeInferenceModel(config.inference_init_config()));
+  }
   return config_properties;
 }
 

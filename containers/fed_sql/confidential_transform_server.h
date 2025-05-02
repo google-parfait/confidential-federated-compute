@@ -31,6 +31,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -51,9 +52,12 @@ class FedSqlConfidentialTransform final
  public:
   FedSqlConfidentialTransform(
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
+          encryption_key_handle = nullptr,
       std::shared_ptr<InferenceModel> inference_model =
           std::make_shared<InferenceModel>())
-      : ConfidentialTransformBase(crypto_stub),
+      : ConfidentialTransformBase(crypto_stub,
+                                  std::move(encryption_key_handle)),
         inference_model_(inference_model) {
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
     std::string key(32, '\0');
@@ -64,17 +68,36 @@ class FedSqlConfidentialTransform final
   };
 
  private:
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
+  absl::Status StreamInitializeTransformWithKms(
+      const google::protobuf::Any& configuration,
+      const google::protobuf::Any& config_constraints,
+      std::vector<std::string> reencryption_keys) override;
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
-  //  Set the configuration of the server and returns the properties of the
-  //  configuration.
-  absl::StatusOr<google::protobuf::Struct> SetConfiguration(
-      const fcp::confidentialcompute::InitializeRequest* request);
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
+
+  //  Set the intrinsics based on the initialization configuration.
+  absl::Status SetAndValidateIntrinsics(
+      const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
+          config);
+  // Returns the configuration constraints for this worker. These must be
+  // validated by the Ledger. This function is not used when KMS is enabled for
+  // this worker.
+  absl::StatusOr<google::protobuf::Struct> GetConfigConstraints(
+      const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
+          config);
+  // Validates the configuration constraints received from KMS.
+  absl::Status ValidateConfigConstraints(
+      const fcp::confidentialcompute::FedSqlContainerConfigConstraints&
+          config_constraints);
+  // Initialize the inference model with the given configuration.
+  absl::Status InitializeInferenceModel(
+      const fcp::confidentialcompute::InferenceInitializeConfiguration&
+          inference_init_config);
 
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
@@ -97,6 +120,9 @@ class FedSqlConfidentialTransform final
   };
   absl::flat_hash_map<std::string, WriteConfigurationMetadata>
       write_configuration_map_;
+  // Reencryption keys for the resultant outputs.
+  // These are only required when KMS is enabled for this worker.
+  std::optional<std::vector<std::string>> reencryption_keys_;
 };
 
 // FedSql implementation of Session interface. Not threadsafe.
