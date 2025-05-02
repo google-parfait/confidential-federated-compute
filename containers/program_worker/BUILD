@@ -85,9 +85,14 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
         "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
         "@oak//proto/containers:interfaces_cc_grpc",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//proto/session:session_cc_proto",
     ],
 )
 
