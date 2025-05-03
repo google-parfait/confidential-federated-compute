@@ -16,6 +16,7 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 
 cc_library(
     name = "confidential_transform_server",
@@ -293,6 +294,41 @@ cc_test(
     srcs = ["interval_set_test.cc"],
     deps = [
         ":interval_set",
+        "@googletest//:gtest_main",
+    ],
+)
+
+proto_library(
+    name = "range_tracker_proto",
+    srcs = ["range_tracker.proto"],
+)
+
+# buildifier: disable=native-cc-proto
+cc_proto_library(
+    name = "range_tracker_cc_proto",
+    deps = [":range_tracker_proto"],
+)
+
+cc_library(
+    name = "range_tracker",
+    srcs = ["range_tracker.cc"],
+    hdrs = ["range_tracker.h"],
+    deps = [
+        ":interval_set",
+        ":range_tracker_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "range_tracker_test",
+    srcs = ["range_tracker_test.cc"],
+    deps = [
+        ":range_tracker",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
         "@googletest//:gtest_main",
     ],
 )
