@@ -26,6 +26,7 @@ use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
+use slog::Drain;
 use storage_actor::StorageActor;
 use storage_client::GrpcStorageClient;
 use tcp_proto::runtime::endpoint::endpoint_service_server::EndpointServiceServer;
@@ -90,10 +91,16 @@ async fn main() {
         signer.clone(),
     );
 
-    // Create the TCP EndpointService.
-    let endpoint_service = TonicApplicationService::new(channel, evidence, move || {
-        StorageActor::new(attester, endorser, signer, reference_values, clock)
-    });
+    // Create the TCP EndpointService, following the TCP recommendation of only
+    // logging WARNING and above.
+    let logger = slog::Logger::root(
+        slog_stdlog::StdLog.filter_level(slog::Level::Warning).fuse(),
+        slog::o!(),
+    );
+    let endpoint_service =
+        TonicApplicationService::new(channel, evidence, Some(logger), move || {
+            StorageActor::new(attester, endorser, signer, reference_values, clock)
+        });
 
     // Start the gRPC server.
     orchestrator_client.notify_app_ready().await.expect("failed to notify that app is ready");
