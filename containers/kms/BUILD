@@ -167,6 +167,8 @@ rust_binary(
         "@oak_crates_index//:env_logger",
         "@oak_crates_index//:log",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:slog",
+        "@oak_crates_index//:slog-stdlog",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
         "@trusted_computations_platform//proto:tcp_proto",
