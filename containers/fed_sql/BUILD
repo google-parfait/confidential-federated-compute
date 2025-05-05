@@ -333,6 +333,11 @@ cc_test(
     ],
 )
 
+proto_library(
+    name = "budget_proto",
+    srcs = ["budget.proto"],
+)
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],

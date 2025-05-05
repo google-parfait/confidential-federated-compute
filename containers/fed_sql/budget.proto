@@ -1,0 +1,43 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package confidential_federated_compute.fed_sql;
+
+// BudgetState represents the serialized budget, which is stored as a
+// collection of buckets associated with encryption keys, with each bucket
+// having its own remaining budget. Each customer uploaded blob can be
+// associated with at most one bucket, based on which encryption key that blob
+// was encrypted with at upload. When processing blobs in a container an
+// assumption is made that all blobs associated with a bucket (i.e. the
+// corresponding encryption key) have been processed, therefore the budget
+// for that bucket is reduced by 1.
+//
+// It is up to the processing container how to interpret the budget state.
+// Normally, when the budget is fully consumed for a bucket (down to zero),
+// it should remain in the serialized budget state until the corresponding
+// encryption key is expired; then the bucket entry can be removed.
+// If there is a new unexpired encryption key that doesn't exist in the
+// budget state, the processing container must assume that there is a
+// default budget associated with that key.
+message BudgetState {
+  message Bucket {
+    // A key for the budget bucket.
+    bytes key = 1;
+    // The remaining budget for the bucket.
+    uint64 budget = 2;
+  }
+  repeated Bucket buckets = 1;
+}
