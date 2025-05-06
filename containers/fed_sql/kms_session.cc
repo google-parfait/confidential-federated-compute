@@ -221,7 +221,8 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
       return accumulate_status;
     }
   }
-  SessionResponse response = ToSessionCommitResponse(absl::OkStatus());
+  SessionResponse response =
+      ToSessionCommitResponse(absl::OkStatus(), uncommitted_inputs_.size(), {});
   uncommitted_inputs_.clear();
   return response;
 }

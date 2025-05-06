@@ -273,6 +273,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   EXPECT_THAT(commit_response, IsOk());
   EXPECT_THAT(commit_response->commit().status().code(),
               Eq(grpc::StatusCode::OK));
+  EXPECT_EQ(commit_response->commit().stats().num_inputs_committed(), 2);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
@@ -344,6 +345,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   EXPECT_THAT(commit_response, IsOk());
   EXPECT_THAT(commit_response->commit().status().code(),
               Eq(grpc::StatusCode::OK));
+  EXPECT_EQ(commit_response->commit().stats().num_inputs_committed(), 2);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT

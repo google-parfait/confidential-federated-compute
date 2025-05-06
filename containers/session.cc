@@ -64,12 +64,22 @@ SessionResponse ToSessionWriteFinishedResponse(absl::Status status,
   return session_response;
 }
 
-SessionResponse ToSessionCommitResponse(absl::Status status) {
+SessionResponse ToSessionCommitResponse(
+    absl::Status status, int num_inputs_committed,
+    std::vector<absl::Status> ignored_errors) {
   grpc::Status grpc_status = ToGrpcStatus(std::move(status));
   SessionResponse session_response;
   CommitResponse* response = session_response.mutable_commit();
   response->mutable_status()->set_code(grpc_status.error_code());
   response->mutable_status()->set_message(grpc_status.error_message());
+  response->mutable_stats()->set_num_inputs_committed(num_inputs_committed);
+  for (absl::Status& ignored_error : ignored_errors) {
+    grpc::Status grpc_ignored_error = ToGrpcStatus(std::move(ignored_error));
+    auto* ignored_status = response->mutable_stats()->add_ignored_errors();
+
+    ignored_status->set_code(grpc_ignored_error.error_code());
+    ignored_status->set_message(grpc_ignored_error.error_message());
+  }
   return session_response;
 }
 
