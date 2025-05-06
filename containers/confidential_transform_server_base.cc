@@ -113,13 +113,10 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         const InitializeRequest& initialize_request =
             request.initialize_request();
         max_num_sessions = initialize_request.max_num_sessions();
-        kms_enabled_ = initialize_request.has_protected_response();
+        // TODO: Implement a better solution to allow unit testing without KMS.
+        kms_enabled_ = initialize_request.has_protected_response() &&
+                       oak_encryption_key_handle_ != nullptr;
         if (kms_enabled_) {
-          if (oak_encryption_key_handle_ == nullptr) {
-            return absl::FailedPreconditionError(
-                "Oak Encryption Key Handle must be specified when using KMS.");
-          }
-
           ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
           FCP_ASSIGN_OR_RETURN(DecryptionResult decryption_result,
                                server_encryptor.Decrypt(
