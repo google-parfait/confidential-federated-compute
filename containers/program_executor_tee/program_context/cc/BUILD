@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//containers/program_executor_tee/program_context:__subpackages__"])
 
@@ -37,5 +37,43 @@ pybind_extension(
     deps = [
         ":computation_runner",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+cc_library(
+    name = "noise_client_session",
+    srcs = ["noise_client_session.cc"],
+    hdrs = ["noise_client_session.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
+        "@oak//cc/oak_session:client_session",
+        "@oak//cc/oak_session:config",
+        "@oak//proto/session:session_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "noise_client_session_test",
+    srcs = ["noise_client_session_test.cc"],
+    deps = [
+        ":noise_client_session",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
+        "@googletest//:gtest_main",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
+        "@oak//cc/oak_session:server_session",
     ],
 )
