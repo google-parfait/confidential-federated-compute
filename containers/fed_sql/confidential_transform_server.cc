@@ -30,6 +30,7 @@
 #include "absl/strings/cord.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
+#include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/private_state.h"
@@ -683,11 +684,19 @@ FedSqlConfidentialTransform::CreateSession() {
     // under the mutex that values have been set for the std::optional wrappers.
     intrinsics = &*intrinsics_;
   }
+
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  return std::make_unique<FedSqlSession>(
-      std::move(aggregator), *intrinsics, inference_model_,
-      serialize_output_access_policy_node_id_,
-      report_output_access_policy_node_id_, sensitive_values_key_);
+  if (KmsEnabled()) {
+    return std::make_unique<KmsFedSqlSession>(
+        std::move(aggregator), *intrinsics, inference_model_,
+        serialize_output_access_policy_node_id_,
+        report_output_access_policy_node_id_, sensitive_values_key_);
+  } else {
+    return std::make_unique<FedSqlSession>(
+        std::move(aggregator), *intrinsics, inference_model_,
+        serialize_output_access_policy_node_id_,
+        report_output_access_policy_node_id_, sensitive_values_key_);
+  }
 }
 
 absl::Status FedSqlSession::ConfigureSession(

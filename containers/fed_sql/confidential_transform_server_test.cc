@@ -1283,6 +1283,39 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
               HasSubstr("Initialize must be called before Session"));
 }
 
+TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  request.mutable_configuration()->PackFrom(init_config);
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_uri: "fedsql_group_by")pb");
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  grpc::Status status = WriteInitializeRequest(
+      std::move(request), stub_->StreamInitialize(&context, &response));
+  EXPECT_TRUE(status.ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest configure_request;
+  SessionResponse configure_response;
+  configure_request.mutable_configure()->set_chunk_size(1000);
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(configure_request));
+}
+
 std::string BuildFedSqlGroupByStringKeyCheckpoint(
     std::initializer_list<absl::string_view> key_col_values,
     std::string key_col_name) {

@@ -24,6 +24,7 @@ cc_library(
     hdrs = ["confidential_transform_server.h"],
     deps = [
         ":inference_model",
+        ":kms_session",
         ":sensitive_columns",
         ":session_utils",
         "//containers:blob_metadata",

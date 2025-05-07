@@ -83,6 +83,13 @@ class ConfidentialTransformBase
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() = 0;
 
+  // Transforms that have KMS enabled are meant to be used with the KMS. They
+  // must
+  // - Validate that they are configured with properties permitted by the KMS
+  // - Track their own privacy budget.
+  // - Release only encrypted results along with a release token.
+  bool KmsEnabled() const { return kms_enabled_; }
+
  private:
   absl::Status StreamInitializeInternal(
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
@@ -103,6 +110,9 @@ class ConfidentialTransformBase
       ABSL_GUARDED_BY(mutex_);
   std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);
+  // TODO: Refactor ConfidentialTransformBase so it's not aware of either the
+  // Ledger nor KMS. Future applications may not be based on either Ledger nor
+  // KMS.
   bool kms_enabled_;
   std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
       oak_encryption_key_handle_;
