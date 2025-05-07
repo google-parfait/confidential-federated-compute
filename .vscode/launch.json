@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bazel Debug (unit test)",
+      "type": "cppdbg",
+      "request": "launch",
+      // Replace the path below with the unit test you want to run
+      "program": "${workspaceFolder}/bazel-bin/path/to/test",
+      // Update the --test_filter arg below
+      "args": ["--test_filter=ReplaceWithYourTestName"],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Bazel Build unit test"
+    }
+  ]
+}
