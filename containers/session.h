@@ -51,7 +51,8 @@ fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
 
 // Create a SessionResponse with a CommitResponse.
 fcp::confidentialcompute::SessionResponse ToSessionCommitResponse(
-    absl::Status status);
+    absl::Status status, int num_inputs_committed = 0,
+    std::vector<absl::Status> ignored_errors = {});
 
 // Interface for interacting with a session in a container. Implementations
 // may not be threadsafe.
