@@ -15,6 +15,9 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_RANGE_TRACKER_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_RANGE_TRACKER_H_
 
+#include <cstdint>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,6 +30,10 @@ namespace confidential_federated_compute::fed_sql {
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
  public:
+  using InnerMap = absl::flat_hash_map<std::string, IntervalSet<uint64_t>>;
+  using const_iterator = typename InnerMap::const_iterator;
+  using value_type = typename InnerMap::value_type;
+
   RangeTracker() = default;
 
   // This class is move-only.
@@ -56,10 +63,14 @@ class RangeTracker {
   // This method returns false if there are any overlapping ranges.
   bool Merge(const RangeTracker& other);
 
+  // Iteration support.
+  const_iterator begin() const { return per_key_ranges_.begin(); }
+  const_iterator end() const { return per_key_ranges_.end(); }
+
  private:
   // Stores visited ranges of blobs organized by key_id of encryption key
   // used to encrypt a blob (the same key_id that is found in BlobHeader).
-  absl::flat_hash_map<std::string, IntervalSet<uint64_t>> per_key_ranges_;
+  InnerMap per_key_ranges_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

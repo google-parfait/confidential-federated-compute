@@ -23,6 +23,11 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
+
 TEST(RangeTrackerTest, AddRanges) {
   RangeTracker range_tracker;
   EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
@@ -85,6 +90,21 @@ TEST(RangeTrackerTest, MergeOverlappingRanges) {
   EXPECT_THAT(range_tracker1, IsOk());
   EXPECT_THAT(range_tracker2, IsOk());
   EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+}
+
+TEST(RangeTrackerTest, Iteration) {
+  RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 1 values: 5 values: 7 values: 9 }
+    buckets { key: "bar" values: 0 values: 4 }
+    buckets { key: "baz" values: 1 values: 2 }
+  )pb");
+  auto range_tracker = RangeTracker::Parse(state);
+  EXPECT_THAT(*range_tracker,
+              UnorderedElementsAre(
+                  Pair(Eq("foo"), ElementsAre(Interval<uint64_t>(1, 5),
+                                              Interval<uint64_t>(7, 9))),
+                  Pair(Eq("bar"), ElementsAre(Interval<uint64_t>(0, 4))),
+                  Pair(Eq("baz"), ElementsAre(Interval<uint64_t>(1, 2)))));
 }
 
 TEST(RangeTrackerTest, StringParseAndSerialize) {

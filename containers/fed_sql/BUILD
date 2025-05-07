@@ -339,6 +339,36 @@ proto_library(
     srcs = ["budget.proto"],
 )
 
+# buildifier: disable=native-cc-proto
+cc_proto_library(
+    name = "budget_cc_proto",
+    deps = [":budget_proto"],
+)
+
+cc_library(
+    name = "budget",
+    srcs = ["budget.cc"],
+    hdrs = ["budget.h"],
+    deps = [
+        ":budget_cc_proto",
+        ":range_tracker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "budget_test",
+    srcs = ["budget_test.cc"],
+    deps = [
+        ":budget",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
