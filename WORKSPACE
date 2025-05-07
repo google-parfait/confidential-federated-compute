@@ -151,9 +151,9 @@ http_archive(
 
 http_archive(
     name = "gemma",
-    sha256 = "ee01ac7165fbacddc5509e8384900165b72f349c1421efdd5b6f9391c3c1729e",
-    strip_prefix = "gemma.cpp-9f5159ff683d99a7d852a0e66782e718588937df",
-    url = "https://github.com/google/gemma.cpp/archive/9f5159ff683d99a7d852a0e66782e718588937df.tar.gz",
+    sha256 = "6057cef0299451f779b448651e3c26d3ac7877d522edecd1188d0fc1033cfa6d",
+    strip_prefix = "gemma.cpp-0ff6b3123a7ee38e2eca0164516e71c9d2abad4c",
+    url = "https://github.com/google/gemma.cpp/archive/0ff6b3123a7ee38e2eca0164516e71c9d2abad4c.tar.gz",
 )
 
 http_archive(
@@ -172,9 +172,9 @@ http_archive(
 
 http_archive(
     name = "highway",
-    sha256 = "eb07b6c8b9fc23cca4e2e166e30937ff4a13811d48f59ba87f2d2499470d4a63",
-    strip_prefix = "highway-2b565e87d50b151660494624af532ac0b6076c79",
-    urls = ["https://github.com/google/highway/archive/2b565e87d50b151660494624af532ac0b6076c79.tar.gz"],
+    sha256 = "acbaac4c883c1739919595ed98a8ccc8df5800e93c2595d2011327b1bbd94807",
+    strip_prefix = "highway-f2209b911c74019e85d0b7a7a2833c9a2e1b7995",
+    urls = ["https://github.com/google/highway/archive/f2209b911c74019e85d0b7a7a2833c9a2e1b7995.tar.gz"],
 )
 
 # Avoid Java dependencies.

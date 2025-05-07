@@ -36,7 +36,12 @@ using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::GEMMA2_2B;
+using ::fcp::confidentialcompute::GEMMA2_9B;
+using ::fcp::confidentialcompute::GEMMA3_12B;
+using ::fcp::confidentialcompute::GEMMA3_1B;
+using ::fcp::confidentialcompute::GEMMA3_4B;
 using ::fcp::confidentialcompute::GEMMA_2B;
+using ::fcp::confidentialcompute::GEMMA_7B;
 using ::fcp::confidentialcompute::GEMMA_F32;
 using ::fcp::confidentialcompute::GEMMA_IT;
 using ::fcp::confidentialcompute::GEMMA_PT;
@@ -79,6 +84,26 @@ absl::StatusOr<ModelInfo> GetGemmaModelInfo(
     }
     case GEMMA2_2B: {
       model_info.model = Model::GEMMA2_2B;
+      break;
+    }
+    case GEMMA_7B: {
+      model_info.model = Model::GEMMA_7B;
+      break;
+    }
+    case GEMMA2_9B: {
+      model_info.model = Model::GEMMA2_9B;
+      break;
+    }
+    case GEMMA3_1B: {
+      model_info.model = Model::GEMMA3_1B;
+      break;
+    }
+    case GEMMA3_4B: {
+      model_info.model = Model::GEMMA3_4B;
+      break;
+    }
+    case GEMMA3_12B: {
+      model_info.model = Model::GEMMA3_12B;
       break;
     }
     default:
