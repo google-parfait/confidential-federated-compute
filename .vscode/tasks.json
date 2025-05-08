@@ -21,5 +21,33 @@
                 "runOn": "folderOpen"
             },
         },
+    {
+      "label": "Bazel Build unit test",
+      "type": "shell",
+      "command": "bazel",
+      "args": [
+        "build",
+        // Add your unit test build target here
+        "your/unit/test:target",
+        "--compilation_mode=dbg", // For debug symbols
+        "--copt=-O0",             // Optional: Disable optimizations for easier debugging
+        "--strip=never"           // Optional: Ensure symbols are not stripped
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    }
     ]
 }
