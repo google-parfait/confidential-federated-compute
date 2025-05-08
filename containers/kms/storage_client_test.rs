@@ -15,7 +15,6 @@
 use std::{pin::Pin, sync::Arc};
 
 use googletest::prelude::*;
-use log::debug;
 use matchers::{code, has_context};
 use mockall::{predicate::eq as request_eq, PredicateBooleanExt};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
@@ -52,6 +51,7 @@ use tokio::{
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tokio_util::task::AbortOnDropHandle;
 use tonic::transport::{server::TcpIncoming, Server};
+use tracing::debug;
 
 #[mockall::automock]
 trait Storage {

@@ -96,11 +96,11 @@ rust_library(
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:hashbrown",
-        "@oak_crates_index//:log",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:rand",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing",
     ],
 )
 
@@ -164,13 +164,16 @@ rust_binary(
         "@oak//oak_sdk/common:oak_sdk_common",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
-        "@oak_crates_index//:env_logger",
-        "@oak_crates_index//:log",
+        "@oak_crates_index//:opentelemetry-appender-tracing",
+        "@oak_crates_index//:opentelemetry-otlp",
+        "@oak_crates_index//:opentelemetry_sdk",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:slog",
-        "@oak_crates_index//:slog-stdlog",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing",
+        "@oak_crates_index//:tracing-slog",
+        "@oak_crates_index//:tracing-subscriber",
         "@trusted_computations_platform//proto:tcp_proto",
         "@trusted_computations_platform//runtime:tcp_runtime",
     ],
@@ -285,8 +288,8 @@ rust_library(
     deps = [
         ":storage_prost_proto",
         "@oak_crates_index//:anyhow",
-        "@oak_crates_index//:log",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing",
     ],
 )
 
@@ -348,9 +351,9 @@ rust_test(
         "@oak_crates_index//:prost",
         "@oak_crates_index//:rand",
         "@oak_crates_index//:slog",
-        "@oak_crates_index//:slog-stdlog",
         "@oak_crates_index//:test-log",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing-slog",
         "@trusted_computations_platform//runtime:tcp_runtime",
     ],
 )
@@ -371,12 +374,12 @@ rust_library(
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:hashbrown",
-        "@oak_crates_index//:log",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tokio-stream",
         "@oak_crates_index//:tokio-util",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing",
     ],
 )
 
@@ -398,7 +401,6 @@ rust_test(
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:googletest",
-        "@oak_crates_index//:log",
         "@oak_crates_index//:mockall",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:test-log",
@@ -406,6 +408,7 @@ rust_test(
         "@oak_crates_index//:tokio-stream",
         "@oak_crates_index//:tokio-util",
         "@oak_crates_index//:tonic",
+        "@oak_crates_index//:tracing",
     ],
 )
 

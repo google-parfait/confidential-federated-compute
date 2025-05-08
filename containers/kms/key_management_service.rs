@@ -33,7 +33,6 @@ use kms_proto::fcp::confidentialcompute::{
     RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
     ReleaseResultsResponse, RotateKeysetRequest, RotateKeysetResponse,
 };
-use log::warn;
 use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
 use prost::Message;
@@ -52,6 +51,7 @@ use storage_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use tonic::{Code, Request, Response};
+use tracing::warn;
 
 // Private CWT claims; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.

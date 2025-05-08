@@ -51,7 +51,7 @@ fn create_actor_context(leader: bool) -> Box<MockActorContext> {
     let mut mock_context = MockActorContext::new();
     mock_context
         .expect_logger()
-        .return_const(slog::Logger::root(slog_stdlog::StdLog {}.fuse(), slog::o!()));
+        .return_const(slog::Logger::root(tracing_slog::TracingSlogDrain.fuse(), slog::o!()));
     mock_context.expect_id().return_const(0u64);
     mock_context.expect_config().return_const(Bytes::default());
     mock_context.expect_leader().return_const(leader);

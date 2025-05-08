@@ -16,7 +16,6 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashMap;
-use log::{error, info, warn};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
 use oak_crypto::signer::Signer;
@@ -40,6 +39,7 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::task::AbortOnDropHandle;
 use tonic::Code;
+use tracing::{error, info, warn};
 
 /// Minimum time between initating /OakSessionV1ServiceClient.Steam RPCs.
 const RECONNECT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);

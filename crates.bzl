@@ -66,6 +66,28 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
     "insta": crate.spec(
         version = "1.38.0",
     ),
+    "opentelemetry-appender-tracing": crate.spec(
+        features = ["experimental_metadata_attributes"],
+        version = "0.29.0",
+    ),
+    "opentelemetry-otlp": crate.spec(
+        features = [
+            "grpc-tonic",
+            "logs",
+            "metrics",
+            "trace",
+        ],
+        version = "0.29.0",
+    ),
+    "opentelemetry_sdk": crate.spec(
+        features = [
+            "logs",
+            "metrics",
+            "rt-tokio",
+            "trace",
+        ],
+        version = "0.29.0",
+    ),
     "protoc-gen-prost": crate.spec(
         version = "0.3.1",
     ),
@@ -73,8 +95,11 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
         # 0.4.1 requires tonic 0.12.
         version = "=0.4.0",
     ),
-    "slog-stdlog": crate.spec(
-        version = "4.1.1",
+    "tracing-slog": crate.spec(
+        version = "0.3.0",
+    ),
+    "tracing-subscriber": crate.spec(
+        version = "0.3.19",
     ),
     "tokio-util": crate.spec(
         features = ["rt"],

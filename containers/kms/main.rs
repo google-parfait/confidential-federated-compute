@@ -24,6 +24,9 @@ use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use slog::Drain;
@@ -31,6 +34,15 @@ use storage_actor::StorageActor;
 use storage_client::GrpcStorageClient;
 use tcp_proto::runtime::endpoint::endpoint_service_server::EndpointServiceServer;
 use tcp_runtime::service::TonicApplicationService;
+use tracing_subscriber::prelude::*;
+
+/// The address for OpenTelemetry logging, which is the Oak Launcher address:
+/// https://github.com/project-oak/oak/blob/ac3a692abe67331d7c62e75523c7385e86adf29b/oak_containers/orchestrator/src/lib.rs#L40.
+const OPEN_TELEMETRY_ADDR: &str = "http://10.0.2.100:8080";
+
+/// The OakSessionV1Service address. This uses the same host as the Oak Launcher
+/// but the host forwarding rules specify a different port.
+const OAK_SESSION_SERVICE_ADDR: &str = "http://10.0.2.100:8008";
 
 fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> {
     // TODO: b/400476265 - Add ReferenceValues for SEV-SNP.
@@ -45,16 +57,32 @@ fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> 
     }
 }
 
+fn initialize_logging() {
+    let log_exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
+        .with_endpoint(OPEN_TELEMETRY_ADDR)
+        .build()
+        .expect("failed to create LogExporter");
+    let logger_provider = SdkLoggerProvider::builder().with_batch_exporter(log_exporter).build();
+    tracing_subscriber::registry()
+        .with(OpenTelemetryTracingBridge::new(&logger_provider))
+        .with(tracing_subscriber::filter::LevelFilter::INFO)
+        .init();
+
+    // Update the panic hook to flush logs before exiting.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = logger_provider.force_flush().inspect_err(|err| {
+            eprint!("Failed to flush logs: {:?}", err);
+        });
+        prev_hook(info);
+    }));
+}
+
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(
-        env_logger::Env::default()
-            // TODO: b/398874186 - Review whether this should be increased to Warn.
-            .default_filter_or("info"),
-    )
-    .write_style(env_logger::WriteStyle::Never)
-    .init();
-    log::info!("KMS starting...");
+    initialize_logging();
+    tracing::info!("KMS starting...");
 
     let channel = oak_sdk_containers::default_orchestrator_channel()
         .await
@@ -72,10 +100,8 @@ async fn main() {
     let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
     let clock = Arc::new(SystemClock {});
 
-    // Create the KeyManagementService. The host matches Oak's `launcher_addr`
-    // (https://github.com/search?q=repo%3Aproject-oak%2Foak+launcher_addr&type=code),
-    // and the port matches the forwarding rules set by the host.
-    let session_service_client = OakSessionV1ServiceClient::connect("http://10.0.2.100:8008")
+    // Create the KeyManagementService.
+    let session_service_client = OakSessionV1ServiceClient::connect(OAK_SESSION_SERVICE_ADDR)
         .await
         .expect("failed to create OakSessionV1ServiceClient");
     let key_management_service = KeyManagementService::new(
@@ -94,7 +120,7 @@ async fn main() {
     // Create the TCP EndpointService, following the TCP recommendation of only
     // logging WARNING and above.
     let logger = slog::Logger::root(
-        slog_stdlog::StdLog.filter_level(slog::Level::Warning).fuse(),
+        tracing_slog::TracingSlogDrain.filter_level(slog::Level::Warning).fuse(),
         slog::o!(),
     );
     let endpoint_service =

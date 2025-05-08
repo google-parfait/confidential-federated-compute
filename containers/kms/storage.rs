@@ -20,7 +20,6 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use log::debug;
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_response, update_request, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
@@ -28,6 +27,7 @@ use storage_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use tonic::Code;
+use tracing::debug;
 
 /// The underlying storage for the KMS: a key-value store with an associated
 /// clock.
