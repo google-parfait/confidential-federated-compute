@@ -26,7 +26,7 @@ use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_sdk::logs::LoggerProvider;
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use slog::Drain;
@@ -58,12 +58,16 @@ fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> 
 }
 
 fn initialize_logging() {
-    let log_exporter = opentelemetry_otlp::LogExporter::builder()
-        .with_tonic()
+    opentelemetry::global::set_error_handler(|err| eprintln!("KMS: OTLP error: {}", err))
+        .expect("failed to set OTLP error handler");
+    let log_exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
         .with_endpoint(OPEN_TELEMETRY_ADDR)
-        .build()
+        .build_log_exporter()
         .expect("failed to create LogExporter");
-    let logger_provider = SdkLoggerProvider::builder().with_batch_exporter(log_exporter).build();
+    let logger_provider = LoggerProvider::builder()
+        .with_batch_exporter(log_exporter, opentelemetry_sdk::runtime::Tokio)
+        .build();
     tracing_subscriber::registry()
         .with(OpenTelemetryTracingBridge::new(&logger_provider))
         .with(tracing_subscriber::filter::LevelFilter::INFO)
@@ -72,9 +76,10 @@ fn initialize_logging() {
     // Update the panic hook to flush logs before exiting.
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = logger_provider.force_flush().inspect_err(|err| {
-            eprint!("Failed to flush logs: {:?}", err);
-        });
+        let result = logger_provider.force_flush();
+        if result.iter().any(|r| r.is_err()) {
+            eprintln!("Failed to flush OTLP logs: {:?}", result);
+        }
         prev_hook(info);
     }));
 }

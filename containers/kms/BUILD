@@ -164,6 +164,7 @@ rust_binary(
         "@oak//oak_sdk/common:oak_sdk_common",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:opentelemetry",
         "@oak_crates_index//:opentelemetry-appender-tracing",
         "@oak_crates_index//:opentelemetry-otlp",
         "@oak_crates_index//:opentelemetry_sdk",
