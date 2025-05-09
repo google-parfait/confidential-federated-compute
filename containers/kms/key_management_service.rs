@@ -456,7 +456,11 @@ where
         let value = LogicalPipelineStateValue::decode(entry.value.as_slice())
             .context("failed to decode LogicalPipelineStateValue")
             .map_err(Self::convert_error)?;
-        Ok(Response::new(LogicalPipelineState { name: request.name, value: value.state }))
+        Ok(Response::new(LogicalPipelineState {
+            name: request.name,
+            value: value.state,
+            expiration: entry.expiration.clone(),
+        }))
     }
 
     async fn register_pipeline_invocation(
@@ -789,6 +793,7 @@ where
             logical_pipeline_states.push(LogicalPipelineState {
                 name: update.logical_pipeline_name.into(),
                 value: update.dst_state.into(),
+                expiration: None, // No expiration since a TTL wasn't set above.
             });
         }
         self.storage_client
