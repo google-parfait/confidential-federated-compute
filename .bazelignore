@@ -1,7 +1,2 @@
-# Building //... should not recurse into submodules.
-third_party/federated_compute/federated-compute
-# If running bazel builds after cargo builds, ensure bazel does not try to build
-# objects in the cargo cache.
-.cargo-cache
-.bazel-cache
+registry
 tff_worker/server/__pycache__

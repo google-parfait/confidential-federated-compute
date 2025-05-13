@@ -1,0 +1,63 @@
+module(
+    name = "confidential-federated-compute",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "abseil-cpp", version = "20230802.1", repo_name = "com_google_absl")
+bazel_dep(name = "aspect_bazel_lib", version = "1.36.0")
+bazel_dep(name = "bazel_skylib", version = "1.4.1")
+bazel_dep(name = "boringssl", version = "0.20250415.0")
+bazel_dep(name = "grpc", version = "1.71.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "googleapis", version = "0.0.0-20240326-1c8d509c5", repo_name = "com_google_googleapis")
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "protobuf", version = "29.4", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "0.33.0")
+bazel_dep(name = "rules_cc", version = "0.0.17")
+
+cfc_deps = use_extension("//:extensions.bzl", "cfc_deps")
+use_repo(cfc_deps, "federated-compute", "oak")
+
+umoci_toolchain_repo = use_repo_rule("@oak//bazel/tools/umoci:umoci_toolchain.bzl", "_umoci_toolchain_repo")
+
+umoci_toolchain_repo(
+    name = "umoci",
+    oak_workspace_name = "oak",
+)
+
+register_toolchains("@umoci//:umoci_toolchain")
+
+# Stub out dependencies that aren't needed by the exported libraries.
+stub_repo = use_repo_rule("//:stub_repo.bzl", "stub_repo")
+
+stub_repo(
+    name = "bazel_toolchains",
+    rules = {"rules/exec_properties:exec_properties.bzl": ["create_rbe_exec_properties_dict"]},
+)
+
+stub_repo(
+    name = "flatbuffers",
+    rules = {":build_defs.bzl": ["flatbuffer_cc_library"]},
+)
+
+stub_repo(
+    name = "io_grpc_grpc_java",
+    rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
+)
+
+stub_repo(
+    name = "org_tensorflow",
+    rules = {"tensorflow/core/platform:build_config.bzl": ["tf_proto_library"]},
+)
+
+stub_repo(
+    name = "rules_java",
+    rules = {"java:defs.bzl": [
+        "java_binary",
+        "java_library",
+        "java_lite_proto_library",
+        "java_proto_library",
+        "java_test",
+    ]},
+)
