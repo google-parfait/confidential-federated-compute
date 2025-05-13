@@ -30,7 +30,6 @@ cc_library(
         "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
-        "//containers:private_state",
         "//containers:session",
         "//containers/sql:sqlite_adapter",
         "@com_github_grpc_grpc//:grpc++",
@@ -157,7 +156,6 @@ cc_test(
         "//containers:blob_metadata",
         "//containers:crypto",
         "//containers:crypto_test_utils",
-        "//containers:private_state",
         "//containers/fed_sql/testing:mocks",
         "//containers/fed_sql/testing:test_utils",
         "//testing:matchers",
@@ -223,11 +221,11 @@ cc_library(
     hdrs = ["kms_session.h"],
     deps = [
         ":inference_model",
+        ":range_tracker",
         ":sensitive_columns",
         ":session_utils",
         "//containers:blob_metadata",
         "//containers:crypto",
-        "//containers:private_state",
         "//containers:session",
         "//containers/sql:sqlite_adapter",
         "@com_github_grpc_grpc//:grpc++",
@@ -261,8 +259,8 @@ cc_test(
     deps = [
         ":inference_model",
         ":kms_session",
+        ":range_tracker",
         "//containers:blob_metadata",
-        "//containers:private_state",
         "//containers/fed_sql/testing:mocks",
         "//containers/fed_sql/testing:test_utils",
         "//testing:matchers",
@@ -319,6 +317,8 @@ cc_library(
         ":range_tracker_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
     ],
 )
 

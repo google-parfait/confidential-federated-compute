@@ -210,27 +210,3 @@ cc_test(
         "@oak//cc/crypto:encryption_key",
     ],
 )
-
-cc_library(
-    name = "private_state",
-    srcs = ["private_state.cc"],
-    hdrs = ["private_state.h"],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
-        "@federated-compute//fcp/base",
-    ],
-)
-
-cc_test(
-    name = "private_state_test",
-    srcs = ["private_state_test.cc"],
-    deps = [
-        ":private_state",
-        "//testing:matchers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@googletest//:gtest_main",
-    ],
-)

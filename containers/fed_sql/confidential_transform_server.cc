@@ -33,7 +33,6 @@
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
-#include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
@@ -235,9 +234,6 @@ absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
       break;
     }
     case AGGREGATION_TYPE_MERGE: {
-      FCP_ASSIGN_OR_RETURN(std::unique_ptr<PrivateState> other_private_state,
-                           UnbundlePrivateState(unencrypted_data));
-      FCP_RETURN_IF_ERROR(private_state_->Merge(*other_private_state));
       // TODO: Avoid copying unencrypted_cord back string, which can be
       // achieved by passing a cord to CheckpointAggregator implementing parsing
       // from Cord at the CheckpointAggregator level.
@@ -337,7 +333,6 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                            std::move(*aggregator_).Serialize());
       aggregator_.reset();
-      serialized_data = BundlePrivateState(serialized_data, *private_state_);
       if (input_metadata.has_unencrypted()) {
         result = std::move(serialized_data);
         result_metadata.set_total_size_bytes(result.size());

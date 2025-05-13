@@ -26,6 +26,10 @@
 
 namespace confidential_federated_compute::fed_sql {
 
+// Signature written in the beginning of the bundled blob that
+// contains serialized RangeTracker state.
+inline constexpr const char kRangeTrackerBundleSignature[] = "RTv1";
+
 // Tracks FedSql specific private state, which consists of ranges of blobs
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
@@ -72,6 +76,14 @@ class RangeTracker {
   // used to encrypt a blob (the same key_id that is found in BlobHeader).
   InnerMap per_key_ranges_;
 };
+
+// Serializes RangeTracker and bundles it to a blob, and returns a combined
+// blob.
+std::string BundleRangeTracker(const std::string& blob,
+                               const RangeTracker& range_tracker);
+
+// Extracts serialized RangeTracker from a blob and replaces the blob in place.
+absl::StatusOr<RangeTracker> UnbundleRangeTracker(std::string& blob);
 
 }  // namespace confidential_federated_compute::fed_sql
 
