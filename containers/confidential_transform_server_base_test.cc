@@ -47,7 +47,9 @@ namespace confidential_federated_compute {
 
 namespace {
 
+using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
+using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::NonceAndCounter;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
@@ -307,8 +309,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitializeKmsEnabled) {
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
   ASSERT_TRUE(writer->Finish().ok());
-  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
+  ASSERT_EQ(response.public_key(), "");
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
@@ -1227,6 +1228,117 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                  finish_read: true
                                  data: "test result"
                                })pb"));
+}
+
+class InitializedConfidentialTransformServerBaseTestWithKms
+    : public ConfidentialTransformServerBaseTest {
+ public:
+  InitializedConfidentialTransformServerBaseTestWithKms() {
+    google::rpc::Status config_status;
+    config_status.set_code(grpc::StatusCode::OK);
+    auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+    public_key_ = public_private_key_pair.first;
+    AuthorizeConfidentialTransformResponse::ProtectedResponse
+        protected_response;
+    *protected_response.add_decryption_keys() = public_private_key_pair.second;
+    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    auto encrypted_request =
+        oak_client_encryptor_
+            ->Encrypt(protected_response.SerializeAsString(),
+                      associated_data.SerializeAsString())
+            .value();
+
+    StreamInitializeRequest request;
+    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+        config_status);
+    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+    *request.mutable_initialize_request()->mutable_protected_response() =
+        encrypted_request;
+
+    grpc::ClientContext configure_context;
+    InitializeResponse response;
+    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+        stub_->StreamInitialize(&configure_context, &response);
+    CHECK(writer->Write(request));
+    CHECK(writer->WritesDone());
+    CHECK(writer->Finish().ok());
+  }
+
+ protected:
+  void StartSession(uint32_t chunk_size = 1000) {
+    SessionRequest session_request;
+    SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(chunk_size);
+
+    stream_ = stub_->Session(&session_context_);
+    CHECK(stream_->Write(session_request));
+    CHECK(stream_->Read(&session_response));
+    CHECK(session_response.configure().nonce().empty());
+  }
+
+  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(std::string blob_id,
+                                                          std::string message) {
+    BlobHeader header;
+    header.set_blob_id(blob_id);
+    header.set_key_id(key_id_);
+    std::string associated_data = header.SerializeAsString();
+
+    MessageEncryptor encryptor;
+    absl::StatusOr<EncryptMessageResult> encrypt_result =
+        encryptor.Encrypt(message, public_key_, associated_data);
+    CHECK(encrypt_result.ok()) << encrypt_result.status();
+
+    BlobMetadata metadata;
+    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+    metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
+    BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+        metadata.mutable_hpke_plus_aead_data();
+    encryption_metadata->set_ciphertext_associated_data(associated_data);
+    encryption_metadata->set_encrypted_symmetric_key(
+        encrypt_result.value().encrypted_symmetric_key);
+    encryption_metadata->set_encapsulated_public_key(
+        encrypt_result.value().encapped_key);
+    encryption_metadata->mutable_kms_symmetric_key_associated_data()
+        ->set_record_header(associated_data);
+
+    return {metadata, encrypt_result.value().ciphertext};
+  }
+
+  grpc::ClientContext session_context_;
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream_;
+  std::string key_id_ = "key_id";
+  std::string public_key_;
+};
+
+TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
+       SessionDecryptsBlob) {
+  std::string message = "test data";
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock_session, SessionWrite(_, _))
+      .WillOnce(Return(
+          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  auto [metadata, ciphertext] = EncryptWithKmsKeys("blob_id", message);
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::OK);
+  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
 }
 
 }  // namespace

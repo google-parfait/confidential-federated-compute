@@ -60,14 +60,16 @@ namespace {
 // Reports status to the client in WriteFinishedResponse.
 absl::Status HandleWrite(
     const WriteRequest& request, absl::Cord blob_data,
-    BlobDecryptor* blob_decryptor, NonceChecker& nonce_checker,
+    BlobDecryptor* blob_decryptor, std::optional<NonceChecker>& nonce_checker,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
     Session* session) {
-  if (absl::Status nonce_status =
-          nonce_checker.CheckBlobNonce(request.first_request_metadata());
-      !nonce_status.ok()) {
-    stream->Write(ToSessionWriteFinishedResponse(nonce_status));
-    return absl::OkStatus();
+  if (nonce_checker.has_value()) {
+    absl::Status nonce_status =
+        nonce_checker->CheckBlobNonce(request.first_request_metadata());
+    if (!nonce_status.ok()) {
+      stream->Write(ToSessionWriteFinishedResponse(nonce_status));
+      return absl::OkStatus();
+    }
   }
 
   // TODO: Avoid flattening the cord, which requires the downstream
@@ -95,6 +97,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
   google::protobuf::Struct config_properties;
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   StreamInitializeRequest request;
   bool contain_initialize_request = false;
   uint32_t max_num_sessions;
@@ -121,8 +124,6 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
           FCP_ASSIGN_OR_RETURN(DecryptionResult decryption_result,
                                server_encryptor.Decrypt(
                                    initialize_request.protected_response()));
-          AuthorizeConfidentialTransformResponse::ProtectedResponse
-              protected_response;
           if (!protected_response.ParseFromString(
                   decryption_result.plaintext)) {
             return absl::InvalidArgumentError(
@@ -184,7 +185,10 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
       return absl::FailedPreconditionError(
           "StreamInitialize can only be called once.");
     }
-    blob_decryptor_.emplace(crypto_stub_, config_properties);
+    blob_decryptor_.emplace(crypto_stub_, config_properties,
+                            std::vector<absl::string_view>(
+                                protected_response.decryption_keys().begin(),
+                                protected_response.decryption_keys().end()));
     session_tracker_.emplace(max_num_sessions);
 
     // Since blob_decryptor_ is set once in Initialize or StreamInitialize and
@@ -194,8 +198,12 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     // wrapper.
     blob_decryptor = &*blob_decryptor_;
   }
-  FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
-                       blob_decryptor->GetPublicKey());
+
+  // Returning the public key is only needed with the legacy ledger.
+  if (!kms_enabled_) {
+    FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
+                         blob_decryptor->GetPublicKey());
+  }
   return absl::OkStatus();
 }
 
@@ -238,9 +246,13 @@ absl::Status ConfidentialTransformBase::SessionInternal(
       CreateSession());
   FCP_RETURN_IF_ERROR(session->ConfigureSession(configure_request));
   SessionResponse configure_response;
-  NonceChecker nonce_checker;
-  *configure_response.mutable_configure()->mutable_nonce() =
-      nonce_checker.GetSessionNonce();
+  std::optional<NonceChecker> nonce_checker = std::nullopt;
+  // Nonces only need to be verified for the legacy ledger.
+  if (!kms_enabled_) {
+    nonce_checker = NonceChecker();
+    *configure_response.mutable_configure()->mutable_nonce() =
+        nonce_checker->GetSessionNonce();
+  }
   stream->Write(configure_response);
 
   // Initialize result_blob_metadata with unencrypted metadata since
@@ -281,20 +293,25 @@ absl::Status ConfidentialTransformBase::SessionInternal(
           // data.
 
           // Use the metadata with the earliest expiration timestamp for
-          // encrypting any results.
-          absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
-              EarliestExpirationTimeMetadata(
-                  result_blob_metadata, write_request.first_request_metadata());
-          if (!earliest_expiration_metadata.ok()) {
-            stream->Write(ToSessionWriteFinishedResponse(absl::Status(
-                earliest_expiration_metadata.status().code(),
-                absl::StrCat(
-                    "Failed to extract expiration timestamp from "
-                    "BlobMetadata with encryption: ",
-                    earliest_expiration_metadata.status().message()))));
-            break;
+          // encrypting any results. This is only needed for the legacy ledger.
+          // With KMS, the re-encryption keys are shared upfront with the worker
+          // as part of initialization.
+          if (!kms_enabled_) {
+            absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
+                EarliestExpirationTimeMetadata(
+                    result_blob_metadata,
+                    write_request.first_request_metadata());
+            if (!earliest_expiration_metadata.ok()) {
+              stream->Write(ToSessionWriteFinishedResponse(absl::Status(
+                  earliest_expiration_metadata.status().code(),
+                  absl::StrCat(
+                      "Failed to extract expiration timestamp from "
+                      "BlobMetadata with encryption: ",
+                      earliest_expiration_metadata.status().message()))));
+              break;
+            }
+            std::swap(result_blob_metadata, *earliest_expiration_metadata);
           }
-          std::swap(result_blob_metadata, *earliest_expiration_metadata);
           absl::Cord data(std::move(*write_request.mutable_data()));
           write_state = WriteState{.first_request = std::move(write_request),
                                    .data = std::move(data)};

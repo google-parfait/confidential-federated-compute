@@ -30,6 +30,10 @@ absl::StatusOr<fcp::confidentialcompute::Record> CreateRewrappedRecord(
     absl::string_view recipient_public_key, absl::string_view nonce,
     absl::string_view reencryption_public_key);
 
+// Helper function to generate public and private key pairs which are in a
+// format that would be produced by KMS for encrypting/decrypting blobs using
+// the given key_id.
+std::pair<std::string, std::string> GenerateKeyPair(std::string key_id);
 }  // namespace confidential_federated_compute::crypto_test_utils
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_TEST_UTILS_H_

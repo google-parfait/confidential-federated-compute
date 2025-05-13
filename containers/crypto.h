@@ -31,8 +31,12 @@
 
 namespace confidential_federated_compute {
 
-// Class used to decrypt blobs that have been rewrapped for access by
-// this container by the Ledger.
+// Class used to decrypt blobs.
+//
+// If used with the legacy ledger, blobs should have been rewrapped for access
+// by this container by the Ledger. If used with KMS, all the KMS authorized
+// decryption keys should be passed down to the BlobDecryptor as part of its
+// constructor.
 //
 // Unlike RecordDecryptor, this class does not track nonces to ensure that each
 // blob can be decrypted once. This class is threadsafe.
@@ -41,11 +45,14 @@ class BlobDecryptor {
   // Constructs a new BlobDecryptor.
   //
   // Optional configuration properties may be supplied in a Struct to document
-  // any important configuration that should be verifiable during attestation;
-  // see ApplicationMatcher.config_properties in
+  // any important configuration that should be verifiable during attestation by
+  // the ledger; see ApplicationMatcher.config_properties in
   // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/access_policy.proto.
+  // Configuration properties are not required to be passed when using KMS since
+  // validation of the config constraints is performed by the worker itself.
   BlobDecryptor(oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
-                google::protobuf::Struct config_properties = {});
+                google::protobuf::Struct config_properties = {},
+                const std::vector<absl::string_view>& decryption_keys = {});
 
   // BlobDecryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
