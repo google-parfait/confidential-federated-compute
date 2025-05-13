@@ -1,0 +1,10 @@
+# Various fixes for libcppbor not being compatible with gcc.
+--- third_party/libcppbor.BUILD.bzl
++++ third_party/libcppbor.BUILD.bzl
+@@ -27,4 +27,4 @@
+-    copts = ["-Iexternal/libcppbor/include/cppbor"],
++    includes = ["include/cppbor"],
+     include_prefix = "libcppbor",
+-    local_defines = ["__TRUSTY__"],
++    local_defines = ["__TRUSTY__", "__has_feature(x)=false"],
+     visibility = ["//visibility:public"],

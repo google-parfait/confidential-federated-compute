@@ -1,0 +1,29 @@
+--- containers/BUILD
++++ containers/BUILD
+@@ -44,5 +44,6 @@
+ cc_library(
+     name = "session",
+     srcs = ["session.cc"],
+     hdrs = ["session.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+@@ -111,5 +112,6 @@
+ cc_library(
+     name = "oak_orchestrator_client",
+     srcs = ["oak_orchestrator_client.cc"],
+     hdrs = ["oak_orchestrator_client.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+@@ -162,5 +164,6 @@
+ cc_library(
+     name = "confidential_transform_server_base",
+     srcs = ["confidential_transform_server_base.cc"],
+     hdrs = ["confidential_transform_server_base.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+@@ -179,5 +182,4 @@
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+-        "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+         "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
+         "@oak//cc/crypto:encryption_key",
