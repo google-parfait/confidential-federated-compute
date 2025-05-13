@@ -91,9 +91,11 @@ absl::StatusOr<std::string> Decompress(
 
 }  // namespace
 
-BlobDecryptor::BlobDecryptor(OrchestratorCrypto::StubInterface& stub,
-                             google::protobuf::Struct config_properties)
-    : message_decryptor_(std::move(config_properties)),
+BlobDecryptor::BlobDecryptor(
+    OrchestratorCrypto::StubInterface& stub,
+    google::protobuf::Struct config_properties,
+    const std::vector<absl::string_view>& decryption_keys)
+    : message_decryptor_(std::move(config_properties), decryption_keys),
       signed_public_key_(message_decryptor_.GetPublicKey(
           [&stub](absl::string_view message) {
             return SignWithOrchestrator(stub, message);
@@ -109,38 +111,65 @@ absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
 
 absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
     const BlobMetadata& metadata, absl::string_view blob) {
+  std::string decrypted;
   switch (metadata.encryption_metadata_case()) {
     case BlobMetadata::kUnencrypted:
       return Decompress(blob, static_cast<Record::CompressionType>(
                                   metadata.compression_type()));
     case BlobMetadata::kHpkePlusAeadData:
+      if (metadata.hpke_plus_aead_data()
+              .has_rewrapped_symmetric_key_associated_data()) {
+        std::string associated_data =
+            absl::StrCat(metadata.hpke_plus_aead_data()
+                             .rewrapped_symmetric_key_associated_data()
+                             .reencryption_public_key(),
+                         metadata.hpke_plus_aead_data()
+                             .rewrapped_symmetric_key_associated_data()
+                             .nonce());
+        FCP_ASSIGN_OR_RETURN(
+            decrypted,
+            message_decryptor_.Decrypt(
+                blob,
+                metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+                metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+                associated_data,
+                metadata.hpke_plus_aead_data().encapsulated_public_key()));
+      } else if (metadata.hpke_plus_aead_data()
+                     .has_kms_symmetric_key_associated_data()) {
+        BlobHeader blob_header;
+        if (!blob_header.ParseFromString(
+                metadata.hpke_plus_aead_data()
+                    .kms_symmetric_key_associated_data()
+                    .record_header())) {
+          return absl::InvalidArgumentError(
+              "kms_symmetric_key_associated_data.record_header() cannot be "
+              "parsed to BlobHeader.");
+        }
+        FCP_ASSIGN_OR_RETURN(
+            decrypted,
+            message_decryptor_.Decrypt(
+                blob,
+                metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+                metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+                metadata.hpke_plus_aead_data()
+                    .kms_symmetric_key_associated_data()
+                    .record_header(),
+                metadata.hpke_plus_aead_data().encapsulated_public_key(),
+                blob_header.key_id()));
+      } else {
+        return absl::InvalidArgumentError(
+            "Blob to decrypt must contain either "
+            "rewrapped_symmetric_key_associated_data or "
+            "kms_symmetric_key_associated_data");
+      }
       break;
     default:
       return absl::InvalidArgumentError(
-          "Blob to decrypt must contain unencrypted_data or "
-          "rewrapped_symmetric_key_associated_data");
-  }
-  if (!metadata.hpke_plus_aead_data()
-           .has_rewrapped_symmetric_key_associated_data()) {
-    return absl::InvalidArgumentError(
-        "Blob to decrypt must contain "
-        "rewrapped_symmetric_key_associated_data");
+          "Blob to decrypt must contain unencrypted_data,  "
+          "rewrapped_symmetric_key_associated_data or "
+          "kms_symmetric_key_associated_data");
   }
 
-  std::string associated_data =
-      absl::StrCat(metadata.hpke_plus_aead_data()
-                       .rewrapped_symmetric_key_associated_data()
-                       .reencryption_public_key(),
-                   metadata.hpke_plus_aead_data()
-                       .rewrapped_symmetric_key_associated_data()
-                       .nonce());
-  FCP_ASSIGN_OR_RETURN(
-      std::string decrypted,
-      message_decryptor_.Decrypt(
-          blob, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-          metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-          associated_data,
-          metadata.hpke_plus_aead_data().encapsulated_public_key()));
   return Decompress(decrypted, static_cast<Record::CompressionType>(
                                    metadata.compression_type()));
 }

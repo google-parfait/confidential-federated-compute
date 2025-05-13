@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +40,9 @@ using ::fcp::confidential_compute::crypto_internal::UnwrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKeyResult;
 using ::fcp::confidentialcompute::Record;
+
+const int64_t kHpkeBaseX25519Sha256Aes128Gcm = -65537;
+const int64_t kX25519 = 4;
 
 absl::StatusOr<Record> CreateRewrappedRecord(
     absl::string_view message, absl::string_view ciphertext_associated_data,
@@ -107,6 +111,39 @@ absl::StatusOr<Record> CreateRewrappedRecord(
       ->set_reencryption_public_key(std::string(reencryption_public_key));
   record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
   return record;
+}
+
+std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {
+  bssl::ScopedEVP_HPKE_KEY key;
+  EVP_HPKE_KEY_generate(key.get(), EVP_hpke_x25519_hkdf_sha256());
+  size_t key_len;
+  std::string raw_public_key(EVP_HPKE_MAX_PUBLIC_KEY_LENGTH, '\0');
+  EVP_HPKE_KEY_public_key(key.get(),
+                          reinterpret_cast<uint8_t*>(raw_public_key.data()),
+                          &key_len, raw_public_key.size());
+  raw_public_key.resize(key_len);
+  std::string raw_private_key(EVP_HPKE_MAX_PRIVATE_KEY_LENGTH, '\0');
+  EVP_HPKE_KEY_private_key(key.get(),
+                           reinterpret_cast<uint8_t*>(raw_private_key.data()),
+                           &key_len, raw_private_key.size());
+  raw_private_key.resize(key_len);
+  absl::StatusOr<std::string> public_cwt = OkpCwt{
+      .public_key = OkpKey{
+          .algorithm = kHpkeBaseX25519Sha256Aes128Gcm,
+          .curve = kX25519,
+          .x = raw_public_key,
+      }}.Encode();
+  CHECK_OK(public_cwt);
+  absl::StatusOr<std::string> private_key =
+      OkpKey{
+          .key_id = key_id,
+          .algorithm = kHpkeBaseX25519Sha256Aes128Gcm,
+          .curve = kX25519,
+          .d = raw_private_key,
+      }
+          .Encode();
+  CHECK_OK(private_key);
+  return {public_cwt.value(), private_key.value()};
 }
 
 }  // namespace confidential_federated_compute::crypto_test_utils
