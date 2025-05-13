@@ -23,7 +23,7 @@ use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManag
 use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
-use oak_sdk_containers::{InstanceSigner, OrchestratorClient};
+use oak_sdk_containers::{init_metrics, InstanceSigner, MetricsConfig, OrchestratorClient};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::logs::LoggerProvider;
@@ -105,6 +105,13 @@ async fn main() {
     let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
     let clock = Arc::new(SystemClock {});
 
+    // Export basic metrics to OpenTelemetry (e.g. CPU usage and RPC latency).
+    let oak_observer = init_metrics(MetricsConfig {
+        launcher_addr: OPEN_TELEMETRY_ADDR.into(),
+        scope: "kms".into(),
+        excluded_metrics: None,
+    });
+
     // Create the KeyManagementService.
     let session_service_client = OakSessionV1ServiceClient::connect(OAK_SESSION_SERVICE_ADDR)
         .await
@@ -136,6 +143,7 @@ async fn main() {
     // Start the gRPC server.
     orchestrator_client.notify_app_ready().await.expect("failed to notify that app is ready");
     tonic::transport::Server::builder()
+        .layer(oak_observer.create_monitoring_layer())
         .add_service(KeyManagementServiceServer::new(key_management_service))
         .add_service(EndpointServiceServer::new(endpoint_service))
         .serve("[::]:8080".parse().expect("failed to parse address"))

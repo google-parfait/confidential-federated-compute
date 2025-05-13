@@ -34,6 +34,7 @@ cargo_build_script(
         "@oak//proto/attestation:endorsement.proto",
         "@oak//proto/attestation:eventlog.proto",
         "@oak//proto/attestation:evidence.proto",
+        "@oak//proto/crypto:certificate.proto",
         "@oak//proto/micro_rpc:options.proto",
     ],
     tools = ["@com_google_protobuf//:protoc"],
