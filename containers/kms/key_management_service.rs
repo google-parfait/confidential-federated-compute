@@ -63,6 +63,12 @@ pub const DST_NODE_IDS_CLAIM: i64 = -65542;
 /// Key id prefix for intermediate keys.
 const INTERMEDIATE_KEY_ID: &[u8] = b"intr";
 
+/// The minimum key id for a keyset key.
+const MIN_KEYSET_KEY_ID: [u8; 4] = [0; 4];
+
+// The maximum key id for a keyset key.
+const MAX_KEYSET_KEY_ID: [u8; 4] = [255; 4];
+
 /// Returns an UpdateRequest for initializing the storage.
 pub fn get_init_request() -> UpdateRequest {
     let value = ClusterKeyValue {
@@ -212,8 +218,8 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
                 .iter()
                 .map(|id| {
                     Self::create_range(
-                        StorageKey::KeysetKey { keyset_id: *id, key_id: [0; 4] },
-                        Some(StorageKey::KeysetKey { keyset_id: *id, key_id: [255; 4] }),
+                        StorageKey::KeysetKey { keyset_id: *id, key_id: MIN_KEYSET_KEY_ID },
+                        Some(StorageKey::KeysetKey { keyset_id: *id, key_id: MAX_KEYSET_KEY_ID }),
                     )
                     .unwrap()
                 })
@@ -221,11 +227,9 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
             let response = self.storage_client.read(ReadRequest { ranges }).await?;
             for entry in response.entries {
                 // Skip entries that expire before the pipeline invocation
-                // expires. None means that the entity doesn't expire.
-                match (&entry.expiration, &state_expiration) {
-                    (Some(a), Some(b)) if (a.seconds, a.nanos) < (b.seconds, b.nanos) => continue,
-                    (Some(_), None) => continue,
-                    _ => {}
+                // expires.
+                if Self::timestamp_lt(&entry.expiration, state_expiration) {
+                    continue;
                 }
 
                 let key_id = match entry.key.as_slice().try_into() {
@@ -262,6 +266,87 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
 
         Ok((decryption_keys, result_encryption_keys))
     }
+
+    /// A partial ordering on Option<Timestamp> that treats None as the largest
+    /// value.
+    fn timestamp_lt(a: &Option<Timestamp>, b: &Option<Timestamp>) -> bool {
+        match (a, b) {
+            (Some(a), Some(b)) if (a.seconds, a.nanos) < (b.seconds, b.nanos) => true,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+
+    /// Computes the expiration time for logical pipeline state updates.
+    ///
+    /// The returned expiration and TTL will be the maximum of:
+    ///  - the existing expiration times for the logical pipeline states, if any
+    ///  - the expiration times for each logical pipeline invocation
+    ///  - the expiration times for each keyset referenced by the logical
+    ///    pipeline invocations.
+    async fn compute_expiration_for_logical_pipeline_update(
+        &self,
+        invocation_states: impl IntoIterator<Item = &PipelineInvocationStateValue>,
+        invocation_expirations: impl IntoIterator<Item = &Option<Timestamp>>,
+    ) -> anyhow::Result<(Option<Timestamp>, Option<Duration>)> {
+        // Find all logical pipelines and keysets referenced by the invocations.
+        let mut logical_pipeline_names = Vec::new();
+        let mut keyset_ids: Vec<u64> = Vec::new();
+        for state in invocation_states {
+            logical_pipeline_names.push(&state.logical_pipeline_name);
+            keyset_ids.extend(&state.keyset_ids);
+        }
+        logical_pipeline_names.sort();
+        logical_pipeline_names.dedup();
+        keyset_ids.sort();
+        keyset_ids.dedup();
+        let ranges = logical_pipeline_names
+            .iter()
+            .map(|name| Self::create_range(Self::get_logical_pipeline_storage_key(name), None))
+            .chain(keyset_ids.iter().map(|&keyset_id| {
+                Self::create_range(
+                    StorageKey::KeysetKey { keyset_id, key_id: MIN_KEYSET_KEY_ID },
+                    Some(StorageKey::KeysetKey { keyset_id, key_id: MAX_KEYSET_KEY_ID }),
+                )
+            }))
+            .collect::<Result<Vec<_>, _>>()?;
+        let response = self.storage_client.read(ReadRequest { ranges }).await?;
+
+        // Find the maximum expiration time.
+        #[allow(clippy::map_identity)]
+        let max_expiration = response
+            .entries
+            .iter()
+            .map(|entry| &entry.expiration)
+            // `.into_iter().map(|x| x)` allows lifetimes to be shortened to
+            // match `response`, not extended to match `invocation_states`.
+            .chain(invocation_expirations.into_iter().map(|x| x))
+            .max_by(|x, y| {
+                if x == y {
+                    std::cmp::Ordering::Equal
+                } else if Self::timestamp_lt(x, y) {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            })
+            .context("no expiration times found")?;
+
+        // Convert the max expiration time to a TTL.
+        let now = response.now.as_ref().context("StorageResponse missing now")?;
+        let ttl = max_expiration.clone().map(|t| {
+            let mut ttl = Duration {
+                seconds: t.seconds.saturating_sub(now.seconds),
+                nanos: t.nanos.saturating_sub(now.nanos),
+            };
+            if ttl.nanos < 0 {
+                ttl.seconds = ttl.seconds.saturating_sub(1);
+                ttl.nanos += 1_000_000_000;
+            }
+            ttl
+        });
+        Ok((max_expiration.clone(), ttl))
+    }
 }
 
 #[tonic::async_trait]
@@ -297,8 +382,14 @@ where
             .storage_client
             .read(ReadRequest {
                 ranges: vec![Self::create_range(
-                    StorageKey::KeysetKey { keyset_id: request.keyset_id, key_id: [0; 4] },
-                    Some(StorageKey::KeysetKey { keyset_id: request.keyset_id, key_id: [255; 4] }),
+                    StorageKey::KeysetKey {
+                        keyset_id: request.keyset_id,
+                        key_id: MIN_KEYSET_KEY_ID,
+                    },
+                    Some(StorageKey::KeysetKey {
+                        keyset_id: request.keyset_id,
+                        key_id: MAX_KEYSET_KEY_ID,
+                    }),
                 )
                 .unwrap()],
             })
@@ -389,8 +480,14 @@ where
             .storage_client
             .read(ReadRequest {
                 ranges: vec![Self::create_range(
-                    StorageKey::KeysetKey { keyset_id: request.keyset_id, key_id: [0; 4] },
-                    Some(StorageKey::KeysetKey { keyset_id: request.keyset_id, key_id: [255; 4] }),
+                    StorageKey::KeysetKey {
+                        keyset_id: request.keyset_id,
+                        key_id: MIN_KEYSET_KEY_ID,
+                    },
+                    Some(StorageKey::KeysetKey {
+                        keyset_id: request.keyset_id,
+                        key_id: MAX_KEYSET_KEY_ID,
+                    }),
                 )
                 .unwrap()],
             })
@@ -717,20 +814,6 @@ where
         }));
         let response =
             self.storage_client.read(ReadRequest { ranges }).await.map_err(Self::convert_error)?;
-
-        // Now that we have the cluster key, verify the endorsements.
-        let cluster_key =
-            Self::decode_cluster_key(&response.entries).map_err(Self::convert_error)?;
-        let cluster_public_key = cluster_key.to_public_key();
-        releasable_results
-            .iter()
-            .try_for_each(|(_, _, verify_fn)| verify_fn(&cluster_public_key))
-            .context("releasable_results are invalid")
-            .context(Code::InvalidArgument)
-            .map_err(Self::convert_error)?;
-
-        // Also decrypt the release tokens. We do this before updating the
-        // logical pipeline states in case there's a failure.
         let invocation_states: HashMap<_, _> = response
             .entries
             .iter()
@@ -741,36 +824,83 @@ where
                 _ => None,
             })
             .collect();
-        let decryption_keys = invocation_ids
-            .iter()
-            .zip(&releasable_results)
-            .map(|(invocation_id, (token_payload, claims, _))| {
-                let state = invocation_states.get(invocation_id).with_context(|| {
-                    format!("pipeline invocation {:?} not found", invocation_id)
-                })?;
-                let dst_node_ids = claims
-                    .rest
+
+        // To reduce request latency, we perform the CPU-bound work of verifying
+        // the endorsements and decrypting the release tokens in parallel with
+        // reading from storage to determine the TTL for the updated logical
+        // pipeline state. Since these steps may fail, they must NOT be done in
+        // parallel with the storage update.
+        let verify_endorsements_fut = async {
+            let cluster_key =
+                Self::decode_cluster_key(&response.entries).map_err(Self::convert_error)?;
+            let cluster_public_key = cluster_key.to_public_key();
+            releasable_results
+                .iter()
+                .try_for_each(|(_, _, verify_fn)| verify_fn(&cluster_public_key))
+                .context("releasable_results are invalid")
+                .context(Code::InvalidArgument)
+        };
+        let decryption_keys_fut = async {
+            invocation_ids
+                .iter()
+                .zip(&releasable_results)
+                .map(|(invocation_id, (token_payload, claims, _))| {
+                    let state = invocation_states.get(invocation_id).with_context(|| {
+                        format!("pipeline invocation {:?} not found", invocation_id)
+                    })?;
+                    let dst_node_ids = claims
+                        .rest
+                        .iter()
+                        .find(|(name, _)| name == &ClaimName::PrivateUse(DST_NODE_IDS_CLAIM))
+                        .and_then(|(_, value)| value.as_array())
+                        .context("endorsement claims missing dst node ids")?;
+                    decrypt_release_token(token_payload, dst_node_ids, state, INTERMEDIATE_KEY_ID)
+                })
+                .collect::<Result<_, _>>()
+                .context(Code::InvalidArgument)
+        };
+        let state_changes_fut = async {
+            let names_and_tokens = invocation_ids.iter().zip(&releasable_results).map(
+                |(invocation_id, (token_payload, _, _))| {
+                    // Ignore errors due to missing invocation states here since
+                    // they'll be detected by `decryption_keys_fut`.
+                    let logical_pipeline_name = invocation_states
+                        .get(invocation_id)
+                        .map(|s| s.logical_pipeline_name.as_str())
+                        .unwrap_or_default();
+                    (logical_pipeline_name, token_payload)
+                },
+            );
+            compute_logical_pipeline_updates(names_and_tokens)
+                .context("releasable results are incompatible")
+                .context(Code::InvalidArgument)
+        };
+        let expiration_fut = async {
+            self.compute_expiration_for_logical_pipeline_update(
+                invocation_states.values(),
+                response
+                    .entries
                     .iter()
-                    .find(|(name, _)| name == &ClaimName::PrivateUse(DST_NODE_IDS_CLAIM))
-                    .and_then(|(_, value)| value.as_array())
-                    .context("endorsement claims missing dst node ids")?;
-                decrypt_release_token(token_payload, dst_node_ids, state, INTERMEDIATE_KEY_ID)
-            })
-            .collect::<Result<_, _>>()
-            .context(Code::InvalidArgument)
-            .map_err(Self::convert_error)?;
+                    .filter(|entry| {
+                        matches!(
+                            entry.key.as_slice().try_into(),
+                            Ok(StorageKey::PipelineInvocationState { .. })
+                        )
+                    })
+                    .map(|entry| &entry.expiration),
+            )
+            .await
+            .context("failed to determine logical pipeline state TTL")
+        };
+        let (_, decryption_keys, state_changes, (expiration, ttl)) = tokio::try_join!(
+            verify_endorsements_fut,
+            decryption_keys_fut,
+            state_changes_fut,
+            expiration_fut,
+        )
+        .map_err(Self::convert_error)?;
 
         // Update the logical pipeline states.
-        let names_and_tokens = invocation_ids.iter().zip(&releasable_results).map(
-            |(invocation_id, (token_payload, _, _))| {
-                let name = &invocation_states.get(invocation_id).unwrap().logical_pipeline_name;
-                (name.as_str(), token_payload)
-            },
-        );
-        let state_changes = compute_logical_pipeline_updates(names_and_tokens)
-            .context("releasable results are incompatible")
-            .context(Code::InvalidArgument)
-            .map_err(Self::convert_error)?;
         let mut updates = Vec::with_capacity(state_changes.len());
         let mut logical_pipeline_states = Vec::with_capacity(state_changes.len());
         for update in state_changes {
@@ -782,8 +912,7 @@ where
                     .try_into()
                     .unwrap(),
                 value: Some(dst_value.encode_to_vec()),
-                // TODO: b/398874186 - Set a TTL for logical pipeline states.
-                ttl: None,
+                ttl: ttl.clone(),
                 preconditions: Some(update_request::Preconditions {
                     // Ensure there's no existing state if `src_value` is None.
                     exists: if src_value.is_none() { Some(false) } else { None },
@@ -793,7 +922,7 @@ where
             logical_pipeline_states.push(LogicalPipelineState {
                 name: update.logical_pipeline_name.into(),
                 value: update.dst_state.into(),
-                expiration: None, // No expiration since a TTL wasn't set above.
+                expiration: expiration.clone(),
             });
         }
         self.storage_client

@@ -1091,6 +1091,29 @@ where
     SC: StorageClient + Send + Sync + 'static,
     S: oak_sdk_containers::Signer + Send + Sync + 'static,
 {
+    register_and_authorize_with_options(
+        kms,
+        logical_pipeline_name,
+        policy,
+        Duration { seconds: 300, nanos: 0 },
+        vec![],
+    )
+    .await
+}
+
+/// Variant of register_and_authorize that allows rarely-used options to be
+/// specified.
+async fn register_and_authorize_with_options<SC, S>(
+    kms: &KeyManagementService<SC, S>,
+    logical_pipeline_name: &str,
+    policy: &PipelineVariantPolicy,
+    intermediates_ttl: Duration,
+    keyset_ids: Vec<u64>,
+) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, Vec<u8>)>
+where
+    SC: StorageClient + Send + Sync + 'static,
+    S: oak_sdk_containers::Signer + Send + Sync + 'static,
+{
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
             logical_pipeline_name.into(),
@@ -1104,8 +1127,8 @@ where
     let register_invocation_request = RegisterPipelineInvocationRequest {
         logical_pipeline_name: logical_pipeline_name.into(),
         pipeline_variant_policy: policy.encode_to_vec(),
-        intermediates_ttl: Some(Duration { seconds: 300, nanos: 0 }),
-        keyset_ids: vec![],
+        intermediates_ttl: Some(intermediates_ttl),
+        keyset_ids,
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
     };
     let response = kms
@@ -1291,6 +1314,217 @@ async fn release_results_success() {
             })],
         }))
     );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_sets_expiration_from_intermediates_ttl() {
+    let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
+        &kms,
+        "test",
+        &variant_policy,
+        Duration { seconds: 500, nanos: 0 },
+        vec![],
+    )
+    .await
+    .expect("failed to register and authorize pipeline transform");
+
+    // Call ReleaseResults to update the saved logical pipeline state.
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(ReleaseResultsResponse {
+            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) })),
+            })],
+        }))
+    );
+
+    // The expiration time should also be set in the GetLogicalPipelineState
+    // response.
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    expect_that!(
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(LogicalPipelineState {
+            expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) }))
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_sets_expiration_from_key_ttl() {
+    let now = Arc::new(AtomicI64::new(10_000));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    // Create keys with different expiration times:
+    //  - keyset 111: 20_000 (not used by pipeline)
+    //  - keyset 222: 10_110, 10_220, 10_330
+    //  - keyset 333: 10_240, 10_450
+    let request =
+        RotateKeysetRequest { keyset_id: 111, ttl: Some(Duration { seconds: 10_000, nanos: 0 }) };
+    assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+    for i in 1..4 {
+        now.fetch_add(10, Ordering::Relaxed);
+        let request = RotateKeysetRequest {
+            keyset_id: 222,
+            ttl: Some(Duration { seconds: 100 * i, nanos: 0 }),
+        };
+        assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+    }
+    for i in 1..3 {
+        now.fetch_add(10, Ordering::Relaxed);
+        let request = RotateKeysetRequest {
+            keyset_id: 333,
+            ttl: Some(Duration { seconds: 200 * i, nanos: 0 }),
+        };
+        assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+    }
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
+        &kms,
+        "test",
+        &variant_policy,
+        Duration { seconds: 100, nanos: 0 },
+        vec![222, 333],
+    )
+    .await
+    .expect("failed to register and authorize pipeline transform");
+
+    // Call ReleaseResults to update the saved logical pipeline state. The
+    // expiration time should be the larger of the key expiration times above
+    // and the intermediates expiration time (10_150).
+    let release_token = create_release_token(
+        b"plaintext",
+        /* src_state= */ None,
+        /* dst_state= */ b"state",
+        &protected_response.result_encryption_keys[0],
+    )
+    .expect("failed to create release token");
+    let request = ReleaseResultsRequest {
+        releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+    };
+    expect_that!(
+        kms.release_results(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(ReleaseResultsResponse {
+            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_450) })),
+            })],
+        }))
+    );
+
+    // The expiration time should also be set in the GetLogicalPipelineState
+    // response.
+    let request = GetLogicalPipelineStateRequest { name: "test".into() };
+    expect_that!(
+        kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(LogicalPipelineState {
+            expiration: some(matches_pattern!(Timestamp { seconds: eq(10_450) }))
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn release_results_sets_expiration_from_existing_logical_pipeline_state() {
+    let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    for (src_state, dst_state, invocation_ttl) in
+        [(None, b"state1", 500), (Some(b"state1".as_slice()), b"state2", 300)]
+    {
+        let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
+            &kms,
+            "test",
+            &variant_policy,
+            Duration { seconds: invocation_ttl, nanos: 0 },
+            vec![],
+        )
+        .await
+        .expect("failed to register and authorize pipeline transform");
+
+        // Call ReleaseResults to update the saved logical pipeline state. Even
+        // though the second invocation has a shorter TTL than the first, the
+        // logical pipeline state's expiration time should not be shortened.
+        let release_token = create_release_token(
+            b"plaintext",
+            src_state,
+            dst_state,
+            &protected_response.result_encryption_keys[0],
+        )
+        .expect("failed to create release token");
+        let request = ReleaseResultsRequest {
+            releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+        };
+        expect_that!(
+            kms.release_results(request.into_request()).await.map(Response::into_inner),
+            ok(matches_pattern!(ReleaseResultsResponse {
+                logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) })),
+                })],
+            }))
+        );
+
+        // The expiration time should also be set in the GetLogicalPipelineState
+        // response.
+        let request = GetLogicalPipelineStateRequest { name: "test".into() };
+        expect_that!(
+            kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
+            ok(matches_pattern!(LogicalPipelineState {
+                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) }))
+            }))
+        );
+    }
 }
 
 #[googletest::test]
