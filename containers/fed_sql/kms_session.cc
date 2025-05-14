@@ -36,6 +36,7 @@
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
@@ -58,6 +59,9 @@ namespace {
 
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::confidential_federated_compute::sql::TensorColumn;
+using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -104,6 +108,8 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 }  // namespace
 
+constexpr size_t kBlobIdSize = 16;
+
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                      CheckpointParser* parser) {
@@ -127,6 +133,44 @@ KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
       std::vector<TensorColumn> result,
       sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
   return std::make_unique<InMemoryCheckpointParser>(std::move(result));
+}
+
+absl::StatusOr<std::pair<BlobMetadata, std::string>>
+KmsFedSqlSession::EncryptIntermediateResult(absl::string_view plaintext) {
+  // Use the first reencryption key for intermediate results.
+  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(reencryption_keys_[0]));
+  if (!cwt.public_key.has_value()) {
+    return absl::InvalidArgumentError(
+        "Re-encryption public key for intermediate results is invalid");
+  }
+  BlobHeader header;
+  std::string blob_id(kBlobIdSize, '\0');
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  header.set_blob_id(blob_id);
+  header.set_key_id(cwt.public_key->key_id);
+  std::string associated_data = header.SerializeAsString();
+
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypted_message,
+                       message_encryptor.Encrypt(
+                           plaintext, reencryption_keys_[0], associated_data));
+
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_metadata->set_ciphertext_associated_data(associated_data);
+  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+      encrypted_message.encrypted_symmetric_key);
+  hpke_plus_aead_metadata->set_encapsulated_public_key(
+      encrypted_message.encapped_key);
+  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(associated_data);
+
+  return std::make_pair(std::move(metadata),
+                        std::move(encrypted_message.ciphertext));
 }
 
 absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
@@ -335,30 +379,16 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
-      // Serialize the aggregator and bundle it with the private state.
+      // Serialize the aggregator and bundle it with the range tracker.
       FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                            std::move(*aggregator_).Serialize());
       aggregator_.reset();
       serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
-      if (input_metadata.has_unencrypted()) {
-        result = std::move(serialized_data);
-        result_metadata.set_total_size_bytes(result.size());
-        result_metadata.mutable_unencrypted();
-        break;
-      }
-      if (serialize_output_access_policy_node_id_ == std::nullopt) {
-        return absl::InvalidArgumentError(
-            "No output access policy node ID set for serialized outputs. This "
-            "must be set to output serialized state.");
-      }
       // Encrypt the bundled blob.
-      FCP_ASSIGN_OR_RETURN(
-          Record result_record,
-          EncryptSessionResult(input_metadata, serialized_data,
-                               *serialize_output_access_policy_node_id_));
-      result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = std::move(
-          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
+      FCP_ASSIGN_OR_RETURN(auto blobmetadata_and_ciphertext,
+                           EncryptIntermediateResult(serialized_data));
+      result_metadata = std::move(blobmetadata_and_ciphertext.first);
+      result = std::move(blobmetadata_and_ciphertext.second);
       break;
     }
     default:

@@ -49,17 +49,19 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
       std::shared_ptr<InferenceModel> inference_model,
-      const std::optional<uint32_t> serialize_output_access_policy_node_id,
       const std::optional<uint32_t> report_output_access_policy_node_id,
-      absl::string_view sensitive_values_key)
+      absl::string_view sensitive_values_key,
+      std::vector<std::string> reencryption_keys)
       : aggregator_(std::move(aggregator)),
         intrinsics_(intrinsics),
         inference_model_(inference_model),
-        serialize_output_access_policy_node_id_(
-            serialize_output_access_policy_node_id),
         report_output_access_policy_node_id_(
             report_output_access_policy_node_id),
-        sensitive_values_key_(sensitive_values_key) {
+        sensitive_values_key_(sensitive_values_key),
+        reencryption_keys_(std::move(reencryption_keys)) {
+    CHECK(reencryption_keys_.size() == 2)
+        << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
+           "and Report.";
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   };
 
@@ -108,6 +110,11 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   ExecuteClientQuery(
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
+  // Encrypts the intermediate result and returns (BlobMetadata, Ciphertext) for
+  // the encrypted result.
+  absl::StatusOr<
+      std::pair<::fcp::confidentialcompute::BlobMetadata, std::string>>
+  EncryptIntermediateResult(absl::string_view plaintext);
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
@@ -115,11 +122,12 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
   std::shared_ptr<InferenceModel> inference_model_;
-  const std::optional<uint32_t> serialize_output_access_policy_node_id_;
   const std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. In the future we could instead hold an
   // HMAC_CTX to reuse, which might improve performance.
   absl::string_view sensitive_values_key_;
+  // The reencryption keys used to re-encrypt the intermediate and final blobs.
+  std::vector<std::string> reencryption_keys_;
   // SQL query results that will be accumulated the next time SessionCommit is
   // called.
   std::vector<UncommittedInput> uncommitted_inputs_;

@@ -682,10 +682,12 @@ FedSqlConfidentialTransform::CreateSession() {
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   if (KmsEnabled()) {
+    CHECK(reencryption_keys_.has_value())
+        << "Reencryption keys must be set when KMS is enabled.";
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
-        serialize_output_access_policy_node_id_,
-        report_output_access_policy_node_id_, sensitive_values_key_);
+        report_output_access_policy_node_id_, sensitive_values_key_,
+        reencryption_keys_.value());
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
