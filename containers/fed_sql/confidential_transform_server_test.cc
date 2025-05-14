@@ -273,8 +273,7 @@ class FedSqlServerTest : public Test {
     int port;
     const std::string server_address = "[::1]:";
 
-    ON_CALL(*mock_inference_model_, BuildGemmaModel)
-        .WillByDefault(Return(ByMove(nullptr)));
+    ON_CALL(*mock_inference_model_, BuildGemmaModel).WillByDefault(Return());
     ON_CALL(*mock_inference_model_, RunGemmaInference)
         .WillByDefault(Return("topic_value"));
     auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(

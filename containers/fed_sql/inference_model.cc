@@ -52,9 +52,11 @@ using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceTask;
 using ::fcp::confidentialcompute::Prompt;
 using ::gcpp::Allocator;
+using ::gcpp::BoundedTopology;
 using ::gcpp::EOS_ID;
 using ::gcpp::Gemma;
 using ::gcpp::KVCache;
+using ::gcpp::MatMulEnv;
 using ::gcpp::Model;
 using ::gcpp::ModelInfo;
 using ::gcpp::NestedPools;
@@ -146,14 +148,18 @@ absl::StatusOr<ModelInfo> GetGemmaModelInfo(
 
 }  // namespace
 
-std::unique_ptr<Gemma> InferenceModel::BuildGemmaModel(
-    const ModelInfo& model_info, const SessionGemmaConfiguration& gemma_config,
-    NestedPools& pools) {
-  Allocator::Init(pools.Topology());
+void InferenceModel::BuildGemmaModel(
+    const ModelInfo& model_info,
+    const SessionGemmaConfiguration& gemma_config) {
+  BoundedTopology topology;
+  Allocator::Init(topology);
+  GemmaModel& gemma_model = std::get<GemmaModel>(model_);
+  gemma_model.pools_ = std::make_unique<NestedPools>(topology);
+  gemma_model.env_ = std::make_unique<MatMulEnv>(topology, *gemma_model.pools_);
   Path tokenizer_path = Path(gemma_config.tokenizer_path);
   Path weights_path = Path(gemma_config.model_weight_path);
-  return std::make_unique<Gemma>(tokenizer_path, weights_path, model_info,
-                                 pools);
+  gemma_model.gemma_ = std::make_unique<Gemma>(tokenizer_path, weights_path,
+                                               model_info, *gemma_model.env_);
 }
 
 absl::Status InferenceModel::BuildModel(
@@ -175,9 +181,7 @@ absl::Status InferenceModel::BuildModel(
       SessionGemmaConfiguration session_gemma_config =
           inference_configuration.gemma_configuration.value();
       model_.emplace<GemmaModel>();
-      GemmaModel& gemma_model = std::get<GemmaModel>(model_);
-      gemma_model.gemma_ =
-          BuildGemmaModel(model_info, session_gemma_config, gemma_model.pools_);
+      BuildGemmaModel(model_info, session_gemma_config);
       break;
     }
     default:
@@ -213,7 +217,7 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
   auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
                           int token, float) {
     ++generated;
-    if (generated >= prompt_size && token != EOS_ID) {
+    if (generated >= prompt_size && !gemma->GetModelConfig().IsEOS(token)) {
       std::string token_text;
       FCP_CHECK(gemma->Tokenizer().Decode({token}, &token_text));
       output_stream << token_text;

@@ -49,10 +49,9 @@ using ::testing::UnorderedElementsAre;
 
 class MockInferenceModel : public InferenceModel {
  public:
-  MOCK_METHOD(std::unique_ptr<Gemma>, BuildGemmaModel,
+  MOCK_METHOD(void, BuildGemmaModel,
               (const ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config,
-               NestedPools& pools),
+               const SessionGemmaConfiguration& gemma_config),
               (override));
   MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
               (const std::string& prompt, const absl::string_view& column_value,
@@ -94,8 +93,7 @@ TEST(InferenceModelTest, HasModelGemma) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   ASSERT_TRUE(inference_model.HasModel());
 }
@@ -129,8 +127,7 @@ TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
 }
 
@@ -202,8 +199,7 @@ TEST(InferenceModelTest, BuildModelGemmaMissingSessionGemmaConfiguration) {
 
 TEST(InferenceModelTest, RunInferenceValidConfig) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaInference)
       .WillByDefault(Invoke([](const std::string& prompt,
                                const absl::string_view& column_value,
@@ -272,8 +268,7 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
 
 TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaInference)
       .WillByDefault(Invoke([](const std::string& prompt,
                                const absl::string_view& column_value,
@@ -368,8 +363,7 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
 
 TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaInference)
       .WillByDefault(Invoke([](const std::string& prompt,
                                const absl::string_view& column_value,
@@ -480,8 +474,7 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
 
 TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -553,8 +546,7 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
 
 TEST(InferenceModelTest, RunInferenceNoPrompt) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -610,8 +602,7 @@ TEST(InferenceModelTest, RunInferenceNoPrompt) {
 
 TEST(InferenceModelTest, RunInferenceNonStringColumn) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -666,8 +657,7 @@ TEST(InferenceModelTest, RunInferenceNonStringColumn) {
 
 TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
   MockInferenceModel inference_model = MockInferenceModel();
-  ON_CALL(inference_model, BuildGemmaModel)
-      .WillByDefault(Return(ByMove(nullptr)));
+  ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(

@@ -57,13 +57,14 @@ class InferenceModel {
   struct NoModel {};
   struct GemmaModel {
     std::unique_ptr<::gcpp::Gemma> gemma_;
-    ::gcpp::NestedPools pools_{0};
+    std::unique_ptr<::gcpp::NestedPools> pools_;
+    std::unique_ptr<::gcpp::MatMulEnv> env_;
   };
 
-  virtual std::unique_ptr<::gcpp::Gemma> BuildGemmaModel(
-      const ::gcpp::ModelInfo& model_info,
-      const SessionGemmaConfiguration& gemma_config,
-      ::gcpp::NestedPools& pools);
+  // Builds a Gemma model from the given model info and gemma config.
+  // This function assumes that the model_ is already a GemmaModel.
+  virtual void BuildGemmaModel(const ::gcpp::ModelInfo& model_info,
+                               const SessionGemmaConfiguration& gemma_config);
 
   virtual absl::StatusOr<std::string> RunGemmaInference(
       const std::string& prompt, const absl::string_view& column_value,
