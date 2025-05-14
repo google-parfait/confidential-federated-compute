@@ -33,7 +33,6 @@
 #include "containers/crypto.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
-#include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/status_converters.h"
@@ -66,6 +65,7 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::CommitRequest;
+using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
@@ -179,9 +179,13 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
     }
     case AGGREGATION_TYPE_MERGE: {
       //  Merges can be immediately processed.
-      FCP_ASSIGN_OR_RETURN(std::unique_ptr<PrivateState> other_private_state,
-                           UnbundlePrivateState(unencrypted_data));
-      FCP_RETURN_IF_ERROR(private_state_->Merge(*other_private_state));
+      FCP_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
+                           UnbundleRangeTracker(unencrypted_data));
+      if (!range_tracker_.Merge(other_range_tracker)) {
+        return absl::FailedPreconditionError(
+            "Failed to merge due to conflicting ranges.");
+      }
+
       absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
           CheckpointAggregator::Deserialize(&intrinsics_,
                                             std::move(unencrypted_data));
@@ -209,7 +213,32 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
   // In case of an error with Accumulate, the session is terminated, since we
   // can't guarantee that the aggregator is in a valid state. If this changes,
   // consider changing this logic to no longer return an error.
+  FedSqlContainerCommitConfiguration commit_config;
+  if (!commit_request.configuration().UnpackTo(&commit_config)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse FedSqlContainerCommitConfiguration.");
+  }
+
+  absl::flat_hash_set<std::string> unique_key_ids;
+
   for (UncommittedInput& uncommitted_input : uncommitted_inputs_) {
+    if (uncommitted_input.metadata.has_hpke_plus_aead_data()) {
+      // Assume that encrypted blobs are using the KMS option.
+      CHECK(uncommitted_input.metadata.hpke_plus_aead_data()
+                .has_kms_symmetric_key_associated_data());
+      // Assume that parsing blob headers succeeds because earlier part
+      // of processing depends on that.
+      BlobHeader blob_header;
+      CHECK(blob_header.ParseFromString(
+          uncommitted_input.metadata.hpke_plus_aead_data()
+              .kms_symmetric_key_associated_data()
+              .record_header()));
+
+      unique_key_ids.insert(blob_header.key_id());
+      // TODO: also make sure that the blob ID is in the range
+      // and that all blob IDs are unique.
+    }
+
     absl::Status accumulate_status =
         aggregator_->Accumulate(*uncommitted_input.parser);
     if (!accumulate_status.ok()) {
@@ -221,6 +250,15 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
       return accumulate_status;
     }
   }
+
+  for (const auto& key_id : unique_key_ids) {
+    if (!range_tracker_.AddRange(key_id, commit_config.range().start(),
+                                 commit_config.range().end())) {
+      return absl::FailedPreconditionError(
+          "Failed to commit due to conflicting ranges");
+    }
+  }
+
   SessionResponse response =
       ToSessionCommitResponse(absl::OkStatus(), uncommitted_inputs_.size(), {});
   uncommitted_inputs_.clear();
@@ -301,7 +339,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
       FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                            std::move(*aggregator_).Serialize());
       aggregator_.reset();
-      serialized_data = BundlePrivateState(serialized_data, *private_state_);
+      serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
       if (input_metadata.has_unencrypted()) {
         result = std::move(serialized_data);
         result_metadata.set_total_size_bytes(result.size());

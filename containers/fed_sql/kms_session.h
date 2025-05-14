@@ -23,7 +23,7 @@
 #include "absl/status/status.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/inference_model.h"
-#include "containers/private_state.h"
+#include "containers/fed_sql/range_tracker.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -109,8 +109,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
 
-  // Session private data (such as privacy budget).
-  std::unique_ptr<PrivateState> private_state_;
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
@@ -125,6 +123,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // SQL query results that will be accumulated the next time SessionCommit is
   // called.
   std::vector<UncommittedInput> uncommitted_inputs_;
+  // Tracks committed ranges of blobs for this session.
+  RangeTracker range_tracker_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

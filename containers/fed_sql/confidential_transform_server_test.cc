@@ -30,7 +30,6 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
-#include "containers/private_state.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -2027,7 +2026,6 @@ TEST_F(FedSqlGroupByTest, SessionAccumulatesAndSerializes) {
       finalize_response.read().first_response_metadata().has_unencrypted());
 
   std::string data = finalize_response.read().data();
-  ASSERT_THAT(UnbundlePrivateState(data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), data);
   ASSERT_TRUE(deserialized_agg.ok());
@@ -2056,9 +2054,7 @@ TEST_F(FedSqlGroupByTest, SessionMergesAndReports) {
   ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
 
   SessionRequest write_request = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_MERGE,
-      BundlePrivateState((std::move(*input_aggregator).Serialize()).value(),
-                         PrivateState{}));
+      AGGREGATION_TYPE_MERGE, std::move(*input_aggregator).Serialize().value());
   SessionResponse write_response;
 
   ASSERT_TRUE(stream_->Write(write_request));
@@ -2108,7 +2104,6 @@ TEST_F(FedSqlGroupByTest, SerializeZeroInputsProducesEmptyOutput) {
   ASSERT_TRUE(
       finalize_response.read().first_response_metadata().has_unencrypted());
   std::string data = finalize_response.read().data();
-  ASSERT_THAT(UnbundlePrivateState(data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>>
       deserialized_agg_status =
           CheckpointAggregator::Deserialize(DefaultConfiguration(), data);
@@ -2484,7 +2479,6 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   ASSERT_FALSE(failed_decrypt.ok()) << failed_decrypt.status();
 
   std::string decrypted_data = *decrypted_result;
-  ASSERT_THAT(UnbundlePrivateState(decrypted_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), decrypted_data);
   ASSERT_THAT(deserialized_agg, IsOk());

@@ -26,7 +26,6 @@
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/inference_model.h"
-#include "containers/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -183,8 +182,6 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
 
-  // Session private data (such as privacy budget).
-  std::unique_ptr<PrivateState> private_state_;
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;

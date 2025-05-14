@@ -150,5 +150,85 @@ TEST(RangeTrackerTest, ParseUnexpectedOrderOfIntervals) {
   EXPECT_THAT(RangeTracker::Parse(state), IsCode(absl::StatusCode::kInternal));
 }
 
+TEST(RangeTrackerTest, BundleEmptyRangeTracker) {
+  RangeTracker range_tracker;
+  EXPECT_EQ(BundleRangeTracker("foo", range_tracker),
+            absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
+                         std::string(1, '\x3'), "foo"));
+}
+
+TEST(RangeTrackerTest, UnbundleEmptyRangeTracker) {
+  std::string blob =
+      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
+                   std::string(1, '\x3'), "foo");
+  auto range_tracker = UnbundleRangeTracker(blob);
+  EXPECT_EQ(blob, "foo");
+  EXPECT_THAT(*range_tracker, ElementsAre());
+}
+
+TEST(RangeTrackerTest, BundleAndUnbundleSuccess) {
+  RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 1 values: 5 }
+    buckets { key: "bar" values: 0 values: 4 }
+  )pb");
+  auto range_tracker = RangeTracker::Parse(state);
+  EXPECT_THAT(range_tracker, IsOk());
+
+  std::string bundle = BundleRangeTracker("foobar", *range_tracker);
+
+  size_t expected_bundle_size =
+      sizeof(kRangeTrackerBundleSignature) - 1  // size of signature
+      + 1 +
+      range_tracker->SerializeAsString()
+          .size()                          // range tracker state + its size
+      + 1 + std::string("foobar").size();  // blob + its size
+  EXPECT_EQ(bundle.size(), expected_bundle_size);
+
+  auto unbundled_range_tracker = UnbundleRangeTracker(bundle);
+  EXPECT_THAT(unbundled_range_tracker, IsOk());
+  EXPECT_EQ(bundle, "foobar");
+  EXPECT_THAT(unbundled_range_tracker->Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" values: 1 values: 5 }
+                buckets { key: "bar" values: 0 values: 4 }
+              )pb"));
+}
+
+TEST(RangeTrackerTest, UnbundleSignatureMimatch) {
+  std::string bundle1;
+  EXPECT_THAT(UnbundleRangeTracker(bundle1),
+              IsCode(absl::StatusCode::kInvalidArgument));
+  std::string bundle2("abcd");
+  EXPECT_THAT(UnbundleRangeTracker(bundle2),
+              IsCode(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(RangeTrackerTest, UnbundleMissingStateSize) {
+  std::string bundle(kRangeTrackerBundleSignature);
+  EXPECT_THAT(UnbundleRangeTracker(bundle),
+              IsCode(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(RangeTrackerTest, UnbundleIncompleteState) {
+  std::string bundle(absl::StrCat(kRangeTrackerBundleSignature, "\x06", "ab"));
+  EXPECT_THAT(UnbundleRangeTracker(bundle),
+              IsCode(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(RangeTrackerTest, UnbundleMissingPayloadSize) {
+  std::string bundle =
+      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'));
+  EXPECT_THAT(UnbundleRangeTracker(bundle),
+              IsCode(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(RangeTrackerTest, UnbundleIncompletePayload) {
+  std::string bundle =
+      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
+                   std::string(1, '\x6'), "ab");
+  EXPECT_THAT(UnbundleRangeTracker(bundle),
+              IsCode(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql
