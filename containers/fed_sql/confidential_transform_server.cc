@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/fed_sql/confidential_transform_server.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -28,6 +29,11 @@
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/private_state.h"
+#include "fcp/protos/confidentialcompute/access_policy.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
@@ -40,6 +46,8 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::fcp::confidential_compute::kPrivateStateConfigId;
+using ::fcp::confidentialcompute::AccessBudget;
 using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
@@ -329,6 +337,10 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
   }
   FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(fed_sql_config));
   FCP_RETURN_IF_ERROR(ValidateConfigConstraints(fed_sql_config_constraints));
+
+  // TODO: pass access budget from fed_sql_config_constraints
+  FCP_RETURN_IF_ERROR(InitializePrivateState(AccessBudget{}));
+
   if (fed_sql_config.has_inference_init_config()) {
     FCP_RETURN_IF_ERROR(
         InitializeInferenceModel(fed_sql_config.inference_init_config()));
@@ -416,6 +428,33 @@ absl::Status FedSqlConfidentialTransform::ReadWriteConfigurationRequest(
   }
 
   return absl::OkStatus();
+}
+
+absl::Status FedSqlConfidentialTransform::InitializePrivateState(
+    const AccessBudget& access_budget) {
+  auto it = write_configuration_map_.find(kPrivateStateConfigId);
+  if (it == write_configuration_map_.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected '", kPrivateStateConfigId,
+                     "' configuration id is not found."));
+  }
+  const auto& file_path = it->second.file_path;
+  std::ifstream file(file_path);
+  if (!file.is_open()) {
+    return absl::DataLossError(
+        absl::StrCat("Failed to open file for reading: ", file_path));
+  }
+  auto size = std::filesystem::file_size(file_path);
+  std::string private_state(size, '\0');
+  file.read(private_state.data(), size);
+
+  // TODO: support infinite budge instead of using
+  // std::numeric_limits<uint32_t>::max()
+  uint32_t num_access_times = access_budget.has_times()
+                                  ? access_budget.times()
+                                  : std::numeric_limits<uint32_t>::max();
+  initial_budget_ = std::make_shared<Budget>(num_access_times);
+  return initial_budget_->Parse(private_state);
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>

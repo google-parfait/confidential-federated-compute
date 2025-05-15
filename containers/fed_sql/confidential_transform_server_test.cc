@@ -32,6 +32,7 @@
 #include "containers/fed_sql/testing/test_utils.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
@@ -63,6 +64,7 @@ using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::NonceAndCounter;
@@ -251,19 +253,31 @@ std::string ReadFileContent(std::string file_path) {
 // Write the InitializeRequest to the client stream and then close
 // the stream, returning the status of Finish.
 grpc::Status WriteInitializeRequest(
-    InitializeRequest request,
-    std::unique_ptr<ClientWriter<StreamInitializeRequest>> init_stream) {
+    std::unique_ptr<ClientWriter<StreamInitializeRequest>> stream,
+    InitializeRequest request) {
   StreamInitializeRequest stream_request;
   *stream_request.mutable_initialize_request() = std::move(request);
-  if (!init_stream->Write(stream_request)) {
+  if (!stream->Write(stream_request)) {
     return grpc::Status(StatusCode::ABORTED,
                         "Write to StreamInitialize failed.");
   }
-  if (!init_stream->WritesDone()) {
+  if (!stream->WritesDone()) {
     return grpc::Status(StatusCode::ABORTED,
                         "WritesDone to StreamInitialize failed.");
   }
-  return init_stream->Finish();
+  return stream->Finish();
+}
+
+bool WritePipelinePrivateState(ClientWriter<StreamInitializeRequest>* stream,
+                               const std::string& state) {
+  StreamInitializeRequest stream_request;
+  auto* write_configuration = stream_request.mutable_write_configuration();
+  write_configuration->set_commit(true);
+  write_configuration->set_data(state);
+  auto* metadata = write_configuration->mutable_first_request_metadata();
+  metadata->set_configuration_id(kPrivateStateConfigId);
+  metadata->set_total_size_bytes(state.size());
+  return stream->Write(stream_request);
 }
 
 class FedSqlServerTest : public Test {
@@ -352,9 +366,8 @@ TEST_F(FedSqlServerTest, ValidStreamInitializeWithoutInferenceConfigs) {
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   std::move(request)));
 
   // Inference files shouldn't exist because no write_configuration is provided.
   ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_1"));
@@ -371,7 +384,7 @@ TEST_F(FedSqlServerTest, InvalidStreamInitializeRequest) {
   request.mutable_configuration()->PackFrom(invalid_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("is not a supported intrinsic_uri"));
@@ -385,7 +398,7 @@ TEST_F(FedSqlServerTest, StreamInitializeRequestNoIntrinsicConfigs) {
   request.mutable_configuration()->PackFrom(invalid_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Configuration must have exactly one IntrinsicConfig"));
@@ -427,8 +440,7 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersStreamInitialize) {
   request.mutable_configuration()->PackFrom(init_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("must both have type DT_DOUBLE"));
@@ -461,7 +473,7 @@ TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsStreamInitialize) {
   request.mutable_configuration()->PackFrom(init_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Configuration must have exactly one IntrinsicConfig"));
@@ -475,13 +487,12 @@ TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status first_init_status = WriteInitializeRequest(
-      request, stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(first_init_status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   request));
 
   grpc::ClientContext second_context;
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&second_context, &response));
+      stub_->StreamInitialize(&second_context, &response), std::move(request));
 
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
@@ -526,9 +537,8 @@ TEST_F(FedSqlServerTest,
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   std::move(request)));
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_TRUE(cwt.ok());
@@ -587,9 +597,8 @@ TEST_F(FedSqlServerTest,
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   std::move(request)));
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_TRUE(cwt.ok());
@@ -607,6 +616,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
+
   FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
     agg_configuration {
       intrinsic_configs: {
@@ -654,9 +664,9 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
@@ -680,9 +690,9 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
@@ -737,7 +747,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
   *request.mutable_protected_response() = encrypted_request;
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Invalid intrinsic URI for DP configuration."));
@@ -795,7 +805,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
   *request.mutable_protected_response() = encrypted_request;
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Epsilon value does not match the expected value."));
@@ -853,7 +863,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
   *request.mutable_protected_response() = encrypted_request;
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Delta value does not match the expected value."));
@@ -908,7 +918,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
   *request.mutable_protected_response() = encrypted_request;
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_THAT(
       status.error_message(),
@@ -923,7 +933,7 @@ TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
   request.mutable_configuration()->PackFrom(value);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Configuration cannot be unpacked."));
@@ -987,9 +997,8 @@ TEST_F(FedSqlServerTest, ValidStreamInitializeWithInferenceConfigs) {
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
 
-  grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)));
 
   ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
   std::string tokenizer_file_content =
@@ -1031,7 +1040,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
   request.mutable_configuration()->PackFrom(init_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
               HasSubstr("model_init_config must be set."));
@@ -1061,7 +1070,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
   request.mutable_configuration()->PackFrom(init_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(), HasSubstr("model_config must be set."));
 }
@@ -1096,7 +1105,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
   request.mutable_configuration()->PackFrom(init_config);
 
   grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
+      stub_->StreamInitialize(&context, &response), std::move(request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
   ASSERT_THAT(status.error_message(),
               HasSubstr("inference_task.inference_logic must be set for all "
@@ -1125,7 +1134,7 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(write_configuration));
 
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
@@ -1153,7 +1162,7 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1192,7 +1201,7 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(model_weight_write_config));
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1223,7 +1232,7 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
@@ -1257,7 +1266,7 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(status.error_message(),
               HasSubstr("The total size of the data blob does not match "
@@ -1301,9 +1310,9 @@ TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1401,9 +1410,8 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   std::move(request)));
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1467,9 +1475,8 @@ TEST_F(FedSqlServerTest,
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  grpc::Status status = WriteInitializeRequest(
-      std::move(request), stub_->StreamInitialize(&context, &response));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                                   std::move(request)));
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1564,9 +1571,8 @@ class InitializedFedSqlServerTest : public FedSqlServerTest {
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    grpc::Status status = WriteInitializeRequest(
-        std::move(request), stub_->StreamInitialize(&context, &response));
-    EXPECT_TRUE(status.ok());
+    EXPECT_OK(WriteInitializeRequest(
+        stub_->StreamInitialize(&context, &response), std::move(request)));
     public_key_ = response.public_key();
   }
 
@@ -1873,9 +1879,8 @@ class FedSqlGroupByTest : public FedSqlServerTest {
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    grpc::Status status = WriteInitializeRequest(
-        std::move(request), stub_->StreamInitialize(&context, &response));
-    CHECK(status.ok());
+    EXPECT_OK(WriteInitializeRequest(
+        stub_->StreamInitialize(&context, &response), std::move(request)));
     public_key_ = response.public_key();
 
     SessionRequest session_request;
@@ -2704,9 +2709,8 @@ TEST_F(FedSqlServerTest, SessionExecutesInferenceAndAggregation) {
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
 
-  grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)));
 
   // Set up Session.
   grpc::ClientContext session_context;
@@ -2906,7 +2910,7 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
 
   grpc::Status status =
-      WriteInitializeRequest(std::move(initialize_request), std::move(writer));
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_THAT(
       status.error_message(),
