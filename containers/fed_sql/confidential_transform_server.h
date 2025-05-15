@@ -24,8 +24,10 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/confidential_transform_server_base.h"
+#include "containers/fed_sql/budget.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/session.h"
+#include "fcp/protos/confidentialcompute/access_policy.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
@@ -73,6 +75,9 @@ class FedSqlConfidentialTransform final
   absl::Status ValidateConfigConstraints(
       const fcp::confidentialcompute::FedSqlContainerConfigConstraints&
           config_constraints);
+  // Initialized the private state - the initial budget received from KMS.
+  absl::Status InitializePrivateState(
+      const fcp::confidentialcompute::AccessBudget& access_budget);
   // Initialize the inference model with the given configuration.
   absl::Status InitializeInferenceModel(
       const fcp::confidentialcompute::InferenceInitializeConfiguration&
@@ -102,6 +107,8 @@ class FedSqlConfidentialTransform final
   // Reencryption keys for the resultant outputs.
   // These are only required when KMS is enabled for this worker.
   std::optional<std::vector<std::string>> reencryption_keys_;
+  // Initial budget initialized from private state.
+  std::shared_ptr<Budget> initial_budget_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

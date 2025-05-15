@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/util/message_differencer.h"
+#include "grpcpp/support/status.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute {
@@ -40,6 +41,29 @@ bool IsCode(absl::StatusOr<T> const& x, absl::StatusCode code) {
 inline bool IsCode(absl::Status const& x, absl::StatusCode code) {
   return x.code() == code;
 }
+inline bool IsCode(grpc::Status const& x, absl::StatusCode code) {
+  return static_cast<absl::StatusCode>(x.error_code()) == code;
+}
+
+inline void Describe(::testing::MatchResultListener* listener,
+                     const absl::StatusCode& x) {
+  *listener << absl::StatusCodeToString(x);
+}
+inline void Describe(::testing::MatchResultListener* listener,
+                     const absl::Status& x) {
+  *listener << absl::StatusCodeToString(x.code()) << " : " << x.message();
+}
+inline void Describe(::testing::MatchResultListener* listener,
+                     const grpc::Status& x) {
+  *listener << absl::StatusCodeToString(
+                   static_cast<absl::StatusCode>(x.error_code()))
+            << " : " << x.error_message();
+}
+template <typename T>
+inline void Describe(::testing::MatchResultListener* listener,
+                     const absl::StatusOr<T>& x) {
+  Describe(listener, x.status());
+}
 
 template <typename T>
 class StatusMatcherImpl : public ::testing::MatcherInterface<T> {
@@ -53,7 +77,12 @@ class StatusMatcherImpl : public ::testing::MatcherInterface<T> {
   }
   bool MatchAndExplain(
       T x, ::testing::MatchResultListener* listener) const override {
-    return IsCode(x, code_);
+    if (!IsCode(x, code_)) {
+      *listener << "\n  ";
+      Describe(listener, x);
+      return false;
+    }
+    return true;
   }
 
  private:
@@ -77,7 +106,18 @@ inline StatusMatcher IsCode(absl::StatusCode code) {
   return StatusMatcher(code);
 }
 
+inline StatusMatcher IsCode(grpc::StatusCode code) {
+  return StatusMatcher(static_cast<absl::StatusCode>(code));
+}
+
 inline StatusMatcher IsOk() { return StatusMatcher(absl::StatusCode::kOk); }
+
+#ifndef ASSERT_OK
+#define ASSERT_OK(x) ASSERT_THAT((x), IsOk());
+#endif
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_THAT((x), IsOk());
+#endif
 
 using RepeatedFieldComparison =
     google::protobuf::util::MessageDifferencer::RepeatedFieldComparison;
