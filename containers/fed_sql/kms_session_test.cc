@@ -19,6 +19,7 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
@@ -44,6 +45,7 @@ namespace {
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
+using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -114,8 +116,15 @@ KmsFedSqlSession CreateDefaultSession() {
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
   std::shared_ptr<InferenceModel> inference_model;
-  return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
-                          inference_model, 99, 42, "sensitive_values_key");
+  auto merge_public_private_key_pair =
+      crypto_test_utils::GenerateKeyPair("merge");
+  auto report_public_private_key_pair =
+      crypto_test_utils::GenerateKeyPair("report");
+  return KmsFedSqlSession(
+      std::move(checkpoint_aggregator), intrinsics, inference_model, 42,
+      "sensitive_values_key",
+      std::vector<std::string>{merge_public_private_key_pair.first,
+                               report_public_private_key_pair.first});
 }
 
 void StoreBigEndian(void* p, uint64_t num) {
@@ -230,14 +239,25 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
 class KmsFedSqlSessionWriteTest : public Test {
  public:
   KmsFedSqlSessionWriteTest() {
-    std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
-        CheckpointAggregator::Create(DefaultConfiguration()).value();
+    auto merge_public_private_key_pair =
+        crypto_test_utils::GenerateKeyPair("merge");
+    auto report_public_private_key_pair =
+        crypto_test_utils::GenerateKeyPair("report");
+    google::protobuf::Struct config_properties;
+    message_decryptor_ = std::make_unique<MessageDecryptor>(
+        config_properties, std::vector<absl::string_view>(
+                               {merge_public_private_key_pair.second,
+                                report_public_private_key_pair.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
+    std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
+        CheckpointAggregator::Create(DefaultConfiguration()).value();
     session_ = std::make_unique<KmsFedSqlSession>(KmsFedSqlSession(
         std::move(checkpoint_aggregator), intrinsics_, mock_inference_model_,
-        99, 42, "sensitive_values_key"));
+        42, "sensitive_values_key",
+        std::vector<std::string>{merge_public_private_key_pair.first,
+                                 report_public_private_key_pair.first}));
     SessionRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -265,10 +285,28 @@ class KmsFedSqlSessionWriteTest : public Test {
   }
 
  protected:
+  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
+    BlobHeader blob_header;
+    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                    .kms_symmetric_key_associated_data()
+                                    .record_header());
+    auto decrypted = message_decryptor_->Decrypt(
+        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+        metadata.hpke_plus_aead_data()
+            .kms_symmetric_key_associated_data()
+            .record_header(),
+        metadata.hpke_plus_aead_data().encapsulated_public_key(),
+        blob_header.key_id());
+    CHECK_OK(decrypted.status());
+    return decrypted.value();
+  }
+
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
   std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
       std::make_shared<NiceMock<MockInferenceModel>>();
+  std::unique_ptr<MessageDecryptor> message_decryptor_;
 };
 
 TEST_F(KmsFedSqlSessionWriteTest, InvalidWriteConfigurationFails) {
@@ -326,22 +364,19 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
 
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
-    compression_type: COMPRESSION_TYPE_NONE
-    unencrypted {}
-  )pb");
-  auto finalize_response =
-      session_->FinalizeSession(finalize_request, metadata);
+  BlobMetadata unused;
+  auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
   EXPECT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
-  ASSERT_GT(
-      finalize_response->read().first_response_metadata().total_size_bytes(),
-      0);
-  ASSERT_TRUE(
-      finalize_response->read().first_response_metadata().has_unencrypted());
+  auto actual_metadata = finalize_response->read().first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
 
-  std::string result_data = finalize_response->read().data();
+  std::string ciphertext = finalize_response->read().data();
+  auto result_data = Decrypt(actual_metadata, ciphertext);
   auto range_tracker = UnbundleRangeTracker(result_data);
   ASSERT_THAT(*range_tracker,
               UnorderedElementsAre(
@@ -456,22 +491,20 @@ TEST_F(KmsFedSqlSessionWriteTest,
 
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
-    compression_type: COMPRESSION_TYPE_NONE
-    unencrypted {}
-  )pb");
-  auto finalize_response =
-      session_->FinalizeSession(finalize_request, metadata);
+  BlobMetadata unused;
+  auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
   EXPECT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
-  ASSERT_GT(
-      finalize_response->read().first_response_metadata().total_size_bytes(),
-      0);
-  ASSERT_TRUE(
-      finalize_response->read().first_response_metadata().has_unencrypted());
+  auto actual_metadata = finalize_response->read().first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
 
-  std::string result_data = finalize_response->read().data();
+  std::string ciphertext = finalize_response->read().data();
+  auto result_data = Decrypt(actual_metadata, ciphertext);
+
   ASSERT_THAT(UnbundleRangeTracker(result_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
@@ -538,21 +571,19 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
 
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
-    compression_type: COMPRESSION_TYPE_NONE
-    unencrypted {}
-  )pb");
-  auto finalize_response =
-      session_->FinalizeSession(finalize_request, metadata);
+  BlobMetadata unused;
+  auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
   ASSERT_TRUE(finalize_response->read().finish_read());
-  ASSERT_GT(
-      finalize_response->read().first_response_metadata().total_size_bytes(),
-      0);
-  ASSERT_TRUE(
-      finalize_response->read().first_response_metadata().has_unencrypted());
+  auto actual_metadata = finalize_response->read().first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
 
-  std::string result_data = finalize_response->read().data();
+  std::string ciphertext = finalize_response->read().data();
+  auto result_data = Decrypt(actual_metadata, ciphertext);
+
   auto result_range_tracker = UnbundleRangeTracker(result_data);
   ASSERT_THAT(*result_range_tracker,
               UnorderedElementsAre(

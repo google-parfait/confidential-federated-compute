@@ -129,6 +129,7 @@ std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {
   raw_private_key.resize(key_len);
   absl::StatusOr<std::string> public_cwt = OkpCwt{
       .public_key = OkpKey{
+          .key_id = key_id,
           .algorithm = kHpkeBaseX25519Sha256Aes128Gcm,
           .curve = kX25519,
           .x = raw_public_key,
