@@ -148,9 +148,13 @@ proto_data(
 rust_binary(
     name = "main",
     srcs = ["main.rs"],
-    compile_data = [":insecure_reference_values"],
+    compile_data = [
+        ":insecure_reference_values",
+        "//reference_values/kms:reference_values",
+    ],
     rustc_env = {
         "INSECURE_REFERENCE_VALUES": "$(location :insecure_reference_values)",
+        "REFERENCE_VALUES": "$(location //reference_values/kms:reference_values)",
     },
     rustc_flags = ["-Cpanic=abort"],
     deps = [

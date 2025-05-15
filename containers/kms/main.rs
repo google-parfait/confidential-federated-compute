@@ -45,8 +45,11 @@ const OPEN_TELEMETRY_ADDR: &str = "http://10.0.2.100:8080";
 const OAK_SESSION_SERVICE_ADDR: &str = "http://10.0.2.100:8008";
 
 fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> {
-    // TODO: b/400476265 - Add ReferenceValues for SEV-SNP.
     match evidence.root_layer.as_ref().map(|rl| rl.platform.try_into()) {
+        Some(Ok(TeePlatform::AmdSevSnp)) => {
+            ReferenceValues::decode(include_bytes!(env!("REFERENCE_VALUES")).as_slice())
+                .context("failed to decode ReferenceValues")
+        }
         Some(Ok(TeePlatform::None)) => {
             // When running in insecure mode, simply skip all reference values.
             // This is only used for tests.
