@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(deprecated)]
+
 use access_policies::{
     authorize_transform, validate_pipeline_invocation_policies, AuthorizedTransform,
 };
