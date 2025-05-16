@@ -23,10 +23,10 @@ cc_library(
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     deps = [
-        ":budget",
         ":inference_model",
         ":kms_session",
         ":ledger_session",
+        ":private_state",
         ":sensitive_columns",
         ":session_utils",
         "//containers:blob_metadata",
@@ -247,6 +247,7 @@ cc_library(
     hdrs = ["kms_session.h"],
     deps = [
         ":inference_model",
+        ":private_state",
         ":range_tracker",
         ":sensitive_columns",
         ":session_utils",
@@ -257,20 +258,18 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
-        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
@@ -286,6 +285,7 @@ cc_test(
     deps = [
         ":inference_model",
         ":kms_session",
+        ":private_state",
         ":range_tracker",
         "//containers:blob_metadata",
         "//containers:crypto_test_utils",
@@ -295,6 +295,8 @@ cc_test(
         "//testing:parse_text_proto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
@@ -394,6 +396,14 @@ cc_test(
         "//testing:parse_text_proto",
         "@com_google_absl//absl/status",
         "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "private_state",
+    hdrs = ["private_state.h"],
+    deps = [
+        ":budget",
     ],
 )
 

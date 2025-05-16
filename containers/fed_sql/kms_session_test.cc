@@ -20,9 +20,12 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "containers/crypto_test_utils.h"
+#include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
@@ -109,6 +112,14 @@ Configuration DefaultConfiguration() {
   )pb");
 }
 
+std::shared_ptr<PrivateState> CreatePrivateState(
+    const std::string& initial_state, uint32_t default_budget) {
+  auto private_state =
+      std::make_shared<PrivateState>(initial_state, default_budget);
+  EXPECT_OK(private_state->budget.Parse(initial_state));
+  return private_state;
+}
+
 KmsFedSqlSession CreateDefaultSession() {
   std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
@@ -124,7 +135,8 @@ KmsFedSqlSession CreateDefaultSession() {
       std::move(checkpoint_aggregator), intrinsics, inference_model, 42,
       "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
-                               report_public_private_key_pair.first});
+                               report_public_private_key_pair.first},
+      CreatePrivateState("", 1));
 }
 
 void StoreBigEndian(void* p, uint64_t num) {
@@ -253,11 +265,12 @@ class KmsFedSqlSessionWriteTest : public Test {
                       .value();
     std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
         CheckpointAggregator::Create(DefaultConfiguration()).value();
-    session_ = std::make_unique<KmsFedSqlSession>(KmsFedSqlSession(
+    session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, mock_inference_model_,
         42, "sensitive_values_key",
         std::vector<std::string>{merge_public_private_key_pair.first,
-                                 report_public_private_key_pair.first}));
+                                 report_public_private_key_pair.first},
+        CreatePrivateState("", 1));
     SessionRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"

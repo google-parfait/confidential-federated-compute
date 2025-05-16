@@ -26,6 +26,7 @@
 #include "absl/status/statusor.h"
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/ledger_session.h"
+#include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
@@ -453,8 +454,9 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
   uint32_t num_access_times = access_budget.has_times()
                                   ? access_budget.times()
                                   : std::numeric_limits<uint32_t>::max();
-  initial_budget_ = std::make_shared<Budget>(num_access_times);
-  return initial_budget_->Parse(private_state);
+  private_state_ = std::make_shared<PrivateState>(std::move(private_state),
+                                                  num_access_times);
+  return private_state_->budget.Parse(private_state);
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
@@ -482,7 +484,7 @@ FedSqlConfidentialTransform::CreateSession() {
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
         report_output_access_policy_node_id_, sensitive_values_key_,
-        reencryption_keys_.value());
+        reencryption_keys_.value(), private_state_);
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
