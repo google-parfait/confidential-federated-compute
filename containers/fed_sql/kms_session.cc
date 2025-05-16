@@ -13,36 +13,33 @@
 // limitations under the License.
 #include "containers/fed_sql/kms_session.h"
 
-#include <execution>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/log/die_if_null.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
+#include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
-#include "fcp/base/status_converters.h"
+#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
@@ -66,49 +63,53 @@ using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::ColumnConfiguration;
-using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
-using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
-using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
-using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
-using ::fcp::confidentialcompute::StreamInitializeRequest;
-using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteRequest;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
-using ::google::protobuf::Struct;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
-using ::tensorflow_federated::aggregation::DataType;
-using ::tensorflow_federated::aggregation::DT_DOUBLE;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
-using ::tensorflow_federated::aggregation::kDeltaIndex;
-using ::tensorflow_federated::aggregation::kEpsilonIndex;
-using ::tensorflow_federated::aggregation::MutableVectorData;
-using ::tensorflow_federated::aggregation::Tensor;
-using ::tensorflow_federated::aggregation::TensorShape;
+
 }  // namespace
 
 constexpr size_t kBlobIdSize = 16;
+
+KmsFedSqlSession::KmsFedSqlSession(
+    std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
+        aggregator,
+    const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
+    std::shared_ptr<InferenceModel> inference_model,
+    const std::optional<uint32_t> report_output_access_policy_node_id,
+    absl::string_view sensitive_values_key,
+    std::vector<std::string> reencryption_keys,
+    std::shared_ptr<PrivateState> private_state)
+    : aggregator_(std::move(aggregator)),
+      intrinsics_(intrinsics),
+      inference_model_(inference_model),
+      report_output_access_policy_node_id_(report_output_access_policy_node_id),
+      sensitive_values_key_(sensitive_values_key),
+      reencryption_keys_(std::move(reencryption_keys)),
+      private_state_(std::move(private_state)) {
+  CHECK(reencryption_keys_.size() == 2)
+      << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
+         "and Report.";
+  CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+};
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
@@ -329,6 +330,9 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
   BlobMetadata result_metadata;
   switch (finalize_config.type()) {
     case fcp::confidentialcompute::FINALIZATION_TYPE_REPORT: {
+      // Update the private state
+      FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
+
       if (!aggregator_->CanReport()) {
         return absl::FailedPreconditionError(
             "The aggregation can't be completed due to failed preconditions.");

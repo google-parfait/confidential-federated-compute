@@ -24,8 +24,8 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/confidential_transform_server_base.h"
-#include "containers/fed_sql/budget.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/access_policy.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -107,8 +107,8 @@ class FedSqlConfidentialTransform final
   // Reencryption keys for the resultant outputs.
   // These are only required when KMS is enabled for this worker.
   std::optional<std::vector<std::string>> reencryption_keys_;
-  // Initial budget initialized from private state.
-  std::shared_ptr<Budget> initial_budget_;
+  // Initial private state shared between all sessions.
+  std::shared_ptr<PrivateState> private_state_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
