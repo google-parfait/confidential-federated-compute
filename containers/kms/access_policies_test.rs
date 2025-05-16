@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(deprecated)]
-
 use access_policies::{
     authorize_transform, validate_pipeline_invocation_policies, AuthorizedTransform,
 };
@@ -36,7 +34,7 @@ use session_test_utils::{get_test_endorsements, get_test_evidence, get_test_refe
 fn build_test_variant_policy(src: u32) -> PipelineVariantPolicy {
     PipelineVariantPolicy {
         transforms: vec![Transform {
-            src,
+            src_node_ids: vec![src],
             application: Some(ApplicationMatcher {
                 reference_values: Some(get_test_reference_values()),
                 ..Default::default()
@@ -337,35 +335,6 @@ fn authorize_transform_success() {
 }
 
 #[googletest::test]
-fn authorize_transform_with_src_fallback() {
-    let policy = PipelineVariantPolicy {
-        transforms: vec![Transform {
-            src: 1,
-            application: Some(ApplicationMatcher {
-                reference_values: Some(get_test_reference_values()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-
-    expect_that!(
-        authorize_transform(
-            &policy.encode_to_vec(),
-            &get_test_evidence(),
-            &get_test_endorsements(),
-            "tag",
-            &Default::default(),
-        ),
-        ok(matches_pattern!(AuthorizedTransform {
-            index: eq(0),
-            src_node_ids: elements_are!(eq(1)),
-        }))
-    );
-}
-
-#[googletest::test]
 fn authorize_transform_without_explicit_reference_values() {
     let policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -392,7 +361,7 @@ fn authorize_transform_returns_first_match() {
     let policy = PipelineVariantPolicy {
         transforms: vec![
             Transform {
-                src: 1,
+                src_node_ids: vec![1],
                 application: Some(ApplicationMatcher {
                     reference_values: Some(get_test_reference_values()),
                     ..Default::default()
@@ -400,7 +369,7 @@ fn authorize_transform_returns_first_match() {
                 ..Default::default()
             },
             Transform {
-                src: 2,
+                src_node_ids: vec![2],
                 application: Some(ApplicationMatcher {
                     reference_values: Some(get_test_reference_values()),
                     ..Default::default()
@@ -408,7 +377,7 @@ fn authorize_transform_returns_first_match() {
                 ..Default::default()
             },
             Transform {
-                src: 3,
+                src_node_ids: vec![3],
                 application: Some(ApplicationMatcher {
                     reference_values: Some(get_test_reference_values()),
                     ..Default::default()

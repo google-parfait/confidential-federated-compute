@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(deprecated)]
-
 use access_policy_proto::fcp::confidentialcompute::{
     pipeline_variant_policy::Transform,
     DataAccessPolicyWithSerializedVariants as AuthorizedLogicalPipelinePoliciesWithSerializedVariants,
@@ -163,15 +161,9 @@ fn match_transform(
     let extracted_evidence = verify(now_utc_millis, evidence, endorsements, &reference_values)
         .context("reference_values mismatch")?;
 
-    // During migration, fall back to `src` if `src_node_ids` is empty.
-    let mut src_node_ids = transform.src_node_ids;
-    if src_node_ids.is_empty() {
-        src_node_ids.push(transform.src);
-    }
-
     Ok(AuthorizedTransform {
         index,
-        src_node_ids,
+        src_node_ids: transform.src_node_ids,
         dst_node_ids: transform.dst_node_ids,
         config_constraints: transform.config_constraints,
         extracted_evidence,

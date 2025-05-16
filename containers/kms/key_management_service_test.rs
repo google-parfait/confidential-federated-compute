@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(deprecated)]
-
 use std::sync::{
     atomic::{AtomicI64, Ordering},
     Arc,
@@ -450,7 +448,7 @@ async fn register_pipeline_invocation_success() {
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
-            src: 1,
+            src_node_ids: vec![1],
             application: Some(ApplicationMatcher {
                 reference_values: Some(get_test_reference_values()),
                 ..Default::default()
@@ -492,7 +490,7 @@ async fn register_pipeline_invocation_with_invalid_policies() {
     let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
 
     let variant_policy = PipelineVariantPolicy {
-        transforms: vec![Transform { src: 1, ..Default::default() }],
+        transforms: vec![Transform { src_node_ids: vec![1], ..Default::default() }],
         ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
@@ -502,7 +500,7 @@ async fn register_pipeline_invocation_with_invalid_policies() {
                 // Use a different policy that doesn't match `variant_policy`.
                 instances: vec![PipelineVariantPolicy {
                     transforms: vec![Transform {
-                        src: 2,
+                        src_node_ids: vec![2],
                         application: Some(ApplicationMatcher {
                             reference_values: Some(get_test_reference_values()),
                             ..Default::default()
