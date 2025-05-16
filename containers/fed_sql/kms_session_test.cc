@@ -24,6 +24,7 @@
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -48,7 +49,9 @@ namespace {
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
+using ::confidential_federated_compute::fed_sql::testing::MockSigningKeyHandle;
 using ::fcp::confidential_compute::MessageDecryptor;
+using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -56,6 +59,7 @@ using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::FinalResultConfiguration;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -69,11 +73,13 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Pair;
+using ::testing::Return;
 using ::testing::Test;
 using ::testing::UnorderedElementsAre;
 
@@ -131,12 +137,14 @@ KmsFedSqlSession CreateDefaultSession() {
       crypto_test_utils::GenerateKeyPair("merge");
   auto report_public_private_key_pair =
       crypto_test_utils::GenerateKeyPair("report");
+  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle =
+      std::make_shared<MockSigningKeyHandle>();
   return KmsFedSqlSession(
-      std::move(checkpoint_aggregator), intrinsics, inference_model, 42,
+      std::move(checkpoint_aggregator), intrinsics, inference_model,
       "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
-      CreatePrivateState("", 1));
+      CreatePrivateState("", 1), mock_signing_key_handle);
 }
 
 void StoreBigEndian(void* p, uint64_t num) {
@@ -267,10 +275,10 @@ class KmsFedSqlSessionWriteTest : public Test {
         CheckpointAggregator::Create(DefaultConfiguration()).value();
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, mock_inference_model_,
-        42, "sensitive_values_key",
+        "sensitive_values_key",
         std::vector<std::string>{merge_public_private_key_pair.first,
                                  report_public_private_key_pair.first},
-        CreatePrivateState("", 1));
+        CreatePrivateState("", 1), mock_signing_key_handle_);
     SessionRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -320,6 +328,8 @@ class KmsFedSqlSessionWriteTest : public Test {
   std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
       std::make_shared<NiceMock<MockInferenceModel>>();
   std::unique_ptr<MessageDecryptor> message_decryptor_;
+  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
+      std::make_shared<MockSigningKeyHandle>();
 };
 
 TEST_F(KmsFedSqlSessionWriteTest, InvalidWriteConfigurationFails) {
@@ -454,23 +464,42 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
 
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
-    compression_type: COMPRESSION_TYPE_NONE
-    unencrypted {}
-  )pb");
-  auto finalize_response =
-      session_->FinalizeSession(finalize_request, metadata);
+  BlobMetadata unused;
+  oak::crypto::v1::Signature fake_signature;
+  fake_signature.set_signature("signature");
+  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
+      .WillOnce(Return(fake_signature));
+
+  auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
   EXPECT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
-  ASSERT_GT(
-      finalize_response->read().first_response_metadata().total_size_bytes(),
-      0);
-  ASSERT_TRUE(
-      finalize_response->read().first_response_metadata().has_unencrypted());
+  auto actual_metadata = finalize_response->read().first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
+
+  // Verify the release token.
+  FinalResultConfiguration final_result_config;
+  ASSERT_TRUE(finalize_response->read().first_response_configuration().UnpackTo(
+      &final_result_config));
+  BudgetState expected_state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" budget: 0 }
+  )pb");
+  absl::StatusOr<ReleaseToken> release_token =
+      ReleaseToken::Decode(final_result_config.release_token());
+  ASSERT_OK(release_token);
+  EXPECT_EQ(release_token->encryption_key_id, "report");
+  EXPECT_EQ(release_token->src_state, "");
+  EXPECT_EQ(release_token->dst_state, expected_state.SerializeAsString());
+  EXPECT_EQ(release_token->signature, "signature");
+
+  std::string ciphertext = finalize_response->read().data();
+  auto result_data = Decrypt(actual_metadata, ciphertext);
 
   FederatedComputeCheckpointParserFactory parser_factory;
-  absl::Cord wire_format_result(finalize_response->read().data());
+  absl::Cord wire_format_result(result_data);
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles each input and the aggregation sums the
@@ -659,22 +688,38 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
 
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
-    compression_type: COMPRESSION_TYPE_NONE
-    unencrypted {}
-  )pb");
-  auto finalize_response =
-      session_->FinalizeSession(finalize_request, metadata);
+  BlobMetadata unused;
+  oak::crypto::v1::Signature fake_signature;
+  fake_signature.set_signature("signature");
+  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
+      .WillOnce(Return(fake_signature));
+
+  auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
   EXPECT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
-  ASSERT_GT(
-      finalize_response->read().first_response_metadata().total_size_bytes(),
-      0);
-  ASSERT_TRUE(
-      finalize_response->read().first_response_metadata().has_unencrypted());
+  auto actual_metadata = finalize_response->read().first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
 
-  absl::Cord wire_format_result(finalize_response->read().data());
+  // Verify the release token.
+  FinalResultConfiguration final_result_config;
+  ASSERT_TRUE(finalize_response->read().first_response_configuration().UnpackTo(
+      &final_result_config));
+  absl::StatusOr<ReleaseToken> release_token =
+      ReleaseToken::Decode(final_result_config.release_token());
+  ASSERT_OK(release_token);
+  EXPECT_EQ(release_token->encryption_key_id, "report");
+  EXPECT_EQ(release_token->src_state, "");
+  EXPECT_EQ(release_token->dst_state, "");
+  EXPECT_EQ(release_token->signature, "signature");
+
+  std::string ciphertext = finalize_response->read().data();
+  auto result_data = Decrypt(actual_metadata, ciphertext);
+
+  absl::Cord wire_format_result(result_data);
   auto parser = parser_factory.Create(wire_format_result);
   auto col_values = (*parser)->GetTensor("val_out");
   ASSERT_EQ(col_values->num_elements(), 1);

@@ -53,7 +53,6 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
-
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidential_compute::EncryptMessageResult;
@@ -70,6 +69,7 @@ using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::FinalResultConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::Record;
@@ -85,26 +85,58 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
 
-}  // namespace
-
 constexpr size_t kBlobIdSize = 16;
+
+absl::StatusOr<std::string> CreateAssociatedData(
+    absl::string_view reencryption_key) {
+  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(reencryption_key));
+  if (!cwt.public_key.has_value()) {
+    return absl::InvalidArgumentError("Re-encryption public key is invalid");
+  }
+  BlobHeader header;
+  std::string blob_id(kBlobIdSize, '\0');
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  header.set_blob_id(blob_id);
+  header.set_key_id(cwt.public_key->key_id);
+  return header.SerializeAsString();
+}
+
+BlobMetadata CreateBlobMetadata(const EncryptMessageResult& encrypted_message,
+                                absl::string_view associated_data) {
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_metadata->set_ciphertext_associated_data(
+      std::string(associated_data));
+  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+      encrypted_message.encrypted_symmetric_key);
+  hpke_plus_aead_metadata->set_encapsulated_public_key(
+      encrypted_message.encapped_key);
+  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(std::string(associated_data));
+  return metadata;
+}
+}  // namespace
 
 KmsFedSqlSession::KmsFedSqlSession(
     std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
         aggregator,
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
     std::shared_ptr<InferenceModel> inference_model,
-    const std::optional<uint32_t> report_output_access_policy_node_id,
     absl::string_view sensitive_values_key,
     std::vector<std::string> reencryption_keys,
-    std::shared_ptr<PrivateState> private_state)
+    std::shared_ptr<PrivateState> private_state,
+    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       inference_model_(inference_model),
-      report_output_access_policy_node_id_(report_output_access_policy_node_id),
       sensitive_values_key_(sensitive_values_key),
       reencryption_keys_(std::move(reencryption_keys)),
-      private_state_(std::move(private_state)) {
+      private_state_(std::move(private_state)),
+      signing_key_handle_(signing_key_handle) {
   CHECK(reencryption_keys_.size() == 2)
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
@@ -136,42 +168,45 @@ KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
   return std::make_unique<InMemoryCheckpointParser>(std::move(result));
 }
 
-absl::StatusOr<std::pair<BlobMetadata, std::string>>
+absl::StatusOr<KmsFedSqlSession::EncryptedResult>
 KmsFedSqlSession::EncryptIntermediateResult(absl::string_view plaintext) {
   // Use the first reencryption key for intermediate results.
-  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(reencryption_keys_[0]));
-  if (!cwt.public_key.has_value()) {
-    return absl::InvalidArgumentError(
-        "Re-encryption public key for intermediate results is invalid");
-  }
-  BlobHeader header;
-  std::string blob_id(kBlobIdSize, '\0');
-  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
-                   blob_id.size());
-  header.set_blob_id(blob_id);
-  header.set_key_id(cwt.public_key->key_id);
-  std::string associated_data = header.SerializeAsString();
-
+  FCP_ASSIGN_OR_RETURN(std::string associated_data,
+                       CreateAssociatedData(reencryption_keys_[0]));
   MessageEncryptor message_encryptor;
   FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypted_message,
                        message_encryptor.Encrypt(
                            plaintext, reencryption_keys_[0], associated_data));
+  BlobMetadata metadata =
+      CreateBlobMetadata(encrypted_message, associated_data);
+  return EncryptedResult{.ciphertext = std::move(encrypted_message.ciphertext),
+                         .metadata = std::move(metadata)};
+}
 
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
-  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  hpke_plus_aead_metadata->set_ciphertext_associated_data(associated_data);
-  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
-      encrypted_message.encrypted_symmetric_key);
-  hpke_plus_aead_metadata->set_encapsulated_public_key(
-      encrypted_message.encapped_key);
-  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
+absl::StatusOr<KmsFedSqlSession::EncryptedResult>
+KmsFedSqlSession::EncryptFinalResult(absl::string_view plaintext) {
+  // Use the second reencryption key for final results.
+  FCP_ASSIGN_OR_RETURN(std::string associated_data,
+                       CreateAssociatedData(reencryption_keys_[1]));
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor.EncryptForRelease(
+          plaintext, reencryption_keys_[1], associated_data,
+          private_state_->initial_state,
+          private_state_->budget.SerializeAsString(), *signing_key_handle_));
 
-  return std::make_pair(std::move(metadata),
-                        std::move(encrypted_message.ciphertext));
+  BlobMetadata metadata =
+      CreateBlobMetadata(encrypted_message, associated_data);
+
+  FinalResultConfiguration final_result_configuration;
+  final_result_configuration.set_release_token(
+      std::move(encrypted_message.release_token));
+
+  return EncryptedResult{
+      .ciphertext = std::move(encrypted_message.ciphertext),
+      .metadata = std::move(metadata),
+      .final_result_configuration = std::move(final_result_configuration)};
 }
 
 absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
@@ -316,7 +351,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
 // Any errors in HandleFinalize kill the stream, since the stream can no longer
 // be modified after the Finalize call.
 absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
-    const FinalizeRequest& request, const BlobMetadata& input_metadata) {
+    const FinalizeRequest& request, const BlobMetadata& unused) {
   FedSqlContainerFinalizeConfiguration finalize_config;
   if (!request.configuration().UnpackTo(&finalize_config)) {
     return absl::InvalidArgumentError(
@@ -328,6 +363,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
 
   std::string result;
   BlobMetadata result_metadata;
+  std::optional<FinalResultConfiguration> final_result_configuration;
   switch (finalize_config.type()) {
     case fcp::confidentialcompute::FINALIZATION_TYPE_REPORT: {
       // Update the private state
@@ -363,23 +399,13 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
         absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
       }
 
-      if (input_metadata.has_unencrypted() ||
-          report_output_access_policy_node_id_ == std::nullopt) {
-        result_metadata.set_compression_type(
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-        result_metadata.set_total_size_bytes(unencrypted_result.size());
-        result_metadata.mutable_unencrypted();
-        result = std::move(unencrypted_result);
-        break;
-      }
-
-      FCP_ASSIGN_OR_RETURN(
-          Record result_record,
-          EncryptSessionResult(input_metadata, unencrypted_result,
-                               *report_output_access_policy_node_id_));
-      result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = std::move(
-          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
+      // Encrypt the final result.
+      FCP_ASSIGN_OR_RETURN(auto encrypted_result,
+                           EncryptFinalResult(unencrypted_result));
+      result_metadata = std::move(encrypted_result.metadata);
+      result = std::move(encrypted_result.ciphertext);
+      final_result_configuration =
+          std::move(encrypted_result.final_result_configuration);
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
@@ -389,10 +415,10 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
       aggregator_.reset();
       serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
       // Encrypt the bundled blob.
-      FCP_ASSIGN_OR_RETURN(auto blobmetadata_and_ciphertext,
+      FCP_ASSIGN_OR_RETURN(auto encrypted_result,
                            EncryptIntermediateResult(serialized_data));
-      result_metadata = std::move(blobmetadata_and_ciphertext.first);
-      result = std::move(blobmetadata_and_ciphertext.second);
+      result_metadata = std::move(encrypted_result.metadata);
+      result = std::move(encrypted_result.ciphertext);
       break;
     }
     default:
@@ -405,6 +431,12 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
   read_response->set_finish_read(true);
   *(read_response->mutable_data()) = std::move(result);
   *(read_response->mutable_first_response_metadata()) = result_metadata;
+  if (final_result_configuration.has_value()) {
+    google::protobuf::Any config;
+    config.PackFrom(std::move(final_result_configuration.value()));
+    *(read_response->mutable_first_response_configuration()) =
+        std::move(config);
+  }
   return response;
 }
 

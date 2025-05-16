@@ -36,5 +36,6 @@ cc_library(
     deps = [
         "@gemma//:gemma_lib",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:signing_key",
     ],
 )

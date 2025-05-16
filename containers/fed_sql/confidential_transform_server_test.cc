@@ -63,6 +63,7 @@ namespace {
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
+using ::confidential_federated_compute::fed_sql::testing::MockSigningKeyHandle;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::MessageDecryptor;
@@ -296,7 +297,7 @@ class FedSqlServerTest : public Test {
             .value();
     service_ = std::make_unique<FedSqlConfidentialTransform>(
         &mock_crypto_stub_, std::move(encryption_key_handle),
-        mock_inference_model_);
+        std::make_unique<MockSigningKeyHandle>(), mock_inference_model_);
 
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",

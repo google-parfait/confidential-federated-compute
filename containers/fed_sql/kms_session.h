@@ -22,6 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
@@ -45,10 +46,10 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
       std::shared_ptr<InferenceModel> inference_model,
-      const std::optional<uint32_t> report_output_access_policy_node_id,
       absl::string_view sensitive_values_key,
       std::vector<std::string> reencryption_keys,
-      std::shared_ptr<PrivateState> private_state);
+      std::shared_ptr<PrivateState> private_state,
+      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle);
 
   // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
@@ -68,7 +69,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // After finalization, the session state is no longer mutable.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,
-      const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+      const fcp::confidentialcompute::BlobMetadata& unused) override;
   // Accumulates queued blobs into the session state.
   // Returns an error if the aggcore state may be invalid and the session needs
   // to be shut down.
@@ -90,16 +91,27 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
     const fcp::confidentialcompute::BlobMetadata metadata;
   };
 
+  // The encrypted intermediate or final result.
+  struct EncryptedResult {
+    std::string ciphertext;
+    fcp::confidentialcompute::BlobMetadata metadata;
+    // The configuration for the final result. This is not populated for
+    // intermediate results.
+    std::optional<fcp::confidentialcompute::FinalResultConfiguration>
+        final_result_configuration;
+  };
+
   absl::StatusOr<
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
   ExecuteClientQuery(
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
-  // Encrypts the intermediate result and returns (BlobMetadata, Ciphertext) for
-  // the encrypted result.
-  absl::StatusOr<
-      std::pair<::fcp::confidentialcompute::BlobMetadata, std::string>>
-  EncryptIntermediateResult(absl::string_view plaintext);
+  // Encrypts the intermediate result for this session.
+  absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
+      absl::string_view plaintext);
+  // Encrypts the final result for this session.
+  absl::StatusOr<EncryptedResult> EncryptFinalResult(
+      absl::string_view plaintext);
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
@@ -107,7 +119,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
   std::shared_ptr<InferenceModel> inference_model_;
-  const std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. In the future we could instead hold an
   // HMAC_CTX to reuse, which might improve performance.
   absl::string_view sensitive_values_key_;
@@ -120,6 +131,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   RangeTracker range_tracker_;
   // Private state.
   std::shared_ptr<PrivateState> private_state_;
+  // The signing key handle used to sign the final result.
+  std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

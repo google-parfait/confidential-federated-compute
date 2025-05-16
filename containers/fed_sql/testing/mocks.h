@@ -18,6 +18,7 @@
 
 #include <string>
 
+#include "cc/crypto/signing_key.h"
 #include "containers/fed_sql/inference_model.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
@@ -34,6 +35,12 @@ class MockInferenceModel : public InferenceModel {
               (const std::string& prompt, const absl::string_view& column_value,
                const std::string& column_name),
               (override));
+};
+
+class MockSigningKeyHandle : public ::oak::crypto::SigningKeyHandle {
+ public:
+  MOCK_METHOD(absl::StatusOr<::oak::crypto::v1::Signature>, Sign,
+              (absl::string_view message), (override));
 };
 
 }  // namespace confidential_federated_compute::fed_sql::testing

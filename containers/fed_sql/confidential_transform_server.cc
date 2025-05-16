@@ -121,9 +121,11 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 FedSqlConfidentialTransform::FedSqlConfidentialTransform(
     oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
     std::unique_ptr<::oak::crypto::EncryptionKeyHandle> encryption_key_handle,
+    std::shared_ptr<::oak::crypto::SigningKeyHandle> signing_key_handle,
     std::shared_ptr<InferenceModel> inference_model)
     : ConfidentialTransformBase(crypto_stub, std::move(encryption_key_handle)),
-      inference_model_(inference_model) {
+      inference_model_(inference_model),
+      signing_key_handle_(std::move(signing_key_handle)) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   std::string key(32, '\0');
   // Generate a random key using BoringSSL. BoringSSL documentation says
@@ -456,7 +458,7 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
                                   : std::numeric_limits<uint32_t>::max();
   private_state_ = std::make_shared<PrivateState>(std::move(private_state),
                                                   num_access_times);
-  return private_state_->budget.Parse(private_state);
+  return private_state_->budget.Parse(private_state_->initial_state);
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
@@ -483,8 +485,8 @@ FedSqlConfidentialTransform::CreateSession() {
         << "Reencryption keys must be set when KMS is enabled.";
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
-        report_output_access_policy_node_id_, sensitive_values_key_,
-        reencryption_keys_.value(), private_state_);
+        sensitive_values_key_, reencryption_keys_.value(), private_state_,
+        signing_key_handle_);
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,

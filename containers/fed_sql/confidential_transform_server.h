@@ -45,6 +45,8 @@ class FedSqlConfidentialTransform final
       oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
       std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
           encryption_key_handle = nullptr,
+      std::shared_ptr<::oak::crypto::SigningKeyHandle> signing_key_handle =
+          nullptr,
       std::shared_ptr<InferenceModel> inference_model =
           std::make_shared<InferenceModel>());
 
@@ -109,6 +111,9 @@ class FedSqlConfidentialTransform final
   std::optional<std::vector<std::string>> reencryption_keys_;
   // Initial private state shared between all sessions.
   std::shared_ptr<PrivateState> private_state_;
+  // The signing key handle used to sign the final results.
+  // This is only required when KMS is enabled for this worker.
+  std::shared_ptr<::oak::crypto::SigningKeyHandle> signing_key_handle_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
