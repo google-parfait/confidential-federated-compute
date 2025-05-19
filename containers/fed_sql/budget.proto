@@ -37,7 +37,7 @@ message BudgetState {
     // A key for the budget bucket.
     bytes key = 1;
     // The remaining budget for the bucket.
-    uint64 budget = 2;
+    uint32 budget = 2;
   }
   repeated Bucket buckets = 1;
 }

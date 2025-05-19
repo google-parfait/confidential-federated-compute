@@ -16,6 +16,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_PRIVATE_STATE_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "containers/fed_sql/budget.h"
@@ -24,7 +25,8 @@ namespace confidential_federated_compute::fed_sql {
 
 // FedSql private state that is persisted via KMS.
 struct PrivateState {
-  PrivateState(std::string initial_state, uint32_t default_budget)
+  PrivateState(std::string initial_state,
+               std::optional<uint32_t> default_budget)
       : initial_state(std::move(initial_state)), budget(default_budget) {}
 
   // The initial serialized budget received from KMS.

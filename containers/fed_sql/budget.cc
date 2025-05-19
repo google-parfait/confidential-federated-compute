@@ -15,6 +15,7 @@
 #include "containers/fed_sql/budget.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 
 #include "containers/fed_sql/budget.pb.h"
@@ -32,7 +33,9 @@ absl::Status Budget::Parse(const std::string& data) {
 absl::Status Budget::Parse(const BudgetState& state) {
   InnerMap map;
   for (const auto& bucket : state.buckets()) {
-    map[bucket.key()] = std::min(bucket.budget(), default_budget_);
+    map[bucket.key()] = std::min(
+        bucket.budget(),
+        default_budget_.value_or(std::numeric_limits<uint32_t>::max()));
   }
   std::swap(per_key_budgets_, map);
   return absl::OkStatus();
@@ -54,24 +57,38 @@ BudgetState Budget::Serialize() const {
 
 bool Budget::HasRemainingBudget(const std::string& key) {
   auto it = per_key_budgets_.find(key);
-  uint64_t budget = it != per_key_budgets_.end() ? it->second : default_budget_;
+  uint32_t budget =
+      it != per_key_budgets_.end()
+          ? it->second
+          : default_budget_.value_or(std::numeric_limits<uint32_t>::max());
   return budget > 0;
 }
 
 absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
   for (const auto& [key, unused] : range_tracker) {
-    // Attempt to insert a new budget bucket for each range tracket bucket,
-    // which will do nothing if the bucket already exists.
-    auto [it, inserted] = per_key_budgets_.try_emplace(key, default_budget_);
-    if (it->second == 0) {
-      return absl::FailedPreconditionError("The budget is exhausted");
+    InnerMap::iterator it = per_key_budgets_.find(key);
+    if (it == per_key_budgets_.end() && default_budget_.has_value()) {
+      // Create a bucket if it doesn't exist and if the default budget
+      // isn't infinite. If the default budget is infinite. There is no
+      // need to have a bucket for a infinite budget.
+      it = per_key_budgets_.emplace(key, default_budget_.value()).first;
     }
-    // Consume the budget in this bucket. It is doen't matter what ranges
-    // have been tracked in the RangeTracker. If the bucket exists in the
-    // RangeTracker we assume that all blobs mapped to this bucket have
-    // been accessed even if that isn't actually the case. This approach
-    // is conservative, but it allows a very small budget state.
-    it->second--;
+
+    if (it != per_key_budgets_.end()) {
+      if (it->second == 0) {
+        return absl::FailedPreconditionError("The budget is exhausted");
+      }
+
+      // Consume the budget in this bucket. It is doen't matter what ranges
+      // have been tracked in the RangeTracker. If the bucket exists in the
+      // RangeTracker we assume that all blobs mapped to this bucket have
+      // been accessed even if that isn't actually the case. This approach
+      // is conservative, but it allows a very small budget state.
+      it->second--;
+    } else {
+      // This should be the case only if the budget is infinite.
+      CHECK(!default_budget_.has_value());
+    }
   }
   return absl::OkStatus();
 }
