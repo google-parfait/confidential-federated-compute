@@ -21,8 +21,8 @@ use coset::{
 };
 use googletest::prelude::*;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM,
-    PUBLIC_KEY_CLAIM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, ACCESS_POLICY_SHA256_CLAIM,
+    HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
 };
 use oak_proto_rust::oak::crypto::v1::Signature;
 
@@ -205,10 +205,16 @@ async fn derive_public_cwts_produces_cwt() {
         claims,
         ok(matches_pattern!(ClaimsSet {
             issuer: some(eq("test")),
-            rest: contains((
-                eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
-                matches_pattern!(Value::Bytes(eq(public_keys.unwrap()[0].as_slice()))),
-            )),
+            rest: all![
+                contains((
+                    eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
+                    matches_pattern!(Value::Bytes(eq(public_keys.unwrap()[0].as_slice()))),
+                )),
+                contains((
+                    eq(ClaimName::PrivateUse(ACCESS_POLICY_SHA256_CLAIM)),
+                    matches_pattern!(Value::Bytes(eq(b"foo"))),
+                )),
+            ],
         })),
     );
 }

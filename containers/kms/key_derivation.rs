@@ -27,6 +27,7 @@ use oak_sdk_containers::Signer;
 // Private CWT claims; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
 pub const PUBLIC_KEY_CLAIM: i64 = -65537;
+pub const ACCESS_POLICY_SHA256_CLAIM: i64 = -65543;
 
 // Private CoseKey algorithms; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
@@ -67,18 +68,25 @@ pub fn derive_public_keys(
         .collect()
 }
 
-/// Derives a public key, encoded as a CWT, for each HKDF info value.
+/// Derives a public key, encoded as a CWT, for each access policy hash.
 pub async fn derive_public_cwts<S: Signer>(
     alg: i64,
     key_id: &[u8],
     ikm: &[u8],
     claims: ClaimsSet,
-    infos: impl IntoIterator<Item = impl AsRef<[u8]>> + Copy,
+    access_policy_hashes: impl IntoIterator<Item = impl AsRef<[u8]>> + Copy,
     signer: &S,
 ) -> anyhow::Result<Vec<Vec<u8>>> {
     let mut cwts = FuturesOrdered::new();
-    for cose_key in derive_public_keys(alg, key_id, ikm, infos)? {
-        cwts.push_back(build_cwt(cose_key, claims.clone(), signer));
+    let cose_keys = derive_public_keys(alg, key_id, ikm, access_policy_hashes)?;
+    for (access_policy_hash, cose_key) in access_policy_hashes.into_iter().zip(cose_keys) {
+        let mut claims = claims.clone();
+        claims.rest.push((ClaimName::PrivateUse(PUBLIC_KEY_CLAIM), Value::from(cose_key)));
+        claims.rest.push((
+            ClaimName::PrivateUse(ACCESS_POLICY_SHA256_CLAIM),
+            Value::Bytes(access_policy_hash.as_ref().to_vec()),
+        ));
+        cwts.push_back(build_cwt(claims, signer));
     }
     cwts.try_collect().await
 }
@@ -156,13 +164,7 @@ fn build_cose_key(
 }
 
 /// Encodes a public key as a CWT.
-async fn build_cwt<S: Signer>(
-    cose_key: Vec<u8>,
-    mut claims: ClaimsSet,
-    signer: &S,
-) -> anyhow::Result<Vec<u8>> {
-    claims.rest.push((ClaimName::PrivateUse(PUBLIC_KEY_CLAIM), Value::from(cose_key)));
-
+async fn build_cwt<S: Signer>(claims: ClaimsSet, signer: &S) -> anyhow::Result<Vec<u8>> {
     // CoseSign1Builder.create_signature doesn't support async signing, so
     // we instead collect the bytes to be signed, then generate and attach
     // the signature.
