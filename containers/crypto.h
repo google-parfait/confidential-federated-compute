@@ -52,7 +52,9 @@ class BlobDecryptor {
   // validation of the config constraints is performed by the worker itself.
   BlobDecryptor(oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
                 google::protobuf::Struct config_properties = {},
-                const std::vector<absl::string_view>& decryption_keys = {});
+                const std::vector<absl::string_view>& decryption_keys = {},
+                std::optional<absl::flat_hash_set<std::string>>
+                    authorized_logical_pipeline_policies_hashes = std::nullopt);
 
   // BlobDecryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
@@ -79,6 +81,11 @@ class BlobDecryptor {
  private:
   fcp::confidential_compute::MessageDecryptor message_decryptor_;
   absl::StatusOr<std::string> signed_public_key_;
+  // Policy hashes that each blob decrypted by this container must be authorized
+  // with. If this is empty, the container will try to decrypt blobs without
+  // checking the policy hashes.
+  std::optional<absl::flat_hash_set<std::string>>
+      authorized_logical_pipeline_policies_hashes_;
 };
 
 // Class used to create an encrypted Record with a symmetric key that can be

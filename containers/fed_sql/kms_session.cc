@@ -88,7 +88,8 @@ using ::tensorflow_federated::aggregation::Intrinsic;
 constexpr size_t kBlobIdSize = 16;
 
 absl::StatusOr<std::string> CreateAssociatedData(
-    absl::string_view reencryption_key) {
+    absl::string_view reencryption_key,
+    absl::string_view reencryption_policy_hash) {
   FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(reencryption_key));
   if (!cwt.public_key.has_value()) {
     return absl::InvalidArgumentError("Re-encryption public key is invalid");
@@ -99,6 +100,7 @@ absl::StatusOr<std::string> CreateAssociatedData(
                    blob_id.size());
   header.set_blob_id(blob_id);
   header.set_key_id(cwt.public_key->key_id);
+  header.set_access_policy_sha256(std::string(reencryption_policy_hash));
   return header.SerializeAsString();
 }
 
@@ -128,6 +130,7 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<InferenceModel> inference_model,
     absl::string_view sensitive_values_key,
     std::vector<std::string> reencryption_keys,
+    absl::string_view reencryption_policy_hash,
     std::shared_ptr<PrivateState> private_state,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
@@ -135,6 +138,7 @@ KmsFedSqlSession::KmsFedSqlSession(
       inference_model_(inference_model),
       sensitive_values_key_(sensitive_values_key),
       reencryption_keys_(std::move(reencryption_keys)),
+      reencryption_policy_hash_(reencryption_policy_hash),
       private_state_(std::move(private_state)),
       signing_key_handle_(signing_key_handle) {
   CHECK(reencryption_keys_.size() == 2)
@@ -171,8 +175,9 @@ KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
 absl::StatusOr<KmsFedSqlSession::EncryptedResult>
 KmsFedSqlSession::EncryptIntermediateResult(absl::string_view plaintext) {
   // Use the first reencryption key for intermediate results.
-  FCP_ASSIGN_OR_RETURN(std::string associated_data,
-                       CreateAssociatedData(reencryption_keys_[0]));
+  FCP_ASSIGN_OR_RETURN(
+      std::string associated_data,
+      CreateAssociatedData(reencryption_keys_[0], reencryption_policy_hash_));
   MessageEncryptor message_encryptor;
   FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypted_message,
                        message_encryptor.Encrypt(
@@ -186,8 +191,9 @@ KmsFedSqlSession::EncryptIntermediateResult(absl::string_view plaintext) {
 absl::StatusOr<KmsFedSqlSession::EncryptedResult>
 KmsFedSqlSession::EncryptFinalResult(absl::string_view plaintext) {
   // Use the second reencryption key for final results.
-  FCP_ASSIGN_OR_RETURN(std::string associated_data,
-                       CreateAssociatedData(reencryption_keys_[1]));
+  FCP_ASSIGN_OR_RETURN(
+      std::string associated_data,
+      CreateAssociatedData(reencryption_keys_[1], reencryption_policy_hash_));
   MessageEncryptor message_encryptor;
   FCP_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,

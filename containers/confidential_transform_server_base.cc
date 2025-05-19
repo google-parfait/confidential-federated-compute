@@ -98,6 +98,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     InitializeResponse* response) {
   google::protobuf::Struct config_properties;
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes;
   StreamInitializeRequest request;
   bool contain_initialize_request = false;
   uint32_t max_num_sessions;
@@ -136,12 +137,19 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             return absl::InvalidArgumentError(
                 "Failed to parse AssociatedData from decrypted data.");
           }
+          for (const auto& policy_hash :
+               associated_data.authorized_logical_pipeline_policies_hashes()) {
+            authorized_logical_pipeline_policies_hashes.insert(policy_hash);
+          }
+          // Pick any of the authorized_logical_pipeline_policies_hashes as the
+          // reencryption_policy_hash. For convenience, we pick the first one.
           FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
               initialize_request.configuration(),
               associated_data.config_constraints(),
               std::vector<std::string>(
                   protected_response.result_encryption_keys().begin(),
-                  protected_response.result_encryption_keys().end())));
+                  protected_response.result_encryption_keys().end()),
+              associated_data.authorized_logical_pipeline_policies_hashes(0)));
         } else {
           FCP_ASSIGN_OR_RETURN(config_properties,
                                StreamInitializeTransform(&initialize_request));
@@ -188,7 +196,8 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     blob_decryptor_.emplace(crypto_stub_, config_properties,
                             std::vector<absl::string_view>(
                                 protected_response.decryption_keys().begin(),
-                                protected_response.decryption_keys().end()));
+                                protected_response.decryption_keys().end()),
+                            authorized_logical_pipeline_policies_hashes);
     session_tracker_.emplace(max_num_sessions);
 
     // Since blob_decryptor_ is set once in Initialize or StreamInitialize and

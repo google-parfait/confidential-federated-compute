@@ -94,13 +94,17 @@ absl::StatusOr<std::string> Decompress(
 BlobDecryptor::BlobDecryptor(
     OrchestratorCrypto::StubInterface& stub,
     google::protobuf::Struct config_properties,
-    const std::vector<absl::string_view>& decryption_keys)
+    const std::vector<absl::string_view>& decryption_keys,
+    std::optional<absl::flat_hash_set<std::string>>
+        authorized_logical_pipeline_policies_hashes)
     : message_decryptor_(std::move(config_properties), decryption_keys),
       signed_public_key_(message_decryptor_.GetPublicKey(
           [&stub](absl::string_view message) {
             return SignWithOrchestrator(stub, message);
           },
-          kAlgorithmES256)) {}
+          kAlgorithmES256)),
+      authorized_logical_pipeline_policies_hashes_(
+          authorized_logical_pipeline_policies_hashes) {}
 
 absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
   if (!signed_public_key_.ok()) {
@@ -144,6 +148,14 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
           return absl::InvalidArgumentError(
               "kms_symmetric_key_associated_data.record_header() cannot be "
               "parsed to BlobHeader.");
+        }
+        if (authorized_logical_pipeline_policies_hashes_.has_value() &&
+            !authorized_logical_pipeline_policies_hashes_->empty() &&
+            !authorized_logical_pipeline_policies_hashes_->contains(
+                blob_header.access_policy_sha256())) {
+          return absl::InvalidArgumentError(
+              "BlobHeader.access_policy_sha256 does not match any "
+              "authorized_logical_pipeline_policies_hashes returned by KMS.");
         }
         FCP_ASSIGN_OR_RETURN(
             decrypted,

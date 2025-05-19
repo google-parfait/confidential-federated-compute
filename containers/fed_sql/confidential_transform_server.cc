@@ -327,7 +327,8 @@ absl::Status FedSqlConfidentialTransform::InitializeInferenceModel(
 absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
     const ::google::protobuf::Any& configuration,
     const ::google::protobuf::Any& config_constraints,
-    std::vector<std::string> reencryption_keys) {
+    std::vector<std::string> reencryption_keys,
+    absl::string_view reencryption_policy_hash) {
   FedSqlContainerInitializeConfiguration fed_sql_config;
   if (!configuration.UnpackTo(&fed_sql_config)) {
     return absl::InvalidArgumentError(
@@ -349,6 +350,7 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
         InitializeInferenceModel(fed_sql_config.inference_init_config()));
   }
   reencryption_keys_ = std::move(reencryption_keys);
+  reencryption_policy_hash_ = reencryption_policy_hash;
   return absl::OkStatus();
 }
 
@@ -481,10 +483,12 @@ FedSqlConfidentialTransform::CreateSession() {
   if (KmsEnabled()) {
     CHECK(reencryption_keys_.has_value())
         << "Reencryption keys must be set when KMS is enabled.";
+    CHECK(reencryption_policy_hash_.has_value())
+        << "Reencryption policy hash must be set when KMS is enabled.";
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
-        sensitive_values_key_, reencryption_keys_.value(), private_state_,
-        signing_key_handle_);
+        sensitive_values_key_, reencryption_keys_.value(),
+        reencryption_policy_hash_.value(), private_state_, signing_key_handle_);
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,

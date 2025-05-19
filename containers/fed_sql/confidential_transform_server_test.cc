@@ -659,6 +659,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -685,6 +686,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -741,6 +743,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -799,6 +802,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -857,6 +861,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -912,6 +917,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
   google::protobuf::Value value;
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(value);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -1294,6 +1300,7 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
 TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
   grpc::ClientContext context;
   InitializeRequest request;
+  request.set_max_num_sessions(kMaxNumSessions);
   InitializeResponse response;
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
@@ -1302,9 +1309,11 @@ TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
     intrinsic_uri: "fedsql_group_by")pb");
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "merge_encryption_key";
+  *protected_response.add_result_encryption_keys() = "report_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
