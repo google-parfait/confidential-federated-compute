@@ -451,11 +451,9 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
   std::string private_state(size, '\0');
   file.read(private_state.data(), size);
 
-  // TODO: support infinite budge instead of using
-  // std::numeric_limits<uint32_t>::max()
-  uint32_t num_access_times = access_budget.has_times()
-                                  ? access_budget.times()
-                                  : std::numeric_limits<uint32_t>::max();
+  std::optional<uint32_t> num_access_times =
+      access_budget.has_times() ? std::optional<uint32_t>(access_budget.times())
+                                : std::nullopt;
   private_state_ = std::make_shared<PrivateState>(std::move(private_state),
                                                   num_access_times);
   return private_state_->budget.Parse(private_state_->initial_state);

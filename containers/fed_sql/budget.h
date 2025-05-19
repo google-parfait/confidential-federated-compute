@@ -16,6 +16,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_BUDGET_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -37,15 +38,18 @@ namespace confidential_federated_compute::fed_sql {
 // TODO: Add ability to remove expired buckets from the budget
 class Budget {
  public:
-  using InnerMap = absl::flat_hash_map<std::string, uint64_t>;
+  using InnerMap = absl::flat_hash_map<std::string, uint32_t>;
   using const_iterator = typename InnerMap::const_iterator;
   using value_type = typename InnerMap::value_type;
 
   // Creates an instance of Budget with the specified default budget value.
-  // The default budget is used for any new buckets that haven't been seen
-  // before. Also, the default budget is used as the upper limit when
+  // If specified, the default budget is used for any new buckets that haven't
+  // been seen before. Also, the default budget is used as the upper limit when
   // parsing a previously serialized budget in case of the policy change.
-  explicit Budget(uint64_t default_budget) : default_budget_(default_budget) {}
+  // If the default budget isn't specified (std::nullopt), it is considered to
+  // be infinite.
+  explicit Budget(std::optional<uint32_t> default_budget)
+      : default_budget_(default_budget) {}
 
   // This class is move-only.
   Budget(const Budget&) = delete;
@@ -77,10 +81,10 @@ class Budget {
   const_iterator end() const { return per_key_budgets_.end(); }
 
  private:
-  uint64_t default_budget_;
+  std::optional<uint32_t> default_budget_;
   // Stores budgets for individual buckets organized by key_id of encryption
   // key used to encrypt a blob (the same key_id that is found in BlobHeader).
-  absl::flat_hash_map<std::string, uint64_t> per_key_budgets_;
+  InnerMap per_key_budgets_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
