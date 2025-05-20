@@ -1242,6 +1242,8 @@ class InitializedConfidentialTransformServerBaseTestWithKms
         protected_response;
     *protected_response.add_decryption_keys() = public_private_key_pair.second;
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.add_authorized_logical_pipeline_policies_hashes(
+        "policy_hash");
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -1276,11 +1278,13 @@ class InitializedConfidentialTransformServerBaseTestWithKms
     CHECK(session_response.configure().nonce().empty());
   }
 
-  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(std::string blob_id,
-                                                          std::string message) {
+  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
+      std::string blob_id, std::string message,
+      std::string policy_hash = "policy_hash") {
     BlobHeader header;
     header.set_blob_id(blob_id);
     header.set_key_id(key_id_);
+    header.set_access_policy_sha256(policy_hash);
     std::string associated_data = header.SerializeAsString();
 
     MessageEncryptor encryptor;
@@ -1312,7 +1316,7 @@ class InitializedConfidentialTransformServerBaseTestWithKms
 };
 
 TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
-       SessionDecryptsBlob) {
+       SessionDecryptsBlobSuccess) {
   std::string message = "test data";
   auto mock_session =
       std::make_unique<confidential_federated_compute::MockSession>();
@@ -1339,6 +1343,34 @@ TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
   ASSERT_TRUE(stream_->Read(&response));
   ASSERT_EQ(response.write().status().code(), grpc::OK);
   ASSERT_EQ(response.write().committed_size_bytes(), message.size());
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
+       SessionDecryptsBlobInvalidPolicyHash) {
+  std::string message = "test data";
+  auto mock_session =
+      std::make_unique<confidential_federated_compute::MockSession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys("blob_id", message, "invalid_hash");
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 }  // namespace

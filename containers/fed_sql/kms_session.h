@@ -48,6 +48,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::shared_ptr<InferenceModel> inference_model,
       absl::string_view sensitive_values_key,
       std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash,
       std::shared_ptr<PrivateState> private_state,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle);
 
@@ -124,6 +125,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::string_view sensitive_values_key_;
   // The reencryption keys used to re-encrypt the intermediate and final blobs.
   std::vector<std::string> reencryption_keys_;
+  // The policy hash used to re-encrypt the intermediate and final blobs with.
+  std::string reencryption_policy_hash_;
   // SQL query results that will be accumulated the next time SessionCommit is
   // called.
   std::vector<UncommittedInput> uncommitted_inputs_;

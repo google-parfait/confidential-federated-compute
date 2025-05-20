@@ -56,7 +56,8 @@ class FedSqlConfidentialTransform final
   absl::Status StreamInitializeTransformWithKms(
       const google::protobuf::Any& configuration,
       const google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys) override;
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash) override;
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
@@ -107,8 +108,10 @@ class FedSqlConfidentialTransform final
   absl::flat_hash_map<std::string, WriteConfigurationMetadata>
       write_configuration_map_;
   // Reencryption keys for the resultant outputs.
-  // These are only required when KMS is enabled for this worker.
+  // The below fields are only set when KMS is enabled for this worker.
   std::optional<std::vector<std::string>> reencryption_keys_;
+  // The policy hash used to re-encrypt the intermediate and final blobs with.
+  std::optional<std::string> reencryption_policy_hash_;
   // Initial private state shared between all sessions.
   std::shared_ptr<PrivateState> private_state_;
   // The signing key handle used to sign the final results.

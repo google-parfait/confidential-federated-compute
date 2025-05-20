@@ -69,7 +69,8 @@ class ConfidentialTransformBase
   virtual absl::Status StreamInitializeTransformWithKms(
       const ::google::protobuf::Any& configuration,
       const ::google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys) {
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash) {
     return absl::OkStatus();
   };
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a

@@ -144,7 +144,8 @@ KmsFedSqlSession CreateDefaultSession() {
       "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
-      CreatePrivateState("", 1), mock_signing_key_handle);
+      "reencryption_policy_hash", CreatePrivateState("", 1),
+      mock_signing_key_handle);
 }
 
 void StoreBigEndian(void* p, uint64_t num) {
@@ -278,7 +279,8 @@ class KmsFedSqlSessionWriteTest : public Test {
         "sensitive_values_key",
         std::vector<std::string>{merge_public_private_key_pair.first,
                                  report_public_private_key_pair.first},
-        CreatePrivateState("", 1), mock_signing_key_handle_);
+        "reencryption_policy_hash", CreatePrivateState("", 1),
+        mock_signing_key_handle_);
     SessionRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -311,6 +313,7 @@ class KmsFedSqlSessionWriteTest : public Test {
     blob_header.ParseFromString(metadata.hpke_plus_aead_data()
                                     .kms_symmetric_key_associated_data()
                                     .record_header());
+    CHECK(blob_header.access_policy_sha256() == "reencryption_policy_hash");
     auto decrypted = message_decryptor_->Decrypt(
         ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
         metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
