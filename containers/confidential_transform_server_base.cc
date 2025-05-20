@@ -116,7 +116,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         const InitializeRequest& initialize_request =
             request.initialize_request();
         max_num_sessions = initialize_request.max_num_sessions();
-        // TODO: Implement a better solution to allow unit testing without KMS.
+
         kms_enabled_ = initialize_request.has_protected_response() &&
                        oak_encryption_key_handle_ != nullptr;
         if (kms_enabled_) {
@@ -246,12 +246,12 @@ absl::Status ConfidentialTransformBase::SessionInternal(
       CreateSession());
   FCP_RETURN_IF_ERROR(session->ConfigureSession(configure_request));
   SessionResponse configure_response;
+  auto* configure = configure_response.mutable_configure();
   std::optional<NonceChecker> nonce_checker = std::nullopt;
   // Nonces only need to be verified for the legacy ledger.
   if (!kms_enabled_) {
     nonce_checker = NonceChecker();
-    *configure_response.mutable_configure()->mutable_nonce() =
-        nonce_checker->GetSessionNonce();
+    *configure->mutable_nonce() = nonce_checker->GetSessionNonce();
   }
   stream->Write(configure_response);
 

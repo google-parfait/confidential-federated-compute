@@ -17,6 +17,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "cc/containers/sdk/encryption_key_handle.h"
 #include "containers/confidential_transform_test_concat/confidential_transform_server.h"
 #include "containers/oak_orchestrator_client.h"
 #include "grpcpp/channel.h"
@@ -33,6 +34,7 @@ namespace {
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::Orchestrator;
+using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
 using ::oak::containers::v1::OrchestratorCrypto;
 
 void RunServer() {
@@ -41,7 +43,9 @@ void RunServer() {
       CreateOakOrchestratorChannel();
 
   OrchestratorCrypto::Stub orchestrator_crypto_stub(orchestrator_channel);
-  TestConcatConfidentialTransform service(&orchestrator_crypto_stub);
+  TestConcatConfidentialTransform service(
+      &orchestrator_crypto_stub,
+      std::make_unique<InstanceEncryptionKeyHandle>());
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
