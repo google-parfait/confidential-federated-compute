@@ -137,6 +137,11 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             return absl::InvalidArgumentError(
                 "Failed to parse AssociatedData from decrypted data.");
           }
+          if (associated_data
+                  .authorized_logical_pipeline_policies_hashes_size() == 0) {
+            return absl::InvalidArgumentError(
+                "Expected at least one policy hash but none were supplied.");
+          }
           for (const auto& policy_hash :
                associated_data.authorized_logical_pipeline_policies_hashes()) {
             authorized_logical_pipeline_policies_hashes.insert(policy_hash);

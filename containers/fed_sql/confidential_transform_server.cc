@@ -342,8 +342,8 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
   FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(fed_sql_config));
   FCP_RETURN_IF_ERROR(ValidateConfigConstraints(fed_sql_config_constraints));
 
-  // TODO: pass access budget from fed_sql_config_constraints
-  FCP_RETURN_IF_ERROR(InitializePrivateState(AccessBudget{}));
+  FCP_RETURN_IF_ERROR(
+      InitializePrivateState(fed_sql_config_constraints.access_budget()));
 
   if (fed_sql_config.has_inference_init_config()) {
     FCP_RETURN_IF_ERROR(

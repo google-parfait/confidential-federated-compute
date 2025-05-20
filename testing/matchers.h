@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/util/message_differencer.h"
+#include "google/rpc/status.pb.h"
 #include "grpcpp/support/status.h"
 #include "testing/parse_text_proto.h"
 
@@ -44,6 +45,9 @@ inline bool IsCode(absl::Status const& x, absl::StatusCode code) {
 inline bool IsCode(grpc::Status const& x, absl::StatusCode code) {
   return static_cast<absl::StatusCode>(x.error_code()) == code;
 }
+inline bool IsCode(google::rpc::Status const& x, absl::StatusCode code) {
+  return static_cast<absl::StatusCode>(x.code()) == code;
+}
 
 inline void Describe(::testing::MatchResultListener* listener,
                      const absl::StatusCode& x) {
@@ -58,6 +62,11 @@ inline void Describe(::testing::MatchResultListener* listener,
   *listener << absl::StatusCodeToString(
                    static_cast<absl::StatusCode>(x.error_code()))
             << " : " << x.error_message();
+}
+inline void Describe(::testing::MatchResultListener* listener,
+                     const google::rpc::Status& x) {
+  *listener << absl::StatusCodeToString(static_cast<absl::StatusCode>(x.code()))
+            << " : " << x.message();
 }
 template <typename T>
 inline void Describe(::testing::MatchResultListener* listener,
