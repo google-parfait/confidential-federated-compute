@@ -71,11 +71,7 @@ class ProgramExecutorTeeConfidentialTransform final
 
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    // TODO: Additional information necessary for the ledger to verify the
-    // identity of the program should eventually be returned in this struct.
-    return google::protobuf::Struct();
-  }
+      const fcp::confidentialcompute::InitializeRequest* request) override;
   virtual absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {

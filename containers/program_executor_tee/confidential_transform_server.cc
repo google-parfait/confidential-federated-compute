@@ -33,15 +33,18 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::protobuf::Struct;
 
 absl::Status ProgramExecutorTeeSession::ConfigureSession(
     fcp::confidentialcompute::SessionRequest configure_request) {
@@ -105,4 +108,20 @@ async def trusted_program(release_manager):
 
   return response;
 }
+
+absl::StatusOr<google::protobuf::Struct>
+ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
+    const fcp::confidentialcompute::InitializeRequest* request) {
+  ProgramExecutorTeeInitializeConfig config;
+  if (!request->configuration().UnpackTo(&config)) {
+    return absl::InvalidArgumentError(
+        "ProgramExecutorTeeInitializeConfig cannot be unpacked.");
+  }
+
+  Struct config_properties;
+  (*config_properties.mutable_fields())["program"].set_string_value(
+      config.program());
+  return config_properties;
+}
+
 }  // namespace confidential_federated_compute::program_executor_tee

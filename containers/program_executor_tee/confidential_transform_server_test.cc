@@ -31,6 +31,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
@@ -53,6 +54,7 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
+using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
@@ -135,30 +137,39 @@ class ProgramExecutorTeeTest : public Test {
   std::unique_ptr<Server> fake_data_read_write_server_;
 };
 
-TEST_F(ProgramExecutorTeeTest, ValidStreamInitialize) {
+TEST_F(ProgramExecutorTeeTest, InvalidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;
   StreamInitializeRequest request;
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+  InitializeRequest* initialize_request = request.mutable_initialize_request();
+  initialize_request->set_max_num_sessions(kMaxNumSessions);
+
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+  ASSERT_TRUE(writer->Write(request));
+  ASSERT_TRUE(writer->WritesDone());
+  grpc::Status status = writer->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+  StreamInitializeRequest request;
+
+  ProgramExecutorTeeInitializeConfig config;
+  config.set_program("fake_program");
+
+  InitializeRequest* initialize_request = request.mutable_initialize_request();
+  initialize_request->set_max_num_sessions(kMaxNumSessions);
+  initialize_request->mutable_configuration()->PackFrom(config);
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(request));
   ASSERT_TRUE(writer->WritesDone());
   ASSERT_TRUE(writer->Finish().ok());
-}
-
-TEST_F(ProgramExecutorTeeTest, SessionEmptyConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
-  InitializeResponse response;
-  StreamInitializeRequest request;
-  request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&configure_context, &response);
-  CHECK(writer->Write(request));
-  CHECK(writer->WritesDone());
-  CHECK(writer->Finish().ok());
 
   grpc::ClientContext session_context;
   SessionRequest session_request;
@@ -180,7 +191,14 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
     grpc::ClientContext configure_context;
     InitializeResponse response;
     StreamInitializeRequest request;
-    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+
+    ProgramExecutorTeeInitializeConfig config;
+    config.set_program("fake_program");
+
+    InitializeRequest* initialize_request =
+        request.mutable_initialize_request();
+    initialize_request->set_max_num_sessions(kMaxNumSessions);
+    initialize_request->mutable_configuration()->PackFrom(config);
 
     std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
         stub_->StreamInitialize(&configure_context, &response);
