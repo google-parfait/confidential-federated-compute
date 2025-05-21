@@ -84,8 +84,11 @@ class TestConcatConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   TestConcatConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : ConfidentialTransformBase(crypto_stub) {};
+      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+      std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
+          encryption_key_handle = nullptr)
+      : ConfidentialTransformBase(crypto_stub,
+                                  std::move(encryption_key_handle)) {};
 
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(

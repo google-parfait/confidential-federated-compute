@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
@@ -70,6 +71,7 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@oak//cc/containers/sdk:encryption_key_handle",
         "@oak//proto/containers:interfaces_cc_grpc",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
