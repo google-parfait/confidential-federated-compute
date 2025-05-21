@@ -151,6 +151,7 @@ cc_test(
     size = "small",
     srcs = ["confidential_transform_server_test.cc"],
     deps = [
+        ":budget_cc_proto",
         ":confidential_transform_server",
         ":inference_model",
         "//containers:blob_metadata",
@@ -284,6 +285,7 @@ cc_test(
     size = "small",
     srcs = ["kms_session_test.cc"],
     deps = [
+        ":budget_cc_proto",
         ":inference_model",
         ":kms_session",
         ":private_state",
