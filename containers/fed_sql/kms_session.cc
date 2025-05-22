@@ -20,9 +20,11 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "containers/big_endian.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/private_state.h"
@@ -226,72 +228,119 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
     return absl::FailedPreconditionError("The aggregator is already released.");
   }
 
-  // In case of an error with MergeWith, the session is terminated, since we
-  // can't guarantee that the aggregator is in a valid state. If this changes,
-  // consider changing this logic to no longer return an error.
   switch (write_config.type()) {
     case AGGREGATION_TYPE_ACCUMULATE: {
-      // TODO: Use
-      // https://github.com/google-parfait/federated-compute/blob/main/fcp/base/scheduler.h
-      // to asynchronously handle deserializing the checkpoint when it is
-      // initially written to the session.
-      FederatedComputeCheckpointParserFactory parser_factory;
-      absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
-          parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
-      if (!parser.ok()) {
-        return ToSessionWriteFinishedResponse(
-            absl::Status(parser.status().code(),
-                         absl::StrCat("Failed to deserialize checkpoint for "
-                                      "AGGREGATION_TYPE_ACCUMULATE: ",
-                                      parser.status().message())));
-      }
-      if (sql_configuration_ != std::nullopt) {
-        absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
-            ExecuteClientQuery(*sql_configuration_, parser->get());
-        if (!sql_result_parser.ok()) {
-          return ToSessionWriteFinishedResponse(
-              absl::Status(sql_result_parser.status().code(),
-                           absl::StrCat("Failed to execute SQL query: ",
-                                        sql_result_parser.status().message())));
-        }
-        parser = std::move(sql_result_parser);
-      }
-
-      // Queue the blob so it can be processed on commit.
-      uncommitted_inputs_.push_back(
-          {.parser = std::move(*parser),
-           .metadata = write_request.first_request_metadata()});
-      break;
+      return SessionAccumulate(write_request.first_request_metadata(),
+                               std::move(unencrypted_data));
     }
     case AGGREGATION_TYPE_MERGE: {
-      //  Merges can be immediately processed.
-      FCP_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
-                           UnbundleRangeTracker(unencrypted_data));
-      if (!range_tracker_.Merge(other_range_tracker)) {
-        return absl::FailedPreconditionError(
-            "Failed to merge due to conflicting ranges.");
-      }
-
-      absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
-          CheckpointAggregator::Deserialize(&intrinsics_,
-                                            std::move(unencrypted_data));
-      if (!other.ok()) {
-        return ToSessionWriteFinishedResponse(
-            absl::Status(other.status().code(),
-                         absl::StrCat("Failed to deserialize checkpoint for "
-                                      "AGGREGATION_TYPE_MERGE: ",
-                                      other.status().message())));
-      }
-      FCP_RETURN_IF_ERROR(aggregator_->MergeWith(std::move(*other.value())));
-      break;
+      return SessionMerge(write_request.first_request_metadata(),
+                          std::move(unencrypted_data));
     }
     default:
       return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
           "AggCoreAggregationType must be specified."));
   }
-  return ToSessionWriteFinishedResponse(
-      absl::OkStatus(),
-      write_request.first_request_metadata().total_size_bytes());
+}
+
+template <typename T>
+absl::Status PrependMessage(T message, const absl::Status& status) {
+  return absl::Status(status.code(), absl::StrCat(message, status.message()));
+}
+
+absl::StatusOr<fcp::confidentialcompute::SessionResponse>
+KmsFedSqlSession::SessionAccumulate(
+    const fcp::confidentialcompute::BlobMetadata& metadata,
+    std::string unencrypted_data) {
+  // TODO: Use
+  // https://github.com/google-parfait/federated-compute/blob/main/fcp/base/scheduler.h
+  // to asynchronously handle deserializing the checkpoint when it is
+  // initially written to the session.
+  BlobHeader blob_header;
+  // The metadata is expected to has encryption with KMS.
+  if (!metadata.has_hpke_plus_aead_data() ||
+      !metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
+    // Not having this indicates a problem with the configuration, which means
+    // the session should be aborted.
+    return absl::InternalError(
+        "Unexpected blob metadata: must have encryption with KMS.");
+  }
+
+  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                       .kms_symmetric_key_associated_data()
+                                       .record_header())) {
+    return ToSessionWriteFinishedResponse(
+        absl::InvalidArgumentError("Failed to parse blob header"));
+  }
+
+  // Check if there is a budget for the bucket associated with the
+  // blob key.
+  if (!private_state_->budget.HasRemainingBudget(blob_header.key_id())) {
+    return ToSessionWriteFinishedResponse(
+        absl::FailedPreconditionError("No budget remaining."));
+  }
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
+      parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
+  if (!parser.ok()) {
+    return ToSessionWriteFinishedResponse(PrependMessage(
+        "Failed to deserialize checkpoint for AGGREGATION_TYPE_ACCUMULATE: ",
+        parser.status()));
+  }
+  if (sql_configuration_ != std::nullopt) {
+    absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
+        ExecuteClientQuery(*sql_configuration_, parser->get());
+    if (!sql_result_parser.ok()) {
+      return ToSessionWriteFinishedResponse(PrependMessage(
+          "Failed to execute SQL query: ", sql_result_parser.status()));
+    }
+    parser = std::move(sql_result_parser);
+  }
+  // Queue the blob so it can be processed on commit.
+  auto blob_id = LoadBigEndian<absl::uint128>(blob_header.blob_id());
+  auto [unused, inserted] = uncommitted_inputs_.emplace(
+      blob_id, UncommittedInput{.parser = std::move(*parser),
+                                .blob_header = std::move(blob_header)});
+  if (!inserted) {
+    return ToSessionWriteFinishedResponse(
+        absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
+  }
+
+  return ToSessionWriteFinishedResponse(absl::OkStatus(),
+                                        metadata.total_size_bytes());
+}
+
+absl::StatusOr<fcp::confidentialcompute::SessionResponse>
+KmsFedSqlSession::SessionMerge(
+    const fcp::confidentialcompute::BlobMetadata& metadata,
+    std::string unencrypted_data) {
+  //  Merges can be immediately processed.
+  FCP_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
+                       UnbundleRangeTracker(unencrypted_data));
+  if (!range_tracker_.Merge(other_range_tracker)) {
+    return absl::FailedPreconditionError(
+        "Failed to merge due to conflicting ranges.");
+  }
+
+  absl::StatusOr<std::unique_ptr<CheckpointAggregator>> other =
+      CheckpointAggregator::Deserialize(&intrinsics_,
+                                        std::move(unencrypted_data));
+  if (!other.ok()) {
+    return ToSessionWriteFinishedResponse(PrependMessage(
+        "Failed to deserialize checkpoint for AGGREGATION_TYPE_MERGE: ",
+        other.status()));
+  }
+  // In case of an error with MergeWith, the session is terminated, since we
+  // can't guarantee that the aggregator is in a valid state. If this changes,
+  // consider changing this logic to no longer return an error.
+  absl::Status merge_status = aggregator_->MergeWith(std::move(*other.value()));
+  if (!merge_status.ok()) {
+    LOG(ERROR) << "CheckpointAggregator::MergeWith failed: " << merge_status;
+    return merge_status;
+  }
+  return ToSessionWriteFinishedResponse(absl::OkStatus(),
+                                        metadata.total_size_bytes());
 }
 
 absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
@@ -307,20 +356,9 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
 
   absl::flat_hash_set<std::string> unique_key_ids;
 
-  for (UncommittedInput& uncommitted_input : uncommitted_inputs_) {
-    if (uncommitted_input.metadata.has_hpke_plus_aead_data()) {
-      // Assume that encrypted blobs are using the KMS option.
-      CHECK(uncommitted_input.metadata.hpke_plus_aead_data()
-                .has_kms_symmetric_key_associated_data());
-      // Assume that parsing blob headers succeeds because earlier part
-      // of processing depends on that.
-      BlobHeader blob_header;
-      CHECK(blob_header.ParseFromString(
-          uncommitted_input.metadata.hpke_plus_aead_data()
-              .kms_symmetric_key_associated_data()
-              .record_header()));
-
-      unique_key_ids.insert(blob_header.key_id());
+  for (auto& [blob_id, uncommitted_input] : uncommitted_inputs_) {
+    if (!uncommitted_input.blob_header.key_id().empty()) {
+      unique_key_ids.insert(uncommitted_input.blob_header.key_id());
       // TODO: also make sure that the blob ID is in the range
       // and that all blob IDs are unique.
     }
@@ -390,24 +428,22 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
             "This may be because inputs were ignored due to an earlier error.");
       }
 
-      // Extract unecrypted checkpoint from the aggregator.
+      // Extract unencrypted checkpoint from the aggregator.
       // Using the scope below ensures that both CheckpointBuilder and Cord
       // are promptly deleted.
-      std::string unencrypted_result;
+      absl::Cord checkpoint_cord;
       {
         FederatedComputeCheckpointBuilderFactory builder_factory;
         std::unique_ptr<CheckpointBuilder> checkpoint_builder =
             builder_factory.Create();
         FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
         aggregator_.reset();
-        FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord,
-                             checkpoint_builder->Build());
-        absl::CopyCordToString(checkpoint_cord, &unencrypted_result);
+        FCP_ASSIGN_OR_RETURN(checkpoint_cord, checkpoint_builder->Build());
       }
 
       // Encrypt the final result.
       FCP_ASSIGN_OR_RETURN(auto encrypted_result,
-                           EncryptFinalResult(unencrypted_result));
+                           EncryptFinalResult(checkpoint_cord.Flatten()));
       result_metadata = std::move(encrypted_result.metadata);
       result = std::move(encrypted_result.ciphertext);
       final_result_configuration =

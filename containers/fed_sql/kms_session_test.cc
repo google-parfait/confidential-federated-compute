@@ -18,7 +18,9 @@
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
+#include "containers/big_endian.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/private_state.h"
@@ -149,24 +151,11 @@ KmsFedSqlSession CreateDefaultSession() {
       mock_signing_key_handle);
 }
 
-void StoreBigEndian(void* p, uint64_t num) {
-  // Assume that the current system is little endian
-  // and swap bytes individually to convert to big endian.
-  uint8_t* b = reinterpret_cast<uint8_t*>(&num);
-  std::swap(b[0], b[7]);
-  std::swap(b[1], b[6]);
-  std::swap(b[2], b[5]);
-  std::swap(b[3], b[4]);
-  memcpy(p, &num, sizeof(uint64_t));
-}
-
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
                               absl::string_view key_id) {
-  std::string binary_blob_id(16, '\0');
-  StoreBigEndian(binary_blob_id.data(), blob_id);
-
   BlobHeader blob_header;
-  *blob_header.mutable_blob_id() = std::move(binary_blob_id);
+  *blob_header.mutable_blob_id() =
+      StoreBigEndian(absl::MakeUint128(blob_id, 0));
   *blob_header.mutable_key_id() = std::string(key_id);
 
   BlobMetadata metadata;
@@ -370,15 +359,15 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   *write_request2.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 2, "key_bar");
 
-  auto write_result_1 = session_->SessionWrite(write_request1, data);
-  EXPECT_OK(write_result_1);
-  EXPECT_OK(write_result_1.value().write().status());
-  EXPECT_THAT(write_result_1.value().write().committed_size_bytes(),
+  auto write_result1 = session_->SessionWrite(write_request1, data);
+  EXPECT_OK(write_result1);
+  EXPECT_OK(write_result1.value().write().status());
+  EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(data.size()));
-  auto write_result_2 = session_->SessionWrite(write_request2, data);
-  EXPECT_OK(write_result_2);
-  EXPECT_OK(write_result_2.value().write().status());
-  EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
+  auto write_result2 = session_->SessionWrite(write_request2, data);
+  EXPECT_OK(write_result2);
+  EXPECT_OK(write_result2.value().write().status());
+  EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(data.size()));
 
   CommitRequest commit_request;
@@ -435,29 +424,32 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
-  WriteRequest write_request;
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
-  write_request.mutable_first_request_configuration()->PackFrom(config);
-  *write_request.mutable_first_request_metadata() =
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 1, "key_foo");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 2, "key_foo");
 
-  // Write the same unencrypted checkpoint twice.
-  auto write_result_1 = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result_1);
-  EXPECT_OK(write_result_1.value().write().status());
-  EXPECT_THAT(write_result_1.value().write().committed_size_bytes(),
+  auto write_result1 = session_->SessionWrite(write_request1, data);
+  EXPECT_OK(write_result1);
+  EXPECT_OK(write_result1.value().write().status());
+  EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(data.size()));
-  auto write_result_2 = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result_2);
-  EXPECT_OK(write_result_2.value().write().status());
-  EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
+  auto write_result2 = session_->SessionWrite(write_request2, data);
+  EXPECT_OK(write_result2);
+  EXPECT_OK(write_result2.value().write().status());
+  EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(data.size()));
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
-    range { start: 1 end: 2 }
+    range { start: 1 end: 3 }
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   auto commit_response = session_->SessionCommit(commit_request);
@@ -509,14 +501,54 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   auto result_data = Decrypt(actual_metadata, ciphertext);
 
   FederatedComputeCheckpointParserFactory parser_factory;
-  absl::Cord wire_format_result(result_data);
-  auto parser = parser_factory.Create(wire_format_result);
+  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  EXPECT_OK(parser);
   auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles each input and the aggregation sums the
   // input column
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+  EXPECT_EQ(col_values->num_elements(), 1);
+  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfBlobWithNoBudgetFails) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  // "key_baz" bucket has zero budget
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_baz");
+  auto write_result = session_->SessionWrite(write_request, data);
+  EXPECT_OK(write_result);
+  EXPECT_THAT(write_result.value().write().status(),
+              IsCode(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(write_result.value().write().status().message(),
+              HasSubstr("No budget remaining"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  auto write_result = session_->SessionWrite(write_request, data);
+  EXPECT_OK(write_result);
+  EXPECT_OK(write_result.value().write().status());
+
+  // Submitting the same request again should fail due to duplicating blob ID.
+  write_result = session_->SessionWrite(write_request, data);
+  EXPECT_OK(write_result);
+  EXPECT_THAT(write_result.value().write().status(),
+              IsCode(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(write_result.value().write().status().message(),
+              HasSubstr("Blob rejected due to duplicate ID"));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
@@ -603,15 +635,15 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
   *write_request2.mutable_first_request_metadata() =
       MakeBlobMetadata(blob2, 2, "");
 
-  auto write_result_1 = session_->SessionWrite(write_request1, blob1);
-  EXPECT_OK(write_result_1);
-  EXPECT_OK(write_result_1.value().write().status());
-  EXPECT_THAT(write_result_1.value().write().committed_size_bytes(),
+  auto write_result1 = session_->SessionWrite(write_request1, blob1);
+  EXPECT_OK(write_result1);
+  EXPECT_OK(write_result1.value().write().status());
+  EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(blob1.size()));
-  auto write_result_2 = session_->SessionWrite(write_request2, blob2);
-  EXPECT_OK(write_result_2);
-  EXPECT_OK(write_result_2.value().write().status());
-  EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
+  auto write_result2 = session_->SessionWrite(write_request2, blob2);
+  EXPECT_OK(write_result2);
+  EXPECT_OK(write_result2.value().write().status());
+  EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(blob2.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
@@ -685,22 +717,20 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   *write_request2.mutable_first_request_metadata() =
       MakeBlobMetadata(blob2, 2, "key_foo");
 
-  // Write the same unencrypted checkpoint twice.
-  auto write_result_1 = session_->SessionWrite(write_request1, blob1);
-  EXPECT_OK(write_result_1);
-  EXPECT_OK(write_result_1.value().write().status());
-  EXPECT_THAT(write_result_1.value().write().committed_size_bytes(),
+  auto write_result1 = session_->SessionWrite(write_request1, blob1);
+  EXPECT_OK(write_result1);
+  EXPECT_OK(write_result1.value().write().status());
+  EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(blob1.size()));
-  auto write_result_2 = session_->SessionWrite(write_request2, blob2);
-  EXPECT_OK(write_result_2);
-  EXPECT_OK(write_result_2.value().write().status());
-  EXPECT_THAT(write_result_2.value().write().committed_size_bytes(),
+  auto write_result2 = session_->SessionWrite(write_request2, blob2);
+  EXPECT_OK(write_result2);
+  EXPECT_OK(write_result2.value().write().status());
+  EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(blob2.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
   )pb");
-
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
@@ -740,12 +770,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   std::string ciphertext = finalize_response->read().data();
   auto result_data = Decrypt(actual_metadata, ciphertext);
 
-  absl::Cord wire_format_result(result_data);
-  auto parser = parser_factory.Create(wire_format_result);
+  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  EXPECT_OK(parser);
   auto col_values = (*parser)->GetTensor("val_out");
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_EQ(col_values->num_elements(), 1);
+  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, CommitRangeConflict) {
@@ -809,24 +839,40 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeRangeConflict) {
               IsCode(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitBudgetExhausted) {
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
-  WriteRequest write_request;
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-  write_request.mutable_first_request_configuration()->PackFrom(config);
-  // "key_baz" bucket has zero budget
-  *write_request.mutable_first_request_metadata() =
-      MakeBlobMetadata(data, 1, "key_baz");
-  EXPECT_OK(session_->SessionWrite(write_request, data));
+TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> input_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
 
-  CommitRequest commit_request;
-  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
-    range { start: 1 end: 2 }
+  std::string data = (std::move(*input_aggregator).Serialize()).value();
+
+  // Use two buckets "key_bar" and "key_baz" the second of which has
+  // no budget.
+  RangeTracker range_tracker1;
+  range_tracker1.AddRange("key_bar", 1, 2);
+  std::string blob1 = BundleRangeTracker(data, range_tracker1);
+  RangeTracker range_tracker2;
+  range_tracker2.AddRange("key_baz", 2, 3);
+  std::string blob2 = BundleRangeTracker(data, range_tracker2);
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE
   )pb");
-  commit_request.mutable_configuration()->PackFrom(commit_config);
-  EXPECT_OK(session_->SessionCommit(commit_request));
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob1, 1, "key_bar");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob2, 2, "key_baz");
+
+  EXPECT_OK(session_->SessionWrite(write_request1, blob1));
+  EXPECT_OK(session_->SessionWrite(write_request2, blob2));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT

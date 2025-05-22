@@ -210,3 +210,22 @@ cc_test(
         "@oak//cc/crypto:encryption_key",
     ],
 )
+
+cc_library(
+    name = "big_endian",
+    hdrs = ["big_endian.h"],
+    deps = [
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/numeric:int128",
+    ],
+)
+
+cc_test(
+    name = "big_endian_test",
+    srcs = ["big_endian_test.cc"],
+    deps = [
+        ":big_endian",
+        "@com_google_absl//absl/numeric:int128",
+        "@googletest//:gtest_main",
+    ],
+)
