@@ -75,6 +75,7 @@ cc_test(
         "//containers:blob_metadata",
         "//containers:crypto",
         "//containers:crypto_test_utils",
+        "//containers/program_executor_tee/program_context/cc:fake_data_read_write_service",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
