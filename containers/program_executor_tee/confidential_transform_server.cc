@@ -59,27 +59,6 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::SessionWrite(
 
 absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
     const FinalizeRequest& request, const BlobMetadata& input_metadata) {
-  // TODO: Run the program in the config provided at initialization time,
-  // instead of using a hardcoded program.
-  auto program = R"(
-import federated_language
-import numpy as np
-
-async def trusted_program(release_manager):
-
-  client_data_type = federated_language.FederatedType(
-      np.int32, federated_language.CLIENTS
-  )
-
-  @federated_language.federated_computation(client_data_type)
-  def my_comp(client_data):
-    return federated_language.federated_sum(client_data)
-
-  result = await my_comp([1, 2])
-
-  await release_manager.release(result, "result1")
-  )";
-
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
 
@@ -92,8 +71,10 @@ async def trusted_program(release_manager):
             .attr("run_program");
 
     // Schedule execution of the program as a Task.
-    pybind11::object task = pybind11::module::import("asyncio").attr(
-        "ensure_future")(run_program(program, kDataReadWriteServicePort));
+    pybind11::object task =
+        pybind11::module::import("asyncio").attr("ensure_future")(
+            run_program(initialize_config_.program(),
+                        initialize_config_.outgoing_server_port()));
 
     // Run the task in the event loop and get the result.
     pybind11::object loop =
@@ -117,10 +98,11 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
     return absl::InvalidArgumentError(
         "ProgramExecutorTeeInitializeConfig cannot be unpacked.");
   }
+  initialize_config_ = std::move(config);
 
   Struct config_properties;
   (*config_properties.mutable_fields())["program"].set_string_value(
-      config.program());
+      initialize_config_.program());
   return config_properties;
 }
 

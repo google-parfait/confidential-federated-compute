@@ -26,6 +26,7 @@
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
@@ -33,15 +34,14 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
-// TODO: Determine the port of the DataReadWrite service from the config
-// provided at initialization time, instead of using a hardcoded port.
-inline constexpr int kDataReadWriteServicePort = 500051;
-
 // Program executor TEE implementation of Session interface. Not threadsafe.
 class ProgramExecutorTeeSession final
     : public confidential_federated_compute::Session {
  public:
-  ProgramExecutorTeeSession() {};
+  ProgramExecutorTeeSession(
+      fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
+          initialize_config)
+      : initialize_config_(initialize_config) {}
 
   // Configures a minimal session.
   absl::Status ConfigureSession(
@@ -59,6 +59,11 @@ class ProgramExecutorTeeSession final
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,
       const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+
+ private:
+  // Initialization config.
+  fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
+      initialize_config_;
 };
 
 // ConfidentialTransform service for program executor TEE.
@@ -81,8 +86,13 @@ class ProgramExecutorTeeConfidentialTransform final
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override {
-    return std::make_unique<ProgramExecutorTeeSession>();
+    return std::make_unique<ProgramExecutorTeeSession>(initialize_config_);
   }
+
+ private:
+  // Initialization config.
+  fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
+      initialize_config_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

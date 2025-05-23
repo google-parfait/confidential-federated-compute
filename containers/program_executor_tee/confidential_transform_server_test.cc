@@ -115,13 +115,13 @@ class ProgramExecutorTeeTest : public Test {
                             grpc::InsecureChannelCredentials()));
 
     ServerBuilder data_read_write_builder;
-    data_read_write_builder.AddListeningPort(
-        server_address + std::to_string(kDataReadWriteServicePort),
-        grpc::InsecureServerCredentials());
+    data_read_write_builder.AddListeningPort(server_address + "0",
+                                             grpc::InsecureServerCredentials(),
+                                             &data_read_write_service_port_);
     data_read_write_builder.RegisterService(&fake_data_read_write_service_);
     fake_data_read_write_server_ = data_read_write_builder.BuildAndStart();
     LOG(INFO) << "DataReadWrite server listening on "
-              << server_address + std::to_string(kDataReadWriteServicePort)
+              << server_address + std::to_string(data_read_write_service_port_)
               << std::endl;
   }
 
@@ -133,6 +133,7 @@ class ProgramExecutorTeeTest : public Test {
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 
+  int data_read_write_service_port_;
   FakeDataReadWriteService fake_data_read_write_service_;
   std::unique_ptr<Server> fake_data_read_write_server_;
 };
@@ -160,6 +161,7 @@ TEST_F(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
 
   ProgramExecutorTeeInitializeConfig config;
   config.set_program("fake_program");
+  config.set_outgoing_server_port(data_read_write_service_port_);
 
   InitializeRequest* initialize_request = request.mutable_initialize_request();
   initialize_request->set_max_num_sessions(kMaxNumSessions);
@@ -193,7 +195,25 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
     StreamInitializeRequest request;
 
     ProgramExecutorTeeInitializeConfig config;
-    config.set_program("fake_program");
+    config.set_program(R"(
+import federated_language
+import numpy as np
+
+async def trusted_program(release_manager):
+
+  client_data_type = federated_language.FederatedType(
+      np.int32, federated_language.CLIENTS
+  )
+
+  @federated_language.federated_computation(client_data_type)
+  def my_comp(client_data):
+    return federated_language.federated_sum(client_data)
+
+  result = await my_comp([1, 2])
+
+  await release_manager.release(result, "result1")
+  )");
+    config.set_outgoing_server_port(data_read_write_service_port_);
 
     InitializeRequest* initialize_request =
         request.mutable_initialize_request();
