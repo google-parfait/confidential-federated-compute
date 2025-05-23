@@ -41,6 +41,19 @@ pybind_extension(
 )
 
 cc_library(
+    name = "fake_data_read_write_service",
+    testonly = True,
+    srcs = ["fake_data_read_write_service.cc"],
+    hdrs = ["fake_data_read_write_service.h"],
+    visibility = ["//containers/program_executor_tee:__subpackages__"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+    ],
+)
+
+cc_library(
     name = "noise_client_session",
     srcs = ["noise_client_session.cc"],
     hdrs = ["noise_client_session.h"],

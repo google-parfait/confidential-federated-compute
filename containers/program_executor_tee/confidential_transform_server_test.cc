@@ -25,6 +25,7 @@
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -67,36 +68,6 @@ using ::testing::HasSubstr;
 using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
-
-// Fake DataReadWrite service that records call args and returns empty
-// responses.
-class FakeDataReadWriteService
-    : public fcp::confidentialcompute::outgoing::DataReadWrite::Service {
- public:
-  grpc::Status Write(
-      ::grpc::ServerContext*,
-      ::grpc::ServerReader<fcp::confidentialcompute::outgoing::WriteRequest>*
-          request_reader,
-      fcp::confidentialcompute::outgoing::WriteResponse*) override {
-    // Append the stream of requests to write_call_args_.
-    std::vector<fcp::confidentialcompute::outgoing::WriteRequest> requests;
-    fcp::confidentialcompute::outgoing::WriteRequest request;
-    while (request_reader->Read(&request)) {
-      requests.push_back(request);
-    }
-    write_call_args_.push_back(requests);
-    return grpc::Status::OK;
-  }
-
-  std::vector<std::vector<fcp::confidentialcompute::outgoing::WriteRequest>>
-  getWriteCallArgs() {
-    return write_call_args_;
-  }
-
- private:
-  std::vector<std::vector<fcp::confidentialcompute::outgoing::WriteRequest>>
-      write_call_args_;
-};
 
 class ProgramExecutorTeeTest : public Test {
  public:
@@ -281,7 +252,7 @@ TEST_F(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
       ->set_blob_id("result1");
   expected_request.set_commit(true);
 
-  auto write_call_args = fake_data_read_write_service_.getWriteCallArgs();
+  auto write_call_args = fake_data_read_write_service_.GetWriteCallArgs();
   ASSERT_EQ(write_call_args.size(), 1);
   ASSERT_EQ(write_call_args[0].size(), 1);
   auto write_request = write_call_args[0][0];
