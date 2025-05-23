@@ -26,11 +26,22 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
+#include "proto/session/session.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
-// Helper class for creating a client session on the program executor
-class NoiseClientSession {
+// Interface for a noise client session that delegates computation requests to a
+// worker.
+class NoiseClientSessionInterface {
+ public:
+  virtual ~NoiseClientSessionInterface() = default;
+  virtual absl::StatusOr<oak::session::v1::PlaintextMessage>
+  DelegateComputation(
+      const oak::session::v1::PlaintextMessage& plaintext_request) = 0;
+};
+
+// Implementation of NoiseClientSessionInterface for program executor tee.
+class NoiseClientSession : public NoiseClientSessionInterface {
  public:
   // Creates a NoiseClientSession.
   static absl::StatusOr<std::unique_ptr<NoiseClientSession>> Create(

@@ -77,3 +77,56 @@ cc_test(
         "@oak//cc/oak_session:server_session",
     ],
 )
+
+cc_library(
+    name = "mock_noise_client_session",
+    testonly = True,
+    hdrs = ["mock_noise_client_session.h"],
+    deps = [
+        ":noise_client_session",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@googletest//:gtest_main",
+        "@oak//cc/oak_session:config",
+        "@oak//proto/session:session_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "computation_delegation_lambda_runner",
+    srcs = ["computation_delegation_lambda_runner.cc"],
+    hdrs = ["computation_delegation_lambda_runner.h"],
+    deps = [
+        ":noise_client_session",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:lambda_runner",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@oak//proto/session:session_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "computation_delegation_lambda_runner_test",
+    srcs = ["computation_delegation_lambda_runner_test.cc"],
+    deps = [
+        ":computation_delegation_lambda_runner",
+        ":mock_noise_client_session",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@googletest//:gtest_main",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
+    ],
+)
