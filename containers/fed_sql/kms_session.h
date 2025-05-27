@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -27,6 +29,7 @@
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/session.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -78,6 +81,15 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       const fcp::confidentialcompute::CommitRequest& commit_request) override;
 
  private:
+  // Handles AGGREGATION_TYPE_ACCUMULATE type of SessionWrite.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionAccumulate(
+      const fcp::confidentialcompute::BlobMetadata& metadata,
+      std::string unencrypted_data);
+  // Handles AGGREGATION_TYPE_MERGE type of SessionWrite.
+  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionMerge(
+      const fcp::confidentialcompute::BlobMetadata& metadata,
+      std::string unencrypted_data);
+
   // Configuration of the per-client SQL query step.
   struct SqlConfiguration {
     std::string query;
@@ -89,7 +101,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // A partially processed but uncommitted input, along with its metadata.
   struct UncommittedInput {
     std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser> parser;
-    const fcp::confidentialcompute::BlobMetadata metadata;
+    const fcp::confidentialcompute::BlobHeader blob_header;
   };
 
   // The encrypted intermediate or final result.
@@ -127,9 +139,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   std::vector<std::string> reencryption_keys_;
   // The policy hash used to re-encrypt the intermediate and final blobs with.
   std::string reencryption_policy_hash_;
-  // SQL query results that will be accumulated the next time SessionCommit is
-  // called.
-  std::vector<UncommittedInput> uncommitted_inputs_;
+  // Partially processed uncommitted inputs that will be accumulated the next
+  // time SessionCommit is called. Entries are keyed by Blob ID.
+  absl::flat_hash_map<absl::uint128, UncommittedInput> uncommitted_inputs_;
   // Tracks committed ranges of blobs for this session.
   RangeTracker range_tracker_;
   // Private state.
