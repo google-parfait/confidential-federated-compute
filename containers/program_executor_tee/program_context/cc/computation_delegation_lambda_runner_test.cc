@@ -74,16 +74,16 @@ Value GetTestLambdaFunction() {
 }
 
 TEST(ComputationDelegationLambdaRunnerTest, CreateSucceeds) {
-  auto mock_stub = new MockComputationDelegationStub();
+  auto mock_stub = std::make_unique<MockComputationDelegationStub>();
   auto runner = ComputationDelegationLambdaRunner::Create(
-      kWorkerBns, TestConfigAttestedNNClient(), mock_stub);
+      kWorkerBns, TestConfigAttestedNNClient(), mock_stub.get());
   EXPECT_OK(runner);
 }
 
 TEST(ComputationDelegationLambdaRunnerTest, CreateFailsWithEmptyWorkerBns) {
-  auto mock_stub = new MockComputationDelegationStub();
+  auto mock_stub = std::make_unique<MockComputationDelegationStub>();
   auto runner = ComputationDelegationLambdaRunner::Create(
-      "", TestConfigAttestedNNClient(), mock_stub);
+      "", TestConfigAttestedNNClient(), mock_stub.get());
   EXPECT_EQ(runner.status(),
             absl::InvalidArgumentError("Worker bns is empty."));
 }

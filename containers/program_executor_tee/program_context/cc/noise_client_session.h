@@ -68,7 +68,7 @@ class NoiseClientSession : public NoiseClientSessionInterface {
           stub)
       : worker_bns_(worker_bns),
         client_session_(std::move(client_session)),
-        stub_(std::move(stub)) {}
+        stub_(stub) {}
 
   absl::Status OpenSession();
 
@@ -80,8 +80,7 @@ class NoiseClientSession : public NoiseClientSessionInterface {
 
   const std::string worker_bns_;
   std::unique_ptr<oak::session::ClientSession> client_session_;
-  std::unique_ptr<
-      fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface>
+  fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
       stub_;
 };
 

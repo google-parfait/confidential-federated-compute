@@ -32,12 +32,12 @@ class ComputationDelegationLambdaRunner
       oak::session::SessionConfig* session_config,
       fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
           stub) {
-    if (worker_bns.empty()) {
-      return absl::InvalidArgumentError("Worker bns is empty.");
-    }
     FCP_ASSIGN_OR_RETURN(
         auto noise_client_session,
         NoiseClientSession::Create(worker_bns, session_config, stub));
+    if (worker_bns.empty()) {
+      return absl::InvalidArgumentError("Worker bns is empty.");
+    }
     return absl::WrapUnique(
         new ComputationDelegationLambdaRunner(std::move(noise_client_session)));
   }
