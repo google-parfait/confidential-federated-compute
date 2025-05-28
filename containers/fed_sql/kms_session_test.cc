@@ -14,6 +14,7 @@
 #include "containers/fed_sql/kms_session.h"
 
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -800,6 +801,27 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitRangeConflict) {
   // Do another write and commit with the same range again - it should fail
   // because it uses the same range.
   EXPECT_OK(session_->SessionWrite(write_request, data));
+  EXPECT_THAT(session_->SessionCommit(commit_request),
+              IsCode(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, CommitBlobsOutsideOfRange) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  EXPECT_OK(session_->SessionWrite(write_request, data));
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 2 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
   EXPECT_THAT(session_->SessionCommit(commit_request),
               IsCode(absl::StatusCode::kFailedPrecondition));
 }

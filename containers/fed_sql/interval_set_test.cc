@@ -15,6 +15,7 @@
 #include "containers/fed_sql/interval_set.h"
 
 #include <initializer_list>
+#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -40,6 +41,13 @@ TEST(IntervalSetTest, OneInterval) {
   EXPECT_FALSE(set.Contains(6));
   EXPECT_TRUE(set.Contains(1));
   EXPECT_TRUE(set.Contains(4));
+}
+
+TEST(IntervalSetTest, MaxValueIntervalEnd) {
+  constexpr int kMaxValue = std::numeric_limits<int>::max();
+  IntervalSet<int> set({{1, kMaxValue}});
+  EXPECT_FALSE(set.Contains(0));
+  EXPECT_TRUE(set.Contains(kMaxValue));
 }
 
 TEST(IntervalSet, Assign) {

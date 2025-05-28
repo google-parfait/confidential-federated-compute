@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <type_traits>
@@ -51,6 +52,15 @@ class Interval {
 
   friend bool operator==(const Interval &a, const Interval &b) {
     return a.start_ == b.start_ && a.end_ == b.end_;
+  }
+
+  // Returns trus if the interval contains the specified value.
+  bool Contains(T value) const {
+    // There is a special case for interval end being at the max
+    // value, in which case the value is considered to be included.
+    return value >= start_ &&
+           (value < end_ ||
+            (end_ == std::numeric_limits<T>::max() && value == end_));
   }
 
  private:
@@ -147,10 +157,9 @@ class IntervalSet {
       // The value is before the first interval.
       return false;
     }
-    // The set contains the value if the previous interval end is after the
-    // specified value.
+    // The set contains the value if the previous interval contains the value.
     auto it_prev = std::prev(it_next);
-    return it_prev->end() > v;
+    return it_prev->Contains(v);
   }
 
   // Adds a new interval to the set assuming that the interval doesn't already
