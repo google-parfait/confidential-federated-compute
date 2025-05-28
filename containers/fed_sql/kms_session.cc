@@ -59,7 +59,7 @@ using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
-using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -92,16 +92,13 @@ constexpr size_t kBlobIdSize = 16;
 absl::StatusOr<std::string> CreateAssociatedData(
     absl::string_view reencryption_key,
     absl::string_view reencryption_policy_hash) {
-  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(reencryption_key));
-  if (!cwt.public_key.has_value()) {
-    return absl::InvalidArgumentError("Re-encryption public key is invalid");
-  }
+  FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
   BlobHeader header;
   std::string blob_id(kBlobIdSize, '\0');
   (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
                    blob_id.size());
   header.set_blob_id(blob_id);
-  header.set_key_id(cwt.public_key->key_id);
+  header.set_key_id(okp_key.key_id);
   header.set_access_policy_sha256(std::string(reencryption_policy_hash));
   return header.SerializeAsString();
 }

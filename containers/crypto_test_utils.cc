@@ -127,14 +127,15 @@ std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {
                            reinterpret_cast<uint8_t*>(raw_private_key.data()),
                            &key_len, raw_private_key.size());
   raw_private_key.resize(key_len);
-  absl::StatusOr<std::string> public_cwt = OkpCwt{
-      .public_key = OkpKey{
+  absl::StatusOr<std::string> public_key =
+      OkpKey{
           .key_id = key_id,
           .algorithm = kHpkeBaseX25519Sha256Aes128Gcm,
           .curve = kX25519,
           .x = raw_public_key,
-      }}.Encode();
-  CHECK_OK(public_cwt);
+      }
+          .Encode();
+  CHECK_OK(public_key);
   absl::StatusOr<std::string> private_key =
       OkpKey{
           .key_id = key_id,
@@ -144,7 +145,7 @@ std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {
       }
           .Encode();
   CHECK_OK(private_key);
-  return {public_cwt.value(), private_key.value()};
+  return {public_key.value(), private_key.value()};
 }
 
 }  // namespace confidential_federated_compute::crypto_test_utils
