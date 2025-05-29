@@ -41,6 +41,59 @@ pybind_extension(
 )
 
 cc_library(
+    name = "data_uri_resolver",
+    srcs = ["data_uri_resolver.cc"],
+    hdrs = ["data_uri_resolver.h"],
+    deps = [
+        "//containers:crypto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_cc_proto",
+        "@federated_language//federated_language/proto:computation_cc_proto",
+        "@org_tensorflow//tensorflow/core:framework",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/tensorflow:converters",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:data_backend",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensor_serialization",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_utils",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "data_uri_resolver_test",
+    srcs = ["data_uri_resolver_test.cc"],
+    deps = [
+        ":data_uri_resolver",
+        ":fake_data_read_write_service",
+        "//testing:matchers",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_cc_proto",
+        "@googletest//:gtest_main",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@org_tensorflow//tensorflow/core:framework",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensor_serialization",
+    ],
+)
+
+cc_library(
     name = "fake_data_read_write_service",
     testonly = True,
     srcs = ["fake_data_read_write_service.cc"],
