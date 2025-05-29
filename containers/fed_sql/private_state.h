@@ -25,12 +25,12 @@ namespace confidential_federated_compute::fed_sql {
 
 // FedSql private state that is persisted via KMS.
 struct PrivateState {
-  PrivateState(std::string initial_state,
+  PrivateState(std::optional<std::string> initial_state,
                std::optional<uint32_t> default_budget)
       : initial_state(std::move(initial_state)), budget(default_budget) {}
 
   // The initial serialized budget received from KMS.
-  std::string initial_state;
+  std::optional<std::string> initial_state;
   // The current budget.
   Budget budget;
 };

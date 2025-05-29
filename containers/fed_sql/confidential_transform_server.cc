@@ -449,16 +449,22 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
     return absl::DataLossError(
         absl::StrCat("Failed to open file for reading: ", file_path));
   }
-  auto size = std::filesystem::file_size(file_path);
-  std::string private_state(size, '\0');
-  file.read(private_state.data(), size);
-
   std::optional<uint32_t> num_access_times =
       access_budget.has_times() ? std::optional<uint32_t>(access_budget.times())
                                 : std::nullopt;
-  private_state_ = std::make_shared<PrivateState>(std::move(private_state),
-                                                  num_access_times);
-  return private_state_->budget.Parse(private_state_->initial_state);
+
+  auto size = std::filesystem::file_size(file_path);
+  if (size > 0) {
+    std::string private_state(size, '\0');
+    file.read(private_state.data(), size);
+    private_state_ = std::make_shared<PrivateState>(std::move(private_state),
+                                                    num_access_times);
+    return private_state_->budget.Parse(*private_state_->initial_state);
+  } else {
+    private_state_ =
+        std::make_shared<PrivateState>(std::nullopt, num_access_times);
+    return absl::OkStatus();
+  }
 }
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
