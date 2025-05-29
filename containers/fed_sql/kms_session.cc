@@ -351,13 +351,23 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
         "Failed to parse FedSqlContainerCommitConfiguration.");
   }
 
+  Interval<uint64_t> range(commit_config.range().start(),
+                           commit_config.range().end());
   absl::flat_hash_set<std::string> unique_key_ids;
-
   for (auto& [blob_id, uncommitted_input] : uncommitted_inputs_) {
+    // Use the high 64 bit of the blob_id to check whether the blob is
+    // in the specified range.
+    uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
+    if (!range.Contains(blob_id_high64)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Failed to commit due to blob ID conflicting with the "
+                       "range. Range: [",
+                       range.start(), ", ", range.end(),
+                       "), blob id (high 8 bytes): ", blob_id_high64));
+    }
+
     if (!uncommitted_input.blob_header.key_id().empty()) {
       unique_key_ids.insert(uncommitted_input.blob_header.key_id());
-      // TODO: also make sure that the blob ID is in the range
-      // and that all blob IDs are unique.
     }
 
     absl::Status accumulate_status =
@@ -389,8 +399,8 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
 // Runs the requested finalization operation and write the uncompressed result
 // to the stream. After finalization, the session state is no longer mutable.
 //
-// Any errors in HandleFinalize kill the stream, since the stream can no longer
-// be modified after the Finalize call.
+// Any errors in HandleFinalize kill the stream, since the stream can no
+// longer be modified after the Finalize call.
 absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
     const FinalizeRequest& request, const BlobMetadata& unused) {
   FedSqlContainerFinalizeConfiguration finalize_config;
@@ -412,17 +422,19 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
 
       if (!aggregator_->CanReport()) {
         return absl::FailedPreconditionError(
-            "The aggregation can't be completed due to failed preconditions.");
+            "The aggregation can't be completed due to failed "
+            "preconditions.");
       }
-      // Fail if there were no valid inputs, as this likely indicates some issue
-      // with configuration of the overall workload.
+      // Fail if there were no valid inputs, as this likely indicates some
+      // issue with configuration of the overall workload.
       FCP_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
                            aggregator_->GetNumCheckpointsAggregated());
       if (num_checkpoints_aggregated < 1) {
         return absl::InvalidArgumentError(
-            "The aggregation can't be successfully completed because no inputs "
-            "were aggregated.\n"
-            "This may be because inputs were ignored due to an earlier error.");
+            "The aggregation can't be successfully completed because no "
+            "inputs were aggregated.\n"
+            "This may be because inputs were ignored due to an earlier "
+            "error.");
       }
 
       // Extract unencrypted checkpoint from the aggregator.
