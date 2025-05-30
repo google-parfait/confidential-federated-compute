@@ -142,7 +142,40 @@ oak_containers {
       }
     }
     kernel_cmd_line_text {
-      skip {
+      endorsement {
+        # The kernel command line endorsement keys.
+        endorser {
+          keys {
+            type: KEY_TYPE_ECDSA_P256_SHA256
+            key_id: 1
+            # This key's fingerprint (SHA2-256 digest) is:
+            # 0b4fcf07a75212ad7bf08d4dd1e613ff1e794af5f887d3fc13b67d4df3de0b63
+            raw: "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00\x04\x0d\x25\x5c\xa7\xd9\x14\x3a\x9d\x27\xa9\xbe\xb8\xd8\x5e\x69\x7a\x9e\xa3\x0c\x66\x1f\xff\x31\x0e\xe4\x72\x3e\x3a\xc9\x42\x53\x41\x6f\x19\x87\x7c\xd2\x96\xa0\x6d\x5f\xe4\x67\xcc\x16\x66\xb4\x9b\x50\x89\x54\xdb\x79\x11\x32\x8a\x95\x5d\x0a\xc3\x24\x8d\x93\x4d"
+          }
+        }
+        required_claims {
+          claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/48633.md"
+          claim_types: "https://github.com/project-oak/oak/blob/main/docs/tr/claim/77149.md"
+        }
+        rekor {
+          verify {
+            keys {
+              type: KEY_TYPE_ECDSA_P256_SHA256
+              key_id: 1
+              # This key's fingerprint (SHA2-256 digest) is:
+              # c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d
+              raw: "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00\x04\xd8\x6d\x98\xfb\x6b\x5a\x6d\xd4\xd5\xe4\x17\x06\x88\x12\x31\xd1\xaf\x5f\x00\x5c\x2b\x90\x16\xe6\x2d\x21\xad\x92\xce\x0b\xde\xa5\xfa\xc9\x86\x34\xce\xe7\xc1\x9e\x10\xbc\x52\xbf\xe2\xcb\x9e\x46\x85\x63\xff\xf4\x0f\xdb\x63\x62\xe1\x0b\x7d\x0c\xf7\xe4\x58\xb7"
+            }
+            signed_timestamp {
+              not_before_absolute {
+                seconds: 1739577600  # 2025-02-15 00:00:00 UTC
+              }
+              not_before_relative {
+                seconds: -7776000  # 90 days
+              }
+            }
+          }
+        }
       }
     }
   }

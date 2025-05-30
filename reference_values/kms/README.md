@@ -2,9 +2,10 @@
 
 This directory holds the `oak.attestation.v1.ReferenceValues` for the Key
 Management Service. These reference values are used by the KMS for peer-to-peer
-attestation and match reference values used by client applications for
-client-to-server attestation (although older clients may use older reference
-values in certain circumstances).
+attestation and (mostly) match reference values used by client applications for
+client-to-server attestation. Older clients may use older reference values in
+certain circumstances, and clients may not verify the kernel command line if
+they were built without a regex library.
 
 KMS `ReferenceValues` specify the TEE's required hardware root of trust (e.g.
 AMD SEV-SNP), minimum CPU TCB versions, as well as a number of public signing
