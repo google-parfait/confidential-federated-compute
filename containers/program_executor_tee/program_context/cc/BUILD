@@ -47,9 +47,36 @@ cc_library(
     hdrs = ["fake_data_read_write_service.h"],
     visibility = ["//containers/program_executor_tee:__subpackages__"],
     deps = [
+        "//containers:blob_metadata",
+        "//containers:crypto_test_utils",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@federated-compute//fcp/base",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "fake_data_read_write_service_test",
+    srcs = ["fake_data_read_write_service_test.cc"],
+    deps = [
+        ":fake_data_read_write_service",
+        "//containers:crypto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest_main",
+        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
 
