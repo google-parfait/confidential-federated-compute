@@ -128,7 +128,14 @@ absl::StatusOr<std::string> DataUriResolver::ResolveUriToCheckpoint(
     if (!read_response.has_first_response_metadata()) {
       return absl::InternalError("Expecting only one ReadResponse.");
     }
-    // Check that the nonce in the ReadResponse matches the ReadRequest.
+
+    // If the metadata indicates that the data is unencrypted, just return it.
+    if (read_response.first_response_metadata().has_unencrypted()) {
+      return read_response.data();
+    }
+
+    // Otherwise, check that the nonce in the ReadResponse matches the
+    // ReadRequest and decrypt the data.
     if (read_response.first_response_metadata()
             .hpke_plus_aead_data()
             .rewrapped_symmetric_key_associated_data()
