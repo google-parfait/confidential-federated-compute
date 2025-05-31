@@ -123,6 +123,14 @@ cc_library(
 )
 
 http_archive(
+    name = "eigen",
+    build_file = "@org_tensorflow_federated//third_party:eigen.BUILD",
+    sha256 = "e46255d46747a1d61aecae42414b39e76d8ff1becd1914e67956d2f7e40d1123",
+    strip_prefix = "eigen-8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88",
+    url = "https://gitlab.com/libeigen/eigen/-/archive/8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88/eigen-8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88.zip",
+)
+
+http_archive(
     name = "federated-compute",
     integrity = "sha256-FcK4OHCpGT2D/DINfhDn5VLFLUomZ3Kz7Fh0+YBfLXc=",
     patches = [
@@ -147,6 +155,21 @@ http_archive(
     sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
     strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
     url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
+)
+
+http_archive(
+    name = "federated_language_jax",
+    integrity = "sha256-KtH+Nfd3qYkvPcVjIH/NrJoXVgulCPo/dLzB7SGlCok=",
+    patches = [
+        "//third_party/federated_language_jax:federated_language.patch",
+        "//third_party/federated_language_jax:computation_visibility.patch",
+    ],
+    repo_mapping = {
+        "@federated_language_jax_pypi": "@pypi",
+        "@xla": "@local_xla",
+    },
+    strip_prefix = "federated-language-jax-182e5e9ec3cc0869a3588ea8048432c2c3922dfa",
+    url = "https://github.com/google-parfait/federated-language-jax/archive/182e5e9ec3cc0869a3588ea8048432c2c3922dfa.tar.gz",
 )
 
 http_archive(
@@ -214,13 +237,14 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-P6fttyEO6Sv3cZlQUaWwUFebriOs1zCme6HNN4wBhzI=",
+    integrity = "sha256-/lu0O2fwZGigUeasjTHC6PWYQhwn/Z7mBnFY3NA8eHE=",
     patches = [
         "//third_party/org_tensorflow_federated:dp_accounting.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
+        "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
     ],
-    strip_prefix = "tensorflow-federated-258e46387d13e66b4dca7a06f8dc5d54761c5c83",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/258e46387d13e66b4dca7a06f8dc5d54761c5c83.tar.gz",
+    strip_prefix = "tensorflow-federated-1bf676525dce346636d86c6917e7a76a84807fb8",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/1bf676525dce346636d86c6917e7a76a84807fb8.tar.gz",
 )
 
 http_archive(

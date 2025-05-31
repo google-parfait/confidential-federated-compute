@@ -79,6 +79,7 @@ py_test(
         ":computation_runner_bindings",
         ":execution_context",
         "@federated_language//federated_language",
+        "@federated_language_jax//federated_language_jax/computation:jax_computation",
         "@pypi//absl_py",
         "@pypi//attrs",
         "@pypi//dm_tree",
