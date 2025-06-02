@@ -292,6 +292,7 @@ rust_library(
     srcs = ["storage.rs"],
     deps = [
         ":storage_prost_proto",
+        "@oak//oak_attestation_verification_types",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:tonic",
         "@oak_crates_index//:tracing",
@@ -348,6 +349,7 @@ rust_test(
         ":storage_actor",
         ":storage_prost_proto",
         "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification_types",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
         "@oak_crates_index//:anyhow",

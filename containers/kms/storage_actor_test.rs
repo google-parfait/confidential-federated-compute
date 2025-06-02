@@ -17,6 +17,7 @@ use std::sync::Arc;
 use googletest::prelude::*;
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
+use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
@@ -208,6 +209,7 @@ fn empty_command_causes_periodic_clock_update() {
         reference_values.clone(),
         clock.clone(),
     );
+    let actor_clock = actor.get_clock_override().expect("no clock override");
     let mut seq = mockall::Sequence::new();
     let mut context = create_actor_context(true);
     context.expect_instant().times(1).in_sequence(&mut seq).return_const(100_000u64);
@@ -223,7 +225,7 @@ fn empty_command_causes_periodic_clock_update() {
         &endorser,
         signer,
         reference_values,
-        clock,
+        clock.clone(),
     );
 
     // The time should start at 0.
@@ -248,6 +250,13 @@ fn empty_command_causes_periodic_clock_update() {
         }))
     );
 
+    // Since the stored time hasn't been advanced yet, the actor's exported
+    // clock should start at the current time.
+    expect_that!(
+        actor_clock.get_milliseconds_since_epoch(),
+        eq(clock.get_milliseconds_since_epoch())
+    );
+
     // When the first empty command is sent, an event to update the time should
     // be generated since it's been more than a minute since the start time (0).
     let outcome = actor.on_process_command(None);
@@ -266,6 +275,7 @@ fn empty_command_causes_periodic_clock_update() {
     expect_that!(outcome.commands, elements_are![]);
 
     // The time should now be 12345 seconds.
+    expect_that!(actor_clock.get_milliseconds_since_epoch(), eq(12_345_000));
     let outcome = actor.on_process_command(Some(ActorCommand::with_header(
         2,
         &encode_request(
@@ -486,6 +496,7 @@ fn write_and_read_succeeds() {
             )))),
         }))
     );
+    expect_that!(actor.get_clock_override().unwrap().get_milliseconds_since_epoch(), eq(100_000));
 
     // Run a read command for key 5.
     let outcome = actor.on_process_command(Some(ActorCommand::with_header(
@@ -542,6 +553,7 @@ fn save_and_load_snapshot_succeeds() {
         reference_values.clone(),
         clock.clone(),
     );
+    let actor_clock = actor.get_clock_override().expect("no clock override");
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
     let session_id = b"session-id";
@@ -611,6 +623,7 @@ fn save_and_load_snapshot_succeeds() {
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
     assert_that!(actor.on_load_snapshot(snapshot.unwrap()), ok(anything()));
+    expect_that!(actor_clock.get_milliseconds_since_epoch(), eq(100_000));
 
     // Run a read command for key 5.
     let mut session = create_client_session(

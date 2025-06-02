@@ -59,8 +59,9 @@ pub struct StorageActor {
     sessions: HashMap<Vec<u8>, ServerSession>,
     // The actor's context, populated during initialization.
     context: Option<Box<dyn ActorContext>>,
-    // The clock used for attestation and updating the Storage's time.
-    clock: Arc<dyn Clock>,
+    // The clock used for updating the Storage's time, which might use an
+    // untrusted source (e.g. the system clock).
+    untrusted_clock: Arc<dyn Clock>,
     /// The last time the Storage clock was automatically updated (i.e., not due
     /// to an UpdateRequest). Since this is only updated on the leader, a clock
     /// update will occur on leadership change. This value should only be
@@ -113,7 +114,7 @@ impl StorageActor {
             reference_values,
             sessions: HashMap::new(),
             context: None,
-            clock,
+            untrusted_clock: clock,
             last_clock_update_instant: 0,
         }
     }
@@ -171,7 +172,7 @@ impl StorageActor {
                 &mut self.storage,
                 session_request.session_id,
                 request,
-                &self.clock,
+                &self.untrusted_clock,
             )? {
                 HandleStorageRequestOutcome::Response(response) => {
                     // Encrypt the response by adding it back to the session. It'll be retrieved by
@@ -341,7 +342,7 @@ impl Actor for StorageActor {
         })?;
 
         // Load the entries from the snapshot.
-        self.storage = Storage::default();
+        self.storage.clear();
         self.storage
             .update(
                 &now,
@@ -388,12 +389,13 @@ impl Actor for StorageActor {
             let instant = self.context.as_ref().unwrap().instant();
             if instant >= self.last_clock_update_instant + CLOCK_UPDATE_INTERVAL_MS {
                 self.last_clock_update_instant = instant;
+                let millis_since_epoch = self.untrusted_clock.get_milliseconds_since_epoch();
                 return Ok(CommandOutcome::with_event(ActorEvent::with_proto(
                     0,
                     &StorageEvent {
                         now: Some(Timestamp {
-                            seconds: self.clock.get_milliseconds_since_epoch() / 1_000,
-                            ..Default::default()
+                            seconds: millis_since_epoch / 1_000,
+                            nanos: (millis_since_epoch % 1_000 * 1_000_000) as i32,
                         }),
                         kind: Some(storage_event::Kind::Update(UpdateRequest::default())),
                         ..Default::default()
@@ -497,5 +499,30 @@ impl Actor for StorageActor {
                 },
             )))
         })
+    }
+
+    fn get_clock_override(&self) -> Option<Arc<dyn Clock>> {
+        // Use the replicated & rollback-protected time, falling back to the
+        // untrusted clock if the former hasn't been initialized yet (e.g.,
+        // because the actor is still joining the RAFT cluster).
+        Some(Arc::new(FusedClock {
+            clocks: vec![self.storage.clock(), self.untrusted_clock.clone()],
+        }))
+    }
+}
+
+// A Clock that returns the value of the first clock with a positive time.
+struct FusedClock {
+    clocks: Vec<Arc<dyn Clock>>,
+}
+impl Clock for FusedClock {
+    fn get_milliseconds_since_epoch(&self) -> i64 {
+        self.clocks
+            .iter()
+            .find_map(|clock| match clock.get_milliseconds_since_epoch() {
+                now if now > 0 => Some(now),
+                _ => None,
+            })
+            .unwrap_or(0)
     }
 }
