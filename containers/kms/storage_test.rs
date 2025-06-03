@@ -41,6 +41,7 @@ fn default_is_empty() {
         storage.read(&full_read_request()),
         ok(eq(ReadResponse { now: Some(Timestamp::default()), ..Default::default() }))
     );
+    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(0));
 }
 
 #[test_log::test(googletest::test)]
@@ -48,7 +49,7 @@ fn read_single_entry() {
     let mut storage = Storage::default();
     assert_that!(
         storage.update(
-            &Timestamp { seconds: 100, ..Default::default() },
+            &Timestamp { seconds: 100, nanos: 123_456_789 },
             UpdateRequest {
                 updates: vec![
                     update_request::Update {
@@ -77,13 +78,14 @@ fn read_single_entry() {
             ranges: vec![read_request::Range { start: 6u128.to_be_bytes().to_vec(), end: None }],
         }),
         ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+            now: some(matches_pattern!(Timestamp { seconds: eq(100), nanos: eq(123_000_000) })),
             entries: elements_are![matches_pattern!(read_response::Entry {
                 key: eq(6u128.to_be_bytes()),
                 value: eq(b"value 6"),
             })],
         }))
     );
+    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(100_123));
 }
 
 #[test_log::test(googletest::test)]
@@ -423,7 +425,8 @@ fn clock_is_monotonic() {
         ok(matches_pattern!(ReadResponse {
             now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
         }))
-    )
+    );
+    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(200_000));
 }
 
 #[test_log::test(googletest::test)]
@@ -1178,4 +1181,44 @@ fn preconditions_for_all_entries_must_be_met() {
             entries: elements_are![],
         }))
     );
+}
+
+#[test_log::test(googletest::test)]
+fn clear_removes_all_entries() {
+    let mut storage = Storage::default();
+    assert_that!(
+        storage.update(
+            &Timestamp { seconds: 100, ..Default::default() },
+            UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: 5u128.to_be_bytes().to_vec(),
+                    value: Some(b"value".into()),
+                    ..Default::default()
+                }],
+            }
+        ),
+        ok(anything())
+    );
+    let clock = storage.clock();
+    assert_that!(clock.get_milliseconds_since_epoch(), eq(100_000));
+
+    storage.clear();
+    expect_that!(
+        storage.read(&full_read_request()),
+        ok(matches_pattern!(ReadResponse {
+            now: some(matches_pattern!(Timestamp { seconds: eq(0) })),
+            entries: elements_are![],
+        }))
+    );
+    // The clock obtained before `clear()` should still be valid and should have
+    // been updated.
+    expect_that!(clock.get_milliseconds_since_epoch(), eq(0));
+
+    // The clock should also update when the storage is updated. This check
+    // ensures that the clock wasn't orphaned by the `clear()` call.
+    assert_that!(
+        storage.update(&Timestamp { seconds: 50, ..Default::default() }, UpdateRequest::default()),
+        ok(anything())
+    );
+    expect_that!(clock.get_milliseconds_since_epoch(), eq(50_000));
 }

@@ -16,10 +16,14 @@ use std::{
     cmp::Reverse,
     collections::{btree_map, BTreeMap, BinaryHeap},
     ops::Bound::Included,
-    sync::atomic::{AtomicI64, Ordering},
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::{anyhow, bail, Context, Result};
+use oak_attestation_verification_types::util::Clock;
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_response, update_request, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
@@ -33,10 +37,8 @@ use tracing::debug;
 /// clock.
 #[derive(Default)]
 pub struct Storage {
-    /// The monotonically increasing current time in seconds since the epoch.
-    /// This value is only used for entry expiration, so higher resolution is
-    /// unnecessary.
-    seconds_since_epoch: AtomicI64,
+    /// The monotonically increasing current time.
+    clock: Arc<StorageClock>,
 
     /// The stored data.
     data: BTreeMap<u128, StorageEntry>,
@@ -44,6 +46,22 @@ pub struct Storage {
     /// A collection of entries that have not yet expired, ordered by ascending
     /// expiration time.
     expirations: BinaryHeap<Reverse<ExpirationEntry>>,
+}
+
+#[derive(Default)]
+struct StorageClock {
+    /// The monotonically increasing current time in milliseconds since the
+    /// epoch.
+    ///
+    /// While expiration times are tracked on second boundaries, the clock
+    /// stores higher precision since it's also exposed to other crates.
+    millis_since_epoch: AtomicI64,
+}
+
+impl Clock for StorageClock {
+    fn get_milliseconds_since_epoch(&self) -> i64 {
+        self.millis_since_epoch.load(Ordering::Relaxed)
+    }
 }
 
 #[derive(Debug)]
@@ -81,10 +99,11 @@ impl Storage {
                 });
             }
         }
+        let now_millis = self.clock.millis_since_epoch.load(Ordering::Relaxed);
         Ok(ReadResponse {
             now: Some(Timestamp {
-                seconds: self.seconds_since_epoch.load(Ordering::Relaxed),
-                ..Default::default()
+                seconds: now_millis / 1000,
+                nanos: (now_millis % 1000 * 1_000_000) as i32,
             }),
             entries,
         })
@@ -103,9 +122,8 @@ impl Storage {
         }
 
         // If we've reached this point, all updates can be successfully applied.
-        // Update the clock, but don't allow it to go backwards.
-        let now_seconds =
-            self.seconds_since_epoch.fetch_max(now.seconds, Ordering::Relaxed).max(now.seconds);
+        // The clock should be advanced to the new time.
+        let now_seconds = self.advance_clock(now) / 1_000;
         for update in request.updates {
             let key = Self::parse_key(&update.key)?;
             if let Some(value) = update.value {
@@ -144,6 +162,30 @@ impl Storage {
         }
 
         Ok(UpdateResponse {})
+    }
+
+    /// Resets the storage to an empty state.
+    pub fn clear(&mut self) {
+        self.clock.millis_since_epoch.store(0, Ordering::Relaxed);
+        self.data.clear();
+        self.expirations.clear();
+    }
+
+    /// Returns a clock that uses the Storage's non-decreasing time.
+    ///
+    /// The returned clock will continue to be updated so long as the Storage
+    /// isn't dropped. If the storage is cleared, the clock will be reset as
+    /// well.
+    pub fn clock(&self) -> Arc<dyn Clock> {
+        self.clock.clone()
+    }
+
+    /// Advances the clock to the new time, returning the updated time in
+    /// milliseconds since the epoch. If the new time is in the past, the time
+    /// is unchanged.
+    fn advance_clock(&self, now: &Timestamp) -> i64 {
+        let now_millis = now.seconds.saturating_mul(1000) + now.nanos as i64 / 1_000_000;
+        self.clock.millis_since_epoch.fetch_max(now_millis, Ordering::Relaxed).max(now_millis)
     }
 
     /// Parses a key as a big-endian u128.
