@@ -193,6 +193,7 @@ git_repository(
 http_archive(
     name = "oak",
     integrity = "sha256-0IgL2etptmbLQ22HY73KG1Z0U53+e9MqBbzy40qDFkw=",
+    patches = ["//third_party/oak:oak_attestation_verification.patch"],
     strip_prefix = "oak-205aec221ca6a7c5d223641076470b1fb2db75a1",
     url = "https://github.com/project-oak/oak/archive/205aec221ca6a7c5d223641076470b1fb2db75a1.tar.gz",
 )
