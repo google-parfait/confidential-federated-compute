@@ -48,12 +48,10 @@ platform(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "//containers/agg_core:oci_runtime_bundle.tar": "agg_core/container.tar",
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/kms:oci_runtime_bundle.tar": "kms/container.tar",
     "//containers/program_executor_tee:oci_runtime_bundle.tar": "program_executor_tee/container.tar",
     "//containers/program_worker:oci_runtime_bundle.tar": "program_worker/container.tar",
-    "//containers/sql_server:oci_runtime_bundle.tar": "sql_server/container.tar",
     "//containers/tff_server:oci_runtime_bundle.tar": "tff_server/container.tar",
     "//ledger_enclave_app": "ledger/binary",
     "//replicated_ledger_enclave_app": "replicated_ledger/binary",
@@ -76,9 +74,6 @@ pkg_install(
 _ALL_BINARIES = _RELEASE_BINARIES | {
     # keep-sorted start
     "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
-    "//containers/test_concat:oci_runtime_bundle.tar": "test_concat/container.tar",
-    "//examples/square_enclave_app": "square_example/binary",
-    "//examples/sum_enclave_app": "sum_example/binary",
     # keep-sorted end
 }
 

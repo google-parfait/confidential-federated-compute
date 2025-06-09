@@ -20,7 +20,6 @@ cargo_build_script(
         "@federated-compute//fcp/protos/confidentialcompute:blob_header.proto",
         "@federated-compute//fcp/protos/confidentialcompute:ledger.proto",
         "@federated-compute//fcp/protos/confidentialcompute:payload_metadata.proto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform.proto",
         "@federated-compute//fcp/protos/confidentialcompute:verification_record.proto",
         "@oak//proto:digest.proto",
         "@oak//proto:variant.proto",

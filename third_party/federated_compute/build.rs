@@ -24,7 +24,6 @@ fn main() {
             proto_dir.join("fcp/protos/confidentialcompute/access_policy.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/blob_header.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/ledger.proto"),
-            proto_dir.join("fcp/protos/confidentialcompute/pipeline_transform.proto"),
             proto_dir.join("fcp/protos/confidentialcompute/verification_record.proto"),
             std::env::var("DATETIME_PROTO").unwrap().into(),
         ],

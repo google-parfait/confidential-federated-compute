@@ -50,20 +50,13 @@ additional documentation. The Ledger will run on a TEE using the
 
 This repository also contains code for components that will run transformations
 over data within TEEs, if those transformations are allowed by the
-Ledger-enforced policy. There are transform implementations using both the Oak
-Restricted Kernel and
+Ledger-enforced policy. Transforms are implemented using
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
 
-*   [**`containers/agg_core`**] Oak Containers transform that aggregates
-    multiple inputs using the Federated Compute Platform's aggregation cores.
-*   [**`containers/sql_server`**] Oak Containers transform that uses SQL to
-    query its inputs.
-*   [**`containers/test_concat`**] Example Oak Containers transform that
+*   [**`containers/confidential_transform_test_concat`**] Example transform that
     concatenates its inputs.
-*   [**`examples/square_enclave_app`**] Example Oak Restricted Kernel transform
-    that squares its input.
-*   [**`examples/sum_enclave_app`**] Example Oak Restricted Kernel transform
-    that sums its inputs.
+*   [**`containers/fed_sql`**] Transform that aggregates aggregate using both
+    SQLite and Aggregation Cores.
 
 See each transform's README for more details.
 
@@ -145,7 +138,7 @@ ls "${BINARY_OUTPUTS_DIR}"
 You should see a subdirectory for each server, including the following:
 
 ```
-ledger  sql_server  square_example  sum_example
+confidential_transform_test_concat  fed_sql  kms
 ```
 
 These correspond to the components described in

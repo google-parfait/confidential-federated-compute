@@ -25,8 +25,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
