@@ -20,7 +20,7 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -36,7 +36,6 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::TableSchema;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
@@ -113,21 +112,21 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
   return columns;
 }
 
-absl::StatusOr<Record> EncryptSessionResult(
+absl::StatusOr<std::tuple<BlobMetadata, std::string>> EncryptSessionResult(
     const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
     uint32_t output_access_policy_node_id) {
-  RecordEncryptor encryptor;
+  BlobEncryptor encryptor;
   BlobHeader input_header;
   if (!input_header.ParseFromString(
           input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
     return absl::InvalidArgumentError(
         "Failed to parse the BlobHeader when trying to encrypt outputs.");
   }
-  return encryptor.EncryptRecord(unencrypted_result,
-                                 input_metadata.hpke_plus_aead_data()
-                                     .rewrapped_symmetric_key_associated_data()
-                                     .reencryption_public_key(),
-                                 input_header.access_policy_sha256(),
-                                 output_access_policy_node_id);
+  return encryptor.EncryptBlob(unencrypted_result,
+                               input_metadata.hpke_plus_aead_data()
+                                   .rewrapped_symmetric_key_associated_data()
+                                   .reencryption_public_key(),
+                               input_header.access_policy_sha256(),
+                               output_access_policy_node_id);
 }
 }  // namespace confidential_federated_compute::fed_sql

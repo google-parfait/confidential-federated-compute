@@ -16,24 +16,24 @@
 
 #include <map>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
-using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
 using ::fcp::confidentialcompute::outgoing::WriteRequest;
@@ -76,17 +76,14 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessage(
     return absl::InvalidArgumentError("Uri already set.");
   }
 
+  ReadResponse response;
   FCP_ASSIGN_OR_RETURN(
-      absl::StatusOr<Record> rewrapped_record,
-      crypto_test_utils::CreateRewrappedRecord(
+      std::tie(*response.mutable_first_response_metadata(),
+               *response.mutable_data()),
+      crypto_test_utils::CreateRewrappedBlob(
           message, ciphertext_associated_data, recipient_public_key, nonce,
           reencryption_public_key));
-
-  ReadResponse response;
-  *response.mutable_first_response_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record);
   response.set_finish_read(true);
-  response.set_data(rewrapped_record->hpke_plus_aead_data().ciphertext());
 
   uri_to_read_response_[std::string(uri)] = std::move(response);
   return absl::OkStatus();
@@ -99,15 +96,15 @@ absl::Status FakeDataReadWriteService::StorePlaintextMessage(
     return absl::InvalidArgumentError("Uri already set.");
   }
 
-  Record record;
-  record.set_unencrypted_data(std::string(message));
-  record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
+  BlobMetadata blob_metadata;
+  blob_metadata.set_total_size_bytes(message.size());
+  blob_metadata.mutable_unencrypted();
+  blob_metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
 
   ReadResponse response;
-  *response.mutable_first_response_metadata() =
-      GetBlobMetadataFromRecord(record);
+  *response.mutable_first_response_metadata() = std::move(blob_metadata);
   response.set_finish_read(true);
-  response.set_data(record.unencrypted_data());
+  response.set_data(std::string(message));
 
   uri_to_read_response_[std::string(uri)] = std::move(response);
   return absl::OkStatus();

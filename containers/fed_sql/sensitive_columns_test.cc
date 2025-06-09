@@ -19,7 +19,6 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/sensitive_columns.h"
@@ -76,13 +75,10 @@ using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::TableSchema;
-using ::fcp::confidentialcompute::TransformRequest;
-using ::fcp::confidentialcompute::TransformResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::internal::federated::plan::

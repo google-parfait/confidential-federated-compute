@@ -15,20 +15,25 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_TEST_UTILS_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_TEST_UTILS_H_
 
+#include <string>
+#include <tuple>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute::crypto_test_utils {
 
-// Helper function for tests that need to obtain a Record which is in the format
-// that would be produced if the Ledger carried out the encryption protocol in
-// order to give a component having `recipient_public_key` access to the
-// underlying plaintext message.
-absl::StatusOr<fcp::confidentialcompute::Record> CreateRewrappedRecord(
-    absl::string_view message, absl::string_view ciphertext_associated_data,
-    absl::string_view recipient_public_key, absl::string_view nonce,
-    absl::string_view reencryption_public_key);
+// Helper function for tests that need to obtain a BlobMetadata + ciphertext
+// which is in the format that would be produced if the Ledger carried out the
+// encryption protocol in order to give a component having
+// `recipient_public_key` access to the underlying plaintext message.
+absl::StatusOr<std::tuple<fcp::confidentialcompute::BlobMetadata, std::string>>
+CreateRewrappedBlob(absl::string_view message,
+                    absl::string_view ciphertext_associated_data,
+                    absl::string_view recipient_public_key,
+                    absl::string_view nonce,
+                    absl::string_view reencryption_public_key);
 
 // Helper function to generate public and private key pairs which are in a
 // format that would be produced by KMS for encrypting/decrypting blobs using

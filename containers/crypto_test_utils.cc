@@ -14,6 +14,8 @@
 #include "containers/crypto_test_utils.h"
 
 #include <string>
+#include <tuple>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -22,7 +24,7 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "openssl/aead.h"
 #include "openssl/base.h"
 #include "openssl/err.h"
@@ -39,12 +41,12 @@ using ::fcp::confidential_compute::crypto_internal::CoseEllipticCurve;
 using ::fcp::confidential_compute::crypto_internal::UnwrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKeyResult;
-using ::fcp::confidentialcompute::Record;
+using ::fcp::confidentialcompute::BlobMetadata;
 
 const int64_t kHpkeBaseX25519Sha256Aes128Gcm = -65537;
 const int64_t kX25519 = 4;
 
-absl::StatusOr<Record> CreateRewrappedRecord(
+absl::StatusOr<std::tuple<BlobMetadata, std::string>> CreateRewrappedBlob(
     absl::string_view message, absl::string_view ciphertext_associated_data,
     absl::string_view recipient_public_key, absl::string_view nonce,
     absl::string_view reencryption_public_key) {
@@ -94,23 +96,23 @@ absl::StatusOr<Record> CreateRewrappedRecord(
                        recipient_cwt.public_key.value_or(OkpKey()).x,
                        absl::StrCat(reencryption_public_key, nonce)));
 
-  Record record;
-  record.mutable_hpke_plus_aead_data()->set_ciphertext(
-      encrypt_result.ciphertext);
-  record.mutable_hpke_plus_aead_data()->set_ciphertext_associated_data(
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(encrypt_result.ciphertext.size());
+  metadata.mutable_hpke_plus_aead_data()->set_ciphertext_associated_data(
       std::string(ciphertext_associated_data));
-  record.mutable_hpke_plus_aead_data()->set_encrypted_symmetric_key(
+  metadata.mutable_hpke_plus_aead_data()->set_encrypted_symmetric_key(
       rewrapped_symmetric_key_result.encrypted_symmetric_key);
-  record.mutable_hpke_plus_aead_data()->set_encapsulated_public_key(
+  metadata.mutable_hpke_plus_aead_data()->set_encapsulated_public_key(
       rewrapped_symmetric_key_result.encapped_key);
-  record.mutable_hpke_plus_aead_data()
+  metadata.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_nonce(std::string(nonce));
-  record.mutable_hpke_plus_aead_data()
+  metadata.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(std::string(reencryption_public_key));
-  record.set_compression_type(Record::COMPRESSION_TYPE_NONE);
-  return record;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  return std::make_tuple(std::move(metadata),
+                         std::move(encrypt_result.ciphertext));
 }
 
 std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {

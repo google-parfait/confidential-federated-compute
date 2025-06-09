@@ -26,7 +26,6 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"

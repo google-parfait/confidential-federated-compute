@@ -18,7 +18,6 @@
 
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -32,10 +31,6 @@ absl::StatusOr<fcp::confidentialcompute::BlobMetadata>
 EarliestExpirationTimeMetadata(
     const fcp::confidentialcompute::BlobMetadata& metadata,
     const fcp::confidentialcompute::BlobMetadata& other);
-
-// Translate the metadata in a given Record into a BlobMetadata.
-fcp::confidentialcompute::BlobMetadata GetBlobMetadataFromRecord(
-    const fcp::confidentialcompute::Record& record);
 
 }  // namespace confidential_federated_compute
 
