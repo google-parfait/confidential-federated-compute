@@ -18,6 +18,7 @@ from containers.program_executor_tee.program_context import compilers
 from containers.program_executor_tee.program_context import execution_context
 from containers.program_executor_tee.program_context.cc import computation_runner_bindings
 import federated_language
+from federated_language_jax.computation import jax_computation
 import numpy as np
 import tensorflow_federated as tff
 
@@ -166,7 +167,7 @@ class ExecutionContextIntegrationTest(unittest.IsolatedAsyncioTestCase):
         execution_context.TrustedAsyncContext(lambda x: x, runner.invoke_comp)
     )
 
-    @tff.jax.computation
+    @jax_computation.jax_computation
     def create_ten_jax():
       return 10
 

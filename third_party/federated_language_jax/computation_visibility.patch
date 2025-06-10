@@ -1,0 +1,17 @@
+# Adjust the visibility of the computation package so its targets can be depended on directly.
+diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
+index c2340b4..bf93118 100644
+--- federated_language_jax/computation/BUILD
++++ federated_language_jax/computation/BUILD
+@@ -16,10 +16,7 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
+ 
+ package(
+     default_applicable_licenses = ["//:package_license"],
+-    default_visibility = [
+-        "//federated_language_jax:__pkg__",
+-        "//federated_language_jax/backend:__subpackages__",
+-    ],
++    default_visibility = ["//visibility:public"],
+ )
+ 
+ licenses(["notice"])
