@@ -103,7 +103,7 @@ class DataUriResolverTest : public Test {
   std::unique_ptr<Server> fake_data_read_write_server_;
 };
 
-TEST_F(DataUriResolverTest, ResolveToValueSucceeds) {
+TEST_F(DataUriResolverTest, ResolveToValueSucceedsWithEncryptedData) {
   // Prepopulate the FakeDataReadWriteService with data.
   std::string uri = "my_uri";
   std::vector<std::string> examples = {"example1", "example2", "example3"};
@@ -170,6 +170,54 @@ TEST_F(DataUriResolverTest, ResolveToValueSucceeds) {
   tensorflow::Tensor output_tensor_again =
       tensorflow_federated::DeserializeTensorValue(value_out_again).value();
   EXPECT_EQ(output_tensor_again.NumElements(), 3);
+}
+
+TEST_F(DataUriResolverTest, ResolveToValueSucceedsWithPlaintextData) {
+  // Prepopulate the FakeDataReadWriteService with data.
+  std::string uri = "my_uri";
+  std::vector<std::string> examples = {"example1", "example2", "example3"};
+  std::string message =
+      BuildClientCheckpointFromStrings(examples, std::string(kDataTensorName));
+  CHECK_OK(fake_data_read_write_service_.StorePlaintextMessage(uri, message));
+
+  // Construct the DataUriResolver.
+  std::function<std::string()> nonce_generator = []() { return "nonce"; };
+  DataUriResolver resolver(/*blob_decryptor=*/nullptr, nonce_generator, port_);
+
+  // Create a data pointer corresponding to the stored data.
+  fcp::confidentialcompute::FileInfo file_info;
+  file_info.set_uri(uri);
+  file_info.set_key(kDataTensorName);
+  federated_language::Data data_value;
+  data_value.mutable_content()->PackFrom(file_info);
+
+  // Use the DataUriResolver to lookup the stored data.
+  federated_language::Type federated_type;
+  federated_language::TensorType* tensor_type = federated_type.mutable_tensor();
+  tensor_type->set_dtype(federated_language::DataType::DT_STRING);
+  tensor_type->add_dims(examples.size());
+  tensorflow_federated::v0::Value value_out;
+  EXPECT_OK(resolver.ResolveToValue(data_value, federated_type, value_out));
+
+  // Check that the DataReadWrite service was called for the correct uri.
+  std::vector<std::string> requested_uris =
+      fake_data_read_write_service_.GetReadRequestUris();
+  EXPECT_EQ(requested_uris.size(), 1);
+  EXPECT_EQ(requested_uris[0], uri);
+
+  // Check that the returned tensor holds the original examples.
+  tensorflow::Tensor output_tensor =
+      tensorflow_federated::DeserializeTensorValue(value_out).value();
+  EXPECT_EQ(output_tensor.NumElements(), 3);
+  auto flat_tensor = output_tensor.flat<tensorflow::tstring>();
+  EXPECT_EQ(flat_tensor(0), examples[0]) << flat_tensor(0);
+  EXPECT_EQ(flat_tensor(1), examples[1]) << flat_tensor(1);
+  EXPECT_EQ(flat_tensor(2), examples[2]) << flat_tensor(2);
+  EXPECT_EQ(value_out.value_case(),
+            tensorflow_federated::v0::Value::ValueCase::kArray);
+  EXPECT_EQ(value_out.array().dtype(), federated_language::DataType::DT_STRING);
+  EXPECT_EQ(value_out.array().shape().dim().size(), 1);
+  EXPECT_EQ(value_out.array().shape().dim(0), examples.size());
 }
 
 TEST_F(DataUriResolverTest, ResolveToValueMalformedDataProto) {
