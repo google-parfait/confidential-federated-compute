@@ -123,14 +123,6 @@ cc_library(
 )
 
 http_archive(
-    name = "eigen",
-    build_file = "@org_tensorflow_federated//third_party:eigen.BUILD",
-    sha256 = "e46255d46747a1d61aecae42414b39e76d8ff1becd1914e67956d2f7e40d1123",
-    strip_prefix = "eigen-8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88",
-    url = "https://gitlab.com/libeigen/eigen/-/archive/8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88/eigen-8ad4344ca79f2f248bc5ed70eec72e4b9c4d5e88.zip",
-)
-
-http_archive(
     name = "federated-compute",
     integrity = "sha256-FcK4OHCpGT2D/DINfhDn5VLFLUomZ3Kz7Fh0+YBfLXc=",
     patches = [
@@ -161,6 +153,7 @@ http_archive(
     name = "federated_language_jax",
     integrity = "sha256-KtH+Nfd3qYkvPcVjIH/NrJoXVgulCPo/dLzB7SGlCok=",
     patches = [
+        "//third_party/federated_language_jax:eigen.patch",
         "//third_party/federated_language_jax:federated_language.patch",
         "//third_party/federated_language_jax:computation_visibility.patch",
     ],
@@ -240,6 +233,7 @@ http_archive(
     integrity = "sha256-/lu0O2fwZGigUeasjTHC6PWYQhwn/Z7mBnFY3NA8eHE=",
     patches = [
         "//third_party/org_tensorflow_federated:dp_accounting.patch",
+        "//third_party/org_tensorflow_federated:eigen.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
     ],
