@@ -22,7 +22,6 @@
 #include "absl/log/log.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"

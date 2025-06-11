@@ -25,48 +25,6 @@ namespace {
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::Record;
-
-TEST(GetBlobMetadataFromRecordTest, UnencryptedRecord) {
-  Record unencrypted_record;
-  unencrypted_record.set_compression_type(Record::COMPRESSION_TYPE_GZIP);
-  unencrypted_record.set_unencrypted_data("data");
-  BlobMetadata metadata = GetBlobMetadataFromRecord(unencrypted_record);
-  ASSERT_TRUE(metadata.has_unencrypted());
-  ASSERT_EQ(metadata.compression_type(), BlobMetadata::COMPRESSION_TYPE_GZIP);
-}
-TEST(GetBlobMetadataFromRecordTest, EncryptedRecord) {
-  Record::HpkePlusAeadData hpke_plus_aead_data;
-  hpke_plus_aead_data.set_ciphertext("ciphertext");
-  hpke_plus_aead_data.set_ciphertext_associated_data("associated data");
-  hpke_plus_aead_data.set_encrypted_symmetric_key("symmetric key");
-  hpke_plus_aead_data.set_encapsulated_public_key("encapsulated key");
-  hpke_plus_aead_data.mutable_rewrapped_symmetric_key_associated_data()
-      ->set_reencryption_public_key("reencryption key");
-  hpke_plus_aead_data.mutable_rewrapped_symmetric_key_associated_data()
-      ->set_nonce("nonce");
-  Record encrypted_record;
-  *encrypted_record.mutable_hpke_plus_aead_data() = hpke_plus_aead_data;
-  encrypted_record.set_compression_type(Record::COMPRESSION_TYPE_GZIP);
-
-  BlobMetadata metadata = GetBlobMetadataFromRecord(encrypted_record);
-
-  ASSERT_EQ(metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-            "associated data");
-  ASSERT_EQ(metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-            "symmetric key");
-  ASSERT_EQ(metadata.hpke_plus_aead_data().encapsulated_public_key(),
-            "encapsulated key");
-  ASSERT_EQ(metadata.hpke_plus_aead_data()
-                .rewrapped_symmetric_key_associated_data()
-                .reencryption_public_key(),
-            "reencryption key");
-  ASSERT_EQ(metadata.hpke_plus_aead_data()
-                .rewrapped_symmetric_key_associated_data()
-                .nonce(),
-            "nonce");
-  ASSERT_EQ(metadata.compression_type(), BlobMetadata::COMPRESSION_TYPE_GZIP);
-}
 
 absl::StatusOr<std::string> GetKeyWithExpiration(const absl::Time& expiration) {
   MessageDecryptor decryptor;

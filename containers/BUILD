@@ -35,7 +35,6 @@ cc_library(
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
         "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@oak//proto/containers:orchestrator_crypto_cc_proto",
     ],
@@ -74,7 +73,6 @@ cc_library(
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
     ],
 )
 
@@ -103,7 +101,7 @@ cc_library(
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
-        "@federated-compute//fcp/protos/confidentialcompute:pipeline_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest_main",
     ],
 )
@@ -128,7 +126,6 @@ cc_test(
     size = "small",
     srcs = ["crypto_test.cc"],
     deps = [
-        ":blob_metadata",
         ":crypto",
         ":crypto_test_utils",
         ":session",
@@ -191,7 +188,6 @@ cc_test(
     size = "small",
     srcs = ["confidential_transform_server_base_test.cc"],
     deps = [
-        ":blob_metadata",
         ":confidential_transform_server_base",
         ":crypto",
         ":crypto_test_utils",

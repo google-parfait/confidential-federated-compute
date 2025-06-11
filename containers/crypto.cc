@@ -30,7 +30,7 @@
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "grpcpp/client_context.h"
 #include "openssl/err.h"
@@ -47,9 +47,6 @@ using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::Record;
-using ::fcp::confidentialcompute::
-    Record_HpkePlusAeadData_RewrappedAssociatedData;
 using ::oak::containers::v1::OrchestratorCrypto;
 
 constexpr size_t kNonceSize = 16;
@@ -72,12 +69,12 @@ absl::StatusOr<std::string> SignWithOrchestrator(
 }
 
 absl::StatusOr<std::string> Decompress(
-    absl::string_view input, Record::CompressionType compression_type) {
+    absl::string_view input, BlobMetadata::CompressionType compression_type) {
   switch (compression_type) {
-    case Record::COMPRESSION_TYPE_NONE:
+    case BlobMetadata::COMPRESSION_TYPE_NONE:
       return std::string(input);
 
-    case Record::COMPRESSION_TYPE_GZIP: {
+    case BlobMetadata::COMPRESSION_TYPE_GZIP: {
       FCP_ASSIGN_OR_RETURN(absl::Cord decompressed,
                            fcp::UncompressWithGzip(input));
       return std::string(decompressed);
@@ -118,8 +115,7 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
   std::string decrypted;
   switch (metadata.encryption_metadata_case()) {
     case BlobMetadata::kUnencrypted:
-      return Decompress(blob, static_cast<Record::CompressionType>(
-                                  metadata.compression_type()));
+      return Decompress(blob, metadata.compression_type());
     case BlobMetadata::kHpkePlusAeadData:
       if (metadata.hpke_plus_aead_data()
               .has_rewrapped_symmetric_key_associated_data()) {
@@ -182,13 +178,14 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
           "kms_symmetric_key_associated_data");
   }
 
-  return Decompress(decrypted, static_cast<Record::CompressionType>(
-                                   metadata.compression_type()));
+  return Decompress(decrypted, metadata.compression_type());
 }
 
-absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
-    absl::string_view plaintext, absl::string_view public_key,
-    absl::string_view access_policy_sha256, uint32_t access_policy_node_id) {
+absl::StatusOr<std::tuple<BlobMetadata, std::string>>
+BlobEncryptor::EncryptBlob(absl::string_view plaintext,
+                           absl::string_view public_key,
+                           absl::string_view access_policy_sha256,
+                           uint32_t access_policy_node_id) {
   FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(public_key));
   if (!cwt.public_key.has_value()) {
     return absl::InvalidArgumentError("public key is invalid");
@@ -210,99 +207,20 @@ absl::StatusOr<Record> RecordEncryptor::EncryptRecord(
       EncryptMessageResult encrypted_message,
       message_encryptor_.Encrypt(plaintext, public_key, serialized_header));
 
-  Record result;
-  result.set_compression_type(Record::COMPRESSION_TYPE_NONE);
-  Record::HpkePlusAeadData* hpke_plus_aead_data =
-      result.mutable_hpke_plus_aead_data();
-  hpke_plus_aead_data->set_ciphertext(encrypted_message.ciphertext);
-  hpke_plus_aead_data->set_ciphertext_associated_data(serialized_header);
-  hpke_plus_aead_data->set_encrypted_symmetric_key(
-      encrypted_message.encrypted_symmetric_key);
-  hpke_plus_aead_data->set_encapsulated_public_key(
-      encrypted_message.encapped_key);
-  hpke_plus_aead_data->mutable_ledger_symmetric_key_associated_data()
-      ->set_record_header(serialized_header);
-  return result;
-}
-
-RecordDecryptor::RecordDecryptor(OrchestratorCrypto::StubInterface& stub,
-                                 google::protobuf::Struct config_properties)
-    : message_decryptor_(std::move(config_properties)),
-      signed_public_key_(message_decryptor_.GetPublicKey(
-          [&stub](absl::string_view message) {
-            return SignWithOrchestrator(stub, message);
-          },
-          kAlgorithmES256)) {}
-
-absl::StatusOr<absl::string_view> RecordDecryptor::GetPublicKey() const {
-  if (!signed_public_key_.ok()) {
-    return signed_public_key_.status();
-  }
-  return *signed_public_key_;
-}
-
-absl::StatusOr<std::string> RecordDecryptor::GenerateNonce() {
-  bool inserted = false;
-  std::string nonce(kNonceSize, '\0');
-  while (!inserted) {
-    // BoringSSL documentation says that it always returns 1 so we don't check
-    // the return value.
-    (void)RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
-                     nonce.size());
-    {
-      absl::MutexLock l(&mutex_);
-      auto pair = nonces_.insert(nonce);
-      inserted = pair.second;
-    }
-  }
-  return nonce;
-}
-
-absl::StatusOr<std::string> RecordDecryptor::DecryptRecord(
-    const Record& record) {
-  switch (record.kind_case()) {
-    case Record::kUnencryptedData:
-      return Decompress(record.unencrypted_data(), record.compression_type());
-    case Record::kHpkePlusAeadData:
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          "Record to decrypt must contain unencrypted_data or "
-          "rewrapped_symmetric_key_associated_data");
-  }
-  if (!record.hpke_plus_aead_data()
-           .has_rewrapped_symmetric_key_associated_data()) {
-    return absl::InvalidArgumentError(
-        "Record to decrypt must contain "
-        "rewrapped_symmetric_key_associated_data");
-  }
-  // Ensure the nonce is used exactly once.
-  absl::string_view nonce = record.hpke_plus_aead_data()
-                                .rewrapped_symmetric_key_associated_data()
-                                .nonce();
-  {
-    absl::MutexLock l(&mutex_);
-    if (!nonces_.erase(nonce)) {
-      return absl::FailedPreconditionError(
-          "Nonce not found on TEE. The same record may have already been "
-          "decrypted by this TEE, or this TEE never generated a nonce for this "
-          "record.");
-    }
-  }
-  std::string associated_data =
-      absl::StrCat(record.hpke_plus_aead_data()
-                       .rewrapped_symmetric_key_associated_data()
-                       .reencryption_public_key(),
-                   nonce);
-  FCP_ASSIGN_OR_RETURN(
-      std::string decrypted,
-      message_decryptor_.Decrypt(
-          record.hpke_plus_aead_data().ciphertext(),
-          record.hpke_plus_aead_data().ciphertext_associated_data(),
-          record.hpke_plus_aead_data().encrypted_symmetric_key(),
-          associated_data,
-          record.hpke_plus_aead_data().encapsulated_public_key()));
-  return Decompress(decrypted, record.compression_type());
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_metadata->set_ciphertext_associated_data(serialized_header);
+  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+      std::move(encrypted_message.encrypted_symmetric_key));
+  hpke_plus_aead_metadata->set_encapsulated_public_key(
+      std::move(encrypted_message.encapped_key));
+  hpke_plus_aead_metadata->mutable_ledger_symmetric_key_associated_data()
+      ->set_record_header(std::move(serialized_header));
+  return std::make_tuple(std::move(metadata),
+                         std::move(encrypted_message.ciphertext));
 }
 
 absl::StatusOr<std::string> KeyedHash(absl::string_view input,

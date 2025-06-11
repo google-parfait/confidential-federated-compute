@@ -25,7 +25,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "containers/big_endian.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/sensitive_columns.h"
@@ -74,7 +73,6 @@ using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;

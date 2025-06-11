@@ -25,7 +25,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
@@ -51,7 +50,6 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::TffSessionWriteConfig;
@@ -165,7 +163,7 @@ absl::StatusOr<tensorflow_federated::v0::Value> TffSession::FetchData(
   auto data = data_by_uri_.find(uri);
   if (data == data_by_uri_.end()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Data in argument was not provided to the transform. Requested uri:", 
+        "Data in argument was not provided to the transform. Requested uri:",
         uri));
   }
   return data->second;
@@ -176,7 +174,7 @@ absl::StatusOr<tensorflow_federated::v0::Value> TffSession::FetchClientData(
   auto parser = client_checkpoint_parser_by_uri_.find(uri);
   if (parser == client_checkpoint_parser_by_uri_.end()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Data in argument was not provided to the transform. Requested uri:", 
+        "Data in argument was not provided to the transform. Requested uri:",
         uri));
   }
   // Note that each key can only be accessed a single time from the parser. So,
@@ -255,28 +253,25 @@ absl::StatusOr<SessionResponse> TffSession::FinalizeSession(
     return unencrypted_response;
   }
 
-  RecordEncryptor encryptor;
+  BlobEncryptor encryptor;
   BlobHeader previous_header;
   if (!previous_header.ParseFromString(
           input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
     return absl::InvalidArgumentError(
         "Failed to parse the BlobHeader when trying to encrypt outputs.");
   }
-  FCP_ASSIGN_OR_RETURN(
-      Record result_record,
-      encryptor.EncryptRecord(unencrypted_result,
-                              input_metadata.hpke_plus_aead_data()
-                                  .rewrapped_symmetric_key_associated_data()
-                                  .reencryption_public_key(),
-                              previous_header.access_policy_sha256(),
-                              output_access_policy_node_id_));
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
+  FCP_ASSIGN_OR_RETURN(
+      std::tie(*read_response->mutable_first_response_metadata(),
+               *read_response->mutable_data()),
+      encryptor.EncryptBlob(unencrypted_result,
+                            input_metadata.hpke_plus_aead_data()
+                                .rewrapped_symmetric_key_associated_data()
+                                .reencryption_public_key(),
+                            previous_header.access_policy_sha256(),
+                            output_access_policy_node_id_));
   read_response->set_finish_read(true);
-  *(read_response->mutable_data()) =
-      std::move(result_record.hpke_plus_aead_data().ciphertext());
-  *(read_response->mutable_first_response_metadata()) =
-      GetBlobMetadataFromRecord(result_record);
   return response;
 }
 }  // namespace confidential_federated_compute::tff_server

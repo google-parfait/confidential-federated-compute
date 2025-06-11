@@ -16,12 +16,12 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_
 
 #include <string>
+#include <tuple>
 
 #include "absl/container/flat_hash_map.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/pipeline_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
@@ -71,7 +71,8 @@ class InMemoryCheckpointParser
       tensors_;
 };
 
-absl::StatusOr<fcp::confidentialcompute::Record> EncryptSessionResult(
+absl::StatusOr<std::tuple<fcp::confidentialcompute::BlobMetadata, std::string>>
+EncryptSessionResult(
     const fcp::confidentialcompute::BlobMetadata& input_metadata,
     absl::string_view unencrypted_result,
     uint32_t output_access_policy_node_id);

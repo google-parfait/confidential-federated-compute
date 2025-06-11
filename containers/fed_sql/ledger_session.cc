@@ -16,11 +16,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
-#include "containers/blob_metadata.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
@@ -52,7 +52,6 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -231,12 +230,9 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       }
 
       FCP_ASSIGN_OR_RETURN(
-          Record result_record,
+          std::tie(result_metadata, result),
           EncryptSessionResult(input_metadata, unencrypted_result,
                                *report_output_access_policy_node_id_));
-      result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = std::move(
-          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
       break;
     }
     case FINALIZATION_TYPE_SERIALIZE: {
@@ -257,12 +253,9 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
       }
       // Encrypt the bundled blob.
       FCP_ASSIGN_OR_RETURN(
-          Record result_record,
+          std::tie(result_metadata, result),
           EncryptSessionResult(input_metadata, serialized_data,
                                *serialize_output_access_policy_node_id_));
-      result_metadata = GetBlobMetadataFromRecord(result_record);
-      result = std::move(
-          *result_record.mutable_hpke_plus_aead_data()->mutable_ciphertext());
       break;
     }
     default:

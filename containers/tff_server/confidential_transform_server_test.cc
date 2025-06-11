@@ -25,7 +25,6 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
@@ -70,7 +69,6 @@ using ::fcp::confidentialcompute::FileInfo;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;

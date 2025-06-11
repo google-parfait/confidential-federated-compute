@@ -17,6 +17,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <tuple>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -24,7 +25,6 @@
 #include "absl/strings/str_format.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
-#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
@@ -95,14 +95,11 @@ using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::Record;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
-using ::fcp::confidentialcompute::TransformRequest;
-using ::fcp::confidentialcompute::TransformResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::internal::federated::plan::
@@ -1391,11 +1388,11 @@ TEST_F(FedSqlServerTest,
   std::string message_0 = BuildFedSqlGroupByCheckpoint({9}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, response.public_key(),
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1403,14 +1400,13 @@ TEST_F(FedSqlServerTest,
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
+      std::get<0>(*rewrapped_blob_0);
   write_request_0->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_0->counter);
   write_request_0->mutable_first_request_configuration()->PackFrom(config);
   write_request_0->set_commit(true);
-  write_request_0->set_data(
-      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+  write_request_0->set_data(std::get<1>(*rewrapped_blob_0));
 
   SessionResponse response_0;
 
@@ -1715,11 +1711,11 @@ TEST_F(InitializedFedSqlServerTest,
   std::string message_0 = BuildFedSqlGroupByCheckpoint({8}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1727,14 +1723,13 @@ TEST_F(InitializedFedSqlServerTest,
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
+      std::get<0>(*rewrapped_blob_0);
   write_request_0->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_0->counter);
   write_request_0->mutable_first_request_configuration()->PackFrom(config);
   write_request_0->set_commit(true);
-  write_request_0->set_data(
-      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+  write_request_0->set_data(std::get<1>(*rewrapped_blob_0));
 
   SessionResponse response_0;
 
@@ -2124,11 +2119,11 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2136,14 +2131,13 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
+      std::get<0>(*rewrapped_blob_0);
   write_request_0->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_0->counter);
   write_request_0->mutable_first_request_configuration()->PackFrom(config);
   write_request_0->set_commit(true);
-  write_request_0->set_data(
-      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+  write_request_0->set_data(std::get<1>(*rewrapped_blob_0));
 
   SessionResponse response_0;
 
@@ -2155,23 +2149,22 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_1.ok());
-  absl::StatusOr<Record> rewrapped_record_1 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
+  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
   *write_request_1->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_1);
+      std::get<0>(*rewrapped_blob_1);
   write_request_1->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_1->counter);
   write_request_1->mutable_first_request_configuration()->PackFrom(config);
   write_request_1->set_commit(true);
-  write_request_1->set_data(
-      rewrapped_record_1->hpke_plus_aead_data().ciphertext());
+  write_request_1->set_data(std::get<1>(*rewrapped_blob_1));
 
   SessionResponse response_1;
 
@@ -2183,23 +2176,22 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
   absl::StatusOr<NonceAndCounter> nonce_2 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_2.ok());
-  absl::StatusOr<Record> rewrapped_record_2 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_2 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_2, ciphertext_associated_data, public_key_,
           nonce_2->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_2.ok()) << rewrapped_record_2.status();
+  ASSERT_TRUE(rewrapped_blob_2.ok()) << rewrapped_blob_2.status();
 
   SessionRequest request_2;
   WriteRequest* write_request_2 = request_2.mutable_write();
   *write_request_2->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_2);
+      std::get<0>(*rewrapped_blob_2);
   write_request_2->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_2->counter);
   write_request_2->mutable_first_request_configuration()->PackFrom(config);
   write_request_2->set_commit(true);
-  write_request_2->set_data(
-      rewrapped_record_2->hpke_plus_aead_data().ciphertext());
+  write_request_2->set_data(std::get<1>(*rewrapped_blob_2));
 
   SessionResponse response_2;
 
@@ -2254,11 +2246,11 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *earliest_reencryption_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2266,14 +2258,13 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
+      std::get<0>(*rewrapped_blob_0);
   write_request_0->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_0->counter);
   write_request_0->mutable_first_request_configuration()->PackFrom(config);
   write_request_0->set_commit(true);
-  write_request_0->set_data(
-      rewrapped_record_0->hpke_plus_aead_data().ciphertext());
+  write_request_0->set_data(std::get<1>(*rewrapped_blob_0));
 
   SessionResponse response_0;
 
@@ -2298,23 +2289,22 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   absl::StatusOr<std::string> later_reencryption_key =
       reencryption_okp_cwt->Encode();
   ASSERT_TRUE(later_reencryption_key.ok());
-  absl::StatusOr<Record> rewrapped_record_1 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *later_reencryption_key);
-  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
+  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
   *write_request_1->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_1);
+      std::get<0>(*rewrapped_blob_1);
   write_request_1->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_1->counter);
   write_request_1->mutable_first_request_configuration()->PackFrom(config);
   write_request_1->set_commit(true);
-  write_request_1->set_data(
-      rewrapped_record_1->hpke_plus_aead_data().ciphertext());
+  write_request_1->set_data(std::get<1>(*rewrapped_blob_1));
 
   SessionResponse response_1;
 
@@ -2400,17 +2390,17 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   ASSERT_TRUE(reencryption_public_key.ok());
   std::string ciphertext_associated_data = "ciphertext associated data";
 
-  // Create one record that will fail to decrypt and one record that can be
+  // Create one blob that will fail to decrypt and one blob that can be
   // successfully decrypted.
   std::string message_0 = BuildFedSqlGroupByCheckpoint({42}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_0.ok());
-  absl::StatusOr<Record> rewrapped_record_0 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_0.ok()) << rewrapped_record_0.status();
+  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2418,7 +2408,7 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
   *write_request_0->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_0);
+      std::get<0>(*rewrapped_blob_0);
   write_request_0->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_0->counter);
@@ -2436,23 +2426,22 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
   ASSERT_TRUE(nonce_1.ok());
-  absl::StatusOr<Record> rewrapped_record_1 =
-      crypto_test_utils::CreateRewrappedRecord(
+  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
+      crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_record_1.ok()) << rewrapped_record_1.status();
+  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
   *write_request_1->mutable_first_request_metadata() =
-      GetBlobMetadataFromRecord(*rewrapped_record_1);
+      std::get<0>(*rewrapped_blob_1);
   write_request_1->mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_counter(nonce_1->counter);
   write_request_1->mutable_first_request_configuration()->PackFrom(config);
   write_request_1->set_commit(true);
-  write_request_1->set_data(
-      rewrapped_record_1->hpke_plus_aead_data().ciphertext());
+  write_request_1->set_data(std::get<1>(*rewrapped_blob_1));
 
   SessionResponse response_1;
 
