@@ -7,7 +7,7 @@ in this repository.
 
 To use it, use the `--registry` flag as follows: `bazelisk
 --registry=https://bcr.bazel.build
---registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/registry/
+--registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
 ...`
 
 ## Updating the Registry
