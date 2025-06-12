@@ -50,11 +50,7 @@ cc_test(
     size = "small",
     srcs = ["program_worker_server_test.cc"],
     data = [
-        "//containers/program_worker:testing/no_argument_comp.txtpb",
-        "//containers/program_worker:testing/no_argument_comp_expected_result.txtpb",
-        "//containers/program_worker:testing/server_data.txtpb",
-        "//containers/program_worker:testing/server_data_comp.txtpb",
-        "//containers/program_worker:testing/server_data_comp_expected_result.txtpb",
+        "//containers/program_worker/testing:test_tff_values",
     ],
     deps = [
         ":program_worker_server",
