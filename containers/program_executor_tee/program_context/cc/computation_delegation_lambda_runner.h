@@ -15,37 +15,43 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_COMPUTATION_DELEGATION_LAMBDA_RUNNER_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_COMPUTATION_DELEGATION_LAMBDA_RUNNER_H_
 
+#include "absl/synchronization/mutex.h"
 #include "containers/program_executor_tee/program_context/cc/noise_client_session.h"
 #include "fcp/confidentialcompute/lambda_runner.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
+#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
 class ComputationDelegationLambdaRunner
     : public fcp::confidential_compute::LambdaRunner {
  public:
-  // Preferred way to create a ComputationDelegationLambdaRunner.
   static absl::StatusOr<
-      std::unique_ptr<fcp::confidential_compute::LambdaRunner>>
-  Create(
-      const std::string& worker_bns,
-      oak::session::SessionConfig* session_config,
-      fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
-          stub) {
-    FCP_ASSIGN_OR_RETURN(
-        auto noise_client_session,
-        NoiseClientSession::Create(worker_bns, session_config, stub));
+      std::shared_ptr<fcp::confidential_compute::LambdaRunner>>
+  Create(const std::string& worker_bns,
+         oak::session::SessionConfig* session_config,
+         std::function<ComputationDelegationResult(
+             ::fcp::confidentialcompute::outgoing::ComputationRequest)>
+             computation_delegation_proxy) {
+    FCP_ASSIGN_OR_RETURN(auto noise_client_session,
+                         NoiseClientSession::Create(
+                             worker_bns, session_config,
+                             std::function(computation_delegation_proxy)));
     if (worker_bns.empty()) {
       return absl::InvalidArgumentError("Worker bns is empty.");
     }
-    return absl::WrapUnique(
-        new ComputationDelegationLambdaRunner(std::move(noise_client_session)));
+    return std::make_shared<ComputationDelegationLambdaRunner>(
+        std::move(noise_client_session), computation_delegation_proxy);
   }
 
   // Constructor public for testing. Prefer using Create() instead.
   ComputationDelegationLambdaRunner(
-      std::unique_ptr<NoiseClientSessionInterface> noise_client_session)
-      : noise_client_session_(std::move(noise_client_session)) {}
+      std::shared_ptr<NoiseClientSessionInterface> noise_client_session,
+      std::function<ComputationDelegationResult(
+          ::fcp::confidentialcompute::outgoing::ComputationRequest)>
+          computation_delegation_proxy)
+      : noise_client_session_(std::move(noise_client_session)),
+        computation_delegation_proxy_(computation_delegation_proxy) {}
 
   absl::StatusOr<tensorflow_federated::v0::Value> ExecuteComp(
       tensorflow_federated::v0::Value function,
@@ -53,7 +59,11 @@ class ComputationDelegationLambdaRunner
       int32_t num_clients) override;
 
  private:
-  std::unique_ptr<NoiseClientSessionInterface> noise_client_session_;
+  std::shared_ptr<NoiseClientSessionInterface> noise_client_session_;
+  std::function<ComputationDelegationResult(
+      ::fcp::confidentialcompute::outgoing::ComputationRequest)>
+      computation_delegation_proxy_;
+  absl::Mutex mutex_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

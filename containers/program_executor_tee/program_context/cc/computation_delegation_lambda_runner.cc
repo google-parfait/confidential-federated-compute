@@ -30,6 +30,7 @@ using ::tensorflow_federated::v0::Value;
 
 absl::StatusOr<Value> ComputationDelegationLambdaRunner::ExecuteComp(
     Value function, std::optional<Value> arg, int32_t num_clients) {
+  absl::MutexLock lock(&mutex_);
   TffSessionConfig tff_session_config;
   *tff_session_config.mutable_function() = function;
   if (arg.has_value()) {

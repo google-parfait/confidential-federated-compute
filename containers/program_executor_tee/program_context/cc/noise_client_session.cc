@@ -47,14 +47,10 @@ absl::Status NoiseClientSession::OpenSession() {
     ComputationRequest request;
     request.mutable_computation()->PackFrom(init_request.value());
     request.set_worker_bns(worker_bns_);
-    ComputationResponse response;
-    {
-      grpc::ClientContext client_context;
-      auto status = stub_->Execute(&client_context, request, &response);
-      if (!status.ok()) {
-        return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
-                            status.error_message());
-      }
+    auto [response, status] = computation_delegation_proxy_(request);
+    if (!status.ok()) {
+      return absl::InternalError("Failed to perform handshake with error: " +
+                                 status.error_message());
     }
     if (response.has_result()) {
       SessionResponse init_response;
@@ -75,19 +71,17 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   // any actual computation request.
   if (!client_session_->IsOpen()) {
     FCP_RETURN_IF_ERROR(OpenSession());
+  } else {
+    LOG(INFO) << "Session is already open for worker: " << worker_bns_;
   }
   FCP_ASSIGN_OR_RETURN(auto session_request, EncryptRequest(plaintext_request));
   ComputationRequest request;
   request.mutable_computation()->PackFrom(session_request);
   request.set_worker_bns(worker_bns_);
-  ComputationResponse response;
-  {
-    grpc::ClientContext client_context;
-    auto status = stub_->Execute(&client_context, request, &response);
-    if (!status.ok()) {
-      return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
-                          status.error_message());
-    }
+  auto [response, status] = computation_delegation_proxy_(request);
+  if (!status.ok()) {
+    return absl::InternalError("Failed to delegate computation with error: " +
+                               status.error_message());
   }
   if (!response.has_result()) {
     return absl::InternalError("Response doesn't have result.");

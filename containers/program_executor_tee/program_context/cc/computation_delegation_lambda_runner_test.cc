@@ -21,7 +21,7 @@
 #include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/config.h"
 #include "cc/oak_session/oak_session_bindings.h"
-#include "fcp/protos/confidentialcompute/computation_delegation_mock.grpc.pb.h"
+#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -36,7 +36,8 @@ namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
 using ::fcp::confidentialcompute::TffSessionConfig;
-using ::fcp::confidentialcompute::outgoing::MockComputationDelegationStub;
+using ::fcp::confidentialcompute::outgoing::ComputationRequest;
+using ::fcp::confidentialcompute::outgoing::ComputationResponse;
 using ::oak::session::AttestationType;
 using ::oak::session::ClientSession;
 using ::oak::session::HandshakeType;
@@ -73,17 +74,20 @@ Value GetTestLambdaFunction() {
   return function;
 }
 
+ComputationDelegationResult ComputationDelegationProxy(
+    const ComputationRequest& request) {
+  return ComputationDelegationResult{ComputationResponse(), grpc::Status::OK};
+}
+
 TEST(ComputationDelegationLambdaRunnerTest, CreateSucceeds) {
-  auto mock_stub = std::make_unique<MockComputationDelegationStub>();
   auto runner = ComputationDelegationLambdaRunner::Create(
-      kWorkerBns, TestConfigAttestedNNClient(), mock_stub.get());
+      kWorkerBns, TestConfigAttestedNNClient(), ComputationDelegationProxy);
   EXPECT_OK(runner);
 }
 
 TEST(ComputationDelegationLambdaRunnerTest, CreateFailsWithEmptyWorkerBns) {
-  auto mock_stub = std::make_unique<MockComputationDelegationStub>();
   auto runner = ComputationDelegationLambdaRunner::Create(
-      "", TestConfigAttestedNNClient(), mock_stub.get());
+      "", TestConfigAttestedNNClient(), ComputationDelegationProxy);
   EXPECT_EQ(runner.status(),
             absl::InvalidArgumentError("Worker bns is empty."));
 }
@@ -93,7 +97,7 @@ TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompSucceeds) {
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
   ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr));
+      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();
@@ -123,7 +127,7 @@ TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompFailsAtExecution) {
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
   ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr));
+      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();
@@ -150,7 +154,7 @@ TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompFailsAtParsing) {
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
   ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr));
+      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();

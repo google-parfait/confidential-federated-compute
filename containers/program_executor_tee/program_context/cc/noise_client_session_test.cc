@@ -110,21 +110,17 @@ SessionConfig* TestConfigAttestedNNServer() {
 class NoiseClientSessionTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    auto client_session = NoiseClientSession::Create(
-        kWorkerBns, TestConfigAttestedNNClient(), mock_stub_.get());
+    auto client_session =
+        NoiseClientSession::Create(kWorkerBns, TestConfigAttestedNNClient(),
+                                   [this](const ComputationRequest& request) {
+                                     return ComputationDelegationProxy(request);
+                                   });
     CHECK_OK(client_session);
     client_session_ = std::move(client_session.value());
     auto server_session =
         oak::session::ServerSession::Create(TestConfigAttestedNNServer());
     CHECK_OK(server_session);
     server_session_ = std::move(server_session.value());
-    // Setup a mock to process the request with the server session.
-    ON_CALL(*mock_stub_.get(), Execute(_, _, _))
-        .WillByDefault(Invoke([this](grpc::ClientContext* context,
-                                     const ComputationRequest& request,
-                                     ComputationResponse* response) {
-          return this->SimulateServerResponse(request, response);
-        }));
   }
   // Simulate the server response using the server_session.
   grpc::Status SimulateServerResponse(const ComputationRequest& request,
@@ -166,9 +162,15 @@ class NoiseClientSessionTest : public ::testing::Test {
     return grpc::Status::OK;
   }
 
-  std::unique_ptr<MockComputationDelegationStub> mock_stub_ =
-      std::make_unique<MockComputationDelegationStub>();
-  std::unique_ptr<NoiseClientSession> client_session_;
+  // Proxy function for calling the ComputationDelegation service.
+  ComputationDelegationResult ComputationDelegationProxy(
+      const ComputationRequest& request) {
+    ComputationResponse response;
+    auto status = SimulateServerResponse(request, &response);
+    return ComputationDelegationResult{response, status};
+  }
+
+  std::shared_ptr<NoiseClientSession> client_session_;
   std::unique_ptr<oak::session::ServerSession> server_session_;
   bool return_error_at_open_session_ = false;
   bool return_error_at_delegate_computation_ = false;
