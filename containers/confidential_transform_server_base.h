@@ -22,6 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "cc/crypto/encryption_key.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -30,7 +31,6 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -52,10 +52,10 @@ class ConfidentialTransformBase
 
  protected:
   ConfidentialTransformBase(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
-          encryption_key_handle = nullptr)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
+      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
+          nullptr)
+      : oak_signing_key_handle_(std::move(signing_key_handle)),
         oak_encryption_key_handle_(std::move(encryption_key_handle)) {}
 
   // Initialize the transform with legacy ledger.
@@ -91,6 +91,12 @@ class ConfidentialTransformBase
   // - Release only encrypted results along with a release token.
   bool KmsEnabled() const { return kms_enabled_; }
 
+  // Returns the Oak SigningKeyHandle passed to the constructor.
+  const std::shared_ptr<oak::crypto::SigningKeyHandle>& GetOakSigningKeyHandle()
+      const {
+    return oak_signing_key_handle_;
+  }
+
  private:
   absl::Status StreamInitializeInternal(
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
@@ -102,7 +108,6 @@ class ConfidentialTransformBase
                                fcp::confidentialcompute::SessionRequest>*
           stream);
 
-  oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   absl::Mutex mutex_;
   // The mutex is used to protect the optional wrapping blob_decryptor_ and
   // session_tracker_ to ensure they are initialized, but the BlobDecryptor and
@@ -115,8 +120,8 @@ class ConfidentialTransformBase
   // Ledger nor KMS. Future applications may not be based on either Ledger nor
   // KMS.
   bool kms_enabled_;
-  std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
-      oak_encryption_key_handle_;
+  std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
+  std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
 };
 
 }  // namespace confidential_federated_compute

@@ -75,6 +75,7 @@ cc_test(
     deps = [
         ":data_uri_resolver",
         ":fake_data_read_write_service",
+        "//containers:crypto_test_utils",
         "//testing:matchers",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -83,7 +84,6 @@ cc_test(
         "@com_google_absl//absl/status:statusor",
         "@federated-compute//fcp/protos/confidentialcompute:file_info_cc_proto",
         "@googletest//:gtest_main",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow//tensorflow/core:framework",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
@@ -119,6 +119,7 @@ cc_test(
     deps = [
         ":fake_data_read_write_service",
         "//containers:crypto",
+        "//containers:crypto_test_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -128,7 +129,6 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@googletest//:gtest_main",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
 
@@ -283,6 +283,5 @@ cc_test(
         "@oak//cc/oak_session:client_session",
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:oak_session_bindings",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )

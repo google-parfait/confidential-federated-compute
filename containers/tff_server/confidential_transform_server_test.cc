@@ -25,7 +25,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "containers/crypto.h"
+#include "containers/crypto_test_utils.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -45,7 +45,6 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -80,7 +79,6 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::CreateTestData;
@@ -199,8 +197,9 @@ TffSessionConfig CreateSessionConfiguration(Value function, Value argument,
 }
 
 TEST(TffConfidentialTransform, StreamInitializeTransformSuccess) {
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  TffConfidentialTransform service(&mock_crypto_stub);
+  auto mock_signing_key_handle = std::make_unique<
+      testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>();
+  TffConfidentialTransform service(std::move(mock_signing_key_handle));
   std::unique_ptr<Server> server;
   std::unique_ptr<ConfidentialTransform::Stub> stub;
 

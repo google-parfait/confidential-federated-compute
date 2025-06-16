@@ -24,6 +24,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "cc/crypto/signing_key.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
@@ -32,13 +33,11 @@
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
-#include "grpcpp/client_context.h"
 #include "openssl/err.h"
 #include "openssl/evp.h"
 #include "openssl/hmac.h"
 #include "openssl/rand.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
-#include "proto/containers/orchestrator_crypto.pb.h"
+#include "proto/crypto/crypto.pb.h"
 
 namespace confidential_federated_compute {
 namespace {
@@ -47,7 +46,6 @@ using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
-using ::oak::containers::v1::OrchestratorCrypto;
 
 constexpr size_t kNonceSize = 16;
 constexpr size_t kBlobIdSize = 16;
@@ -55,17 +53,11 @@ constexpr size_t kBlobIdSize = 16;
 // See https://www.iana.org/assignments/cose/cose.xhtml.
 constexpr int64_t kAlgorithmES256 = -7;
 
-absl::StatusOr<std::string> SignWithOrchestrator(
-    OrchestratorCrypto::StubInterface& stub, absl::string_view message) {
-  grpc::ClientContext context;
-  oak::containers::v1::SignRequest request;
-  request.set_key_origin(oak::containers::v1::KeyOrigin::INSTANCE);
-  request.set_message(std::string(message));
-  oak::containers::v1::SignResponse response;
-  if (auto status = stub.Sign(&context, request, &response); !status.ok()) {
-    return fcp::base::FromGrpcStatus(std::move(status));
-  }
-  return std::move(*response.mutable_signature()->mutable_signature());
+absl::StatusOr<std::string> SignWithOakSigningKey(
+    oak::crypto::SigningKeyHandle& signing_key, absl::string_view message) {
+  FCP_ASSIGN_OR_RETURN(oak::crypto::v1::Signature signature,
+                       signing_key.Sign(message));
+  return std::move(*signature.mutable_signature());
 }
 
 absl::StatusOr<std::string> Decompress(
@@ -89,15 +81,15 @@ absl::StatusOr<std::string> Decompress(
 }  // namespace
 
 BlobDecryptor::BlobDecryptor(
-    OrchestratorCrypto::StubInterface& stub,
+    oak::crypto::SigningKeyHandle& signing_key,
     google::protobuf::Struct config_properties,
     const std::vector<absl::string_view>& decryption_keys,
     std::optional<absl::flat_hash_set<std::string>>
         authorized_logical_pipeline_policies_hashes)
     : message_decryptor_(std::move(config_properties), decryption_keys),
       signed_public_key_(message_decryptor_.GetPublicKey(
-          [&stub](absl::string_view message) {
-            return SignWithOrchestrator(stub, message);
+          [&signing_key](absl::string_view message) {
+            return SignWithOakSigningKey(signing_key, message);
           },
           kAlgorithmES256)),
       authorized_logical_pipeline_policies_hashes_(

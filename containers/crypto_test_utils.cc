@@ -25,10 +25,12 @@
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "gmock/gmock.h"
 #include "openssl/aead.h"
 #include "openssl/base.h"
 #include "openssl/err.h"
 #include "openssl/hpke.h"
+#include "proto/crypto/crypto.pb.h"
 
 namespace confidential_federated_compute::crypto_test_utils {
 
@@ -42,6 +44,7 @@ using ::fcp::confidential_compute::crypto_internal::UnwrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKey;
 using ::fcp::confidential_compute::crypto_internal::WrapSymmetricKeyResult;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::testing::Return;
 
 const int64_t kHpkeBaseX25519Sha256Aes128Gcm = -65537;
 const int64_t kX25519 = 4;
@@ -148,6 +151,11 @@ std::pair<std::string, std::string> GenerateKeyPair(std::string key_id) {
           .Encode();
   CHECK_OK(private_key);
   return {public_key.value(), private_key.value()};
+}
+
+MockSigningKeyHandle::MockSigningKeyHandle() {
+  ON_CALL(*this, Sign)
+      .WillByDefault(Return(oak::crypto::v1::Signature::default_instance()));
 }
 
 }  // namespace confidential_federated_compute::crypto_test_utils

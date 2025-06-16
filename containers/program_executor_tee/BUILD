@@ -53,7 +53,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//cc/crypto:signing_key",
         "@pybind11",
         "@rules_python//python/cc:current_py_cc_libs",
     ],
@@ -85,7 +85,6 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@googletest//:gtest_main",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
@@ -101,12 +100,11 @@ cc_binary(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
-        "//containers:oak_orchestrator_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@oak//proto/containers:interfaces_cc_grpc",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
     ],
 )
 

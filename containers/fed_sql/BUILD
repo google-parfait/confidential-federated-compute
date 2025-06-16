@@ -48,7 +48,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//cc/crypto:signing_key",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
@@ -415,14 +415,12 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":confidential_transform_server",
-        "//containers:oak_orchestrator_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@oak//cc/containers/sdk:encryption_key_handle",
+        "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
-        "@oak//proto/containers:interfaces_cc_grpc",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
     ],
 )
 

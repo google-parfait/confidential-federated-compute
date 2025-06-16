@@ -20,7 +20,10 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "cc/crypto/signing_key.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "gmock/gmock.h"
+#include "proto/crypto/crypto.pb.h"
 
 namespace confidential_federated_compute::crypto_test_utils {
 
@@ -39,6 +42,16 @@ CreateRewrappedBlob(absl::string_view message,
 // format that would be produced by KMS for encrypting/decrypting blobs using
 // the given key_id.
 std::pair<std::string, std::string> GenerateKeyPair(std::string key_id);
+
+// Mock SigningKeyHandle.
+class MockSigningKeyHandle : public oak::crypto::SigningKeyHandle {
+ public:
+  MockSigningKeyHandle();
+
+  MOCK_METHOD(absl::StatusOr<oak::crypto::v1::Signature>, Sign,
+              (absl::string_view message), (override));
+};
+
 }  // namespace confidential_federated_compute::crypto_test_utils
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_TEST_UTILS_H_

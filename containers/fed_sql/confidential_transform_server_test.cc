@@ -49,7 +49,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -61,10 +60,10 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
-using ::confidential_federated_compute::fed_sql::testing::MockSigningKeyHandle;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::MessageDecryptor;
@@ -116,7 +115,6 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::oak::crypto::ClientEncryptor;
 using ::oak::crypto::EncryptionKeyProvider;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
@@ -294,8 +292,8 @@ class FedSqlServerTest : public Test {
         ClientEncryptor::Create(encryption_key_handle->GetSerializedPublicKey())
             .value();
     service_ = std::make_unique<FedSqlConfidentialTransform>(
-        &mock_crypto_stub_, std::move(encryption_key_handle),
-        std::make_unique<MockSigningKeyHandle>(), mock_inference_model_);
+        std::make_unique<NiceMock<MockSigningKeyHandle>>(),
+        std::move(encryption_key_handle), mock_inference_model_);
 
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
@@ -323,7 +321,6 @@ class FedSqlServerTest : public Test {
   // Returns the default BlobMetadata
   BlobMetadata DefaultBlobMetadata() const;
 
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
   std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
       std::make_shared<NiceMock<MockInferenceModel>>();
   std::unique_ptr<FedSqlConfidentialTransform> service_;

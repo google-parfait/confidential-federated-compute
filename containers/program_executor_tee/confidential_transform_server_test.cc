@@ -41,7 +41,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 #include "testing/parse_text_proto.h"
 
@@ -62,7 +61,6 @@ using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::HasSubstr;
 using ::testing::Test;
 
@@ -98,8 +96,8 @@ class ProgramExecutorTeeTest : public Test {
   ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
 
  protected:
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  ProgramExecutorTeeConfidentialTransform service_{&mock_crypto_stub_};
+  ProgramExecutorTeeConfidentialTransform service_{std::make_unique<
+      testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>()};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 

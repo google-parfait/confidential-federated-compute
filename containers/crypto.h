@@ -24,11 +24,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "cc/crypto/signing_key.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/struct.pb.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -50,7 +50,7 @@ class BlobDecryptor {
   // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/access_policy.proto.
   // Configuration properties are not required to be passed when using KMS since
   // validation of the config constraints is performed by the worker itself.
-  BlobDecryptor(oak::containers::v1::OrchestratorCrypto::StubInterface& stub,
+  BlobDecryptor(oak::crypto::SigningKeyHandle& signing_key,
                 google::protobuf::Struct config_properties = {},
                 const std::vector<absl::string_view>& decryption_keys = {},
                 std::optional<absl::flat_hash_set<std::string>>

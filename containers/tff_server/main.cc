@@ -17,14 +17,12 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "containers/oak_orchestrator_client.h"
+#include "cc/containers/sdk/orchestrator_client.h"
+#include "cc/containers/sdk/signing_key_handle.h"
 #include "containers/tff_server/confidential_transform_server.h"
-#include "grpcpp/channel.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "proto/containers/interfaces.grpc.pb.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::tff_server {
 
@@ -32,19 +30,16 @@ namespace {
 
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
-using ::oak::containers::Orchestrator;
-using ::oak::containers::v1::OrchestratorCrypto;
+using ::oak::containers::sdk::OrchestratorClient;
 
 // Increase gRPC message size limit to 2GB
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 
 void RunServer() {
   std::string server_address("[::]:8080");
-  std::shared_ptr<grpc::Channel> orchestrator_channel =
-      CreateOakOrchestratorChannel();
 
-  OrchestratorCrypto::Stub orchestrator_crypto_stub(orchestrator_channel);
-  TffConfidentialTransform service(&orchestrator_crypto_stub);
+  TffConfidentialTransform service(
+      std::make_unique<oak::containers::sdk::InstanceSigningKeyHandle>());
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
   builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
@@ -54,9 +49,7 @@ void RunServer() {
   LOG(INFO) << "TFF Confidential Transform Server listening on "
             << server_address << "\n";
 
-  Orchestrator::Stub orchestrator_stub(orchestrator_channel);
-  OakOrchestratorClient oak_orchestrator_client(&orchestrator_stub);
-  CHECK_OK(oak_orchestrator_client.NotifyAppReady());
+  CHECK_OK(OrchestratorClient().NotifyAppReady());
   server->Wait();
 }
 

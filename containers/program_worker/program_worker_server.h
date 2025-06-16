@@ -25,7 +25,6 @@
 #include "fcp/protos/confidentialcompute/program_worker.pb.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::program_worker {
 
@@ -34,12 +33,10 @@ class ProgramWorkerTee
     : public fcp::confidentialcompute::ProgramWorker::Service {
  public:
   static absl::StatusOr<std::unique_ptr<ProgramWorkerTee>> Create(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
       oak::session::SessionConfig* session_config) {
     FCP_ASSIGN_OR_RETURN(auto server_session,
                          oak::session::ServerSession::Create(session_config));
-    return absl::WrapUnique(
-        new ProgramWorkerTee(crypto_stub, std::move(server_session)));
+    return absl::WrapUnique(new ProgramWorkerTee(std::move(server_session)));
   }
 
   grpc::Status Execute(
@@ -48,11 +45,9 @@ class ProgramWorkerTee
       fcp::confidentialcompute::ComputationResponse* response);
 
  private:
-  ProgramWorkerTee(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
+  explicit ProgramWorkerTee(
       std::unique_ptr<oak::session::ServerSession> server_session)
-      : crypto_stub_(*ABSL_DIE_IF_NULL(crypto_stub)),
-        server_session_(std::move(server_session)) {}
+      : server_session_(std::move(server_session)) {}
 
   absl::StatusOr<oak::session::v1::PlaintextMessage> DecryptRequest(
       const oak::session::v1::SessionRequest& session_request);
@@ -60,7 +55,6 @@ class ProgramWorkerTee
   absl::StatusOr<oak::session::v1::SessionResponse> EncryptResult(
       const oak::session::v1::PlaintextMessage& plaintext_response);
 
-  oak::containers::v1::OrchestratorCrypto::StubInterface& crypto_stub_;
   std::unique_ptr<oak::session::ServerSession> server_session_;
 };
 

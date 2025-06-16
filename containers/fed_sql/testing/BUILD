@@ -35,7 +35,6 @@ cc_library(
     visibility = ["//containers/fed_sql:__pkg__"],
     deps = [
         "@gemma//:gemma_lib",
-        "@googletest//:gtest_main",
-        "@oak//cc/crypto:signing_key",
+        "@googletest//:gtest",
     ],
 )

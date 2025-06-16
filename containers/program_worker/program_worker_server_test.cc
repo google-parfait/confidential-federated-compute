@@ -38,7 +38,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_worker {
@@ -56,7 +55,6 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::oak::session::AttestationType;
 using ::oak::session::ClientSession;
 using ::oak::session::HandshakeType;
@@ -168,8 +166,7 @@ class ProgramWorkerTeeServerTest : public Test {
   ProgramWorkerTeeServerTest() {
     int port;
     const std::string server_address = "[::1]:";
-    auto service = ProgramWorkerTee::Create(&mock_crypto_stub_,
-                                            TestConfigAttestedNNServer());
+    auto service = ProgramWorkerTee::Create(TestConfigAttestedNNServer());
     CHECK_OK(service);
     service_ = std::move(service.value());
     ServerBuilder builder;
@@ -227,7 +224,6 @@ class ProgramWorkerTeeServerTest : public Test {
   }
 
  protected:
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
   std::unique_ptr<ProgramWorkerTee> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ProgramWorker::Stub> stub_;

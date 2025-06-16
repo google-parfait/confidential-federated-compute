@@ -39,7 +39,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -57,7 +56,6 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::oak::session::AttestationType;
 using ::oak::session::ClientSession;
 using ::oak::session::HandshakeType;

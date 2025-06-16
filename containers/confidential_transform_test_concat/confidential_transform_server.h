@@ -21,14 +21,14 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "cc/crypto/encryption_key.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
-#include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::confidential_transform_test_concat {
 
@@ -84,10 +84,10 @@ class TestConcatConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   TestConcatConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      std::unique_ptr<::oak::crypto::EncryptionKeyHandle>
-          encryption_key_handle = nullptr)
-      : ConfidentialTransformBase(crypto_stub,
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
+          nullptr)
+      : ConfidentialTransformBase(std::move(signing_key_handle),
                                   std::move(encryption_key_handle)) {};
 
  protected:

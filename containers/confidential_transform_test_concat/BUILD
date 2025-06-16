@@ -22,7 +22,6 @@ cc_library(
     hdrs = ["confidential_transform_server.h"],
     deps = [
         "//containers:confidential_transform_server_base",
-        "//containers:crypto",
         "//containers:session",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -33,8 +32,8 @@ cc_library(
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
+        "@oak//cc/crypto:encryption_key",
+        "@oak//cc/crypto:signing_key",
     ],
 )
 
@@ -42,8 +41,7 @@ cc_test(
     name = "confidential_transform_server_test",
     srcs = ["confidential_transform_server_test.cc"],
     deps = [
-        "confidential_transform_server",
-        "//containers:crypto",
+        ":confidential_transform_server",
         "//containers:crypto_test_utils",
         "//containers:session",
         "//testing:parse_text_proto",
@@ -55,8 +53,6 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest_main",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
     ],
 )
 
@@ -65,13 +61,12 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":confidential_transform_server",
-        "//containers:oak_orchestrator_client",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@oak//cc/containers/sdk:encryption_key_handle",
-        "@oak//proto/containers:interfaces_cc_grpc",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
     ],
 )
 

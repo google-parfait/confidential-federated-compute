@@ -21,6 +21,7 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -30,7 +31,6 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -71,8 +71,8 @@ class ProgramExecutorTeeConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   ProgramExecutorTeeConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : ConfidentialTransformBase(crypto_stub) {};
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
+      : ConfidentialTransformBase(std::move(signing_key_handle)) {}
 
  protected:
   virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(

@@ -119,13 +119,12 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 }  // namespace
 
 FedSqlConfidentialTransform::FedSqlConfidentialTransform(
-    oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-    std::unique_ptr<::oak::crypto::EncryptionKeyHandle> encryption_key_handle,
-    std::shared_ptr<::oak::crypto::SigningKeyHandle> signing_key_handle,
+    std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+    std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle,
     std::shared_ptr<InferenceModel> inference_model)
-    : ConfidentialTransformBase(crypto_stub, std::move(encryption_key_handle)),
-      inference_model_(inference_model),
-      signing_key_handle_(std::move(signing_key_handle)) {
+    : ConfidentialTransformBase(std::move(signing_key_handle),
+                                std::move(encryption_key_handle)),
+      inference_model_(inference_model) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   std::string key(32, '\0');
   // Generate a random key using BoringSSL. BoringSSL documentation says
@@ -494,7 +493,8 @@ FedSqlConfidentialTransform::CreateSession() {
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,
         sensitive_values_key_, reencryption_keys_.value(),
-        reencryption_policy_hash_.value(), private_state_, signing_key_handle_);
+        reencryption_policy_hash_.value(), private_state_,
+        GetOakSigningKeyHandle());
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_model_,

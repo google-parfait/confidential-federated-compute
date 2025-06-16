@@ -22,7 +22,6 @@ cc_library(
     hdrs = ["crypto.h"],
     deps = [
         "@boringssl//:crypto",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
@@ -35,8 +34,8 @@ cc_library(
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@oak//proto/containers:orchestrator_crypto_cc_proto",
+        "@oak//cc/crypto:signing_key",
+        "@oak//proto/crypto:crypto_cc_proto",
     ],
 )
 
@@ -44,6 +43,7 @@ cc_library(
     name = "session",
     srcs = ["session.cc"],
     hdrs = ["session.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base:status_converters",
@@ -102,22 +102,9 @@ cc_library(
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "oak_orchestrator_client",
-    srcs = ["oak_orchestrator_client.cc"],
-    hdrs = ["oak_orchestrator_client.h"],
-    deps = [
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
-        "@oak//proto/containers:interfaces_cc_grpc",
-        "@oak//proto/containers:interfaces_cc_proto",
+        "@googletest//:gtest",
+        "@oak//cc/crypto:signing_key",
+        "@oak//proto/crypto:crypto_cc_proto",
     ],
 )
 
@@ -137,22 +124,7 @@ cc_test(
         "@federated-compute//fcp/base:compression",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@googletest//:gtest_main",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
-        "@oak//proto/containers:orchestrator_crypto_cc_proto",
-    ],
-)
-
-cc_test(
-    name = "oak_orchestrator_client_test",
-    size = "small",
-    srcs = ["oak_orchestrator_client_test.cc"],
-    deps = [
-        ":oak_orchestrator_client",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@googletest//:gtest_main",
-        "@oak//proto/containers:interfaces_cc_grpc",
-        "@oak//proto/containers:interfaces_cc_proto",
+        "@oak//proto/crypto:crypto_cc_proto",
     ],
 )
 
@@ -160,6 +132,7 @@ cc_library(
     name = "confidential_transform_server_base",
     srcs = ["confidential_transform_server_base.cc"],
     hdrs = ["confidential_transform_server_base.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":blob_metadata",
         ":crypto",
@@ -179,7 +152,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
         "@oak//cc/crypto:encryption_key",
         "@oak//cc/crypto:server_encryptor",
-        "@oak//proto/containers:orchestrator_crypto_cc_grpc",
+        "@oak//cc/crypto:signing_key",
     ],
 )
 

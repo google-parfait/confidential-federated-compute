@@ -50,10 +50,10 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
-using ::confidential_federated_compute::fed_sql::testing::MockSigningKeyHandle;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;

@@ -19,7 +19,6 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -33,7 +32,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::confidential_transform_test_concat {
@@ -56,7 +54,6 @@ using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::StatusCode;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::Test;
 
 // Attempt to write the InitializeRequest to the client stream and then close
@@ -90,8 +87,8 @@ class TestConcatServerTest : public Test {
   ~TestConcatServerTest() override { server_->Shutdown(); }
 
  protected:
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
-  TestConcatConfidentialTransform service_{&mock_crypto_stub_};
+  TestConcatConfidentialTransform service_{std::make_unique<
+      testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>()};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };

@@ -198,7 +198,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
       return absl::FailedPreconditionError(
           "StreamInitialize can only be called once.");
     }
-    blob_decryptor_.emplace(crypto_stub_, config_properties,
+    blob_decryptor_.emplace(*oak_signing_key_handle_, config_properties,
                             std::vector<absl::string_view>(
                                 protected_response.decryption_keys().begin(),
                                 protected_response.decryption_keys().end()),

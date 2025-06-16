@@ -21,6 +21,7 @@
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -30,7 +31,6 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "proto/containers/orchestrator_crypto.grpc.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
@@ -96,9 +96,9 @@ class TffSession final : public confidential_federated_compute::Session {
 class TffConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
-  TffConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub)
-      : ConfidentialTransformBase(crypto_stub) {};
+  explicit TffConfidentialTransform(
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
+      : ConfidentialTransformBase(std::move(signing_key_handle)) {}
 
  protected:
   // No transform specific stream initialization for TFF.

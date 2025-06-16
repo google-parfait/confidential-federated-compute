@@ -22,6 +22,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/crypto_test_utils.h"
 #include "containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"
 #include "fcp/protos/confidentialcompute/file_info.pb.h"
 #include "gmock/gmock.h"
@@ -29,7 +30,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
@@ -42,9 +42,9 @@
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
+using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::
@@ -110,8 +110,8 @@ TEST_F(DataUriResolverTest, ResolveToValueSucceedsWithEncryptedData) {
   std::string message =
       BuildClientCheckpointFromStrings(examples, std::string(kDataTensorName));
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
@@ -221,8 +221,8 @@ TEST_F(DataUriResolverTest, ResolveToValueSucceedsWithPlaintextData) {
 }
 
 TEST_F(DataUriResolverTest, ResolveToValueMalformedDataProto) {
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   std::function<std::string()> nonce_generator = []() { return "nonce"; };
   DataUriResolver resolver(&blob_decryptor, nonce_generator, port_);
 
@@ -238,8 +238,8 @@ TEST_F(DataUriResolverTest, ResolveToValueMalformedDataProto) {
 }
 
 TEST_F(DataUriResolverTest, ResolveToValueDataReadWriteServiceFailure) {
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   std::function<std::string()> nonce_generator = []() { return "nonce"; };
   DataUriResolver resolver(&blob_decryptor, nonce_generator, port_);
 
@@ -265,8 +265,8 @@ TEST_F(DataUriResolverTest, ResolveToValueMismatchingNonceFailure) {
   std::vector<std::string> examples = {"example1", "example2", "example3"};
   std::string message =
       BuildClientCheckpointFromStrings(examples, std::string(kDataTensorName));
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
@@ -304,8 +304,8 @@ TEST_F(DataUriResolverTest, ResolveToValueDecryptionFailure) {
   std::string message =
       BuildClientCheckpointFromStrings(examples, std::string(kDataTensorName));
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
@@ -315,8 +315,8 @@ TEST_F(DataUriResolverTest, ResolveToValueDecryptionFailure) {
 
   // Construct the DataUriResolver using a BlobDecryptor whose public key will
   // not match the one used above to prepopulate the FakeDataReadWriteService.
-  NiceMock<MockOrchestratorCryptoStub> second_mock_crypto_stub;
-  BlobDecryptor second_blob_decryptor(second_mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> second_mock_signing_key_handle;
+  BlobDecryptor second_blob_decryptor(second_mock_signing_key_handle);
   std::function<std::string()> nonce_generator = [&nonce]() { return nonce; };
   DataUriResolver resolver(&second_blob_decryptor, nonce_generator, port_);
 
@@ -341,8 +341,8 @@ TEST_F(DataUriResolverTest, ResolveToValueMalformedCheckpointFailure) {
   std::string uri = "my_uri";
   std::string message = "malformed checkpoint";
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
@@ -377,8 +377,8 @@ TEST_F(DataUriResolverTest, ResolveToValueMismatchedCheckpointKeyFailure) {
   std::string message =
       BuildClientCheckpointFromStrings(examples, std::string(kDataTensorName));
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());

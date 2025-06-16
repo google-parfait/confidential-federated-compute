@@ -23,6 +23,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
+#include "containers/crypto_test_utils.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
@@ -33,11 +34,11 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
+using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::DataReadWrite;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
@@ -49,7 +50,6 @@ using ::grpc::ClientReader;
 using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Test;
@@ -89,8 +89,8 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
   std::string uri = "uri";
   std::string message = "message";
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
@@ -225,8 +225,8 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
 
   // Check that adding an encrypted message with the same uri fails.
   std::string nonce = "nonce";
-  NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub;
-  BlobDecryptor blob_decryptor(mock_crypto_stub);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  BlobDecryptor blob_decryptor(mock_signing_key_handle);
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());

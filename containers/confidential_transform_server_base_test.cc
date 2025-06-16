@@ -22,6 +22,7 @@
 #include "absl/strings/str_format.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/session.h"
@@ -39,7 +40,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "proto/containers/orchestrator_crypto_mock.grpc.pb.h"
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
@@ -71,7 +71,6 @@ using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
-using ::oak::containers::v1::MockOrchestratorCryptoStub;
 using ::oak::crypto::ClientEncryptor;
 using ::oak::crypto::EncryptionKeyProvider;
 using ::testing::_;
@@ -132,10 +131,10 @@ class FakeConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   FakeConfidentialTransform(
-      oak::containers::v1::OrchestratorCrypto::StubInterface* crypto_stub,
-      std::unique_ptr<::oak::crypto::EncryptionKeyHandle> encryption_key_handle)
-      : ConfidentialTransformBase(crypto_stub,
-                                  std::move(encryption_key_handle)) {};
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
+      : ConfidentialTransformBase(std::move(signing_key_handle),
+                                  std::move(encryption_key_handle)) {}
 
   void AddSession(
       std::unique_ptr<confidential_federated_compute::MockSession> session) {
@@ -195,7 +194,9 @@ class ConfidentialTransformServerBaseTest : public Test {
         ClientEncryptor::Create(encryption_key_handle->GetSerializedPublicKey())
             .value();
     service_ = std::make_unique<FakeConfidentialTransform>(
-        &mock_crypto_stub_, std::move(encryption_key_handle));
+        std::make_unique<
+            testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>(),
+        std::move(encryption_key_handle));
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
                              grpc::InsecureServerCredentials(), &port);
@@ -211,7 +212,6 @@ class ConfidentialTransformServerBaseTest : public Test {
   ~ConfidentialTransformServerBaseTest() override { server_->Shutdown(); }
 
  protected:
-  testing::NiceMock<MockOrchestratorCryptoStub> mock_crypto_stub_;
   std::unique_ptr<FakeConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
