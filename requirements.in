@@ -14,7 +14,7 @@ attrs~=23.1.0
 dm-tree==0.1.7
 ml_dtypes~=0.3.2
 numpy~=1.26
-protobuf~=4.21
+protobuf~=4.25
 typing-extensions~=4.5
 
 # Additional dependencies for TFF pip package.
