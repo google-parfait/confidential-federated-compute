@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
@@ -71,6 +72,7 @@ class InferenceModel {
       const std::string& column_name);
   ModelType GetModelType() const;
 
+  absl::Mutex mutex_;
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::variant<NoModel, GemmaModel> model_;
 };

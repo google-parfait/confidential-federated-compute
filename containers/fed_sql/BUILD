@@ -68,6 +68,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
