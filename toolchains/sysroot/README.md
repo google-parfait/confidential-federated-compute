@@ -20,8 +20,10 @@ perform the following steps:
     `bazelisk run @sysroot//:lock` to update `sysroot.lock.json`. After
     confirming the sysroot builds successfully (`bazelisk build //:sysroot`),
     commit this change.
-2.  Trigger the "Release sysroot" workflow to build and release the sysroot.
-    This step will also upload build provenance to Sigstore.
+2.  Create a new tag (and optionally release) starting with `sysroot-` (e.g.
+    `sysroot-YYYYMMDD`). This will trigger the "Release sysroot" workflow to
+    build the sysroot and attach it to the release. This workflow will also
+    upload build provenance to Sigstore.
 3.  To help detect non-determinism, verify that the checksum for the
     locally-built sysroot matches what was built by the workflow.
 4.  Update the version of the sysroot used in CFC to point to the new release.
