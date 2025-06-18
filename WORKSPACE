@@ -29,22 +29,6 @@ http_archive(
     urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
 )
 
-# Use a sysroot to make clang builds hermetic. This sysroot may not be
-# reproducible, but that's OK because it's only used by sanitizer builds.
-http_archive(
-    name = "clang_sysroot",
-    build_file_content = """
-filegroup(
-    name = "sysroot",
-    srcs = glob(["**"]),
-    visibility = ["//visibility:public"],
-)
-""",
-    sha256 = "dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
-    type = "tar.xz",
-    url = "https://commondatastorage.googleapis.com/chrome-linux-sysroot/dec7a3a0fc5b83b909cba1b6d119077e0429a138eadef6bf5a0f2e03b1904631",
-)
-
 # Pin a newer version of gRPC than the one provided by Tensorflow.
 # 1.50.0 is used as it is the gRPC version used by FCP. It's not a requirement
 # for the versions to stay in sync if we need a feature of a later gRPC version,
@@ -203,6 +187,7 @@ git_repository(
     name = "libcppbor",
     build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
+    patches = ["//third_party/libcppbor:libcppbor.patch"],
     remote = "https://android.googlesource.com/platform/external/libcppbor",
 )
 
@@ -320,6 +305,14 @@ http_archive(
     sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
     strip_prefix = "sqlite-amalgamation-3450200",
     url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
+)
+
+http_archive(
+    name = "sysroot",
+    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>.
+    # To make this lookup easier, we use `sha256` instead of `integrity`.
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
 
 # Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
@@ -554,8 +547,8 @@ oci_pull(
     platforms = ["linux/amd64"],
 )
 
-# Install a hermetic GCC toolchain. This must be defined after rules_oci
-# because it uses an older version of aspect_bazel_lib.
+# Install a hermetic GCC toolchain for nostd builds. This must be defined after
+# rules_oci because it uses an older version of aspect_bazel_lib.
 http_archive(
     name = "aspect_gcc_toolchain",
     sha256 = "3341394b1376fb96a87ac3ca01c582f7f18e7dc5e16e8cf40880a31dd7ac0e1e",
@@ -568,11 +561,6 @@ load("@aspect_gcc_toolchain//toolchain:repositories.bzl", "gcc_toolchain_depende
 gcc_toolchain_dependencies()
 
 load("@aspect_gcc_toolchain//toolchain:defs.bzl", "ARCHS", "gcc_register_toolchain")
-
-gcc_register_toolchain(
-    name = "gcc_toolchain_x86_64",
-    target_arch = ARCHS.x86_64,
-)
 
 gcc_register_toolchain(
     name = "gcc_toolchain_x86_64_unknown_none",
@@ -595,5 +583,12 @@ llvm_toolchain(
     # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
     # https://github.com/llvm/llvm-project/issues/51620
     llvm_version = "14.0.0",
-    sysroot = {"linux-x86_64": "@clang_sysroot//:sysroot"},
+    # Using the PyPi tensorflow package requires using libstdc++ to ensure the
+    # right C++ ABI.
+    stdlib = {"linux-x86_64": "stdc++"},
+    sysroot = {"linux-x86_64": "@sysroot"},
 )
+
+load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
+
+llvm_register_toolchains()
