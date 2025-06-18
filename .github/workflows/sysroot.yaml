@@ -1,0 +1,52 @@
+name: Release sysroot
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: toolchains/sysroot
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          module-root: toolchains/sysroot
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Build
+        run: |
+          cd toolchains/sysroot
+          bazelisk build -c opt --curses=no --noshow_progress //:sysroot
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: toolchains/sysroot/bazel-bin/sysroot.tar.xz
+      - name: Get current date
+        id: date
+        run: echo "DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: sysroot-%{{ steps.date.outputs.date }}
+          release_name: Release sysroot-${{ steps.date.outputs.date }}
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_uri: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./toolchains/sysroot/bazel-bin/sysroot.tar.xz
+          asset_name: sysroot.tar.xz
+          asset_content_type: application/x-gtar
