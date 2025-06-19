@@ -21,6 +21,9 @@ common --experimental_repo_remote_exec
 common --noenable_bzlmod
 common --repo_env=TF_PYTHON_VERSION=3.10
 
+# PIC is required when linking boringssl with Rust binaries.
+build --per_file_copt=external/boringssl/@-fpic
+
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
 build:clippy --output_groups=+clippy_checks
