@@ -16,8 +16,13 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_COMPUTATION_RUNNER_H_
 
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
+#include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -25,8 +30,12 @@ namespace confidential_federated_compute::program_executor_tee {
 // Stateful helper class for executing TFF computations.
 class ComputationRunner {
  public:
-  ComputationRunner(std::vector<std::string> worker_bns)
-      : worker_bns_(worker_bns) {}
+  ComputationRunner(
+      std::vector<std::string> worker_bns,
+      std::optional<std::function<ComputationDelegationResult(
+          ::fcp::confidentialcompute::outgoing::ComputationRequest)>>
+          computation_delegation_proxy = std::nullopt,
+      std::string attester_id = "");
 
   // Executes a TFF computation using a C++ execution stack. If worker_bns_ is
   // empty, the computation will be executed in a non-distributed manner, else
@@ -38,9 +47,17 @@ class ComputationRunner {
       std::optional<tensorflow_federated::v0::Value> arg);
 
  private:
+  absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+  CreateDistributedExecutor(int num_clients);
+
   // Addresses of worker machines running the program_worker binary that can be
   // used to execute computations in a distributed manner.
-  const std::vector<std::string> worker_bns_;
+  std::vector<std::string> worker_bns_;
+  std::function<ComputationDelegationResult(
+      ::fcp::confidentialcompute::outgoing::ComputationRequest)>
+      computation_delegation_proxy_;
+  std::string attester_id_;
+  std::vector<std::shared_ptr<NoiseClientSession>> noise_client_sessions_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

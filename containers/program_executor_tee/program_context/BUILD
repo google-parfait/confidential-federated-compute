@@ -41,6 +41,11 @@ py_library(
 )
 
 py_library(
+    name = "fake_computation_delegation_service_bindings",
+    data = ["//containers/program_executor_tee/program_context/cc:fake_computation_delegation_service_bindings.so"],
+)
+
+py_library(
     name = "fake_data_read_write_servicer",
     srcs = ["fake_data_read_write_servicer.py"],
     deps = [
@@ -78,6 +83,9 @@ py_test(
         ":compilers",
         ":computation_runner_bindings",
         ":execution_context",
+        ":fake_computation_delegation_service_bindings",
+        "@federated-compute//fcp/confidentialcompute/python:compiler",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax/computation:jax_computation",
         "@pypi//absl_py",

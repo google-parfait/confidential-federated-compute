@@ -69,6 +69,9 @@ class NoiseClientSession : public NoiseClientSessionInterface {
   absl::StatusOr<oak::session::v1::PlaintextMessage> DelegateComputation(
       const oak::session::v1::PlaintextMessage& plaintext_request) override;
 
+  // Opens the session before sending any actual computation request.
+  absl::Status OpenSession();
+
  private:
   NoiseClientSession(
       const std::string& worker_bns,
@@ -79,8 +82,6 @@ class NoiseClientSession : public NoiseClientSessionInterface {
       : worker_bns_(worker_bns),
         client_session_(std::move(client_session)),
         computation_delegation_proxy_(computation_delegation_proxy) {}
-
-  absl::Status OpenSession();
 
   absl::StatusOr<oak::session::v1::SessionRequest> EncryptRequest(
       const oak::session::v1::PlaintextMessage& plaintext_request);

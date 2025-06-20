@@ -16,12 +16,6 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "cc/ffi/bytes_bindings.h"
-#include "cc/ffi/bytes_view.h"
-#include "cc/ffi/error_bindings.h"
-#include "cc/oak_session/config.h"
-#include "cc/oak_session/oak_session_bindings.h"
-#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -36,34 +30,13 @@ namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
 using ::fcp::confidentialcompute::TffSessionConfig;
-using ::fcp::confidentialcompute::outgoing::ComputationRequest;
-using ::fcp::confidentialcompute::outgoing::ComputationResponse;
-using ::oak::session::AttestationType;
-using ::oak::session::ClientSession;
-using ::oak::session::HandshakeType;
-using ::oak::session::SessionConfig;
-using ::oak::session::SessionConfigBuilder;
 using ::oak::session::v1::PlaintextMessage;
 using ::tensorflow_federated::v0::Value;
 using ::testing::_;
 using ::testing::Return;
 
 constexpr char kWorkerBns[] = "/bns/test/worker";
-constexpr absl::string_view kFakeAttesterId = "fake_attester";
-constexpr absl::string_view kFakeEvent = "fake event";
-constexpr absl::string_view kFakePlatform = "fake platform";
 constexpr int kNumClients = 3;
-
-SessionConfig* TestConfigAttestedNNClient() {
-  auto verifier = bindings::new_fake_attestation_verifier(
-      ffi_bindings::BytesView(kFakeEvent),
-      ffi_bindings::BytesView(kFakePlatform));
-
-  return SessionConfigBuilder(AttestationType::kPeerUnidirectional,
-                              HandshakeType::kNoiseNN)
-      .AddPeerVerifier(kFakeAttesterId, verifier)
-      .Build();
-}
 
 Value GetTestLambdaFunction() {
   Value function;
@@ -74,30 +47,11 @@ Value GetTestLambdaFunction() {
   return function;
 }
 
-ComputationDelegationResult ComputationDelegationProxy(
-    const ComputationRequest& request) {
-  return ComputationDelegationResult{ComputationResponse(), grpc::Status::OK};
-}
-
-TEST(ComputationDelegationLambdaRunnerTest, CreateSucceeds) {
-  auto runner = ComputationDelegationLambdaRunner::Create(
-      kWorkerBns, TestConfigAttestedNNClient(), ComputationDelegationProxy);
-  EXPECT_OK(runner);
-}
-
-TEST(ComputationDelegationLambdaRunnerTest, CreateFailsWithEmptyWorkerBns) {
-  auto runner = ComputationDelegationLambdaRunner::Create(
-      "", TestConfigAttestedNNClient(), ComputationDelegationProxy);
-  EXPECT_EQ(runner.status(),
-            absl::InvalidArgumentError("Worker bns is empty."));
-}
-
 TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompSucceeds) {
   auto mock_noise_client_session_ptr =
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
-  ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
+  ComputationDelegationLambdaRunner runner(mock_noise_client_session);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();
@@ -126,8 +80,7 @@ TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompFailsAtExecution) {
   auto mock_noise_client_session_ptr =
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
-  ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
+  ComputationDelegationLambdaRunner runner(mock_noise_client_session);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();
@@ -153,8 +106,7 @@ TEST(ComputationDelegationLambdaRunnerTest, ExecuteCompFailsAtParsing) {
   auto mock_noise_client_session_ptr =
       std::make_unique<MockNoiseClientSession>();
   auto mock_noise_client_session = mock_noise_client_session_ptr.get();
-  ComputationDelegationLambdaRunner runner(
-      std::move(mock_noise_client_session_ptr), ComputationDelegationProxy);
+  ComputationDelegationLambdaRunner runner(mock_noise_client_session);
 
   auto test_fn = GetTestLambdaFunction();
   auto test_arg = Value();

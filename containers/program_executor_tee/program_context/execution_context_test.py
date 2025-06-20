@@ -12,14 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+import threading
 import unittest
 from absl.testing import absltest
 from containers.program_executor_tee.program_context import compilers
 from containers.program_executor_tee.program_context import execution_context
 from containers.program_executor_tee.program_context.cc import computation_runner_bindings
+from containers.program_executor_tee.program_context.cc import fake_computation_delegation_service_bindings as fake_service_bindings
+from fcp.confidentialcompute.python import compiler
+from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
 import federated_language
 from federated_language_jax.computation import jax_computation
+import grpc
 import numpy as np
+import portpicker
 import tensorflow_federated as tff
 
 
@@ -113,6 +120,48 @@ class ExecutionContextText(unittest.IsolatedAsyncioTestCase):
 
 class ExecutionContextIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
+  def setUp(self):
+    self.port = portpicker.pick_unused_port()
+    self.assertIsNotNone(self.port, "Failed to pick an unused port.")
+
+    # Create 4 workers. The first worker is the server, and the other 3 are
+    # child workers.
+    self.worker_bns = [
+        "bns_address_1",
+        "bns_address_2",
+        "bns_address_3",
+        "bns_address_4",
+    ]
+
+    self.service_impl = fake_service_bindings.FakeComputationDelegationService(
+        self.worker_bns
+    )
+    self.server = fake_service_bindings.FakeServer(self.port, self.worker_bns)
+
+    self.server_runner_thread = threading.Thread(
+        target=self.server.start,
+        args=(),
+        daemon=True,
+    )
+    self.server_runner_thread.start()
+    self.channel = grpc.insecure_channel(self.server.get_address())
+    self.stub = computation_delegation_pb2_grpc.ComputationDelegationStub(
+        self.channel
+    )
+
+  def tearDown(self):
+    self.server.stop()
+    self.server_runner_thread.join(timeout=5)
+
+  def computation_delegation_stub_proxy(self, request):
+    result = computation_runner_bindings.ComputationDelegationResult()
+    try:
+      response = self.stub.Execute(request)
+      result.response = response
+    except grpc.RpcError as e:
+      result.status = e
+    return result
+
   async def test_tf_execution_context_no_workers(self):
     runner = computation_runner_bindings.ComputationRunner([])
     federated_language.framework.set_default_context(
@@ -185,9 +234,18 @@ class ExecutionContextIntegrationTest(unittest.IsolatedAsyncioTestCase):
     )
 
   async def test_execution_context_with_workers(self):
-    runner = computation_runner_bindings.ComputationRunner(["bns_address"])
+    runner = computation_runner_bindings.ComputationRunner(
+        self.worker_bns, self.computation_delegation_stub_proxy, "fake_attester"
+    )
+
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(lambda x: x, runner.invoke_comp)
+        execution_context.TrustedAsyncContext(
+            functools.partial(
+                compiler.to_composed_tee_form,
+                num_client_workers=len(self.worker_bns) - 1,
+            ),
+            runner.invoke_comp,
+        )
     )
 
     client_data_type = federated_language.FederatedType(
@@ -203,13 +261,14 @@ class ExecutionContextIntegrationTest(unittest.IsolatedAsyncioTestCase):
     def my_comp(client_data, server_state):
       return federated_language.federated_sum(client_data), server_state
 
-    with self.assertRaises(RuntimeError) as context:
-      await my_comp([1, 2], 10)
-    self.assertEqual(
-        "Failed to execute computation: Distributed execution is not supported"
-        " yet.",
-        str(context.exception),
-    )
+    result_1, result_2 = await my_comp([1, 2], 10)
+    self.assertEqual(result_1, 3)
+    self.assertEqual(result_2, 10)
+
+    # Change the cardinality of the inputs.
+    result_1, result_2 = await my_comp([1, 2, 3, 4], 10)
+    self.assertEqual(result_1, 10)
+    self.assertEqual(result_2, 10)
 
 
 if __name__ == "__main__":

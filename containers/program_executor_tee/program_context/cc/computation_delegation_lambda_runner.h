@@ -18,40 +18,15 @@
 #include "absl/synchronization/mutex.h"
 #include "containers/program_executor_tee/program_context/cc/noise_client_session.h"
 #include "fcp/confidentialcompute/lambda_runner.h"
-#include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
 class ComputationDelegationLambdaRunner
     : public fcp::confidential_compute::LambdaRunner {
  public:
-  static absl::StatusOr<
-      std::shared_ptr<fcp::confidential_compute::LambdaRunner>>
-  Create(const std::string& worker_bns,
-         oak::session::SessionConfig* session_config,
-         std::function<ComputationDelegationResult(
-             ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-             computation_delegation_proxy) {
-    FCP_ASSIGN_OR_RETURN(auto noise_client_session,
-                         NoiseClientSession::Create(
-                             worker_bns, session_config,
-                             std::function(computation_delegation_proxy)));
-    if (worker_bns.empty()) {
-      return absl::InvalidArgumentError("Worker bns is empty.");
-    }
-    return std::make_shared<ComputationDelegationLambdaRunner>(
-        std::move(noise_client_session), computation_delegation_proxy);
-  }
-
-  // Constructor public for testing. Prefer using Create() instead.
   ComputationDelegationLambdaRunner(
-      std::shared_ptr<NoiseClientSessionInterface> noise_client_session,
-      std::function<ComputationDelegationResult(
-          ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-          computation_delegation_proxy)
-      : noise_client_session_(std::move(noise_client_session)),
-        computation_delegation_proxy_(computation_delegation_proxy) {}
+      NoiseClientSessionInterface* noise_client_session)
+      : noise_client_session_(noise_client_session) {}
 
   absl::StatusOr<tensorflow_federated::v0::Value> ExecuteComp(
       tensorflow_federated::v0::Value function,
@@ -59,10 +34,7 @@ class ComputationDelegationLambdaRunner
       int32_t num_clients) override;
 
  private:
-  std::shared_ptr<NoiseClientSessionInterface> noise_client_session_;
-  std::function<ComputationDelegationResult(
-      ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-      computation_delegation_proxy_;
+  NoiseClientSessionInterface* noise_client_session_;  // Not owned.
   absl::Mutex mutex_;
 };
 

@@ -22,9 +22,23 @@ cc_library(
     srcs = ["computation_runner.cc"],
     hdrs = ["computation_runner.h"],
     deps = [
+        ":computation_delegation_lambda_runner",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:composing_tee_executor",
+        "@federated-compute//fcp/confidentialcompute:lambda_runner",
+        "@federated-compute//fcp/confidentialcompute:tee_executor",
         "@federated-compute//fcp/confidentialcompute:tff_execution_helper",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
@@ -213,14 +227,8 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@googletest//:gtest_main",
-        "@oak//cc/ffi:bytes_bindings",
-        "@oak//cc/ffi:bytes_view",
-        "@oak//cc/ffi:error_bindings",
-        "@oak//cc/oak_session:config",
-        "@oak//cc/oak_session:oak_session_bindings",
     ],
 )
 
@@ -284,5 +292,18 @@ cc_test(
         "@oak//cc/oak_session:client_session",
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:oak_session_bindings",
+    ],
+)
+
+pybind_extension(
+    name = "fake_computation_delegation_service_bindings",
+    srcs = ["fake_computation_delegation_service_bindings.cc"],
+    visibility = ["//containers/program_executor_tee:__subpackages__"],
+    deps = [
+        ":fake_computation_delegation_service",
+        "@com_github_grpc_grpc//:grpc++",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
