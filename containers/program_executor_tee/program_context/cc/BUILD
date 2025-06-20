@@ -147,6 +147,31 @@ cc_test(
 )
 
 cc_library(
+    name = "generate_checkpoint",
+    srcs = ["generate_checkpoint.cc"],
+    hdrs = ["generate_checkpoint.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+    ],
+)
+
+cc_test(
+    name = "generate_checkpoint_test",
+    srcs = ["generate_checkpoint_test.cc"],
+    deps = [
+        ":generate_checkpoint",
+        "@com_google_absl//absl/status:statusor",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_library(
     name = "noise_client_session",
     srcs = ["noise_client_session.cc"],
     hdrs = ["noise_client_session.h"],
