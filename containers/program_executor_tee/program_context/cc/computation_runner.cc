@@ -24,10 +24,15 @@
 #include "cc/oak_session/config.h"
 #include "containers/program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/composing_tee_executor.h"
 #include "fcp/confidentialcompute/tee_executor.h"
 #include "fcp/confidentialcompute/tff_execution_helper.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
+#include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
+#include "fcp/protos/confidentialcompute/tff_config.pb.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/create_channel.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
@@ -40,8 +45,10 @@ namespace {
 namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
+using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidential_compute::CreateComposingTeeExecutor;
 using ::fcp::confidential_compute::CreateTeeExecutor;
+using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::outgoing::ComputationDelegation;
 using ::fcp::confidentialcompute::outgoing::ComputationRequest;
 using ::fcp::confidentialcompute::outgoing::ComputationResponse;
@@ -103,7 +110,7 @@ absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> CreateExecutor(
 }
 
 // Executes comp(arg) on the provided TFF execution stack.
-absl::StatusOr<tensorflow_federated::v0::Value> Execute(
+absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
     std::shared_ptr<tensorflow_federated::Executor> executor,
     tensorflow_federated::v0::Value comp,
     std::optional<tensorflow_federated::v0::Value> arg) {
@@ -127,29 +134,23 @@ absl::StatusOr<tensorflow_federated::v0::Value> Execute(
 
 }  // namespace
 
-ComputationRunner::ComputationRunner(
-    std::vector<std::string> worker_bns,
-    std::optional<
-        std::function<ComputationDelegationResult(ComputationRequest)>>
-        computation_delegation_proxy,
-    std::string attester_id)
+ComputationRunner::ComputationRunner(std::vector<std::string> worker_bns,
+                                     std::string attester_id,
+                                     int untrusted_root_port)
     : worker_bns_(worker_bns), attester_id_(attester_id) {
   if (!worker_bns_.empty()) {
-    if (!computation_delegation_proxy.has_value()) {
-      LOG(FATAL) << "computation_delegation_proxy must be set when worker_bns "
-                    "is not empty.";
-    }
-    computation_delegation_proxy_ = *computation_delegation_proxy;
+    stub_ = fcp::confidentialcompute::outgoing::ComputationDelegation::NewStub(
+        grpc::CreateChannel(absl::StrCat("localhost:", untrusted_root_port),
+                            grpc::InsecureChannelCredentials()));
     noise_client_sessions_.reserve(worker_bns_.size());
     for (const auto& worker_bns : worker_bns_) {
       // Create a noise client session for each worker and open the session.
       // So the session can be used to send computation requests when the
       // computation is invoked.
       auto client_session = NoiseClientSession::Create(
-          worker_bns, GetClientSessionConfig(attester_id),
-          std::function(computation_delegation_proxy_));
+          worker_bns, GetClientSessionConfig(attester_id), stub_.get());
       CHECK_OK(client_session);
-      client_session.value()->OpenSession();
+      CHECK_OK(client_session.value()->OpenSession());
       noise_client_sessions_.push_back(std::move(client_session.value()));
     }
   }
@@ -196,18 +197,38 @@ ComputationRunner::CreateDistributedExecutor(int num_clients) {
       composing_executor);
 }
 
-absl::StatusOr<tensorflow_federated::v0::Value> ComputationRunner::InvokeComp(
-    int num_clients, const tensorflow_federated::v0::Value comp,
-    std::optional<tensorflow_federated::v0::Value> arg) {
-  if (worker_bns_.empty()) {
-    FCP_ASSIGN_OR_RETURN(auto executor, CreateExecutor(num_clients));
-    return Execute(executor, std::move(comp), std::move(arg));
-  } else {
-    FCP_ASSIGN_OR_RETURN(
-        auto executor,
-        ComputationRunner::CreateDistributedExecutor(num_clients));
-    return Execute(executor, std::move(comp), std::move(arg));
+grpc::Status ComputationRunner::Execute(
+    ::grpc::ServerContext* context,
+    const ::fcp::confidentialcompute::outgoing::ComputationRequest* request,
+    ::fcp::confidentialcompute::outgoing::ComputationResponse* response) {
+  TffSessionConfig session_request;
+  if (!request->computation().UnpackTo(&session_request)) {
+    return grpc::Status(
+        grpc::StatusCode::INVALID_ARGUMENT,
+        "ComputationRequest cannot be unpacked to TffSessionConfig.");
   }
+
+  // Create executor stack.
+  absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> executor =
+      worker_bns_.empty()
+          ? CreateExecutor(session_request.num_clients())
+          : CreateDistributedExecutor(session_request.num_clients());
+  if (!executor.status().ok()) {
+    return ToGrpcStatus(executor.status());
+  }
+
+  // Execute the computation using the executor stack and return the result.
+  absl::StatusOr<tensorflow_federated::v0::Value> result =
+      ExecuteInternal(*executor, std::move(session_request.function()),
+                      session_request.has_initial_arg()
+                          ? std::optional<tensorflow_federated::v0::Value>(
+                                session_request.initial_arg())
+                          : std::nullopt);
+  if (!result.status().ok()) {
+    return ToGrpcStatus(result.status());
+  }
+  response->mutable_result()->PackFrom(*result);
+  return grpc::Status::OK;
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

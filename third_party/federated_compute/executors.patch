@@ -1,11 +1,12 @@
 diff --git fcp/confidentialcompute/composing_tee_executor.cc fcp/confidentialcompute/composing_tee_executor.cc
-index a6cabb9..029b01b 100644
+index a6cabb9..8947cd0 100644
 --- fcp/confidentialcompute/composing_tee_executor.cc
 +++ fcp/confidentialcompute/composing_tee_executor.cc
-@@ -283,13 +283,6 @@ class ComposingTeeExecutor
+@@ -282,14 +282,6 @@ class ComposingTeeExecutor
+       tensorflow_federated::v0::Value leaf_result_pb;
        FCP_RETURN_IF_ERROR(
            child->Materialize(leaf_result_handles[i].ref(), &leaf_result_pb));
-
+-
 -      if (!leaf_result_pb.has_computation() ||
 -          !leaf_result_pb.computation().has_data()) {
 -        return absl::InvalidArgumentError(
@@ -16,10 +17,11 @@ index a6cabb9..029b01b 100644
        leaf_result_vals.push_back(ExecutorValue(leaf_result_pb));
      }
      return leaf_result_vals;
-@@ -356,12 +349,6 @@ class ComposingTeeExecutor
+@@ -355,13 +347,6 @@ class ComposingTeeExecutor
+     tensorflow_federated::v0::Value root_result_pb;
      FCP_RETURN_IF_ERROR(
          server_executor_->Materialize(root_call_handle.ref(), &root_result_pb));
-
+-
 -    if (!root_result_pb.has_computation() ||
 -        !root_result_pb.computation().has_data()) {
 -      return absl::InvalidArgumentError(
@@ -28,266 +30,21 @@ index a6cabb9..029b01b 100644
 -    }
      return ExecutorValue(std::move(root_result_pb));
    }
-
-@@ -439,85 +426,82 @@ class ComposingTeeExecutor
-
-   absl::StatusOr<ValueFuture> CreateCall(
-       ValueFuture function, std::optional<ValueFuture> argument) final {
--    return ThreadRun(
--        [function = std::move(function), argument = std::move(argument),
--         this]() -> absl::StatusOr<ExecutorValue> {
--          FCP_ASSIGN_OR_RETURN(ExecutorValue fn_value,
--                               tensorflow_federated::Wait(function));
--          FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value fn_pb,
--                               fn_value.value());
--          if (!fn_pb.has_computation() ||
--              !fn_pb.computation().has_intrinsic()) {
--            return absl::InvalidArgumentError("Function has unexpected form");
--          }
--
--          std::string uri(fn_pb.computation().intrinsic().uri());
--          if (uri != kComposedTeeUri) {
--            return absl::InvalidArgumentError("Unsupported intrinsic " + uri);
--          }
--
--          if (!argument.has_value()) {
--            return absl::InvalidArgumentError("Missing required argument");
--          }
--          FCP_ASSIGN_OR_RETURN(ExecutorValue arg_value,
--                               tensorflow_federated::Wait(argument.value()));
--          FCP_ASSIGN_OR_RETURN(const std::shared_ptr<std::vector<ExecutorValue>>
--                                   arg_struct_elements,
--                               arg_value.struct_elements());
--          if (arg_struct_elements->size() != 4) {
--            return absl::InvalidArgumentError("Expected argument of size 4");
--          }
--          const ExecutorValue& accumulate_arg = (*arg_struct_elements)[0];
--          const ExecutorValue& remaining_report_arg = (*arg_struct_elements)[1];
--          const ExecutorValue& accumulate_fn = (*arg_struct_elements)[2];
--          const ExecutorValue& report_fn = (*arg_struct_elements)[3];
--
--          const federated_language::StructType& fn_arg_types =
--              fn_pb.computation().type().function().parameter().struct_();
--          const federated_language::Type& accumulate_arg_type =
--              fn_arg_types.element(0).value();
--          const federated_language::Type& remaining_report_arg_type =
--              fn_arg_types.element(1).value();
--          const federated_language::Type& accumulate_fn_type =
--              fn_arg_types.element(2).value();
--          const federated_language::Type& report_fn_type =
--              fn_arg_types.element(3).value();
--
--          if (!accumulate_fn_type.has_function()) {
--            return absl::InvalidArgumentError(
--                "Expected accumulate_fn_type to be a function");
--          }
--          if (!accumulate_fn_type.function().result().has_struct_() ||
--              accumulate_fn_type.function().result().struct_().element_size() !=
--                  2) {
--            return absl::InvalidArgumentError(
--                "Expected accumulate_fn_type to have a struct result with two "
--                "elements");
--          }
--
--          // Collect the results from calling accumulate_fn on each of the
--          // client child executors.
--          FCP_ASSIGN_OR_RETURN(std::vector<ExecutorValue> leaf_result_vals,
--                               GetFederatedAggregateLeafResults(
--                                   accumulate_arg_type, accumulate_arg,
--                                   accumulate_fn_type, accumulate_fn));
--
--          // Partition the leaf results into the pre-aggregate outputs and the
--          // partial aggregate outputs.
--          FCP_ASSIGN_OR_RETURN(
--              PartitionedLeafResults partitioned_leaf_results,
--              PartitionLeafResults(accumulate_fn_type, leaf_result_vals));
--
--          // Get the result of calling report_fn on the server child executor.
--          FCP_ASSIGN_OR_RETURN(
--              ExecutorValue root_result,
--              GetFederatedAggregateRootResult(
--                  partitioned_leaf_results
--                      .combined_partial_aggregate_output_type,
--                  partitioned_leaf_results.combined_partial_aggregate_outputs,
--                  remaining_report_arg_type, remaining_report_arg,
--                  report_fn_type, report_fn));
-+    FCP_ASSIGN_OR_RETURN(ExecutorValue fn_value,
-+                         tensorflow_federated::Wait(function));
-+    FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value fn_pb,
-+                         fn_value.value());
-+    if (!fn_pb.has_computation() || !fn_pb.computation().has_intrinsic()) {
-+      return absl::InvalidArgumentError("Function has unexpected form");
-+    }
-+
-+    std::string uri(fn_pb.computation().intrinsic().uri());
-+    if (uri != kComposedTeeUri) {
-+      return absl::InvalidArgumentError("Unsupported intrinsic " + uri);
-+    }
-
-+    if (!argument.has_value()) {
-+      return absl::InvalidArgumentError("Missing required argument");
-+    }
-+    FCP_ASSIGN_OR_RETURN(ExecutorValue arg_value,
-+                         tensorflow_federated::Wait(argument.value()));
-+    FCP_ASSIGN_OR_RETURN(
-+        const std::shared_ptr<std::vector<ExecutorValue>> arg_struct_elements,
-+        arg_value.struct_elements());
-+    if (arg_struct_elements->size() != 4) {
-+      return absl::InvalidArgumentError("Expected argument of size 4");
-+    }
-+    const ExecutorValue& accumulate_arg = (*arg_struct_elements)[0];
-+    const ExecutorValue& remaining_report_arg = (*arg_struct_elements)[1];
-+    const ExecutorValue& accumulate_fn = (*arg_struct_elements)[2];
-+    const ExecutorValue& report_fn = (*arg_struct_elements)[3];
-+
-+    const federated_language::StructType& fn_arg_types =
-+        fn_pb.computation().type().function().parameter().struct_();
-+    const federated_language::Type& accumulate_arg_type =
-+        fn_arg_types.element(0).value();
-+    const federated_language::Type& remaining_report_arg_type =
-+        fn_arg_types.element(1).value();
-+    const federated_language::Type& accumulate_fn_type =
-+        fn_arg_types.element(2).value();
-+    const federated_language::Type& report_fn_type =
-+        fn_arg_types.element(3).value();
-+
-+    if (!accumulate_fn_type.has_function()) {
-+      return absl::InvalidArgumentError(
-+          "Expected accumulate_fn_type to be a function");
-+    }
-+    if (!accumulate_fn_type.function().result().has_struct_() ||
-+        accumulate_fn_type.function().result().struct_().element_size() != 2) {
-+      return absl::InvalidArgumentError(
-+          "Expected accumulate_fn_type to have a struct result with two "
-+          "elements");
-+    }
-+
-+    // Collect the results from calling accumulate_fn on each of the
-+    // client child executors.
-+    FCP_ASSIGN_OR_RETURN(
-+        std::vector<ExecutorValue> leaf_result_vals,
-+        GetFederatedAggregateLeafResults(accumulate_arg_type, accumulate_arg,
-+                                         accumulate_fn_type, accumulate_fn));
-+
-+    // Partition the leaf results into the pre-aggregate outputs and the
-+    // partial aggregate outputs.
-+    FCP_ASSIGN_OR_RETURN(
-+        PartitionedLeafResults partitioned_leaf_results,
-+        PartitionLeafResults(accumulate_fn_type, leaf_result_vals));
-+
-+    // Get the result of calling report_fn on the server child executor.
-+    FCP_ASSIGN_OR_RETURN(
-+        ExecutorValue root_result,
-+        GetFederatedAggregateRootResult(
-+            partitioned_leaf_results.combined_partial_aggregate_output_type,
-+            partitioned_leaf_results.combined_partial_aggregate_outputs,
-+            remaining_report_arg_type, remaining_report_arg, report_fn_type,
-+            report_fn));
-+    return ThreadRun(
-+        [partitioned_leaf_results = std::move(partitioned_leaf_results),
-+         root_result =
-+             std::move(root_result)]() -> absl::StatusOr<ExecutorValue> {
-           // Construct the final result of the composed_tee call. This will be a
-           // struct with two elements:
-           // - The combined pre-aggregate outputs from each leaf executor.
+ 
 diff --git fcp/confidentialcompute/tee_executor.cc fcp/confidentialcompute/tee_executor.cc
-index 1edfbcb..31e8ed8 100644
+index 1edfbcb..a4daf11 100644
 --- fcp/confidentialcompute/tee_executor.cc
 +++ fcp/confidentialcompute/tee_executor.cc
-@@ -86,58 +86,50 @@ class TeeExecutor : public tensorflow_federated::ExecutorBase<ValueFuture> {
-
-   absl::StatusOr<ValueFuture> CreateCall(
-       ValueFuture function, std::optional<ValueFuture> argument) final {
--    return ThreadRun(
--        [function = std::move(function), argument = std::move(argument),
--         this]() -> absl::StatusOr<ExecutorValue> {
--          FCP_ASSIGN_OR_RETURN(ExecutorValue fn_value,
--                               tensorflow_federated::Wait(function));
--          FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value fn_pb,
--                               fn_value.value());
--          if (!fn_pb.has_computation() ||
--              !fn_pb.computation().has_intrinsic()) {
--            return absl::InvalidArgumentError("Function has unexpected form");
--          }
--
--          absl::string_view uri = fn_pb.computation().intrinsic().uri();
--          if (!(uri == kComposedTeeLeafUri || uri == kComposedTeeRootUri)) {
--            return absl::InvalidArgumentError(
--                absl::StrCat("Unsupported intrinsic ", uri));
--          }
--
--          if (!argument.has_value()) {
--            return absl::InvalidArgumentError("Missing required argument");
--          }
--
--          FCP_ASSIGN_OR_RETURN(ExecutorValue arg_value,
--                               tensorflow_federated::Wait(argument.value()));
--          FCP_ASSIGN_OR_RETURN(const std::shared_ptr<std::vector<ExecutorValue>>
--                                   arg_struct_elements,
--                               arg_value.struct_elements());
--          if (arg_struct_elements->size() != 2) {
--            return absl::InvalidArgumentError("Expected argument of size 2");
--          }
--          FCP_ASSIGN_OR_RETURN(
--              tensorflow_federated::v0::Value arg_for_lambda_runner,
--              (*arg_struct_elements)[0].resolve_to_value());
--          FCP_ASSIGN_OR_RETURN(
--              tensorflow_federated::v0::Value fn_for_lambda_runner,
--              (*arg_struct_elements)[1].resolve_to_value());
--
--          FCP_ASSIGN_OR_RETURN(
--              tensorflow_federated::v0::Value result,
--              lambda_runner_->ExecuteComp(fn_for_lambda_runner,
--                                          arg_for_lambda_runner, num_clients_));
+@@ -127,12 +127,6 @@ class TeeExecutor : public tensorflow_federated::ExecutorBase<ValueFuture> {
+               tensorflow_federated::v0::Value result,
+               lambda_runner_->ExecuteComp(fn_for_lambda_runner,
+                                           arg_for_lambda_runner, num_clients_));
 -
 -          if (!result.has_computation() || !result.computation().has_data()) {
 -            return absl::InternalError(
 -                "Expected lambda runner to return a data computation value.");
 -          }
-+    FCP_ASSIGN_OR_RETURN(ExecutorValue fn_value,
-+                         tensorflow_federated::Wait(function));
-+    FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value fn_pb,
-+                         fn_value.value());
-+    if (!fn_pb.has_computation() || !fn_pb.computation().has_intrinsic()) {
-+      return absl::InvalidArgumentError("Function has unexpected form");
-+    }
-+
-+    absl::string_view uri = fn_pb.computation().intrinsic().uri();
-+    if (!(uri == kComposedTeeLeafUri || uri == kComposedTeeRootUri)) {
-+      return absl::InvalidArgumentError(
-+          absl::StrCat("Unsupported intrinsic ", uri));
-+    }
-+
-+    if (!argument.has_value()) {
-+      return absl::InvalidArgumentError("Missing required argument");
-+    }
-+
-+    FCP_ASSIGN_OR_RETURN(ExecutorValue arg_value,
-+                         tensorflow_federated::Wait(argument.value()));
-+    FCP_ASSIGN_OR_RETURN(
-+        const std::shared_ptr<std::vector<ExecutorValue>> arg_struct_elements,
-+        arg_value.struct_elements());
-+    if (arg_struct_elements->size() != 2) {
-+      return absl::InvalidArgumentError("Expected argument of size 2");
-+    }
-+    FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value arg_for_lambda_runner,
-+                         (*arg_struct_elements)[0].resolve_to_value());
-+    FCP_ASSIGN_OR_RETURN(tensorflow_federated::v0::Value fn_for_lambda_runner,
-+                         (*arg_struct_elements)[1].resolve_to_value());
-+
-+    FCP_ASSIGN_OR_RETURN(
-+        tensorflow_federated::v0::Value result,
-+        lambda_runner_->ExecuteComp(fn_for_lambda_runner, arg_for_lambda_runner,
-+                                    num_clients_));
-
-+    return ThreadRun(
-+        [result = std::move(result)]() -> absl::StatusOr<ExecutorValue> {
+-
            return ExecutorValue(result);
          },
          &thread_pool_);
-   }
-
-+
-   absl::StatusOr<ValueFuture> CreateStruct(
-       std::vector<ValueFuture> elements) final {
-     return Map(

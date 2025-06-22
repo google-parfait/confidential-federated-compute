@@ -45,12 +45,16 @@ absl::Status NoiseClientSession::OpenSession() {
       return absl::InternalError("init_request doesn't have value.");
     }
     ComputationRequest request;
-    request.mutable_computation()->PackFrom(init_request.value());
     request.set_worker_bns(worker_bns_);
-    auto [response, status] = computation_delegation_proxy_(request);
-    if (!status.ok()) {
-      return absl::InternalError("Failed to perform handshake with error: " +
-                                 status.error_message());
+    request.mutable_computation()->PackFrom(init_request.value());
+    ComputationResponse response;
+    {
+      grpc::ClientContext client_context;
+      auto status = stub_->Execute(&client_context, request, &response);
+      if (!status.ok()) {
+        return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
+                            status.error_message());
+      }
     }
     if (response.has_result()) {
       SessionResponse init_response;
@@ -61,7 +65,6 @@ absl::Status NoiseClientSession::OpenSession() {
       FCP_RETURN_IF_ERROR(client_session_->PutIncomingMessage(init_response));
     }
   }
-
   return absl::OkStatus();
 }
 
@@ -78,10 +81,14 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   ComputationRequest request;
   request.mutable_computation()->PackFrom(session_request);
   request.set_worker_bns(worker_bns_);
-  auto [response, status] = computation_delegation_proxy_(request);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to delegate computation with error: " +
-                               status.error_message());
+  ComputationResponse response;
+  {
+    grpc::ClientContext client_context;
+    auto status = stub_->Execute(&client_context, request, &response);
+    if (!status.ok()) {
+      return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
+                          status.error_message());
+    }
   }
   if (!response.has_result()) {
     return absl::InternalError("Response doesn't have result.");

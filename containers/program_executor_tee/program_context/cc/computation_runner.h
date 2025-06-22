@@ -21,6 +21,7 @@
 
 #include "absl/status/statusor.h"
 #include "containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
@@ -28,23 +29,23 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 // Stateful helper class for executing TFF computations.
-class ComputationRunner {
+class ComputationRunner : public fcp::confidentialcompute::outgoing::
+                              ComputationDelegation::Service {
  public:
-  ComputationRunner(
-      std::vector<std::string> worker_bns,
-      std::optional<std::function<ComputationDelegationResult(
-          ::fcp::confidentialcompute::outgoing::ComputationRequest)>>
-          computation_delegation_proxy = std::nullopt,
-      std::string attester_id = "");
+  ComputationRunner(std::vector<std::string> worker_bns,
+                    std::string attester_id, int untrusted_root_port);
 
-  // Executes a TFF computation using a C++ execution stack. If worker_bns_ is
-  // empty, the computation will be executed in a non-distributed manner, else
-  // parts of the computation will be distributed to the workers. Only TF is
-  // supported for now.
+  // Executes the TFF computation represented in the request message using a C++
+  // execution stack. Returns a tensorflow_federated::v0::Value in the response
+  // message. If worker_bns_ is empty, the computation will be executed in a
+  // non-distributed manner, else parts of the computation will be distributed
+  // to the workers. Only TF is supported for now.
   // TODO: Add support for XLA execution.
-  absl::StatusOr<tensorflow_federated::v0::Value> InvokeComp(
-      int num_clients, tensorflow_federated::v0::Value comp,
-      std::optional<tensorflow_federated::v0::Value> arg);
+  grpc::Status Execute(
+      ::grpc::ServerContext* context,
+      const ::fcp::confidentialcompute::outgoing::ComputationRequest* request,
+      ::fcp::confidentialcompute::outgoing::ComputationResponse* response)
+      override;
 
  private:
   absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
@@ -53,9 +54,11 @@ class ComputationRunner {
   // Addresses of worker machines running the program_worker binary that can be
   // used to execute computations in a distributed manner.
   std::vector<std::string> worker_bns_;
-  std::function<ComputationDelegationResult(
-      ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-      computation_delegation_proxy_;
+  // ComputationDelegation service stub for communication with workers. This is
+  // only initialized if worker_bns_ is non-empty.
+  std::unique_ptr<
+      fcp::confidentialcompute::outgoing::ComputationDelegation::Stub>
+      stub_;
   std::string attester_id_;
   std::vector<std::shared_ptr<NoiseClientSession>> noise_client_sessions_;
 };

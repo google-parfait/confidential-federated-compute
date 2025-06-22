@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(default_visibility = ["//containers/program_executor_tee/program_context:__subpackages__"])
 
@@ -28,11 +28,14 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@federated-compute//fcp/base",
+        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:composing_tee_executor",
         "@federated-compute//fcp/confidentialcompute:lambda_runner",
         "@federated-compute//fcp/confidentialcompute:tee_executor",
         "@federated-compute//fcp/confidentialcompute:tff_execution_helper",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
         "@oak//cc/ffi:error_bindings",
@@ -45,12 +48,15 @@ cc_library(
     ],
 )
 
-pybind_extension(
-    name = "computation_runner_bindings",
-    srcs = ["computation_runner_bindings.cc"],
+cc_binary(
+    name = "computation_runner_binary",
+    srcs = ["computation_runner_main.cc"],
     deps = [
         ":computation_runner",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log",
     ],
 )
 

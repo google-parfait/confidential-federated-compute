@@ -14,9 +14,19 @@
 
 from collections.abc import Callable
 import functools
+import os
+import subprocess
+import sys
 from typing import Optional
 
+from fcp.protos.confidentialcompute import computation_delegation_pb2
+from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
+from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
+from google.protobuf import any_pb2
+from google.protobuf.message import DecodeError
+import grpc
+import portpicker
 import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
@@ -32,21 +42,48 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
               federated_language.framework.ConcreteComputation,
           ]
       ],
-      invoke_fn: Callable[
-          [int, executor_pb2.Value, executor_pb2.Value], executor_pb2.Value
-      ],
+      untrusted_root_port: int,
+      worker_bns: list[str] = [],
+      attester_id: str = "",
   ):
     """Initializes the execution context with an invoke helper function.
 
     Args:
       compiler_fn: Python function that will be used to compile a computation.
-      invoke_fn: Executes comp(arg) when called with the comp's client
-        cardinality, the serialized comp, and the serialized arg. Returns a
-        serialized result.
+      untrusted_root_port: The port at which the untrusted root server can be
+        reached for data read/write requests and computation delegation
+        requests.
+      worker_bns: A list of worker bns addresses.
+      attester_id: The attester id for setting up the noise sessions used for
+        distributed execution. Needs to be set to a non-empty string if a
+        non-empty list of worker bns addresses is provided.
     """
     cache_decorator = functools.lru_cache()
     self._compiler_fn = cache_decorator(compiler_fn)
-    self._invoke_fn = invoke_fn
+
+    # Start the computation runner on a different process.
+    computation_runner_binary_path = os.path.join(
+        os.getcwd(),
+        "containers/program_executor_tee/program_context/cc/computation_runner_binary",
+    )
+    if not os.path.isfile(computation_runner_binary_path):
+      raise RuntimeError(
+          f"Expected a worker binary at {computation_runner_binary_path}."
+      )
+    computation_runner_port = portpicker.pick_unused_port()
+    args = [
+        computation_runner_binary_path,
+        f"--computatation_runner_port={computation_runner_port}",
+        f"--untrusted_root_port={untrusted_root_port}",
+        f"--worker_bns={','.join(worker_bns)}",
+        f"--attester_id={attester_id}",
+    ]
+    self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
+    channel = grpc.insecure_channel("[::1]:{}".format(computation_runner_port))
+    grpc.channel_ready_future(channel).result(timeout=5)
+    self._computation_runner_stub = (
+        computation_delegation_pb2_grpc.ComputationDelegationStub(channel)
+    )
 
   async def invoke(self, comp: object, arg: Optional[object]) -> object:
     """Executes comp(arg).
@@ -65,10 +102,14 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
     if self._compiler_fn is not None:
       comp = self._compiler_fn(comp)
 
+    session_config = tff_config_pb2.TffSessionConfig()
     serialized_comp, _ = tff.framework.serialize_value(comp)
+    session_config.function.CopyFrom(serialized_comp)
+
     serialized_arg = None
     clients_cardinality = 0
-
+    # TODO: For now we are assuming that the argument does not contain any
+    # data pointers. This restriction will be lifted in a follow-up cl.
     if arg is not None:
       serialized_arg, _ = tff.framework.serialize_value(
           arg, comp.type_signature.parameter
@@ -76,11 +117,29 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
       clients_cardinality = federated_language.framework.infer_cardinalities(
           arg, comp.type_signature.parameter
       )[federated_language.CLIENTS]
+      session_config.initial_arg.CopyFrom(serialized_arg)
+    session_config.num_clients = clients_cardinality
 
-    result = self._invoke_fn(
-        clients_cardinality,
-        serialized_comp,
-        serialized_arg,
-    )
-    deserialized_result, _ = tff.framework.deserialize_value(result)
-    return deserialized_result
+    # Send execution request for comp(arg) to the computation runner, then
+    # deserialize and return the result.
+    try:
+      any_proto = any_pb2.Any()
+      any_proto.Pack(session_config)
+      delegation_request = computation_delegation_pb2.ComputationRequest(
+          computation=any_proto
+      )
+      delegation_response = self._computation_runner_stub.Execute(
+          delegation_request
+      )
+      result = executor_pb2.Value()
+      delegation_response.result.Unpack(result)
+      deserialized_result, _ = tff.framework.deserialize_value(result)
+      return deserialized_result
+    except grpc.RpcError as e:
+      raise RuntimeError(
+          f"Request to computation runner failed with error: {e.details()}"
+      )
+    except DecodeError:
+      raise RuntimeError(
+          "Error decoding computation runner response to tff Value"
+      )

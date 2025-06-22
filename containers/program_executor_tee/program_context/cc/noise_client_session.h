@@ -30,14 +30,6 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
-// Struct to hold both the ComputationResponse and a status.
-// This is used to return the result with a status of the computation delegation
-// for the gRPC proxy.
-struct ComputationDelegationResult {
-  ::fcp::confidentialcompute::outgoing::ComputationResponse response;
-  grpc::Status status;
-};
-
 // Interface for a noise client session that delegates computation requests to a
 // worker.
 class NoiseClientSessionInterface {
@@ -55,13 +47,12 @@ class NoiseClientSession : public NoiseClientSessionInterface {
   static absl::StatusOr<std::shared_ptr<NoiseClientSession>> Create(
       const std::string& worker_bns,
       oak::session::SessionConfig* session_config,
-      std::function<ComputationDelegationResult(
-          ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-          computation_delegation_proxy) {
+      fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
+          stub) {
     FCP_ASSIGN_OR_RETURN(auto client_session,
                          oak::session::ClientSession::Create(session_config));
-    return std::shared_ptr<NoiseClientSession>(new NoiseClientSession(
-        worker_bns, std::move(client_session), computation_delegation_proxy));
+    return std::shared_ptr<NoiseClientSession>(
+        new NoiseClientSession(worker_bns, std::move(client_session), stub));
   }
 
   // Delegates the computation request (serialized as a PlaintextMessage) to the
@@ -76,12 +67,11 @@ class NoiseClientSession : public NoiseClientSessionInterface {
   NoiseClientSession(
       const std::string& worker_bns,
       std::unique_ptr<oak::session::ClientSession> client_session,
-      std::function<ComputationDelegationResult(
-          ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-          computation_delegation_proxy)
+      fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
+          stub)
       : worker_bns_(worker_bns),
         client_session_(std::move(client_session)),
-        computation_delegation_proxy_(computation_delegation_proxy) {}
+        stub_(stub) {}
 
   absl::StatusOr<oak::session::v1::SessionRequest> EncryptRequest(
       const oak::session::v1::PlaintextMessage& plaintext_request);
@@ -91,9 +81,8 @@ class NoiseClientSession : public NoiseClientSessionInterface {
 
   const std::string worker_bns_;
   std::unique_ptr<oak::session::ClientSession> client_session_;
-  std::function<ComputationDelegationResult(
-      ::fcp::confidentialcompute::outgoing::ComputationRequest)>
-      computation_delegation_proxy_;
+  fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
+      stub_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

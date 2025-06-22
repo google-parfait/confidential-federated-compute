@@ -8,22 +8,10 @@
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "grpcpp/server_context.h"
-#include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
 namespace py = pybind11;
-
-struct GrpcInitializer {
-  GrpcInitializer() {
-    std::cout << "Initializing gRPC in fake service bindings..." << std::endl;
-    grpc_init();
-  }
-  ~GrpcInitializer() {
-    std::cout << "Shutting down gRPC in fake service bindings..." << std::endl;
-    grpc_shutdown();
-  }
-};
 
 class FakeServer {
  public:
@@ -45,7 +33,6 @@ class FakeServer {
     if (!server_) {
       throw std::runtime_error("Could not start server on " + server_address_);
     }
-    std::cout << "Server listening on: " << server_address_ << std::endl;
   }
 
   void Stop() {
@@ -53,7 +40,6 @@ class FakeServer {
       return;  // It's often better to make Stop idempotent.
     }
     server_->Shutdown();
-    std::cout << "Server stopped" << std::endl;
   }
 
   const std::string& GetAddress() const { return server_address_; }
@@ -72,35 +58,9 @@ class FakeServer {
 };
 
 PYBIND11_MODULE(fake_computation_delegation_service_bindings, m) {
-  // Enables automatic conversions between Python and C++ protobuf messages.
-  pybind11_protobuf::ImportNativeProtoCasters();
-
-  static GrpcInitializer grpc_initializer;
-
   m.doc() =
       "Python bindings for the FakeComputationDelegationService, primarily for "
       "testing.";
-
-  py::class_<FakeComputationDelegationService>(
-      m, "FakeComputationDelegationService")
-      .def(py::init<std::vector<std::string>>())
-      .def(
-          "Execute",
-          [](FakeComputationDelegationService& self,
-             const fcp::confidentialcompute::outgoing::ComputationRequest&
-                 request)
-              -> fcp::confidentialcompute::outgoing::ComputationResponse {
-            grpc::ServerContext context;
-            fcp::confidentialcompute::outgoing::ComputationResponse response;
-            grpc::Status status = self.Execute(&context, &request, &response);
-            if (!status.ok()) {
-              throw std::runtime_error("gRPC call failed in Execute: " +
-                                       status.error_message());
-            }
-            return response;
-          },
-          // Add documentation for the Python method.
-          "Simulates a call to the Execute gRPC method.");
 
   py::class_<FakeServer>(m, "FakeServer")
       .def(py::init<int, std::vector<std::string>>(), py::arg("port"),

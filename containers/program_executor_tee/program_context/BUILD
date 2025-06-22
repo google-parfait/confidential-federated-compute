@@ -36,11 +36,6 @@ py_library(
 )
 
 py_library(
-    name = "computation_runner_bindings",
-    data = ["//containers/program_executor_tee/program_context/cc:computation_runner_bindings.so"],
-)
-
-py_library(
     name = "fake_computation_delegation_service_bindings",
     data = ["//containers/program_executor_tee/program_context/cc:fake_computation_delegation_service_bindings.so"],
 )
@@ -57,7 +52,11 @@ py_library(
 py_library(
     name = "execution_context",
     srcs = ["execution_context.py"],
+    data = ["//containers/program_executor_tee/program_context/cc:computation_runner_binary"],
     deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
@@ -81,7 +80,6 @@ py_test(
     tags = ["noasan"],
     deps = [
         ":compilers",
-        ":computation_runner_bindings",
         ":execution_context",
         ":fake_computation_delegation_service_bindings",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
@@ -153,7 +151,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":compilers",
-        ":computation_runner_bindings",
         ":execution_context",
         ":release_manager",
         "@federated_language//federated_language",
