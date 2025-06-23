@@ -16,14 +16,29 @@ use std::sync::Arc;
 
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
-use oak_proto_rust::oak::attestation::v1::ReferenceValues;
+use oak_crypto::{encryptor::Encryptor, signer::Signer};
+use oak_proto_rust::oak::{attestation::v1::ReferenceValues, crypto::v1::SessionKeys};
 use oak_session::{
-    attestation::AttestationType, config::SessionConfig, dice_attestation::DiceAttestationVerifier,
-    handshake::HandshakeType, session_binding::SignatureBinderBuilder,
+    attestation::AttestationType,
+    config::{EncryptorProvider, SessionConfig},
+    dice_attestation::DiceAttestationVerifier,
+    encryptors::UnorderedChannelEncryptor,
+    handshake::HandshakeType,
+    session_binding::SignatureBinderBuilder,
 };
 
 const SESSION_ID: &str = "cfc_kms";
+
+struct UnorderedEncryptorProvider;
+impl EncryptorProvider for UnorderedEncryptorProvider {
+    fn provide_encryptor(
+        &self,
+        session_keys: SessionKeys,
+    ) -> Result<Box<dyn Encryptor>, anyhow::Error> {
+        TryInto::<UnorderedChannelEncryptor>::try_into((session_keys, /* window_size= */ 64))
+            .map(|v| Box::new(v) as Box<dyn Encryptor>)
+    }
+}
 
 /// Creates a new SessionConfig for connections between KMS servers.
 pub fn create_session_config(
@@ -40,6 +55,8 @@ pub fn create_session_config(
             SESSION_ID.into(),
             Box::new(DiceAttestationVerifier::create(reference_values, clock)),
         )
+        // The communication channel is not guaranteed to be ordered.
+        .set_encryption_provider(Box::new(UnorderedEncryptorProvider))
         .add_session_binder(
             SESSION_ID.into(),
             Box::new(
