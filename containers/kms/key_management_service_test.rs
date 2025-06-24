@@ -32,7 +32,7 @@ use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
     iana, Algorithm, CborSerializable, CoseEncrypt0Builder, CoseKey, CoseSign1, CoseSign1Builder,
-    Header, HeaderBuilder, KeyType, Label, ProtectedHeader,
+    Header, HeaderBuilder, KeyOperation, KeyType, Label, ProtectedHeader,
 };
 use googletest::prelude::*;
 use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
@@ -112,6 +112,7 @@ fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
             alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
             key_id: not(empty()),
             params: contains_each![
                 (
@@ -140,6 +141,7 @@ fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
             alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
             key_id: eq(private_key.as_ref().unwrap().key_id.as_slice()),
             params: contains_each![
                 (
@@ -204,6 +206,7 @@ async fn get_cluster_key() {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::EC2)),
             alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Verify))],
             key_id: not(empty()),
             params: unordered_elements_are![
                 (
@@ -388,6 +391,7 @@ async fn rotate_and_derive_keys() {
             ok(matches_pattern!(CoseKey {
                 kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
                 alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+                key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
                 params: unordered_elements_are![
                     (
                         eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),

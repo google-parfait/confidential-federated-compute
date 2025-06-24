@@ -18,7 +18,7 @@ use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder, Timestamp as CwtTimestamp},
-    iana::{Algorithm, EllipticCurve},
+    iana::{Algorithm, EllipticCurve, KeyOperation},
     CborSerializable, CoseEncrypt0, CoseKeyBuilder,
 };
 use hashbrown::HashMap;
@@ -134,6 +134,7 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
             .algorithm(Algorithm::ES256)
             // The key id is not required to be unique, so we use the beginning of the x coord.
             .key_id(x[0..4].into())
+            .add_key_op(KeyOperation::Verify)
             .build()
             .to_vec()
             .unwrap()

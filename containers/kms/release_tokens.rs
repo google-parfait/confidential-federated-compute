@@ -22,7 +22,7 @@ use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
     iana, Algorithm, CborSerializable, CoseEncrypt0, CoseKey, CoseKeyBuilder, CoseSign1,
-    CoseSign1Builder, HeaderBuilder, KeyType, Label,
+    CoseSign1Builder, HeaderBuilder, KeyOperation, KeyType, Label,
 };
 use hashbrown::HashMap;
 use key_derivation::{derive_private_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
@@ -57,6 +57,7 @@ pub fn endorse_transform_signing_key(
         transform_signing_key[33..].into(),
     )
     .algorithm(iana::Algorithm::ES256)
+    .add_key_op(iana::KeyOperation::Verify)
     .build()
     .to_vec()
     .map_err(anyhow::Error::msg)
@@ -106,6 +107,11 @@ pub fn verify_release_token(
     ensure!(
         cose_key.alg == Some(Algorithm::Assigned(iana::Algorithm::ES256)),
         "unsupported public key algorithm"
+    );
+    ensure!(
+        cose_key.key_ops.is_empty()
+            || cose_key.key_ops.contains(&KeyOperation::Assigned(iana::KeyOperation::Verify)),
+        "public key disallows verify operation"
     );
     let (mut crv, mut x, mut y) = (None, None, None);
     for (label, value) in cose_key.params {

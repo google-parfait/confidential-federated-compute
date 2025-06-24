@@ -16,8 +16,9 @@ use bssl_crypto::{ec, ecdsa, hpke};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
-    iana, Algorithm, CborSerializable, CoseEncrypt0, CoseEncrypt0Builder, CoseKey, CoseSign1,
-    CoseSign1Builder, Header, HeaderBuilder, KeyType, Label, ProtectedHeader,
+    iana, Algorithm, CborSerializable, CoseEncrypt0, CoseEncrypt0Builder, CoseKey, CoseKeyBuilder,
+    CoseSign1, CoseSign1Builder, Header, HeaderBuilder, KeyOperation, KeyType, Label,
+    ProtectedHeader,
 };
 use googletest::prelude::*;
 use key_derivation::{derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
@@ -113,6 +114,7 @@ fn endorse_transform_signing_key_succeeds() {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::EC2)),
             alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Verify))],
             params: unordered_elements_are![
                 (
                     eq(Label::Int(iana::Ec2KeyParameter::Crv as i64)),
@@ -198,6 +200,47 @@ fn verify_release_token_fails_with_invalid_endorsement() {
     expect_that!(
         verify_release_token(&token, b"invalid").err(),
         some(displays_as(contains_substring("failed to parse endorsement")))
+    );
+}
+
+#[googletest::test]
+fn verify_release_token_fails_with_endorsement_disallowing_verify_op() {
+    let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
+    let token = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(CoseEncrypt0::default().to_vec().unwrap())
+        .create_signature(b"", |msg| transform_signing_key.sign_p1363(msg))
+        .build()
+        .to_vec()
+        .unwrap();
+
+    // Since `endorse_transform_signing_key` always adds the Verify key op, we
+    // need to mimic its behavior here.
+    let public_key = transform_signing_key.to_public_key().to_x962_uncompressed();
+    let cose_key = CoseKeyBuilder::new_ec2_pub_key(
+        iana::EllipticCurve::P_256,
+        public_key.as_ref()[1..33].into(),
+        public_key.as_ref()[33..].into(),
+    )
+    .algorithm(iana::Algorithm::ES256)
+    .add_key_op(iana::KeyOperation::Encrypt) // Not Verify.
+    .build()
+    .to_vec()
+    .unwrap();
+    let claims =
+        ClaimsSetBuilder::new().private_claim(PUBLIC_KEY_CLAIM, Value::from(cose_key)).build();
+    let endorsement = CoseSign1Builder::new()
+        .protected(HeaderBuilder::new().algorithm(iana::Algorithm::ES256).build())
+        .payload(claims.to_vec().unwrap())
+        .create_signature(b"", |msg| cluster_key.sign_p1363(msg))
+        .build()
+        .to_vec()
+        .unwrap();
+
+    expect_that!(
+        verify_release_token(&token, &endorsement).err(),
+        some(displays_as(contains_substring("public key disallows verify operation")))
     );
 }
 

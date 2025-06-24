@@ -19,7 +19,8 @@ use bssl_crypto::{hkdf, hpke};
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, KeyType, Label,
+    iana, Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, KeyOperation, KeyType,
+    Label,
 };
 use futures::stream::{FuturesOrdered, TryStreamExt};
 use oak_sdk_containers::Signer;
@@ -142,6 +143,7 @@ fn build_cose_key(
 ) -> anyhow::Result<Vec<u8>> {
     ensure!(alg == HPKE_BASE_X25519_SHA256_AES128GCM, "unsupported algorithm: {}", alg);
     let key_param = if public { iana::OkpKeyParameter::X } else { iana::OkpKeyParameter::D };
+    let key_op = if public { iana::KeyOperation::Encrypt } else { iana::KeyOperation::Decrypt };
     CoseKey {
         kty: KeyType::Assigned(iana::KeyType::OKP),
         // Use the key_id + the first 4 bytes of the info field key as a
@@ -149,6 +151,7 @@ fn build_cose_key(
         // to be mapped back to the original keyset key.
         key_id: [key_id, &info[0..min(4, info.len())]].concat(),
         alg: Some(Algorithm::PrivateUse(alg)),
+        key_ops: [KeyOperation::Assigned(key_op)].into(),
         params: vec![
             (
                 Label::Int(iana::OkpKeyParameter::Crv as i64),

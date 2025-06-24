@@ -17,7 +17,8 @@ use bssl_crypto::hpke;
 use coset::{
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyType, Label, ProtectedHeader,
+    iana, Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyOperation, KeyType, Label,
+    ProtectedHeader,
 };
 use googletest::prelude::*;
 use key_derivation::{
@@ -56,6 +57,7 @@ fn derive_private_keys_produces_cose_key() {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
             alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
             key_id: eq(b"key-idinfo"),
             params: unordered_elements_are![
                 (
@@ -138,6 +140,7 @@ fn derive_public_keys_produces_cose_key() {
         ok(matches_pattern!(CoseKey {
             kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
             alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
             key_id: eq(b"key-idfoo"),
             params: unordered_elements_are![
                 (
