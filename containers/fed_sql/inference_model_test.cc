@@ -15,8 +15,6 @@
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "fcp/protos/confidentialcompute/private_inference.pb.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

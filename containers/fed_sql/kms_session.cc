@@ -33,12 +33,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
-#include "fcp/confidentialcompute/crypto.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
-#include "fcp/protos/confidentialcompute/private_inference.pb.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -71,7 +66,6 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
-using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;

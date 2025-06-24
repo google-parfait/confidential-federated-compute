@@ -24,8 +24,6 @@
 #include "absl/strings/string_view.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/session.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"

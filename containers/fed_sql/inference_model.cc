@@ -21,7 +21,6 @@
 #include "compression/io.h"
 #include "compression/shared.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gemma/common.h"
 #include "gemma/configs.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -49,8 +48,6 @@ using ::fcp::confidentialcompute::GEMMA_SFP;
 using ::fcp::confidentialcompute::GEMMA_TINY;
 using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
-using ::fcp::confidentialcompute::InferenceTask;
-using ::fcp::confidentialcompute::Prompt;
 using ::gcpp::Allocator;
 using ::gcpp::BoundedTopology;
 using ::gcpp::EOS_ID;
