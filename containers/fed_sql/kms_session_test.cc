@@ -53,7 +53,6 @@ namespace {
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
-using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -136,7 +135,6 @@ KmsFedSqlSession CreateDefaultSession() {
   std::vector<Intrinsic> intrinsics =
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
-  std::shared_ptr<InferenceModel> inference_model;
   auto merge_public_private_key_pair =
       crypto_test_utils::GenerateKeyPair("merge");
   auto report_public_private_key_pair =
@@ -144,8 +142,8 @@ KmsFedSqlSession CreateDefaultSession() {
   std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle =
       std::make_shared<MockSigningKeyHandle>();
   return KmsFedSqlSession(
-      std::move(checkpoint_aggregator), intrinsics, inference_model,
-      "sensitive_values_key",
+      std::move(checkpoint_aggregator), intrinsics,
+      SessionInferenceConfiguration(), "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
       "reencryption_policy_hash", CreatePrivateState("", 1),
@@ -272,8 +270,8 @@ class KmsFedSqlSessionWriteTest : public Test {
     )pb");
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
-        std::move(checkpoint_aggregator), intrinsics_, mock_inference_model_,
-        "sensitive_values_key",
+        std::move(checkpoint_aggregator), intrinsics_,
+        SessionInferenceConfiguration(), "sensitive_values_key",
         std::vector<std::string>{merge_public_private_key_pair.first,
                                  report_public_private_key_pair.first},
         "reencryption_policy_hash",
@@ -327,8 +325,6 @@ class KmsFedSqlSessionWriteTest : public Test {
 
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
-  std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
-      std::make_shared<NiceMock<MockInferenceModel>>();
   std::unique_ptr<MessageDecryptor> message_decryptor_;
   std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
       std::make_shared<MockSigningKeyHandle>();

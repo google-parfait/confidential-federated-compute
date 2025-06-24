@@ -40,18 +40,10 @@ class FedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      std::shared_ptr<InferenceModel> inference_model,
+      std::optional<SessionInferenceConfiguration> inference_configuration_,
       const std::optional<uint32_t> serialize_output_access_policy_node_id,
       const std::optional<uint32_t> report_output_access_policy_node_id,
-      absl::string_view sensitive_values_key)
-      : aggregator_(std::move(aggregator)),
-        intrinsics_(intrinsics),
-        inference_model_(inference_model),
-        serialize_output_access_policy_node_id_(
-            serialize_output_access_policy_node_id),
-        report_output_access_policy_node_id_(
-            report_output_access_policy_node_id),
-        sensitive_values_key_(sensitive_values_key) {};
+      absl::string_view sensitive_values_key);
 
   // Configure the optional per-client SQL query.
   absl::Status ConfigureSession(
@@ -95,7 +87,7 @@ class FedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
-  std::shared_ptr<InferenceModel> inference_model_;
+  InferenceModel inference_model_;
   const std::optional<uint32_t> serialize_output_access_policy_node_id_;
   const std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. In the future we could instead hold an

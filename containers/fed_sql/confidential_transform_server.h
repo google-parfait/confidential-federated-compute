@@ -44,9 +44,7 @@ class FedSqlConfidentialTransform final
   FedSqlConfidentialTransform(
       std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
       std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
-          nullptr,
-      std::shared_ptr<InferenceModel> inference_model =
-          std::make_shared<InferenceModel>());
+          nullptr);
 
  private:
   absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
@@ -79,8 +77,8 @@ class FedSqlConfidentialTransform final
   // Initialized the private state - the initial budget received from KMS.
   absl::Status InitializePrivateState(
       const fcp::confidentialcompute::AccessBudget& access_budget);
-  // Initialize the inference model with the given configuration.
-  absl::Status InitializeInferenceModel(
+  // Initialize the inference configuration for sessions.
+  absl::Status InitializeSessionInferenceConfiguration(
       const fcp::confidentialcompute::InferenceInitializeConfiguration&
           inference_init_config);
 
@@ -93,7 +91,6 @@ class FedSqlConfidentialTransform final
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::shared_ptr<InferenceModel> inference_model_;
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
   std::string current_configuration_id_;

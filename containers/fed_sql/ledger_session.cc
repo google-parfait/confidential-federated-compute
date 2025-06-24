@@ -69,15 +69,34 @@ using ::tensorflow_federated::aggregation::kEpsilonIndex;
 
 }  // namespace
 
+FedSqlSession::FedSqlSession(
+    std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
+        aggregator,
+    const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
+    std::optional<SessionInferenceConfiguration> inference_configuration_,
+    const std::optional<uint32_t> serialize_output_access_policy_node_id,
+    const std::optional<uint32_t> report_output_access_policy_node_id,
+    absl::string_view sensitive_values_key)
+    : aggregator_(std::move(aggregator)),
+      intrinsics_(intrinsics),
+      serialize_output_access_policy_node_id_(
+          serialize_output_access_policy_node_id),
+      report_output_access_policy_node_id_(report_output_access_policy_node_id),
+      sensitive_values_key_(sensitive_values_key) {
+  if (inference_configuration_.has_value()) {
+    inference_model_.BuildModel(inference_configuration_.value());
+  }
+};
+
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                   CheckpointParser* parser) {
   FCP_ASSIGN_OR_RETURN(
       std::vector<TensorColumn> contents,
       Deserialize(configuration.input_schema, parser,
-                  inference_model_->GetInferenceConfiguration()));
-  if (inference_model_->HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_->RunInference(contents));
+                  inference_model_.GetInferenceConfiguration()));
+  if (inference_model_.HasModel()) {
+    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());

@@ -124,7 +124,7 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
         aggregator,
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
-    std::shared_ptr<InferenceModel> inference_model,
+    std::optional<SessionInferenceConfiguration> inference_configuration_,
     absl::string_view sensitive_values_key,
     std::vector<std::string> reencryption_keys,
     absl::string_view reencryption_policy_hash,
@@ -132,7 +132,6 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
-      inference_model_(inference_model),
       sensitive_values_key_(sensitive_values_key),
       reencryption_keys_(std::move(reencryption_keys)),
       reencryption_policy_hash_(reencryption_policy_hash),
@@ -142,6 +141,11 @@ KmsFedSqlSession::KmsFedSqlSession(
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+  // TODO: b/427333608 - Switch to the shared model once the Gemma.cpp engine is
+  // updated.
+  if (inference_configuration_.has_value()) {
+    inference_model_.BuildModel(inference_configuration_.value());
+  }
 };
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
@@ -150,9 +154,9 @@ KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
   FCP_ASSIGN_OR_RETURN(
       std::vector<TensorColumn> contents,
       Deserialize(configuration.input_schema, parser,
-                  inference_model_->GetInferenceConfiguration()));
-  if (inference_model_->HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_->RunInference(contents));
+                  inference_model_.GetInferenceConfiguration()));
+  if (inference_model_.HasModel()) {
+    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());

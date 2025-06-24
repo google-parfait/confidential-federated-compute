@@ -293,7 +293,7 @@ class FedSqlServerTest : public Test {
             .value();
     service_ = std::make_unique<FedSqlConfidentialTransform>(
         std::make_unique<NiceMock<MockSigningKeyHandle>>(),
-        std::move(encryption_key_handle), mock_inference_model_);
+        std::move(encryption_key_handle));
 
     ServerBuilder builder;
     builder.AddListeningPort(server_address + "0",
@@ -1214,10 +1214,10 @@ std::string BuildFedSqlGroupByStringKeyCheckpoint(
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
 
-  absl::StatusOr<Tensor> key = Tensor::Create(
-      DataType::DT_STRING,
-      TensorShape({static_cast<int64_t>(key_col_values.size())}),
-      std::move(CreateTestData<absl::string_view>(key_col_values)));
+  absl::StatusOr<Tensor> key =
+      Tensor::Create(DataType::DT_STRING,
+                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
+                     CreateTestData<absl::string_view>(key_col_values));
   CHECK_OK(key);
   CHECK_OK(ckpt_builder->Add(key_col_name, *key));
   auto checkpoint = ckpt_builder->Build();
@@ -2473,207 +2473,8 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
 }
 
-TEST_F(FedSqlServerTest, SessionExecutesInferenceAndAggregation) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-  InitializeRequest initialize_request;
-  FedSqlContainerInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
-    agg_configuration {
-      intrinsic_configs: {
-        intrinsic_uri: "fedsql_group_by"
-        intrinsic_args {
-          input_tensor {
-            name: "topic"
-            dtype: DT_STRING
-            shape { dim_sizes: -1 }
-          }
-        }
-        output_tensors {
-          name: "topic_agg"
-          dtype: DT_STRING
-          shape { dim_sizes: -1 }
-        }
-        inner_intrinsics {
-          intrinsic_uri: "GoogleSQL:sum"
-          intrinsic_args {
-            input_tensor {
-              name: "topic_count"
-              dtype: DT_INT64
-              shape {}
-            }
-          }
-          output_tensors {
-            name: "topic_count_agg"
-            dtype: DT_INT64
-            shape {}
-          }
-        }
-      }
-    }
-    serialize_output_access_policy_node_id: 42
-    report_output_access_policy_node_id: 7
-    inference_init_config {
-      inference_config {
-        inference_task: {
-          column_config {
-            input_column_name: "transcript"
-            output_column_name: "topic"
-          }
-          prompt { prompt_template: "Hello, {{transcript}}" }
-        }
-        gemma_config {
-          tokenizer_file: "/path/to/tokenizer"
-          model_weight_file: "/path/to/model_weight"
-          model: GEMMA_2B
-          model_training: GEMMA_IT
-          tensor_type: GEMMA_SFP
-        }
-      }
-      gemma_init_config {
-        tokenizer_configuration_id: "gemma_tokenizer_id"
-        model_weight_configuration_id: "gemma_model_weight_id"
-      }
-    }
-  )pb");
-  initialize_request.mutable_configuration()->PackFrom(init_config);
-  initialize_request.set_max_num_sessions(kMaxNumSessions);
-
-  // Set tokenizer data blob.
-  std::string expected_tokenizer_content = "tokenizer content";
-  StreamInitializeRequest tokenizer_write_config;
-  ConfigurationMetadata* tokenizer_metadata =
-      tokenizer_write_config.mutable_write_configuration()
-          ->mutable_first_request_metadata();
-  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
-  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
-  absl::Cord tokenizer_content(expected_tokenizer_content);
-  tokenizer_metadata->set_total_size_bytes(tokenizer_content.size());
-  std::string tokenizer_content_string;
-  absl::CopyCordToString(tokenizer_content, &tokenizer_content_string);
-  tokenizer_write_config.mutable_write_configuration()->set_data(
-      tokenizer_content_string);
-
-  // Set up model weight data blob.
-  // Reuse data for the first and second WriteConfigurationRequest for the model
-  // weight blob.
-  std::string expected_model_weight_content = "first model weight content";
-  absl::Cord model_weight_content(expected_model_weight_content);
-  std::string model_weight_content_string;
-  absl::CopyCordToString(model_weight_content, &model_weight_content_string);
-
-  // Set the first WriteConfigurationRequest for the model weight data blob.
-  StreamInitializeRequest first_model_weight_write_config;
-  ConfigurationMetadata* first_model_weight_metadata =
-      first_model_weight_write_config.mutable_write_configuration()
-          ->mutable_first_request_metadata();
-  first_model_weight_metadata->set_total_size_bytes(
-      model_weight_content.size() * 2);
-  first_model_weight_metadata->set_configuration_id("gemma_model_weight_id");
-
-  first_model_weight_write_config.mutable_write_configuration()->set_data(
-      model_weight_content_string);
-
-  // Set the second WriteConfigurationRequest for the model weight data blob.
-  StreamInitializeRequest second_model_weight_write_config;
-  second_model_weight_write_config.mutable_write_configuration()->set_commit(
-      true);
-  second_model_weight_write_config.mutable_write_configuration()->set_data(
-      model_weight_content_string);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(tokenizer_write_config));
-  ASSERT_TRUE(writer->Write(first_model_weight_write_config));
-  ASSERT_TRUE(writer->Write(second_model_weight_write_config));
-
-  EXPECT_OK(
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request)));
-
-  // Set up Session.
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  TableSchema schema = CreateTableSchema(
-      "per_client_database", "CREATE TABLE per_client_database (topic STRING)",
-      {
-          CreateColumnSchema("topic",
-                             ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-      });
-  SqlQuery query = CreateSqlQuery(
-      schema,
-      "SELECT topic, COUNT(topic) AS topic_count FROM per_client_database "
-      "GROUP BY topic",
-      {CreateColumnSchema("topic",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-       CreateColumnSchema("topic_count",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
-  configure_request.mutable_configure()->set_chunk_size(1000);
-  configure_request.mutable_configure()->mutable_configuration()->PackFrom(
-      query);
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_TRUE(stream->Read(&configure_response));
-
-  SessionRequest write_request_1 = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      // TODO: need to change the input column to "transcript" after adding
-      // Gemma inference.
-      BuildFedSqlGroupByStringKeyCheckpoint({"1", "1", "2"}, "transcript"));
-  SessionResponse write_response_1;
-
-  ASSERT_TRUE(stream->Write(write_request_1));
-  ASSERT_TRUE(stream->Read(&write_response_1));
-
-  SessionRequest write_request_2 = CreateDefaultWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE,
-      // TODO: need to change the input column to "transcript" after adding
-      // Gemma inference.
-      BuildFedSqlGroupByStringKeyCheckpoint({"1", "3"}, "transcript"));
-  SessionResponse write_response_2;
-  ASSERT_TRUE(stream->Write(write_request_2));
-  ASSERT_TRUE(stream->Read(&write_response_2));
-
-  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
-  )pb");
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      finalize_config);
-  ASSERT_TRUE(stream->Write(finalize_request));
-  ASSERT_TRUE(stream->Read(&finalize_response));
-
-  ASSERT_TRUE(finalize_response.has_read());
-  ASSERT_TRUE(finalize_response.read().finish_read());
-  ASSERT_GT(
-      finalize_response.read().first_response_metadata().total_size_bytes(), 0);
-  ASSERT_TRUE(
-      finalize_response.read().first_response_metadata().has_unencrypted());
-
-  FederatedComputeCheckpointParserFactory parser_factory;
-  absl::Cord wire_format_result(finalize_response.read().data());
-  auto parser = parser_factory.Create(wire_format_result);
-  auto key_values = (*parser)->GetTensor("topic_agg");
-  auto col_values = (*parser)->GetTensor("topic_count_agg");
-  // The SQL query doubles each `val`, and the aggregation sums the val
-  // column, grouping by key.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(key_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(key_values->dtype(), DataType::DT_STRING);
-  EXPECT_THAT(col_values->AsSpan<int64_t>(), UnorderedElementsAre(5));
-  // This is the hard-coded inference output from two write requests.
-  EXPECT_THAT(key_values->AsSpan<absl::string_view>(),
-              UnorderedElementsAre("topic_value"));
-
-  // Remove inference files after assertions.
-  std::filesystem::remove("/tmp/write_configuration_1");
-  std::filesystem::remove("/tmp/write_configuration_2");
-}
-
 TEST_F(FedSqlServerTest,
-       StreamInitializeWithGemmaInferenceSessionInvalidGemmaModel) {
+       StreamInitializeWithGemmaInferenceSessionMissingTokenizerId) {
   grpc::ClientContext context;
   InitializeResponse response;
   InitializeRequest initialize_request;
@@ -2730,7 +2531,6 @@ TEST_F(FedSqlServerTest,
         }
       }
       gemma_init_config {
-        tokenizer_configuration_id: "gemma_tokenizer_id"
         model_weight_configuration_id: "gemma_model_weight_id"
       }
     }
@@ -2789,9 +2589,9 @@ TEST_F(FedSqlServerTest,
   grpc::Status status =
       WriteInitializeRequest(std::move(writer), std::move(initialize_request));
   ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(
-      status.error_message(),
-      HasSubstr("Found invalid InferenceConfiguration.gemma_config.model: 0"));
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Expected Gemma tokenizer configuration id  is missing "
+                        "in WriteConfigurationRequest"));
 
   // Remove inference files after assertions.
   std::filesystem::remove("/tmp/write_configuration_1");

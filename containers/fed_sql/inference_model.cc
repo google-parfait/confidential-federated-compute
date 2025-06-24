@@ -235,12 +235,7 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
       .verbosity = 0,
       .stream_token = stream_token,
   };
-  {
-    // RunGemmaInference can be called within different sessions concurrently,
-    // but the gemma->Generate method is not thread-safe.
-    absl::MutexLock l(&mutex_);
-    gemma->Generate(runtime_config, tokens, 0, kv_cache, timing_info);
-  }
+  gemma->Generate(runtime_config, tokens, 0, kv_cache, timing_info);
   return output_stream.str();
 }
 

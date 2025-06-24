@@ -120,11 +120,9 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 FedSqlConfidentialTransform::FedSqlConfidentialTransform(
     std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-    std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle,
-    std::shared_ptr<InferenceModel> inference_model)
+    std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
     : ConfidentialTransformBase(std::move(signing_key_handle),
-                                std::move(encryption_key_handle)),
-      inference_model_(inference_model) {
+                                std::move(encryption_key_handle)) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   std::string key(32, '\0');
   // Generate a random key using BoringSSL. BoringSSL documentation says
@@ -240,7 +238,8 @@ absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
   return absl::OkStatus();
 }
 
-absl::Status FedSqlConfidentialTransform::InitializeInferenceModel(
+absl::Status
+FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
     const InferenceInitializeConfiguration& inference_init_config) {
   // Check that all data blobs passed in through WriteConfigurationRequest
   // are committed.
@@ -319,8 +318,7 @@ absl::Status FedSqlConfidentialTransform::InitializeInferenceModel(
                        inference_configuration_->initialize_configuration
                            .model_init_config_case()));
   }
-
-  return inference_model_->BuildModel(*inference_configuration_);
+  return absl::OkStatus();
 }
 
 absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
@@ -345,8 +343,8 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
       InitializePrivateState(fed_sql_config_constraints.access_budget()));
 
   if (fed_sql_config.has_inference_init_config()) {
-    FCP_RETURN_IF_ERROR(
-        InitializeInferenceModel(fed_sql_config.inference_init_config()));
+    FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
+        fed_sql_config.inference_init_config()));
   }
   reencryption_keys_ = std::move(reencryption_keys);
   reencryption_policy_hash_ = reencryption_policy_hash;
@@ -363,8 +361,8 @@ absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
   FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(config));
   FCP_ASSIGN_OR_RETURN(Struct config_properties, GetConfigConstraints(config));
   if (config.has_inference_init_config()) {
-    FCP_RETURN_IF_ERROR(
-        InitializeInferenceModel(config.inference_init_config()));
+    FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
+        config.inference_init_config()));
   }
   return config_properties;
 }
@@ -491,13 +489,13 @@ FedSqlConfidentialTransform::CreateSession() {
     CHECK(reencryption_policy_hash_.has_value())
         << "Reencryption policy hash must be set when KMS is enabled.";
     return std::make_unique<KmsFedSqlSession>(
-        std::move(aggregator), *intrinsics, inference_model_,
+        std::move(aggregator), *intrinsics, inference_configuration_,
         sensitive_values_key_, reencryption_keys_.value(),
         reencryption_policy_hash_.value(), private_state_,
         GetOakSigningKeyHandle());
   } else {
     return std::make_unique<FedSqlSession>(
-        std::move(aggregator), *intrinsics, inference_model_,
+        std::move(aggregator), *intrinsics, inference_configuration_,
         serialize_output_access_policy_node_id_,
         report_output_access_policy_node_id_, sensitive_values_key_);
   }

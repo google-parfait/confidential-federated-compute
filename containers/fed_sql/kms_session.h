@@ -48,7 +48,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      std::shared_ptr<InferenceModel> inference_model,
+      std::optional<SessionInferenceConfiguration> inference_configuration_,
       absl::string_view sensitive_values_key,
       std::vector<std::string> reencryption_keys,
       absl::string_view reencryption_policy_hash,
@@ -131,7 +131,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
-  std::shared_ptr<InferenceModel> inference_model_;
+  InferenceModel inference_model_;
   // Key used to hash sensitive values. In the future we could instead hold an
   // HMAC_CTX to reuse, which might improve performance.
   absl::string_view sensitive_values_key_;
