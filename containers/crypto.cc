@@ -83,17 +83,13 @@ absl::StatusOr<std::string> Decompress(
 BlobDecryptor::BlobDecryptor(
     oak::crypto::SigningKeyHandle& signing_key,
     google::protobuf::Struct config_properties,
-    const std::vector<absl::string_view>& decryption_keys,
-    std::optional<absl::flat_hash_set<std::string>>
-        authorized_logical_pipeline_policies_hashes)
+    const std::vector<absl::string_view>& decryption_keys)
     : message_decryptor_(std::move(config_properties), decryption_keys),
       signed_public_key_(message_decryptor_.GetPublicKey(
           [&signing_key](absl::string_view message) {
             return SignWithOakSigningKey(signing_key, message);
           },
-          kAlgorithmES256)),
-      authorized_logical_pipeline_policies_hashes_(
-          authorized_logical_pipeline_policies_hashes) {}
+          kAlgorithmES256)) {}
 
 absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
   if (!signed_public_key_.ok()) {
@@ -103,7 +99,8 @@ absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
 }
 
 absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
-    const BlobMetadata& metadata, absl::string_view blob) {
+    const BlobMetadata& metadata, absl::string_view blob,
+    absl::string_view key_id) {
   std::string decrypted;
   switch (metadata.encryption_metadata_case()) {
     case BlobMetadata::kUnencrypted:
@@ -128,23 +125,6 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
                 metadata.hpke_plus_aead_data().encapsulated_public_key()));
       } else if (metadata.hpke_plus_aead_data()
                      .has_kms_symmetric_key_associated_data()) {
-        BlobHeader blob_header;
-        if (!blob_header.ParseFromString(
-                metadata.hpke_plus_aead_data()
-                    .kms_symmetric_key_associated_data()
-                    .record_header())) {
-          return absl::InvalidArgumentError(
-              "kms_symmetric_key_associated_data.record_header() cannot be "
-              "parsed to BlobHeader.");
-        }
-        if (authorized_logical_pipeline_policies_hashes_.has_value() &&
-            !authorized_logical_pipeline_policies_hashes_->empty() &&
-            !authorized_logical_pipeline_policies_hashes_->contains(
-                blob_header.access_policy_sha256())) {
-          return absl::InvalidArgumentError(
-              "BlobHeader.access_policy_sha256 does not match any "
-              "authorized_logical_pipeline_policies_hashes returned by KMS.");
-        }
         FCP_ASSIGN_OR_RETURN(
             decrypted,
             message_decryptor_.Decrypt(
@@ -155,7 +135,7 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
                     .kms_symmetric_key_associated_data()
                     .record_header(),
                 metadata.hpke_plus_aead_data().encapsulated_public_key(),
-                blob_header.key_id()));
+                key_id));
       } else {
         return absl::InvalidArgumentError(
             "Blob to decrypt must contain either "

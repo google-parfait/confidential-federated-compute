@@ -53,16 +53,14 @@ using ::grpc::ServerContext;
 using ::oak::crypto::DecryptionResult;
 using ::oak::crypto::ServerEncryptor;
 
-namespace {
-
 // Decrypts and parses a record and incorporates the record into the session.
 //
 // Reports status to the client in WriteFinishedResponse.
-absl::Status HandleWrite(
+absl::Status ConfidentialTransformBase::HandleWrite(
     const WriteRequest& request, absl::Cord blob_data,
     BlobDecryptor* blob_decryptor, std::optional<NonceChecker>& nonce_checker,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    Session* session) {
+    confidential_federated_compute::Session* session) {
   if (nonce_checker.has_value()) {
     absl::Status nonce_status =
         nonce_checker->CheckBlobNonce(request.first_request_metadata());
@@ -72,10 +70,17 @@ absl::Status HandleWrite(
     }
   }
 
+  absl::StatusOr<std::string> key_id =
+      GetKeyId(request.first_request_metadata());
+  if (!key_id.ok()) {
+    stream->Write(ToSessionWriteFinishedResponse(key_id.status()));
+    return absl::OkStatus();
+  }
+
   // TODO: Avoid flattening the cord, which requires the downstream
   // code to parse directly from the chunked cord.
   absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
-      request.first_request_metadata(), blob_data.Flatten());
+      request.first_request_metadata(), blob_data.Flatten(), key_id.value());
   if (!unencrypted_data.ok()) {
     stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
     return absl::OkStatus();
@@ -91,14 +96,11 @@ absl::Status HandleWrite(
   return absl::OkStatus();
 }
 
-}  // namespace
-
 absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
   google::protobuf::Struct config_properties;
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes;
   StreamInitializeRequest request;
   bool contain_initialize_request = false;
   uint32_t max_num_sessions;
@@ -144,7 +146,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
           }
           for (const auto& policy_hash :
                associated_data.authorized_logical_pipeline_policies_hashes()) {
-            authorized_logical_pipeline_policies_hashes.insert(policy_hash);
+            authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
           }
           // Pick any of the authorized_logical_pipeline_policies_hashes as the
           // reencryption_policy_hash. For convenience, we pick the first one.
@@ -201,8 +203,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     blob_decryptor_.emplace(*oak_signing_key_handle_, config_properties,
                             std::vector<absl::string_view>(
                                 protected_response.decryption_keys().begin(),
-                                protected_response.decryption_keys().end()),
-                            authorized_logical_pipeline_policies_hashes);
+                                protected_response.decryption_keys().end()));
     session_tracker_.emplace(max_num_sessions);
 
     // Since blob_decryptor_ is set once in Initialize or StreamInitialize and

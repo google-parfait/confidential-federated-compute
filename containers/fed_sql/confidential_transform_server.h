@@ -56,6 +56,8 @@ class FedSqlConfidentialTransform final
           write_configuration) override;
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
+  absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) override;
 
   //  Set the intrinsics based on the initialization configuration.
   absl::Status SetAndValidateIntrinsics(

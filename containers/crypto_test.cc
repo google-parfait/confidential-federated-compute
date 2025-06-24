@@ -110,20 +110,14 @@ TEST(CryptoTest, EncryptAndDecryptBlob) {
   ASSERT_EQ(*decrypt_result, message);
 }
 
-TEST(CryptoTest, EncryptAndDecryptBlobWithKmsProvidedKeys) {
+TEST(CryptoTest, EncryptAndDecryptBlobWithKmsKeyId) {
   std::string message = "some plaintext message";
   std::string key_id = "some key id";
   auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair(key_id);
-  BlobHeader header;
-  header.set_key_id(key_id);
-  header.set_access_policy_sha256("sha256_hash");
-  std::string associated_data = header.SerializeAsString();
+  std::string associated_data = "associated_data";
 
   NiceMock<crypto_test_utils::MockSigningKeyHandle> mock_signing_key_handle;
-  absl::flat_hash_set<std::string> authorized_policy_hashes;
-  authorized_policy_hashes.insert("sha256_hash");
-  BlobDecryptor blob_decryptor(mock_signing_key_handle, {}, {private_key},
-                               authorized_policy_hashes);
+  BlobDecryptor blob_decryptor(mock_signing_key_handle, {}, {private_key});
 
   MessageEncryptor encryptor;
   absl::StatusOr<EncryptMessageResult> encrypt_result =
@@ -143,49 +137,10 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithKmsProvidedKeys) {
   encryption_metadata->mutable_kms_symmetric_key_associated_data()
       ->set_record_header(associated_data);
 
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext);
+  absl::StatusOr<std::string> decrypt_result = blob_decryptor.DecryptBlob(
+      metadata, encrypt_result.value().ciphertext, key_id);
   ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
   ASSERT_EQ(*decrypt_result, message);
-}
-
-TEST(CryptoTest, EncryptAndDecryptBlobWithKmsInvalidPolicyHash) {
-  std::string message = "some plaintext message";
-  std::string key_id = "some key id";
-  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair(key_id);
-  BlobHeader header;
-  header.set_key_id(key_id);
-  header.set_access_policy_sha256("invalid_hash");
-  std::string associated_data = header.SerializeAsString();
-
-  NiceMock<crypto_test_utils::MockSigningKeyHandle> mock_signing_key_handle;
-  absl::flat_hash_set<std::string> authorized_policy_hashes;
-  authorized_policy_hashes.insert("sha256_hash");
-  BlobDecryptor blob_decryptor(mock_signing_key_handle, {}, {private_key},
-                               authorized_policy_hashes);
-
-  MessageEncryptor encryptor;
-  absl::StatusOr<EncryptMessageResult> encrypt_result =
-      encryptor.Encrypt(message, public_key, associated_data);
-  ASSERT_TRUE(encrypt_result.ok()) << encrypt_result.status();
-
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
-  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->set_ciphertext_associated_data(associated_data);
-  encryption_metadata->set_encrypted_symmetric_key(
-      encrypt_result.value().encrypted_symmetric_key);
-  encryption_metadata->set_encapsulated_public_key(
-      encrypt_result.value().encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
-
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext);
-  ASSERT_FALSE(decrypt_result.ok());
-  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()));
 }
 
 TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {

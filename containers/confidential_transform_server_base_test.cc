@@ -79,6 +79,7 @@ using ::testing::Return;
 using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
+constexpr absl::string_view kKeyId = "key_id";
 
 class MockSession final : public confidential_federated_compute::Session {
  public:
@@ -177,6 +178,11 @@ class FakeConfidentialTransform final
       return std::move(session);
     }
     return std::move(session_);
+  }
+
+  virtual absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) {
+    return std::string(kKeyId);
   }
 
  private:
@@ -1231,7 +1237,8 @@ class InitializedConfidentialTransformServerBaseTestWithKms
   InitializedConfidentialTransformServerBaseTestWithKms() {
     google::rpc::Status config_status;
     config_status.set_code(grpc::StatusCode::OK);
-    auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+    auto public_private_key_pair =
+        crypto_test_utils::GenerateKeyPair(std::string(kKeyId));
     public_key_ = public_private_key_pair.first;
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
@@ -1278,7 +1285,7 @@ class InitializedConfidentialTransformServerBaseTestWithKms
       std::string policy_hash = "policy_hash") {
     BlobHeader header;
     header.set_blob_id(blob_id);
-    header.set_key_id(key_id_);
+    header.set_key_id(std::string(kKeyId));
     header.set_access_policy_sha256(policy_hash);
     std::string associated_data = header.SerializeAsString();
 
@@ -1306,7 +1313,6 @@ class InitializedConfidentialTransformServerBaseTestWithKms
   grpc::ClientContext session_context_;
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream_;
-  std::string key_id_ = "key_id";
   std::string public_key_;
 };
 
@@ -1338,34 +1344,6 @@ TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
   ASSERT_TRUE(stream_->Read(&response));
   ASSERT_EQ(response.write().status().code(), grpc::OK);
   ASSERT_EQ(response.write().committed_size_bytes(), message.size());
-}
-
-TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
-       SessionDecryptsBlobInvalidPolicyHash) {
-  std::string message = "test data";
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  service_->AddSession(std::move(mock_session));
-  StartSession();
-
-  auto [metadata, ciphertext] =
-      EncryptWithKmsKeys("blob_id", message, "invalid_hash");
-  SessionRequest request;
-  WriteRequest* write_request = request.mutable_write();
-  google::rpc::Status config;
-  config.set_code(grpc::StatusCode::OK);
-  *write_request->mutable_first_request_metadata() = metadata;
-  write_request->mutable_first_request_configuration()->PackFrom(config);
-  write_request->set_commit(true);
-  write_request->set_data(ciphertext);
-
-  SessionResponse response;
-  ASSERT_TRUE(stream_->Write(request));
-  ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(),
-            grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 }  // namespace

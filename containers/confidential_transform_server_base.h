@@ -18,6 +18,7 @@
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
@@ -84,12 +85,24 @@ class ConfidentialTransformBase
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() = 0;
 
+  // Retrieves the key_id from the BlobMetadata.
+  virtual absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) {
+    return "";
+  }
+
   // Transforms that have KMS enabled are meant to be used with the KMS. They
   // must
   // - Validate that they are configured with properties permitted by the KMS
   // - Track their own privacy budget.
   // - Release only encrypted results along with a release token.
   bool KmsEnabled() const { return kms_enabled_; }
+
+  // Returns the authorized logical policy hashes for this container.
+  absl::flat_hash_set<std::string>&
+  GetAuthorizedLogicalPipelinePoliciesHashes() {
+    return authorized_logical_pipeline_policies_hashes_;
+  }
 
   // Returns the Oak SigningKeyHandle passed to the constructor.
   const std::shared_ptr<oak::crypto::SigningKeyHandle>& GetOakSigningKeyHandle()
@@ -108,6 +121,15 @@ class ConfidentialTransformBase
                                fcp::confidentialcompute::SessionRequest>*
           stream);
 
+  absl::Status HandleWrite(
+      const fcp::confidentialcompute::WriteRequest& request,
+      absl::Cord blob_data, BlobDecryptor* blob_decryptor,
+      std::optional<fcp::confidential_compute::NonceChecker>& nonce_checker,
+      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
+                               fcp::confidentialcompute::SessionRequest>*
+          stream,
+      confidential_federated_compute::Session* session);
+
   absl::Mutex mutex_;
   // The mutex is used to protect the optional wrapping blob_decryptor_ and
   // session_tracker_ to ensure they are initialized, but the BlobDecryptor and
@@ -122,6 +144,7 @@ class ConfidentialTransformBase
   bool kms_enabled_;
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
+  absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
 };
 
 }  // namespace confidential_federated_compute
