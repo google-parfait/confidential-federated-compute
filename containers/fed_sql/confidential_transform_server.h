@@ -27,9 +27,6 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
-#include "fcp/protos/confidentialcompute/access_policy.pb.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 

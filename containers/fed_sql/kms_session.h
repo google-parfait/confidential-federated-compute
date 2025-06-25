@@ -30,8 +30,6 @@
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"

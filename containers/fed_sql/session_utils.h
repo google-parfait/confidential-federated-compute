@@ -22,7 +22,6 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
