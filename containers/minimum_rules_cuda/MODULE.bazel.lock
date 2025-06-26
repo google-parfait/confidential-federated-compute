@@ -621,23 +621,108 @@
     },
     "@@rules_cuda+//cuda:extensions.bzl%toolchain": {
       "general": {
-        "bzlTransitiveDigest": "s+zIU6ZTPfK/0VZGcIDpvn10bXUsqp+dW/8tl1QgqqA=",
-        "usagesDigest": "l1kTvjXzV+vjsMAmnCUHsILFXQUyEcCISm1gZzCMYDQ=",
+        "bzlTransitiveDigest": "6h/hHe8wLLYRB7pV+QcCfkhtRrgoc9g/C42bd+IKrVY=",
+        "usagesDigest": "6pBRu7YzSQ9HaZeM0vrXilQqlfOkmV0tq5slozcbn7Q=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "cuda_cccl": {
+            "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_component",
+            "attributes": {
+              "component_name": "cccl",
+              "descriptive_name": "",
+              "integrity": "",
+              "sha256": "0740e9e01e4f15e17c5ab8d68bba4f8ec0eb6b84edccba4ac45112d2d2174e4b",
+              "strip_prefix": "cuda_cccl-linux-x86_64-12.8.90-archive",
+              "url": "",
+              "urls": [
+                "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.8.90-archive.tar.xz"
+              ],
+              "version": ""
+            }
+          },
+          "cuda_cudart": {
+            "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_component",
+            "attributes": {
+              "component_name": "cudart",
+              "descriptive_name": "",
+              "integrity": "",
+              "sha256": "8d566b5fe745c46842dc16945cf36686227536decd2302c372be86da37faca68",
+              "strip_prefix": "cuda_cudart-linux-x86_64-12.8.90-archive",
+              "url": "",
+              "urls": [
+                "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz"
+              ],
+              "version": ""
+            }
+          },
+          "cuda_nvcc": {
+            "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_component",
+            "attributes": {
+              "component_name": "nvcc",
+              "descriptive_name": "",
+              "integrity": "",
+              "sha256": "9961b3484b6b71314063709a4f9529654f96782ad39e72bf1e00f070db8210d3",
+              "strip_prefix": "cuda_nvcc-linux-x86_64-12.8.93-archive",
+              "url": "",
+              "urls": [
+                "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.8.93-archive.tar.xz"
+              ],
+              "version": ""
+            }
+          },
+          "cuda_curand": {
+            "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_component",
+            "attributes": {
+              "component_name": "curand",
+              "descriptive_name": "",
+              "integrity": "",
+              "sha256": "32a5ec30be446c1b7228d1bc502b2f029cc8b59a5e362c70d960754fa646778b",
+              "strip_prefix": "libcurand-linux-x86_64-10.3.9.90-archive",
+              "url": "",
+              "urls": [
+                "https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.9.90-archive.tar.xz"
+              ],
+              "version": ""
+            }
+          },
           "cuda": {
             "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_toolkit",
             "attributes": {
-              "components_mapping": {},
+              "components_mapping": {
+                "cccl": "@@rules_cuda++toolchain+cuda_cccl//:cuda_cccl",
+                "cudart": "@@rules_cuda++toolchain+cuda_cudart//:cuda_cudart",
+                "nvcc": "@@rules_cuda++toolchain+cuda_nvcc//:cuda_nvcc",
+                "curand": "@@rules_cuda++toolchain+cuda_curand//:cuda_curand"
+              },
               "nvcc_version": "",
               "toolkit_path": "",
-              "version": ""
+              "version": "12.8.1"
             }
           }
         },
         "recordedRepoMappingEntries": [
+          [
+            "",
+            "cuda_cccl",
+            "rules_cuda++toolchain+cuda_cccl"
+          ],
+          [
+            "",
+            "cuda_cudart",
+            "rules_cuda++toolchain+cuda_cudart"
+          ],
+          [
+            "",
+            "cuda_curand",
+            "rules_cuda++toolchain+cuda_curand"
+          ],
+          [
+            "",
+            "cuda_nvcc",
+            "rules_cuda++toolchain+cuda_nvcc"
+          ],
           [
             "bazel_tools",
             "rules_cc",
@@ -1059,37 +1144,37 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "KfC4EdM1iYNQXIc6M8cFMIdPH8uuPJ+//gwmfPYam1c=",
-        "usagesDigest": "2IH+B0dpfq4728ayuq0D4FpFxT1n0PZzyX8Kcyu7VT4=",
+        "usagesDigest": "SA1V5xbMLaPjZNDDj4xByrntiCBYuf9yrgeB81fw7ck=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
-          "cuda_runtime_linux_amd64": {
+          "distroless_cc_debian12_base_linux_amd64": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
             "attributes": {
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "index.docker.io",
-              "repository": "nvidia/cuda",
-              "identifier": "sha256:59377892150212ca133313a73db5dfd14e8635764ba24a947513c5fc903ddbda",
+              "registry": "gcr.io",
+              "repository": "distroless/cc-debian12",
+              "identifier": "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
               "platform": "linux/amd64",
-              "target_name": "cuda_runtime_linux_amd64",
+              "target_name": "distroless_cc_debian12_base_linux_amd64",
               "bazel_tags": []
             }
           },
-          "cuda_runtime": {
+          "distroless_cc_debian12_base": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_alias",
             "attributes": {
-              "target_name": "cuda_runtime",
+              "target_name": "distroless_cc_debian12_base",
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "index.docker.io",
-              "repository": "nvidia/cuda",
-              "identifier": "sha256:59377892150212ca133313a73db5dfd14e8635764ba24a947513c5fc903ddbda",
+              "registry": "gcr.io",
+              "repository": "distroless/cc-debian12",
+              "identifier": "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
               "platforms": {
-                "@@platforms//cpu:x86_64": "@cuda_runtime_linux_amd64"
+                "@@platforms//cpu:x86_64": "@distroless_cc_debian12_base_linux_amd64"
               },
-              "bzlmod_repository": "cuda_runtime",
+              "bzlmod_repository": "distroless_cc_debian12_base",
               "reproducible": true
             }
           },
@@ -1238,8 +1323,8 @@
         },
         "moduleExtensionMetadata": {
           "explicitRootModuleDirectDeps": [
-            "cuda_runtime",
-            "cuda_runtime_linux_amd64"
+            "distroless_cc_debian12_base",
+            "distroless_cc_debian12_base_linux_amd64"
           ],
           "explicitRootModuleDirectDevDeps": [],
           "useAllRepos": "NO",
@@ -1313,7 +1398,7 @@
     "@@toolchains_llvm+//toolchain/extensions:llvm.bzl%llvm": {
       "general": {
         "bzlTransitiveDigest": "miE+G1r8txiL9GGIOFLiY+RyielXfNO9OiFlFw+NE+U=",
-        "usagesDigest": "Mr8/NOvc+qOJt2RxfNkunLldS3qVY/S5I94DB9ezhC0=",
+        "usagesDigest": "q5R4Wd73mvpDG2ImAh8OzvibgmE0lEBJ6PdHxXxUNXo=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -1328,7 +1413,7 @@
               "exec_os": "",
               "libclang_rt": {},
               "llvm_mirror": "",
-              "llvm_version": "18.1.8",
+              "llvm_version": "19.1.0",
               "llvm_versions": {},
               "netrc": "",
               "sha256": {},
@@ -1356,21 +1441,28 @@
               "link_flags": {},
               "link_libs": {},
               "llvm_versions": {
-                "": "18.1.8"
+                "": "19.1.0"
               },
               "opt_compile_flags": {},
               "opt_link_flags": {},
               "stdlib": {
-                "": "stdc++"
+                "linux-x86_64": "stdc++"
               },
               "target_settings": {},
               "unfiltered_compile_flags": {},
               "toolchain_roots": {},
-              "sysroot": {}
+              "sysroot": {
+                "": "'@@+_repo_rules+sysroot//:sysroot'"
+              }
             }
           }
         },
         "recordedRepoMappingEntries": [
+          [
+            "",
+            "sysroot",
+            "+_repo_rules+sysroot"
+          ],
           [
             "toolchains_llvm+",
             "bazel_skylib",

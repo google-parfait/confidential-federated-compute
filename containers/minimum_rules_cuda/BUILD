@@ -13,8 +13,7 @@
 # limitations under the License.
 
 load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-
-#load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_proto_library")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 load("@rules_oci//oci:defs.bzl", "oci_image")
@@ -47,14 +46,14 @@ cuda_library(
         "-Wno-error",
         "-stdlib=libstdc++",
     ],
+    # curand needs to be manually added for now.
+    # It's a known issue for rules_cuda, https://github.com/bazel-contrib/rules_cuda/issues/337
+    deps = ["@cuda_curand//:curand"],
 )
 
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
-    linkopts = [
-        "-L/usr/lib/gcc/x86_64-linux-gnu/11",
-    ],
     linkstatic = True,
     deps = [
         ":kernel",
@@ -70,11 +69,12 @@ cc_binary(
 pkg_tar(
     name = "main_tar",
     srcs = [":main"],
+    include_runfiles = True,
 )
 
 oci_image(
     name = "oci_image",
-    base = "@cuda_runtime",
+    base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
     tars = [
         # Install the main cc binary
@@ -82,10 +82,7 @@ oci_image(
     ],
 )
 
-# oci_runtime_bundle currently doesn't work because the umoci tooling it uses doesn't support docker v2 image.
-# We can use `skopeo copy` to make the conversion to oci first, but this step is not integrated into oak yet.
-#oci_runtime_bundle(
-#    name = "oci_runtime_bundle",
-#    image = ":oci_image",
-#    visibility = ["//:__pkg__"],
-#)
+oci_runtime_bundle(
+    name = "oci_runtime_bundle",
+    image = ":oci_image",
+)

@@ -18,6 +18,8 @@ module(
     compatibility_level = 1,
 )
 
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 bazel_dep(name = "protobuf", version = "27.0", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.1.1")
 bazel_dep(name = "rules_python", version = "1.4.1")
@@ -53,9 +55,15 @@ archive_override(
 bazel_dep(name = "rules_cuda")
 archive_override(
     module_name = "rules_cuda",
-    integrity = "sha256-ZX6jQUzVnV0yFbP1avfheE8f8V30LEisBTI0UoU3vM4=",
-    strip_prefix = "rules_cuda-bec68747dd9fa98d166c0a95cee2390847340748",
-    url = "https://github.com/bazel-contrib/rules_cuda/archive/bec68747dd9fa98d166c0a95cee2390847340748.tar.gz",
+    integrity = "sha256-1p+wq8uTeO1ZELmj03RqR9cKwpuK+idfkTrF4ZehfBw=",
+    strip_prefix = "rules_cuda-76cb0a6afbe814d4da3cc50b9117c64272db4c44",
+    url = "https://github.com/bazel-contrib/rules_cuda/archive/76cb0a6afbe814d4da3cc50b9117c64272db4c44.tar.gz",
+)
+
+http_archive(
+    name = "sysroot",
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
 
 # Set up python toolchain
@@ -70,28 +78,73 @@ python.toolchain(
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",
-    llvm_version = "18.1.8",
-    stdlib = {"": "stdc++"},  # Force linking libstdc++ which is what cuda does by default.
+    # clang version lower than 19.1.0 requires libtinfo.so.5 when building CUDA
+    llvm_version = "19.1.0",
+    stdlib = {"linux-x86_64": "stdc++"},
 )
+llvm.sysroot(label = "@sysroot")
 use_repo(llvm, "llvm_toolchain")
 
 register_toolchains("@llvm_toolchain//:all")
 
-# Set up cuda toolchain
-# This is not hermetic yet, we'll need to wait for https://github.com/bazel-contrib/rules_cuda/issues/324#issuecomment-2682490634 to be merged.
-# In the meantime, we need to use the dockerfile as our build environment.
+# Set up hermetic CUDA toolchain
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+
+# cccl, cudart, nvcc are mandatory and needed for basic cuda support.
+cuda.component(
+    name = "cuda_cccl",
+    component_name = "cccl",
+    sha256 = "0740e9e01e4f15e17c5ab8d68bba4f8ec0eb6b84edccba4ac45112d2d2174e4b",
+    strip_prefix = "cuda_cccl-linux-x86_64-12.8.90-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.8.90-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_cudart",
+    component_name = "cudart",
+    sha256 = "8d566b5fe745c46842dc16945cf36686227536decd2302c372be86da37faca68",
+    strip_prefix = "cuda_cudart-linux-x86_64-12.8.90-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_nvcc",
+    component_name = "nvcc",
+    sha256 = "9961b3484b6b71314063709a4f9529654f96782ad39e72bf1e00f070db8210d3",
+    strip_prefix = "cuda_nvcc-linux-x86_64-12.8.93-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.8.93-archive.tar.xz"],
+)
+
+# curand is needed for compiling cuda with clang
+cuda.component(
+    name = "cuda_curand",
+    component_name = "curand",
+    sha256 = "32a5ec30be446c1b7228d1bc502b2f029cc8b59a5e362c70d960754fa646778b",
+    strip_prefix = "libcurand-linux-x86_64-10.3.9.90-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.9.90-archive.tar.xz"],
+)
 cuda.toolkit(
     name = "cuda",
-    toolkit_path = "",
+    components_mapping = {
+        "cccl": "@cuda_cccl",
+        "cudart": "@cuda_cudart",
+        "nvcc": "@cuda_nvcc",
+        "curand": "@cuda_curand",
+    },
+    version = "12.8.1",
 )
-use_repo(cuda, "cuda")
+use_repo(
+    cuda,
+    "cuda",
+    "cuda_cccl",
+    "cuda_cudart",
+    "cuda_curand",
+    "cuda_nvcc",
+)
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "cuda_runtime",
-    digest = "sha256:59377892150212ca133313a73db5dfd14e8635764ba24a947513c5fc903ddbda",
-    image = "docker.io/nvidia/cuda:12.9.0-cudnn-runtime-ubuntu22.04",  # base image published by Nvidia which contains cuda runtime deps.
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "cuda_runtime")
+use_repo(oci, "distroless_cc_debian12_base")
