@@ -20,7 +20,6 @@
 #include <tuple>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -52,9 +51,7 @@ class BlobDecryptor {
   // validation of the config constraints is performed by the worker itself.
   BlobDecryptor(oak::crypto::SigningKeyHandle& signing_key,
                 google::protobuf::Struct config_properties = {},
-                const std::vector<absl::string_view>& decryption_keys = {},
-                std::optional<absl::flat_hash_set<std::string>>
-                    authorized_logical_pipeline_policies_hashes = std::nullopt);
+                const std::vector<absl::string_view>& decryption_keys = {});
 
   // BlobDecryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
@@ -76,16 +73,11 @@ class BlobDecryptor {
   // Decrypts a record encrypted with the public key owned by this class.
   absl::StatusOr<std::string> DecryptBlob(
       const fcp::confidentialcompute::BlobMetadata& metadata,
-      absl::string_view blob);
+      absl::string_view blob, absl::string_view key_id = "");
 
  private:
   fcp::confidential_compute::MessageDecryptor message_decryptor_;
   absl::StatusOr<std::string> signed_public_key_;
-  // Policy hashes that each blob decrypted by this container must be authorized
-  // with. If this is empty, the container will try to decrypt blobs without
-  // checking the policy hashes.
-  std::optional<absl::flat_hash_set<std::string>>
-      authorized_logical_pipeline_policies_hashes_;
 };
 
 // Class used to create an encrypted blob with a symmetric key that can be

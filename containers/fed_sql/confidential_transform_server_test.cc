@@ -1743,6 +1743,188 @@ TEST_F(InitializedFedSqlServerTest,
       HasSubstr("No output access policy node ID set for serialized outputs"));
 }
 
+class InitializedFedSqlServerKmsTest : public FedSqlServerTest {
+ public:
+  InitializedFedSqlServerKmsTest() : FedSqlServerTest() {
+    grpc::ClientContext context;
+    InitializeRequest request;
+    InitializeResponse response;
+    FedSqlContainerInitializeConfiguration init_config;
+    *init_config.mutable_agg_configuration() = DefaultConfiguration();
+    request.mutable_configuration()->PackFrom(init_config);
+    request.set_max_num_sessions(kMaxNumSessions);
+
+    auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+    public_key_ = public_private_key_pair.first;
+
+    FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+      intrinsic_uri: "fedsql_group_by"
+      access_budget { times: 5 }
+    )pb");
+    AuthorizeConfidentialTransformResponse::ProtectedResponse
+        protected_response;
+    // Add 2 re-encryption keys - Merge and Report.
+    protected_response.add_result_encryption_keys(public_key_);
+    protected_response.add_result_encryption_keys(public_key_);
+    protected_response.add_decryption_keys(public_private_key_pair.second);
+    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+    associated_data.add_authorized_logical_pipeline_policies_hashes(
+        allowed_policy_hash_);
+    auto encrypted_request =
+        oak_client_encryptor_
+            ->Encrypt(protected_response.SerializeAsString(),
+                      associated_data.SerializeAsString())
+            .value();
+    *request.mutable_protected_response() = encrypted_request;
+
+    auto writer = stub_->StreamInitialize(&context, &response);
+    EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+    EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
+
+    SessionRequest session_request;
+    SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(1000);
+    session_request.mutable_configure()->mutable_configuration()->PackFrom(
+        DefaultSqlQuery());
+
+    stream_ = stub_->Session(&session_context_);
+    CHECK(stream_->Write(session_request));
+    CHECK(stream_->Read(&session_response));
+  }
+
+  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
+      std::string message, std::string associated_data) {
+    MessageEncryptor encryptor;
+    absl::StatusOr<EncryptMessageResult> encrypt_result =
+        encryptor.Encrypt(message, public_key_, associated_data);
+    CHECK(encrypt_result.ok()) << encrypt_result.status();
+
+    BlobMetadata metadata;
+    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+    metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
+    BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+        metadata.mutable_hpke_plus_aead_data();
+    encryption_metadata->set_ciphertext_associated_data(associated_data);
+    encryption_metadata->set_encrypted_symmetric_key(
+        encrypt_result.value().encrypted_symmetric_key);
+    encryption_metadata->set_encapsulated_public_key(
+        encrypt_result.value().encapped_key);
+    encryption_metadata->mutable_kms_symmetric_key_associated_data()
+        ->set_record_header(associated_data);
+
+    return {metadata, encrypt_result.value().ciphertext};
+  }
+
+ protected:
+  grpc::ClientContext session_context_;
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream_;
+  std::string key_id_ = "key_id";
+  std::string allowed_policy_hash_ = "hash_1";
+  std::string public_key_;
+};
+
+TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestSuccess) {
+  std::string message = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+  BlobHeader header;
+  header.set_blob_id("blob_id");
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256(allowed_policy_hash_);
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(message, header.SerializeAsString());
+
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::OK);
+  ASSERT_EQ(response.write().committed_size_bytes(), ciphertext.size());
+}
+
+TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestNoKmsAssociatedData) {
+  std::string message = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+  BlobHeader header;
+  header.set_blob_id("blob_id");
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256(allowed_policy_hash_);
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(message, header.SerializeAsString());
+  metadata.mutable_hpke_plus_aead_data()
+      ->clear_kms_symmetric_key_associated_data();
+
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+}
+
+TEST_F(InitializedFedSqlServerKmsTest,
+       SessionWriteRequestInvalidKmsAssociatedData) {
+  std::string message = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(message, "invalid_associated_data");
+
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+}
+
+TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestInvalidPolicyHash) {
+  std::string message = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+  BlobHeader header;
+  header.set_blob_id("blob_id");
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256("invalid_policy_hash");
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(message, header.SerializeAsString());
+
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+}
+
 class FedSqlGroupByTest : public FedSqlServerTest {
  public:
   FedSqlGroupByTest() {
