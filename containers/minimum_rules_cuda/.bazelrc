@@ -1,0 +1,8 @@
+build --@rules_cuda//cuda:compiler=clang
+# Static link cuda runtime deps.
+build --@rules_cuda//cuda:runtime=@cuda//:cuda_runtime_static
+# Build for H100 or equivalent.
+build --@rules_cuda//cuda:archs=compute_90:compute_90,sm_90
+build --repo_env=CC=clang
+
+build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691

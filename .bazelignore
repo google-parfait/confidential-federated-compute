@@ -1,2 +1,3 @@
 registry
 toolchains/sysroot
+containers/minimum_rules_cuda
