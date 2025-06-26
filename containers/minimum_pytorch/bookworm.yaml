@@ -1,0 +1,35 @@
+# Copyright 2025 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#  Anytime this file is changed, the lockfile needs to be regenerated.
+#
+#  To generate the bookworm.lock.json run the following command
+#
+#     bazel run @bookworm//:lock
+version: 1
+sources:
+  - channel: bookworm main contrib
+    urls:
+      - https://snapshot-cloudflare.debian.org/archive/debian/20250505T000000Z
+      - https://snapshot.debian.org/archive/debian/20250505T000000Z
+archs:
+  - "amd64"
+# Install some basic packages, including those needed by the aspect-build/rules_py launcher.
+packages:
+  - "apt"
+  - "bash"
+  - "coreutils"
+  - "sed"
+  - "gawk"
+  - "grep"
