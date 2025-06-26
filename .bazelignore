@@ -1,3 +1,4 @@
 registry
 toolchains/sysroot
 containers/minimum_rules_cuda
+containers/minimum_pytorch
