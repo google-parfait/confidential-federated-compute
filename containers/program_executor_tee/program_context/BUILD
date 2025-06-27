@@ -188,3 +188,29 @@ py_test(
         "@pypi//typing_extensions",
     ],
 )
+
+py_library(
+    name = "replace_data_pointers",
+    srcs = ["replace_data_pointers.py"],
+    deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
+    ],
+)
+
+py_test(
+    name = "replace_data_pointers_test",
+    srcs = ["replace_data_pointers_test.py"],
+    deps = [
+        ":replace_data_pointers",
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
+        "@pypi//absl_py",
+        "@pypi//attrs",
+        "@pypi//dm_tree",
+        "@pypi//ml_dtypes",
+        "@pypi//numpy",
+        "@pypi//typing_extensions",
+    ],
+)
