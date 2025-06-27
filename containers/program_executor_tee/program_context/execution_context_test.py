@@ -152,6 +152,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "bns_address_3",
         "bns_address_4",
     ]
+    self.attester_id = "fake_attester"
     self.server = fake_service_bindings.FakeServer(
         self.untrusted_root_port, self.worker_bns
     )
@@ -169,7 +170,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             ),
             self.untrusted_root_port,
             self.worker_bns,
-            "fake_attester",
+            self.attester_id,
         )
     )
 

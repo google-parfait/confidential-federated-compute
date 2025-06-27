@@ -69,9 +69,6 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
     worker_bns_addresses.push_back(address);
   }
 
-  // TODO: Allow the attester_id to be configured.
-  std::string attester_id = "fake_attester";
-
   pybind11::scoped_interpreter guard{};
   try {
     // Load the python function for running the program.
@@ -82,9 +79,9 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
 
     // Schedule execution of the program as a Task.
     pybind11::object task = pybind11::module::import("asyncio").attr(
-        "ensure_future")(run_program(initialize_config_.program(),
-                                     initialize_config_.outgoing_server_port(),
-                                     worker_bns_addresses, attester_id));
+        "ensure_future")(run_program(
+        initialize_config_.program(), initialize_config_.outgoing_server_port(),
+        worker_bns_addresses, initialize_config_.attester_id()));
 
     // Run the task in the event loop and get the result.
     pybind11::object loop =

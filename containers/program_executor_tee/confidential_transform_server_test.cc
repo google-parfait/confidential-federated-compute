@@ -182,6 +182,7 @@ async def trusted_program(release_manager):
   await release_manager.release(result, "result1")
   )");
     config.set_outgoing_server_port(data_read_write_service_port_);
+    config.set_attester_id("fake_attester");
 
     InitializeRequest* initialize_request =
         request.mutable_initialize_request();
