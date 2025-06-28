@@ -89,7 +89,6 @@ cc_test(
 
 cc_library(
     name = "crypto_test_utils",
-    testonly = True,
     srcs = ["crypto_test_utils.cc"],
     hdrs = ["crypto_test_utils.h"],
     deps = [

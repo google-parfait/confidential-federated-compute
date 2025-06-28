@@ -12,17 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concurrent import futures
 import unittest
 
 from absl.testing import absltest
-from containers.program_executor_tee.program_context import fake_data_read_write_servicer
 from containers.program_executor_tee.program_context import release_manager
+from containers.program_executor_tee.program_context.cc import fake_service_bindings
 from fcp.protos.confidentialcompute import confidential_transform_pb2
 from fcp.protos.confidentialcompute import data_read_write_pb2
-from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
 import federated_language
-import grpc
 import numpy as np
 import portpicker
 import tensorflow_federated as tff
@@ -31,16 +28,15 @@ import tensorflow_federated as tff
 class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
 
   async def test_release(self):
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    mock_servicer = fake_data_read_write_servicer.FakeDataReadWriteServicer()
-    data_read_write_pb2_grpc.add_DataReadWriteServicer_to_server(
-        mock_servicer, server
+    untrusted_root_port = portpicker.pick_unused_port()
+    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
+    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
+    server = fake_service_bindings.FakeServer(
+        untrusted_root_port, data_read_write_service, None
     )
-    port = portpicker.pick_unused_port()
-    server.add_insecure_port("[::]:{}".format(port))
     server.start()
 
-    manager = release_manager.ReleaseManager(port)
+    manager = release_manager.ReleaseManager(untrusted_root_port)
     result_uri = "my_result"
     value = 5
     await manager.release(value, result_uri)
@@ -57,8 +53,10 @@ class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
         commit=True,
         data=serialized_value.SerializeToString(),
     )
-    self.assertEquals(mock_servicer.get_write_call_args(), [[expected_request]])
-    server.stop(grace=None)
+    self.assertEquals(
+        data_read_write_service.get_write_call_args(), [[expected_request]]
+    )
+    server.stop()
 
 
 if __name__ == "__main__":

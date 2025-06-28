@@ -17,7 +17,8 @@ import unittest
 from absl.testing import absltest
 from containers.program_executor_tee.program_context import compilers
 from containers.program_executor_tee.program_context import execution_context
-from containers.program_executor_tee.program_context.cc import fake_computation_delegation_service_bindings as fake_service_bindings
+from containers.program_executor_tee.program_context import test_helpers
+from containers.program_executor_tee.program_context.cc import fake_service_bindings as fake_service_bindings
 from fcp.confidentialcompute.python import compiler
 import federated_language
 from federated_language_jax.computation import jax_computation
@@ -28,10 +29,32 @@ import tensorflow_federated as tff
 
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
+  def setUp(self):
+    self.untrusted_root_port = portpicker.pick_unused_port()
+    self.worker_bns = []
+    self.attester_id = ""
+    self.assertIsNotNone(
+        self.untrusted_root_port, "Failed to pick an unused port."
+    )
+    self.data_read_write_service = (
+        fake_service_bindings.FakeDataReadWriteService()
+    )
+    self.server = fake_service_bindings.FakeServer(
+        self.untrusted_root_port, self.data_read_write_service, None
+    )
+    self.server.start()
+
+  def tearDown(self):
+    self.server.stop()
+
   async def test_compiler_caching(self):
     mock_compiler = unittest.mock.Mock()
     context = execution_context.TrustedAsyncContext(
-        mock_compiler, untrusted_root_port=-1, worker_bns=[]
+        mock_compiler,
+        self.untrusted_root_port,
+        self.worker_bns,
+        self.attester_id,
+        test_helpers.parse_read_response_fn,
     )
 
     client_data_type = federated_language.FederatedType(
@@ -66,7 +89,10 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
             compilers.compile_tf_to_call_dominant,
-            untrusted_root_port=-1,
+            self.untrusted_root_port,
+            self.worker_bns,
+            self.attester_id,
+            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -92,10 +118,61 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result_1, 6)
     self.assertEqual(result_2, 10)
 
+  async def test_tf_execution_context_data_pointer_arg(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedAsyncContext(
+            compilers.compile_tf_to_call_dominant,
+            self.untrusted_root_port,
+            self.worker_bns,
+            self.attester_id,
+            test_helpers.parse_read_response_fn,
+        )
+    )
+
+    client_data_type = federated_language.FederatedType(
+        np.int32, federated_language.CLIENTS
+    )
+    server_state_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+
+    @federated_language.federated_computation(
+        [client_data_type, server_state_type]
+    )
+    def my_comp(client_data, server_state):
+      return federated_language.federated_sum(client_data), server_state
+
+    self.data_read_write_service.store_plaintext_message(
+        "client_1",
+        test_helpers.create_array_value(
+            1, client_data_type.member
+        ).SerializeToString(),
+    )
+    self.data_read_write_service.store_plaintext_message(
+        "client_2",
+        test_helpers.create_array_value(
+            2, client_data_type.member
+        ).SerializeToString(),
+    )
+    client_1_data = test_helpers.create_data_value(
+        "client_1", "mykey", client_data_type.member
+    ).computation
+    client_2_data = test_helpers.create_data_value(
+        "client_2", "mykey", client_data_type.member
+    ).computation
+
+    result_1, result_2 = await my_comp([client_1_data, client_2_data], 10)
+    self.assertEqual(result_1, 3)
+    self.assertEqual(result_2, 10)
+
   async def test_tf_execution_context_no_arg(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
-            lambda x: x, untrusted_root_port=-1
+            lambda x: x,
+            self.untrusted_root_port,
+            self.worker_bns,
+            self.attester_id,
+            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -114,7 +191,11 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
   async def test_tf_execution_context_jax_computation(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
-            lambda x: x, untrusted_root_port=-1
+            lambda x: x,
+            self.untrusted_root_port,
+            self.worker_bns,
+            self.attester_id,
+            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -153,8 +234,16 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "bns_address_4",
     ]
     self.attester_id = "fake_attester"
+    self.data_read_write_service = (
+        fake_service_bindings.FakeDataReadWriteService()
+    )
+    self.computation_delegation_service = (
+        fake_service_bindings.FakeComputationDelegationService(self.worker_bns)
+    )
     self.server = fake_service_bindings.FakeServer(
-        self.untrusted_root_port, self.worker_bns
+        self.untrusted_root_port,
+        self.data_read_write_service,
+        self.computation_delegation_service,
     )
     self.server.start()
 
@@ -171,6 +260,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             self.untrusted_root_port,
             self.worker_bns,
             self.attester_id,
+            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -194,6 +284,56 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     # Change the cardinality of the inputs.
     result_1, result_2 = await my_comp([1, 2, 3, 4], 10)
     self.assertEqual(result_1, 10)
+    self.assertEqual(result_2, 10)
+
+  async def test_execution_context_data_pointer_arg(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedAsyncContext(
+            functools.partial(
+                compiler.to_composed_tee_form,
+                num_client_workers=len(self.worker_bns) - 1,
+            ),
+            self.untrusted_root_port,
+            self.worker_bns,
+            self.attester_id,
+            test_helpers.parse_read_response_fn,
+        )
+    )
+
+    client_data_type = federated_language.FederatedType(
+        np.int32, federated_language.CLIENTS
+    )
+    server_state_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+
+    @federated_language.federated_computation(
+        [client_data_type, server_state_type]
+    )
+    def my_comp(client_data, server_state):
+      return federated_language.federated_sum(client_data), server_state
+
+    self.data_read_write_service.store_plaintext_message(
+        "client_1",
+        test_helpers.create_array_value(
+            1, client_data_type.member
+        ).SerializeToString(),
+    )
+    self.data_read_write_service.store_plaintext_message(
+        "client_2",
+        test_helpers.create_array_value(
+            2, client_data_type.member
+        ).SerializeToString(),
+    )
+    client_1_data = test_helpers.create_data_value(
+        "client_1", "mykey", client_data_type.member
+    ).computation
+    client_2_data = test_helpers.create_data_value(
+        "client_2", "mykey", client_data_type.member
+    ).computation
+
+    result_1, result_2 = await my_comp([client_1_data, client_2_data], 10)
+    self.assertEqual(result_1, 3)
     self.assertEqual(result_2, 10)
 
 

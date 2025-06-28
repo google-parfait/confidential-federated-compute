@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from containers.program_executor_tee.program_context import compilers
 from containers.program_executor_tee.program_context import execution_context
 from containers.program_executor_tee.program_context import release_manager
+from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
+from tensorflow_federated.proto.v0 import executor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
 # federated program to execute.
@@ -27,6 +30,9 @@ async def run_program(
     untrusted_root_port: int,
     worker_bns: list[str] = [],
     attester_id: str = "",
+    parse_read_response_fn: Callable[
+        [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
+    ] = None,
 ):
   """Executes a federated program.
 
@@ -40,6 +46,9 @@ async def run_program(
     attester_id: The attester id for setting up the noise sessions used for
       distributed execution. Needs to be set to a non-empty string if a
       non-empty list of worker bns addresses is provided.
+    parse_read_response_fn: A function that takes a
+      data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
+      pointer) and returns a tff Value proto.
 
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
@@ -50,6 +59,7 @@ async def run_program(
           untrusted_root_port,
           worker_bns,
           attester_id,
+          parse_read_response_fn,
       )
   )
 

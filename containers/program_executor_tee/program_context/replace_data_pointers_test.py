@@ -15,6 +15,7 @@
 import unittest
 
 from containers.program_executor_tee.program_context import replace_data_pointers
+from containers.program_executor_tee.program_context import test_helpers
 from fcp.protos.confidentialcompute import file_info_pb2
 import federated_language
 from google.protobuf import any_pb2
@@ -22,50 +23,32 @@ import numpy as np
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
-def create_data_value(
-    uri: str, key: str, type_spec: object, client_upload: bool = True
-) -> executor_pb2.Value:
-  """Creates a data building block with the given URI, key and type_spec."""
-  content = any_pb2.Any()
-  content.Pack(
-      file_info_pb2.FileInfo(uri=uri, key=key, client_upload=client_upload)
-  )
-  return executor_pb2.Value(
-      computation=federated_language.framework.Data(
-          content=content,
-          type_signature=type_spec,
-      ).to_proto()
-  )
-
-
-def create_array_value(value: object, type_spec: object) -> executor_pb2.Value:
-  return executor_pb2.Value(
-      computation=federated_language.framework.Literal(
-          value, type_spec
-      ).to_proto()
-  )
-
-
 class ReplaceDataPointersTest(unittest.TestCase):
 
   def setUp(self):
     client_tensor_type = federated_language.TensorType(np.str_)
 
-    self.client_1_data = create_data_value(
+    self.client_1_data = test_helpers.create_data_value(
         "client_1", "mykey", client_tensor_type
     )
-    self.client_2_data = create_data_value(
+    self.client_2_data = test_helpers.create_data_value(
         "client_2", "mykey", client_tensor_type
     )
-    self.client_3_data = create_data_value(
+    self.client_3_data = test_helpers.create_data_value(
         "client_3", "mykey", client_tensor_type
     )
 
-    self.client_1_array = create_array_value("client_1", client_tensor_type)
-    self.client_2_array = create_array_value("client_2", client_tensor_type)
-    self.client_3_array = create_array_value("client_3", client_tensor_type)
+    self.client_1_array = test_helpers.create_array_value(
+        "client_1", client_tensor_type
+    )
+    self.client_2_array = test_helpers.create_array_value(
+        "client_2", client_tensor_type
+    )
+    self.client_3_array = test_helpers.create_array_value(
+        "client_3", client_tensor_type
+    )
 
-    self.already_resolved_array = create_array_value(
+    self.already_resolved_array = test_helpers.create_array_value(
         "already_resolved", client_tensor_type
     )
 
@@ -75,10 +58,10 @@ class ReplaceDataPointersTest(unittest.TestCase):
         "client_3": self.client_3_array,
     }
 
-  def uri_lookup(self, uri):
-    if uri not in self.uri_to_value_map:
+  def fileinfo_lookup(self, fileinfo: file_info_pb2.FileInfo):
+    if fileinfo.uri not in self.uri_to_value_map:
       raise ValueError("uri not in map")
-    return self.uri_to_value_map[uri]
+    return self.uri_to_value_map[fileinfo.uri]
 
   def test_replace_datas_federated(self):
     # Create a federated tff Value that contains a mix of values that are data pointers and values that are not.
@@ -89,7 +72,9 @@ class ReplaceDataPointersTest(unittest.TestCase):
     arg.federated.value.append(self.already_resolved_array)
     arg.federated.value.append(self.client_3_data)
 
-    resolved_arg = replace_data_pointers.replace_datas(arg, self.uri_lookup)
+    resolved_arg = replace_data_pointers.replace_datas(
+        arg, self.fileinfo_lookup
+    )
 
     expected_resolved_arg = executor_pb2.Value()
     expected_resolved_arg.federated.type.placement.value.uri = (
@@ -126,7 +111,9 @@ class ReplaceDataPointersTest(unittest.TestCase):
         )
     )
 
-    resolved_arg = replace_data_pointers.replace_datas(arg, self.uri_lookup)
+    resolved_arg = replace_data_pointers.replace_datas(
+        arg, self.fileinfo_lookup
+    )
 
     expected_resolved_arg = executor_pb2.Value()
     expected_resolved_arg.struct.element.append(
@@ -154,12 +141,12 @@ class ReplaceDataPointersTest(unittest.TestCase):
     self.assertEqual(resolved_arg, expected_resolved_arg)
 
   def test_replace_datas_uri_resolution_error(self):
-    arg = create_data_value(
+    arg = test_helpers.create_data_value(
         "client_unregistered", "mykey", federated_language.TensorType(np.str_)
     )
 
     with self.assertRaises(ValueError) as context:
-      replace_data_pointers.replace_datas(arg, self.uri_lookup)
+      replace_data_pointers.replace_datas(arg, self.fileinfo_lookup)
     self.assertIn(
         "Unable to resolve Data pointer: uri not in map",
         str(context.exception),
@@ -174,7 +161,7 @@ class ReplaceDataPointersTest(unittest.TestCase):
     )
 
     with self.assertRaises(ValueError) as context:
-      replace_data_pointers.replace_datas(arg, self.uri_lookup)
+      replace_data_pointers.replace_datas(arg, self.fileinfo_lookup)
     self.assertIn(
         "Unable to unpack Data pointer content to file_info_pb2.FileInfo",
         str(context.exception),
