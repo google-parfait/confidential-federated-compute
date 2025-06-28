@@ -440,4 +440,18 @@ grpc::Status ConfidentialTransformBase::Session(
   return status;
 }
 
+absl::StatusOr<BlobDecryptor*> ConfidentialTransformBase::GetBlobDecryptor() {
+  absl::MutexLock l(&mutex_);
+  if (blob_decryptor_ == std::nullopt) {
+    return absl::FailedPreconditionError(
+        "Initialize must be called before GetBlobDecryptor.");
+  }
+
+  // Since blob_decryptor_ is set once in Initialize and never modified,
+  // and the underlying object is threadsafe, it is safe to store a local
+  // pointer to it and access the object without a lock after we check under
+  // the mutex that values have been set for the std::optional wrappers.
+  return &*blob_decryptor_;
+}
+
 }  // namespace confidential_federated_compute

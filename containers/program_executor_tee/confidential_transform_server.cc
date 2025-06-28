@@ -28,14 +28,17 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
+#include "containers/program_executor_tee/program_context/cc/data_parser.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
+#include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -45,6 +48,32 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Struct;
+
+PYBIND11_EMBEDDED_MODULE(data_parser, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
+  pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
+
+  pybind11::class_<DataParser>(m, "DataParser")
+      .def(pybind11::init<BlobDecryptor*>())
+      .def("parse_read_response_to_value",
+           [](DataParser& self,
+              const fcp::confidentialcompute::outgoing::ReadResponse&
+                  read_response,
+              const std::string& nonce, const std::string& key) {
+             auto result =
+                 self.ParseReadResponseToValue(read_response, nonce, key);
+             // TODO: It currently appears that using a TF>2.14 pip dependency
+             // currently prevents us from handling StatusOr via pybind. Try to
+             // avoid throwing a runtime error here once we no longer require
+             // the TF pip dependency.
+             if (!result.ok()) {
+               throw std::runtime_error("Failed to parse ReadResponse: " +
+                                        std::string(result.status().message()));
+             }
+             return *result;
+           });
+}
 
 absl::Status ProgramExecutorTeeSession::ConfigureSession(
     fcp::confidentialcompute::SessionRequest configure_request) {
@@ -77,11 +106,17 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
             "containers.program_executor_tee.program_context.program_runner")
             .attr("run_program");
 
+    // Create a DataParser object bound to the BlobDecryptor pointer.
+    pybind11::object data_parser_instance =
+        pybind11::module::import("data_parser")
+            .attr("DataParser")(blob_decryptor_);
+
     // Schedule execution of the program as a Task.
     pybind11::object task = pybind11::module::import("asyncio").attr(
         "ensure_future")(run_program(
         initialize_config_.program(), initialize_config_.outgoing_server_port(),
-        worker_bns_addresses, initialize_config_.attester_id()));
+        worker_bns_addresses, initialize_config_.attester_id(),
+        data_parser_instance.attr("parse_read_response_to_value")));
 
     // Run the task in the event loop and get the result.
     pybind11::object loop =
@@ -133,6 +168,13 @@ absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
         "parsed to BlobHeader.");
   }
   return blob_header.key_id();
+}
+
+absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session> >
+ProgramExecutorTeeConfidentialTransform::CreateSession() {
+  FCP_ASSIGN_OR_RETURN(BlobDecryptor * blob_decryptor, GetBlobDecryptor());
+  return std::make_unique<ProgramExecutorTeeSession>(initialize_config_,
+                                                     blob_decryptor);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

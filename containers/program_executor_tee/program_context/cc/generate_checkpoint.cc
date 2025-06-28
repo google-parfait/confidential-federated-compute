@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/log/check.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
@@ -31,9 +32,23 @@ using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
+using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
+
+namespace {
+
+std::string BuildClientCheckpointFromTensor(Tensor tensor,
+                                            std::string tensor_name) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+  CHECK_OK(ckpt_builder->Add(tensor_name, tensor));
+  auto checkpoint = ckpt_builder->Build();
+  return std::string(*checkpoint);
+}
+
+}  // namespace
 
 std::string BuildClientCheckpointFromInts(std::vector<int> input_values,
                                           std::string tensor_name) {
@@ -43,12 +58,21 @@ std::string BuildClientCheckpointFromInts(std::vector<int> input_values,
                      std::make_unique<MutableVectorData<int32_t>>(
                          input_values.begin(), input_values.end()));
   CHECK_OK(t);
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-  CHECK_OK(ckpt_builder->Add(tensor_name, *t));
-  auto checkpoint = ckpt_builder->Build();
-  CHECK_OK(checkpoint);
-  return std::string(*checkpoint);
+  return BuildClientCheckpointFromTensor(std::move(*t), tensor_name);
+}
+
+std::string BuildClientCheckpointFromStrings(
+    std::vector<std::string> input_values, std::string tensor_name) {
+  auto data = std::make_unique<MutableStringData>(input_values.size());
+  for (std::string& value : input_values) {
+    data->Add(std::move(value));
+  }
+  absl::StatusOr<Tensor> t =
+      Tensor::Create(DataType::DT_STRING,
+                     TensorShape({static_cast<int32_t>(input_values.size())}),
+                     std::move(data));
+  CHECK_OK(t);
+  return BuildClientCheckpointFromTensor(std::move(*t), tensor_name);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

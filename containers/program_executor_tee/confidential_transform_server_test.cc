@@ -25,6 +25,7 @@
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"
+#include "containers/program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -155,32 +156,22 @@ TEST_F(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
   ASSERT_GT(session_response.configure().nonce().size(), 0);
 }
 
+// Note that there can only be one test in this file that exercises the
+// pybind11::scoped_interpreter code in FinalizeSession, because all of the test
+// cases in this file run in the same process and pybind11::scoped_interpreter
+// is only allowed to be used once per process (third-party extension modules
+// like numpy do not load correctly if it is used a second time). Currently the
+// only test exercising the pybind11::scoped_interpreter code is
+// ValidFinalizeSession.
 class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
  public:
-  ProgramExecutorTeeSessionTest() {
+  void CreateSession(std::string program) {
     grpc::ClientContext configure_context;
     InitializeResponse response;
     StreamInitializeRequest request;
 
     ProgramExecutorTeeInitializeConfig config;
-    config.set_program(R"(
-import federated_language
-import numpy as np
-
-async def trusted_program(release_manager):
-
-  client_data_type = federated_language.FederatedType(
-      np.int32, federated_language.CLIENTS
-  )
-
-  @federated_language.federated_computation(client_data_type)
-  def my_comp(client_data):
-    return federated_language.federated_sum(client_data)
-
-  result = await my_comp([1, 2])
-
-  await release_manager.release(result, "result1")
-  )");
+    config.set_program(program);
     config.set_outgoing_server_port(data_read_write_service_port_);
     config.set_attester_id("fake_attester");
 
@@ -217,6 +208,7 @@ async def trusted_program(release_manager):
 };
 
 TEST_F(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
+  CreateSession("unused program");
   SessionRequest session_request;
   SessionResponse session_response;
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
@@ -237,6 +229,60 @@ TEST_F(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
 }
 
 TEST_F(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
+  CHECK_OK(fake_data_read_write_service_.StorePlaintextMessage(
+      "client1", BuildClientCheckpointFromInts({1, 2, 3}, "my_key")));
+  CHECK_OK(fake_data_read_write_service_.StorePlaintextMessage(
+      "client2", BuildClientCheckpointFromInts({4, 5, 6}, "my_key")));
+
+  CreateSession(R"(
+import federated_language
+import tensorflow_federated as tff
+import tensorflow as tf
+import numpy as np
+from google.protobuf import any_pb2
+from fcp.protos.confidentialcompute import file_info_pb2
+
+async def trusted_program(release_manager):
+
+  client_data_type = federated_language.FederatedType(
+      federated_language.TensorType(np.int32, [3]),
+      federated_language.CLIENTS
+  )
+
+  @federated_language.federated_computation(client_data_type)
+  def my_comp(client_data):
+    return federated_language.federated_sum(client_data)
+
+  any_proto_1 = any_pb2.Any()
+  any_proto_1.Pack(
+      file_info_pb2.FileInfo(
+          uri="client1",
+          key="my_key",
+          client_upload=True,
+      )
+  )
+  data_1 = federated_language.framework.Data(
+            content=any_proto_1,
+            type_signature=federated_language.TensorType(np.int32, [3]),
+        ).to_proto()
+
+  any_proto_2 = any_pb2.Any()
+  any_proto_2.Pack(
+      file_info_pb2.FileInfo(
+          uri="client2",
+          key="my_key",
+          client_upload=True,
+      )
+  )
+  data_2 = federated_language.framework.Data(
+            content=any_proto_2,
+            type_signature=federated_language.TensorType(np.int32, [3]),
+        ).to_proto()
+
+  result = await my_comp([data_1, data_2])
+
+  await release_manager.release(result, "result")
+  )");
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_finalize();
@@ -247,7 +293,7 @@ TEST_F(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
   auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
   expected_request.mutable_first_request_metadata()
       ->mutable_unencrypted()
-      ->set_blob_id("result1");
+      ->set_blob_id("result");
   expected_request.set_commit(true);
 
   auto write_call_args = fake_data_read_write_service_.GetWriteCallArgs();
@@ -255,12 +301,12 @@ TEST_F(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
   ASSERT_EQ(write_call_args[0].size(), 1);
   auto write_request = write_call_args[0][0];
   ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result1");
+            "result");
   ASSERT_TRUE(write_request.commit());
   tensorflow_federated::v0::Value released_value;
   released_value.ParseFromString(write_request.data());
   ASSERT_THAT(released_value.array().int32_list().value(),
-              ::testing::ElementsAreArray({3}));
+              ::testing::ElementsAreArray({5, 7, 9}));
 
   ASSERT_TRUE(session_response.has_read());
   ASSERT_TRUE(session_response.read().finish_read());

@@ -102,6 +102,10 @@ class ConfidentialTransformBase
     return authorized_logical_pipeline_policies_hashes_;
   }
 
+  // Returns a pointer to the BlobDecryptor.
+  absl::StatusOr<confidential_federated_compute::BlobDecryptor*>
+  GetBlobDecryptor();
+
   // Returns the Oak SigningKeyHandle passed to the constructor.
   const std::shared_ptr<oak::crypto::SigningKeyHandle>& GetOakSigningKeyHandle()
       const {
