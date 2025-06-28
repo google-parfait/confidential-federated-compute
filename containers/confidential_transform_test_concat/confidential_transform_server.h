@@ -25,6 +25,7 @@
 #include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/session.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "grpcpp/server_context.h"
@@ -91,22 +92,43 @@ class TestConcatConfidentialTransform final
                                   std::move(encryption_key_handle)) {};
 
  protected:
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
     return google::protobuf::Struct();
   }
-  virtual absl::Status ReadWriteConfigurationRequest(
+  absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {
     return absl::OkStatus();
   }
-  virtual absl::StatusOr<
-      std::unique_ptr<confidential_federated_compute::Session>>
+  absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override {
     return std::make_unique<
         confidential_federated_compute::confidential_transform_test_concat::
             TestConcatSession>();
   };
+  absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) override {
+    // For legacy ledger or unencrypted payloads, the key_id is not used, so we
+    // return an empty string.
+    if (!KmsEnabled() || metadata.has_unencrypted()) {
+      return "";
+    }
+    if (!metadata.hpke_plus_aead_data()
+             .has_kms_symmetric_key_associated_data()) {
+      return absl::InvalidArgumentError(
+          "kms_symmetric_key_associated_data is not present.");
+    }
+    fcp::confidentialcompute::BlobHeader blob_header;
+    if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                         .kms_symmetric_key_associated_data()
+                                         .record_header())) {
+      return absl::InvalidArgumentError(
+          "kms_symmetric_key_associated_data.record_header() cannot be "
+          "parsed to BlobHeader.");
+    }
+    return blob_header.key_id();
+  }
 };
 
 }  // namespace

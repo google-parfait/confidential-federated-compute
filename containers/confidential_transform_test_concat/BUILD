@@ -52,7 +52,10 @@ cc_test(
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:client_encryptor",
+        "@oak//cc/crypto:encryption_key",
     ],
 )
 
