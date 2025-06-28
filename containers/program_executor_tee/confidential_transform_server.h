@@ -75,19 +75,22 @@ class ProgramExecutorTeeConfidentialTransform final
       : ConfidentialTransformBase(std::move(signing_key_handle)) {}
 
  protected:
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
-  virtual absl::Status ReadWriteConfigurationRequest(
+
+  absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {
     return absl::OkStatus();
   }
 
-  virtual absl::StatusOr<
-      std::unique_ptr<confidential_federated_compute::Session>>
+  absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override {
     return std::make_unique<ProgramExecutorTeeSession>(initialize_config_);
   }
+
+  absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) override;
 
  private:
   // Initialization config.

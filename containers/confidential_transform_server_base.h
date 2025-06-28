@@ -87,9 +87,7 @@ class ConfidentialTransformBase
 
   // Retrieves the key_id from the BlobMetadata.
   virtual absl::StatusOr<std::string> GetKeyId(
-      const fcp::confidentialcompute::BlobMetadata& metadata) {
-    return "";
-  }
+      const fcp::confidentialcompute::BlobMetadata& metadata) = 0;
 
   // Transforms that have KMS enabled are meant to be used with the KMS. They
   // must
