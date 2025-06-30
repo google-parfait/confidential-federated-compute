@@ -15,10 +15,12 @@
 
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 
 namespace confidential_federated_compute {
 
 using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 absl::StatusOr<BlobMetadata> EarliestExpirationTimeMetadata(
@@ -50,6 +52,36 @@ absl::StatusOr<BlobMetadata> EarliestExpirationTimeMetadata(
     return metadata;
   }
   return other;
+}
+
+absl::StatusOr<std::string> GetKeyIdFromMetadata(
+    const fcp::confidentialcompute::BlobMetadata& metadata) {
+  // Returns an empty string for unencrypted payloads.
+  if (metadata.has_unencrypted()) {
+    return "";
+  }
+
+  // GetKeyId is only supported for KMS-enabled transforms.
+  if (!metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
+    return absl::InvalidArgumentError(
+        "kms_symmetric_key_associated_data is not present.");
+  }
+
+  fcp::confidentialcompute::BlobHeader blob_header;
+  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                       .kms_symmetric_key_associated_data()
+                                       .record_header())) {
+    return absl::InvalidArgumentError(
+        "kms_symmetric_key_associated_data.record_header() cannot be "
+        "parsed to BlobHeader.");
+  }
+
+  if (blob_header.key_id().empty()) {
+    return absl::InvalidArgumentError(
+        "Parsed BlobHeader has an empty 'key_id'");
+  }
+
+  return blob_header.key_id();
 }
 
 }  // namespace confidential_federated_compute

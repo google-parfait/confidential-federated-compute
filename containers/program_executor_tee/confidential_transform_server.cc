@@ -27,6 +27,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
@@ -115,24 +116,7 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
 
 absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
     const fcp::confidentialcompute::BlobMetadata& metadata) {
-  // For legacy ledger or unencrypted payloads, the key_id is not used, so we
-  // return an empty string.
-  if (!KmsEnabled() || metadata.has_unencrypted()) {
-    return "";
-  }
-  if (!metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data is not present.");
-  }
-  fcp::confidentialcompute::BlobHeader blob_header;
-  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data.record_header() cannot be "
-        "parsed to BlobHeader.");
-  }
-  return blob_header.key_id();
+  return GetKeyIdFromMetadata(metadata);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

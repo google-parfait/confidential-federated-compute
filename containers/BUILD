@@ -71,6 +71,7 @@ cc_library(
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )
@@ -83,6 +84,7 @@ cc_test(
         ":blob_metadata",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@googletest//:gtest_main",
     ],
 )
