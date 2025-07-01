@@ -21,6 +21,7 @@ cc_library(
     name = "confidential_transform_server",
     hdrs = ["confidential_transform_server.h"],
     deps = [
+        "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
         "//containers:session",
         "@com_github_grpc_grpc//:grpc++",

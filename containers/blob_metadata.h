@@ -32,6 +32,11 @@ EarliestExpirationTimeMetadata(
     const fcp::confidentialcompute::BlobMetadata& metadata,
     const fcp::confidentialcompute::BlobMetadata& other);
 
+// Returns the `key_id` from the BlobMetadata if it is present.
+// To get the key_id, the implementation assumes that the associated data in the
+// BlobMetadata can be parsed into `fcp::confidentialcompute::BlobHeader`.
+absl::StatusOr<std::string> GetKeyIdFromMetadata(
+    const fcp::confidentialcompute::BlobMetadata& metadata);
 }  // namespace confidential_federated_compute
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_BLOB_METADATA_H_

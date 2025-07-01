@@ -16,6 +16,7 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -24,6 +25,7 @@ namespace {
 
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 absl::StatusOr<std::string> GetKeyWithExpiration(const absl::Time& expiration) {
@@ -175,6 +177,47 @@ TEST(EarliestExpirationTimeMetadataTest, UndecodeableKeysFail) {
 
   ASSERT_FALSE(
       EarliestExpirationTimeMetadata(unencrypted, metadata_with_bad_key).ok());
+}
+
+TEST(GetKeyIdFromMetadata, SuccessUnencrypted) {
+  BlobMetadata unencrypted;
+  unencrypted.mutable_unencrypted();
+  EXPECT_EQ(GetKeyIdFromMetadata(unencrypted).value(), "");
+}
+
+TEST(GetKeyIdFromMetadata, SuccessEncrypted) {
+  BlobHeader header;
+  header.set_blob_id("blob_id");
+  header.set_key_id("key_id");
+  BlobMetadata metadata;
+  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  encryption_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(header.SerializeAsString());
+
+  EXPECT_EQ(GetKeyIdFromMetadata(metadata).value(), "key_id");
+}
+
+TEST(GetKeyIdFromMetadata, InvalidAssociatedData) {
+  BlobMetadata metadata;
+  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  encryption_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header("invalid!!!");
+
+  EXPECT_EQ(GetKeyIdFromMetadata(metadata).status().code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST(GetKeyIdFromMetadata, NoKmsAssociatedData) {
+  BlobMetadata metadata;
+  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  encryption_metadata->mutable_rewrapped_symmetric_key_associated_data()
+      ->set_reencryption_public_key("some_key");
+
+  EXPECT_EQ(GetKeyIdFromMetadata(metadata).status().code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

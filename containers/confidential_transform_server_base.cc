@@ -70,8 +70,11 @@ absl::Status ConfidentialTransformBase::HandleWrite(
     }
   }
 
+  // Get the key ID if KMS is enabled. For legacy ledger, the key ID is not
+  // needed.
   absl::StatusOr<std::string> key_id =
-      GetKeyId(request.first_request_metadata());
+      kms_enabled_ ? GetKeyId(request.first_request_metadata()) : "";
+
   if (!key_id.ok()) {
     stream->Write(ToSessionWriteFinishedResponse(key_id.status()));
     return absl::OkStatus();

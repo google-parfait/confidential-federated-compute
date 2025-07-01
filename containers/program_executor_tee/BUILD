@@ -38,6 +38,7 @@ cc_library(
     # Include py runfiles needed to execute the federated program.
     data = [":trusted_program_py_runtime"],
     deps = [
+        "//containers:blob_metadata",
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
         "//containers:session",
