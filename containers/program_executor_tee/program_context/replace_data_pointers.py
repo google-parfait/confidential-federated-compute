@@ -19,7 +19,9 @@ from tensorflow_federated.proto.v0 import executor_pb2
 
 def replace_datas(
     value: executor_pb2.Value,
-    resolve_uri_to_tff_value_fn: Callable[[str], executor_pb2.Value],
+    resolve_fileinfo_to_tff_value_fn: Callable[
+        [file_info_pb2.FileInfo], executor_pb2.Value
+    ],
 ) -> executor_pb2.Value:
   """Replaces any Data pointers in the input with resolved values.
 
@@ -31,8 +33,8 @@ def replace_datas(
   Args:
     value: A executor_pb2.Value that may or may not contain Data pointers that
       hold a file_info_pb2.FileInfo message.
-    resolve_uri_to_tff_value_fn: A function that can be used to resolve a
-      file_info_pb2.FileInfo uri into a executor_pb2.Value message.
+    resolve_fileinfo_to_tff_value_fn: A function that can be used to resolve a
+      file_info_pb2.FileInfo message into a executor_pb2.Value message.
 
   Returns:
     A executor_pb2.Value with no Data pointers.
@@ -48,7 +50,7 @@ def replace_datas(
             "Unable to unpack Data pointer content to file_info_pb2.FileInfo"
         )
       try:
-        return resolve_uri_to_tff_value_fn(file_info.uri)
+        return resolve_fileinfo_to_tff_value_fn(file_info)
       except Exception as e:
         raise ValueError(f"Unable to resolve Data pointer: {e}")
     return value
@@ -58,7 +60,9 @@ def replace_datas(
       elements.append(
           executor_pb2.Value.Struct.Element(
               name=element.name,
-              value=replace_datas(element.value, resolve_uri_to_tff_value_fn),
+              value=replace_datas(
+                  element.value, resolve_fileinfo_to_tff_value_fn
+              ),
           )
       )
     return executor_pb2.Value(
@@ -67,7 +71,7 @@ def replace_datas(
   if value.HasField("federated"):
     elements = []
     for element in value.federated.value:
-      elements.append(replace_datas(element, resolve_uri_to_tff_value_fn))
+      elements.append(replace_datas(element, resolve_fileinfo_to_tff_value_fn))
     return executor_pb2.Value(
         federated=executor_pb2.Value.Federated(
             type=value.federated.type, value=elements

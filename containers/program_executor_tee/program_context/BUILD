@@ -36,26 +36,16 @@ py_library(
 )
 
 py_library(
-    name = "fake_computation_delegation_service_bindings",
-    data = ["//containers/program_executor_tee/program_context/cc:fake_computation_delegation_service_bindings.so"],
-)
-
-py_library(
-    name = "fake_data_read_write_servicer",
-    srcs = ["fake_data_read_write_servicer.py"],
-    deps = [
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-    ],
-)
-
-py_library(
     name = "execution_context",
     srcs = ["execution_context.py"],
     data = ["//containers/program_executor_tee/program_context/cc:computation_runner_binary"],
     deps = [
+        ":replace_data_pointers",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
@@ -81,9 +71,11 @@ py_test(
     deps = [
         ":compilers",
         ":execution_context",
-        ":fake_computation_delegation_service_bindings",
+        ":test_helpers",
+        "//containers/program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax/computation:jax_computation",
         "@pypi//absl_py",
@@ -123,10 +115,9 @@ py_test(
     srcs = ["release_manager_test.py"],
     tags = ["noasan"],
     deps = [
-        ":fake_data_read_write_servicer",
         ":release_manager",
+        "//containers/program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
@@ -153,7 +144,9 @@ py_library(
         ":compilers",
         ":execution_context",
         ":release_manager",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
         "@pypi//attrs",
         "@pypi//dm_tree",
@@ -167,10 +160,10 @@ py_test(
     srcs = ["program_runner_test.py"],
     tags = ["noasan"],
     deps = [
-        ":fake_data_read_write_servicer",
         ":program_runner",
+        ":test_helpers",
+        "//containers/program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
@@ -203,6 +196,25 @@ py_test(
     srcs = ["replace_data_pointers_test.py"],
     deps = [
         ":replace_data_pointers",
+        ":test_helpers",
+        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
+        "@pypi//absl_py",
+        "@pypi//attrs",
+        "@pypi//dm_tree",
+        "@pypi//ml_dtypes",
+        "@pypi//numpy",
+        "@pypi//typing_extensions",
+    ],
+)
+
+py_library(
+    name = "test_helpers",
+    testonly = True,
+    srcs = ["test_helpers.py"],
+    deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",

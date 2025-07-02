@@ -15,7 +15,7 @@
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-package(default_visibility = ["//containers/program_executor_tee/program_context:__subpackages__"])
+package(default_visibility = ["//containers/program_executor_tee:__subpackages__"])
 
 cc_library(
     name = "computation_runner",
@@ -115,10 +115,8 @@ cc_test(
 
 cc_library(
     name = "fake_data_read_write_service",
-    testonly = True,
     srcs = ["fake_data_read_write_service.cc"],
     hdrs = ["fake_data_read_write_service.h"],
-    visibility = ["//containers/program_executor_tee:__subpackages__"],
     deps = [
         "//containers:crypto_test_utils",
         "@com_github_grpc_grpc//:grpc++",
@@ -267,7 +265,6 @@ cc_library(
     name = "fake_computation_delegation_service",
     srcs = ["fake_computation_delegation_service.cc"],
     hdrs = ["fake_computation_delegation_service.h"],
-    visibility = ["//containers/program_executor_tee:__subpackages__"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -327,14 +324,12 @@ cc_test(
 )
 
 pybind_extension(
-    name = "fake_computation_delegation_service_bindings",
-    srcs = ["fake_computation_delegation_service_bindings.cc"],
-    visibility = ["//containers/program_executor_tee:__subpackages__"],
+    name = "fake_service_bindings",
+    srcs = ["fake_service_bindings.cc"],
     deps = [
         ":fake_computation_delegation_service",
+        ":fake_data_read_write_service",
         "@com_github_grpc_grpc//:grpc++",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

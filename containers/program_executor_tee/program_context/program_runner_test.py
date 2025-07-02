@@ -12,17 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concurrent import futures
 import unittest
 
 from absl.testing import absltest
-from containers.program_executor_tee.program_context import fake_data_read_write_servicer
 from containers.program_executor_tee.program_context import program_runner
+from containers.program_executor_tee.program_context import test_helpers
+from containers.program_executor_tee.program_context.cc import fake_service_bindings
 from fcp.protos.confidentialcompute import confidential_transform_pb2
 from fcp.protos.confidentialcompute import data_read_write_pb2
-from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
 import federated_language
-import grpc
 import numpy as np
 import portpicker
 import tensorflow_federated as tff
@@ -31,13 +29,12 @@ import tensorflow_federated as tff
 class ProgramRunnerIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
   async def test_run_program(self):
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    mock_servicer = fake_data_read_write_servicer.FakeDataReadWriteServicer()
-    data_read_write_pb2_grpc.add_DataReadWriteServicer_to_server(
-        mock_servicer, server
+    untrusted_root_port = portpicker.pick_unused_port()
+    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
+    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
+    server = fake_service_bindings.FakeServer(
+        untrusted_root_port, data_read_write_service, None
     )
-    port = portpicker.pick_unused_port()
-    server.add_insecure_port("[::]:{}".format(port))
     server.start()
 
     program_string = """
@@ -64,7 +61,13 @@ async def trusted_program(release_manager):
     await release_manager.release(result2, "result2")
     """
 
-    await program_runner.run_program(program_string, port)
+    await program_runner.run_program(
+        program_string,
+        untrusted_root_port,
+        worker_bns=[],
+        attester_id="",
+        parse_read_response_fn=test_helpers.parse_read_response_fn,
+    )
 
     value_3, _ = tff.framework.serialize_value(
         3, federated_language.TensorType(np.int32)
@@ -92,11 +95,11 @@ async def trusted_program(release_manager):
     )
 
     self.assertEquals(
-        mock_servicer.get_write_call_args(),
+        data_read_write_service.get_write_call_args(),
         [[expected_request_1], [expected_request_2]],
     )
 
-    server.stop(grace=None)
+    server.stop()
 
   async def test_run_program_without_trusted_program_function(self):
     program_string = """
@@ -106,7 +109,11 @@ def incorrectly_named_trusted_program(release_manager):
 
     with self.assertRaises(ValueError) as context:
       await program_runner.run_program(
-          program_string, portpicker.pick_unused_port()
+          program_string,
+          portpicker.pick_unused_port(),
+          worker_bns=[],
+          attester_id="",
+          parse_read_response_fn=test_helpers.parse_read_response_fn,
       )
     self.assertEqual(
         str(context.exception),

@@ -15,12 +15,17 @@
 from collections.abc import Callable
 import functools
 import os
+import secrets
 import subprocess
 import sys
 from typing import Optional
 
+from containers.program_executor_tee.program_context import replace_data_pointers
 from fcp.protos.confidentialcompute import computation_delegation_pb2
 from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
+from fcp.protos.confidentialcompute import data_read_write_pb2
+from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
+from fcp.protos.confidentialcompute import file_info_pb2
 from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
 from google.protobuf import any_pb2
@@ -45,6 +50,9 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
       untrusted_root_port: int,
       worker_bns: list[str] = [],
       attester_id: str = "",
+      parse_read_response_fn: Callable[
+          [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
+      ] = None,
   ):
     """Initializes the execution context with an invoke helper function.
 
@@ -57,9 +65,13 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
       attester_id: The attester id for setting up the noise sessions used for
         distributed execution. Needs to be set to a non-empty string if a
         non-empty list of worker bns addresses is provided.
+      parse_read_response_fn: A function that takes a
+        data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
+        pointer) and returns a tff Value proto.
     """
     cache_decorator = functools.lru_cache()
     self._compiler_fn = cache_decorator(compiler_fn)
+    self._parse_read_response_fn = parse_read_response_fn
 
     # Start the computation runner on a different process.
     computation_runner_binary_path = os.path.join(
@@ -83,6 +95,55 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
     grpc.channel_ready_future(channel).result(timeout=5)
     self._computation_runner_stub = (
         computation_delegation_pb2_grpc.ComputationDelegationStub(channel)
+    )
+    self._data_read_write_stub = data_read_write_pb2_grpc.DataReadWriteStub(
+        grpc.insecure_channel("[::1]:{}".format(untrusted_root_port))
+    )
+
+  def resolve_fileinfo_to_tff_value(
+      self, file_info: file_info_pb2.FileInfo
+  ) -> executor_pb2.Value:
+    """Helper function for mapping a FileInfo Data pointer to a tff Value.
+
+    First a ReadRequest is sent to the DataReadWrite service to obtain a
+    ReadResponse for the FileInfo uri.
+
+    Next, the ReadResponse, the nonce used in the ReadRequest, and the FileInfo
+    key are sent as args to the parse_read_response_fn provided at construction
+    time to obtain the tff Value proto. In production, the provided
+    parse_read_response_fn will callback to cpp code in order to decrypt the
+    ReadResponse.
+    """
+    # TODO: Cache ReadResponses so that we don't look up a uri multiple times.
+    #
+    # Generate a nonce of 16 bytes to include in the ReadRequest. The
+    # _parse_read_response_fn will later check that the received ReadResponse
+    # is cryptographically tied to the same nonce.
+    nonce = secrets.token_bytes(16)
+    read_request = data_read_write_pb2.ReadRequest(
+        uri=file_info.uri, nonce=nonce
+    )
+
+    # If there is a large amount of data, it may be split over multiple
+    # ReadResponse messages. Here we combine all of the received ReadResponse
+    # messages into one. Using a bytearray to construct the combined data helps
+    # reduce the number of copies.
+    combined_read_response = data_read_write_pb2.ReadResponse()
+    combined_data = bytearray(b"")
+    for read_response in self._data_read_write_stub.Read(read_request):
+      if read_response.HasField("first_response_metadata"):
+        combined_read_response.first_response_metadata.CopyFrom(
+            read_response.first_response_metadata
+        )
+      combined_data.extend(read_response.data)
+      if read_response.finish_read:
+        combined_read_response.data = bytes(combined_data)
+        combined_read_response.finish_read = True
+
+    # Use the provided parsing function to convert the combined ReadResponse
+    # message into a tff Value.
+    return self._parse_read_response_fn(
+        combined_read_response, nonce, file_info.key
     )
 
   async def invoke(self, comp: object, arg: Optional[object]) -> object:
@@ -111,13 +172,17 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
     # TODO: For now we are assuming that the argument does not contain any
     # data pointers. This restriction will be lifted in a follow-up cl.
     if arg is not None:
-      serialized_arg, _ = tff.framework.serialize_value(
-          arg, comp.type_signature.parameter
-      )
       clients_cardinality = federated_language.framework.infer_cardinalities(
           arg, comp.type_signature.parameter
       )[federated_language.CLIENTS]
-      session_config.initial_arg.CopyFrom(serialized_arg)
+      serialized_arg, _ = tff.framework.serialize_value(
+          arg, comp.type_signature.parameter
+      )
+      session_config.initial_arg.CopyFrom(
+          replace_data_pointers.replace_datas(
+              serialized_arg, self.resolve_fileinfo_to_tff_value
+          )
+      )
     session_config.num_clients = clients_cardinality
 
     # Send execution request for comp(arg) to the computation runner, then
