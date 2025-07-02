@@ -16,7 +16,7 @@ load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_proto_library")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
-load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 
@@ -79,6 +79,15 @@ oci_image(
     tars = [
         # Install the main cc binary
         ":main_tar",
+    ],
+)
+
+# bazel run :tarball to load the image
+oci_load(
+    name = "tarball",
+    image = ":oci_image",
+    repo_tags = [
+        "minimum_rules_cuda:latest",
     ],
 )
 
