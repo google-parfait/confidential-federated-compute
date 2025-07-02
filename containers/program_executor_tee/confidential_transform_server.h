@@ -41,8 +41,10 @@ class ProgramExecutorTeeSession final
   ProgramExecutorTeeSession(
       fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
           initialize_config,
+      std::map<std::string, std::string> model_id_to_zip_file,
       confidential_federated_compute::BlobDecryptor* blob_decryptor)
       : initialize_config_(initialize_config),
+        model_id_to_zip_file_(model_id_to_zip_file),
         blob_decryptor_(blob_decryptor) {}
 
   // Configures a minimal session.
@@ -66,6 +68,8 @@ class ProgramExecutorTeeSession final
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+  // Map of model ids to zip files representing tff FunctionalModels.
+  std::map<std::string, std::string> model_id_to_zip_file_;
 
   confidential_federated_compute::BlobDecryptor* blob_decryptor_;
 };
@@ -85,7 +89,10 @@ class ProgramExecutorTeeConfidentialTransform final
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {
-    return absl::OkStatus();
+    // TODO: Populate the model_id_to_zip_file_ map from the
+    // WriteConfigurationRequests.
+    return absl::UnimplementedError(
+        "WriteConfigurationRequests are not yet supported.");
   }
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
@@ -98,6 +105,8 @@ class ProgramExecutorTeeConfidentialTransform final
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+  // Map of model ids to zip files representing tff FunctionalModels.
+  std::map<std::string, std::string> model_id_to_zip_file_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

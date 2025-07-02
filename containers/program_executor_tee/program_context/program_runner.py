@@ -16,6 +16,7 @@ from collections.abc import Callable
 from containers.program_executor_tee.program_context import compilers
 from containers.program_executor_tee.program_context import execution_context
 from containers.program_executor_tee.program_context import release_manager
+from fcp.confidentialcompute.python import program_input_provider
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
 from tensorflow_federated.proto.v0 import executor_pb2
@@ -27,6 +28,9 @@ TRUSTED_PROGRAM_KEY = "trusted_program"
 
 async def run_program(
     program: str,
+    client_ids: list[str],
+    client_data_directory: str,
+    model_id_to_zip_file: dict[str, str],
     untrusted_root_port: int,
     worker_bns: list[str] = [],
     attester_id: str = "",
@@ -40,6 +44,12 @@ async def run_program(
     program: A string that represents python code and contains a function named
       TRUSTED_PROGRAM_KEY that describes the federated program to execute. The
       TRUSTED_PROGRAM_KEY function should expect a ReleaseManager arg.
+    client_ids: A list of strings representing the client upload base filenames
+      that can be used during program execution. The concatenation of
+      'client_data_directory' and a client id is the full path to a client file.
+    client_data_directory: The directory containing the client data.
+    model_id_to_zip_file: A dictionary mapping model ids to the paths of the zip
+      files containing the model weights for those models.
     untrusted_root_port: The port at which the untrusted root server can be
       reached for data read/write requests and computation delegation requests.
     worker_bns: A list of worker bns addresses.
@@ -73,9 +83,10 @@ async def run_program(
     )
   trusted_program = program_namespace[TRUSTED_PROGRAM_KEY]
 
-  # TODO: Add additional args to the trusted_program call to allow data uris to
-  # be resolved and models/checkpoints to be loaded.
+  input_provider = program_input_provider.ProgramInputProvider(
+      client_ids, client_data_directory, model_id_to_zip_file
+  )
   initialized_release_manager = release_manager.ReleaseManager(
       untrusted_root_port
   )
-  await trusted_program(initialized_release_manager)
+  await trusted_program(input_provider, initialized_release_manager)

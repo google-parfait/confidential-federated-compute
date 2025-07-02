@@ -144,6 +144,8 @@ py_library(
         ":compilers",
         ":execution_context",
         ":release_manager",
+        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
+        "@federated-compute//fcp/confidentialcompute/python:program_input_provider",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",

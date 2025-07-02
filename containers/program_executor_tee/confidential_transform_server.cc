@@ -92,6 +92,12 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
 
+  std::vector<std::string> client_ids;
+  client_ids.reserve(initialize_config_.client_ids().size());
+  for (const auto& client_id : initialize_config_.client_ids()) {
+    client_ids.push_back(client_id);
+  }
+
   std::vector<std::string> worker_bns_addresses;
   worker_bns_addresses.reserve(
       initialize_config_.worker_bns_addresses().size());
@@ -113,11 +119,13 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
             .attr("DataParser")(blob_decryptor_);
 
     // Schedule execution of the program as a Task.
-    pybind11::object task = pybind11::module::import("asyncio").attr(
-        "ensure_future")(run_program(
-        initialize_config_.program(), initialize_config_.outgoing_server_port(),
-        worker_bns_addresses, initialize_config_.attester_id(),
-        data_parser_instance.attr("parse_read_response_to_value")));
+    pybind11::object task =
+        pybind11::module::import("asyncio").attr("ensure_future")(run_program(
+            initialize_config_.program(), client_ids,
+            initialize_config_.client_data_dir(), model_id_to_zip_file_,
+            initialize_config_.outgoing_server_port(), worker_bns_addresses,
+            initialize_config_.attester_id(),
+            data_parser_instance.attr("parse_read_response_to_value")));
 
     // Run the task in the event loop and get the result.
     pybind11::object loop =
@@ -157,8 +165,8 @@ absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session> >
 ProgramExecutorTeeConfidentialTransform::CreateSession() {
   FCP_ASSIGN_OR_RETURN(BlobDecryptor * blob_decryptor, GetBlobDecryptor());
-  return std::make_unique<ProgramExecutorTeeSession>(initialize_config_,
-                                                     blob_decryptor);
+  return std::make_unique<ProgramExecutorTeeSession>(
+      initialize_config_, model_id_to_zip_file_, blob_decryptor);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

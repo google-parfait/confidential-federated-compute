@@ -41,7 +41,7 @@ class ProgramRunnerIntegrationTest(unittest.IsolatedAsyncioTestCase):
 import federated_language
 import numpy as np
 
-async def trusted_program(release_manager):
+async def trusted_program(input_provider, release_manager):
     client_data_type = federated_language.FederatedType(
         np.int32, federated_language.CLIENTS
     )
@@ -63,7 +63,10 @@ async def trusted_program(release_manager):
 
     await program_runner.run_program(
         program_string,
-        untrusted_root_port,
+        client_ids=[],
+        client_data_directory="client_data_dir",
+        model_id_to_zip_file={},
+        untrusted_root_port=untrusted_root_port,
         worker_bns=[],
         attester_id="",
         parse_read_response_fn=test_helpers.parse_read_response_fn,
@@ -110,7 +113,10 @@ def incorrectly_named_trusted_program(release_manager):
     with self.assertRaises(ValueError) as context:
       await program_runner.run_program(
           program_string,
-          portpicker.pick_unused_port(),
+          client_ids=[],
+          client_data_directory="client_data_dir",
+          model_id_to_zip_file={},
+          untrusted_root_port=portpicker.pick_unused_port(),
           worker_bns=[],
           attester_id="",
           parse_read_response_fn=test_helpers.parse_read_response_fn,
