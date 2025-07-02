@@ -21,9 +21,14 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 // Returns an unencrypted federated compute checkpoint that stores a tensor with
-// the provided input_values at the key tensor_name.
+// the provided integer input_values at the key tensor_name.
 std::string BuildClientCheckpointFromInts(std::vector<int> input_values,
                                           std::string tensor_name);
+
+// Returns an unencrypted federated compute checkpoint that stores a tensor with
+// the provided string input_values at the key tensor_name.
+std::string BuildClientCheckpointFromStrings(
+    std::vector<std::string> input_values, std::string tensor_name);
 
 }  // namespace confidential_federated_compute::program_executor_tee
 

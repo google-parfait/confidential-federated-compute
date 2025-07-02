@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -44,6 +45,22 @@ TEST(GenerateCheckpointTest, BuildClientCheckpointFromInts) {
   absl::StatusOr<Tensor> tensor = (*parser)->GetTensor(tensor_name);
   ASSERT_TRUE(tensor.ok());
   for (auto [index, value] : tensor->AsAggVector<int>()) {
+    EXPECT_EQ(value, input_values[index]);
+  }
+}
+
+TEST(GenerateCheckpointTest, BuildClientCheckpointFromStrings) {
+  std::vector<std::string> input_values = {"hello", "bye"};
+  std::string tensor_name = "tensor_name";
+  std::string checkpoint =
+      BuildClientCheckpointFromStrings(input_values, tensor_name);
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
+      parser_factory.Create(absl::Cord(std::move(checkpoint)));
+  ASSERT_TRUE(parser.ok());
+  absl::StatusOr<Tensor> tensor = (*parser)->GetTensor(tensor_name);
+  ASSERT_TRUE(tensor.ok());
+  for (auto [index, value] : tensor->AsAggVector<absl::string_view>()) {
     EXPECT_EQ(value, input_values[index]);
   }
 }

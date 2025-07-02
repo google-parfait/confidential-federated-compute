@@ -40,8 +40,10 @@ class ProgramExecutorTeeSession final
  public:
   ProgramExecutorTeeSession(
       fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
-          initialize_config)
-      : initialize_config_(initialize_config) {}
+          initialize_config,
+      confidential_federated_compute::BlobDecryptor* blob_decryptor)
+      : initialize_config_(initialize_config),
+        blob_decryptor_(blob_decryptor) {}
 
   // Configures a minimal session.
   absl::Status ConfigureSession(
@@ -64,6 +66,8 @@ class ProgramExecutorTeeSession final
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+
+  confidential_federated_compute::BlobDecryptor* blob_decryptor_;
 };
 
 // ConfidentialTransform service for program executor TEE.
@@ -85,9 +89,7 @@ class ProgramExecutorTeeConfidentialTransform final
   }
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
-  CreateSession() override {
-    return std::make_unique<ProgramExecutorTeeSession>(initialize_config_);
-  }
+  CreateSession() override;
 
   absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) override;
