@@ -1398,7 +1398,7 @@
     "@@toolchains_llvm+//toolchain/extensions:llvm.bzl%llvm": {
       "general": {
         "bzlTransitiveDigest": "miE+G1r8txiL9GGIOFLiY+RyielXfNO9OiFlFw+NE+U=",
-        "usagesDigest": "q5R4Wd73mvpDG2ImAh8OzvibgmE0lEBJ6PdHxXxUNXo=",
+        "usagesDigest": "Fgwgbm6JdhVfgnSgCi8K86ExL7x1xJ6ieYN7a9ve/NM=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -1452,7 +1452,7 @@
               "unfiltered_compile_flags": {},
               "toolchain_roots": {},
               "sysroot": {
-                "": "'@@+_repo_rules+sysroot//:sysroot'"
+                "linux-x86_64": "'@@+_repo_rules+sysroot//:sysroot'"
               }
             }
           }
