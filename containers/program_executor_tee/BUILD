@@ -16,6 +16,7 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("//containers:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
 load("//containers:python_runtime.bzl", "trusted_py_runtime")
 
 trusted_py_runtime(
@@ -97,10 +98,9 @@ cc_test(
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
+    local_defines = [
+        "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
+    ],
     tags = ["noasan"],
     toolchains = [":trusted_program_py_runtime"],
     deps = [
@@ -113,16 +113,28 @@ cc_binary(
     ],
 )
 
+pkg_tar_runfiles(
+    name = "runfiles",
+    srcs = [":main"],
+    runfiles_prefix = "main.runfiles",
+)
+
 pkg_tar(
     name = "tar",
-    srcs = [":main"],
+    srcs = [":runfiles"],
 )
 
 oci_image(
     name = "oci_image",
-    base = "@distroless_cc_debian12",
-    entrypoint = ["/main"],
+    # Use a base image that provides the same version of python we reference
+    # in the WORKSPACE file.
+    base = "@python_3_10_slim_bookworm",
+    # Set the workdir and entrypoint so that the main binary will be executed
+    # from within the runfiles directory. This ensures that the main binary
+    # will be able to find its runfiles properly.
+    entrypoint = ["containers/program_executor_tee/main"],
     tars = [":tar"],
+    workdir = "/main.runfiles/__main__/",
 )
 
 oci_runtime_bundle(
