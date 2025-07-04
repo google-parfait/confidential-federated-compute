@@ -219,7 +219,6 @@ http_archive(
     name = "org_tensorflow_federated",
     integrity = "sha256-/lu0O2fwZGigUeasjTHC6PWYQhwn/Z7mBnFY3NA8eHE=",
     patches = [
-        "//third_party/org_tensorflow_federated:dp_accounting.patch",
         "//third_party/org_tensorflow_federated:eigen.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",

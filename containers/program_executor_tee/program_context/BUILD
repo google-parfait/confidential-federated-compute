@@ -31,6 +31,7 @@ py_library(
         "@pypi//tensorflow",
         "@pypi//tensorflow_model_optimization",
         "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
@@ -60,6 +61,7 @@ py_library(
         "@pypi//tensorflow",
         "@pypi//tensorflow_model_optimization",
         "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
@@ -106,6 +108,7 @@ py_library(
         "@pypi//tensorflow",
         "@pypi//tensorflow_model_optimization",
         "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
@@ -132,6 +135,7 @@ py_test(
         "@pypi//tensorflow",
         "@pypi//tensorflow_model_optimization",
         "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
@@ -152,7 +156,15 @@ py_library(
         "@pypi//absl_py",
         "@pypi//attrs",
         "@pypi//dm_tree",
+        "@pypi//google_vizier",
+        "@pypi//jax",
+        "@pypi//jaxlib",
         "@pypi//ml_dtypes",
+        "@pypi//portpicker",
+        "@pypi//tensorflow",
+        "@pypi//tensorflow_model_optimization",
+        "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
@@ -180,6 +192,7 @@ py_test(
         "@pypi//tensorflow",
         "@pypi//tensorflow_model_optimization",
         "@pypi//tensorflow_privacy",
+        "@pypi//tqdm",
         "@pypi//typing_extensions",
     ],
 )
