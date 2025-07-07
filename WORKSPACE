@@ -317,12 +317,6 @@ http_archive(
     url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
 
-# Add a clang C++ toolchain for use with sanitizers, as the GCC toolchain does
-# not easily enable sanitizers to be used with tests. The clang toolchain is not
-# registered, so that the registered gcc toolchain is used by default, but can
-# be specified on the command line with
-# --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux (as is
-# configured in the .bazelrc when asan, tsan, or ubsan are enabled.)
 http_archive(
     name = "toolchains_llvm",
     sha256 = "fded02569617d24551a0ad09c0750dc53a3097237157b828a245681f0ae739f8",
