@@ -15,7 +15,7 @@
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_image_layer")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
-load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 # Define a set of PIP-provided deps to use.
@@ -51,6 +51,14 @@ oci_image(
         "@bookworm//:flat",
         # Install the main python binary
         ":main_py",
+    ],
+)
+
+oci_load(
+    name = "tarball",
+    image = ":oci_image",
+    repo_tags = [
+        "minimum_pytorch:latest",
     ],
 )
 
