@@ -14,6 +14,8 @@
 
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
+package(features = ["layering_check"])
+
 py_library(
     name = "compilers",
     srcs = ["compilers.py"],

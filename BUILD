@@ -17,6 +17,8 @@ load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
+package(features = ["layering_check"])
+
 exports_files([".rustfmt.toml"])
 
 # This rule adds a convenient way to update the requirements file.

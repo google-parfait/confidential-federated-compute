@@ -15,7 +15,10 @@
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-package(default_visibility = ["//containers/program_executor_tee:__subpackages__"])
+package(
+    default_visibility = ["//containers/program_executor_tee:__subpackages__"],
+    features = ["layering_check"],
+)
 
 cc_library(
     name = "computation_runner",
@@ -45,6 +48,7 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
@@ -57,6 +61,7 @@ cc_binary(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -91,6 +96,7 @@ cc_test(
         "@com_google_absl//absl/log:check",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
@@ -133,6 +139,7 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
 )
@@ -157,6 +164,7 @@ cc_test(
         ":generate_checkpoint",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
@@ -169,6 +177,7 @@ cc_library(
     srcs = ["noise_client_session.cc"],
     hdrs = ["noise_client_session.h"],
     deps = [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -192,6 +201,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
@@ -210,7 +220,7 @@ cc_library(
         ":noise_client_session",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@googletest//:gtest_main",
+        "@googletest//:gtest",
         "@oak//cc/oak_session:config",
         "@oak//proto/session:session_cc_proto",
     ],
@@ -230,6 +240,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@oak//proto/session:session_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
@@ -246,6 +257,7 @@ cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
 )
@@ -299,9 +311,13 @@ cc_test(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",

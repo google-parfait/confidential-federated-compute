@@ -14,6 +14,8 @@
 
 load("//:proto_data.bzl", "proto_data")
 
+package(features = ["layering_check"])
+
 proto_data(
     name = "reference_values",
     src = "reference_values.txtpb",

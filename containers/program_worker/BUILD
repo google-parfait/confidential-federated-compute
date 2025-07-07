@@ -17,6 +17,8 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
+package(features = ["layering_check"])
+
 cc_library(
     name = "program_worker_server",
     srcs = ["program_worker_server.cc"],
@@ -25,6 +27,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
@@ -57,9 +60,11 @@ cc_test(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",

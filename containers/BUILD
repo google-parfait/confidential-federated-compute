@@ -14,7 +14,10 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
-package(default_visibility = ["//containers:__subpackages__"])
+package(
+    default_visibility = ["//containers:__subpackages__"],
+    features = ["layering_check"],
+)
 
 cc_library(
     name = "crypto",
@@ -22,11 +25,15 @@ cc_library(
     hdrs = ["crypto.h"],
     deps = [
         "@boringssl//:crypto",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:compression",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:cose",
@@ -44,6 +51,7 @@ cc_library(
     hdrs = ["session.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
@@ -57,7 +65,10 @@ cc_test(
     deps = [
         ":session",
         "//testing:matchers",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/time",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
 )
@@ -84,7 +95,9 @@ cc_test(
         ":blob_metadata",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
+        "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
 )
@@ -95,8 +108,11 @@ cc_library(
     hdrs = ["crypto_test_utils.h"],
     deps = [
         ":crypto",
+        "@boringssl//:crypto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
@@ -122,8 +138,13 @@ cc_test(
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:compression",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:signing_key",
         "@oak//proto/crypto:crypto_cc_proto",
     ],
 )
@@ -139,9 +160,11 @@ cc_library(
         ":session",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
@@ -165,19 +188,25 @@ cc_test(
         ":confidential_transform_server_base",
         ":crypto",
         ":crypto_test_utils",
+        ":session",
         "//testing:matchers",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@oak//cc/crypto:client_encryptor",
         "@oak//cc/crypto:encryption_key",
+        "@oak//cc/crypto:signing_key",
     ],
 )
 
@@ -196,6 +225,7 @@ cc_test(
     deps = [
         ":big_endian",
         "@com_google_absl//absl/numeric:int128",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
 )

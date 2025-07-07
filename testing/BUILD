@@ -13,7 +13,10 @@
 # limitations under the License.
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
-package(default_visibility = ["//:__subpackages__"])
+package(
+    default_visibility = ["//:__subpackages__"],
+    features = ["layering_check"],
+)
 
 cc_library(
     name = "parse_text_proto",

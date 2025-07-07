@@ -14,6 +14,8 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary")
 
+package(features = ["layering_check"])
+
 rust_binary(
     name = "replicated_ledger_enclave_app",
     srcs = glob(["src/*.rs"]),

@@ -14,6 +14,8 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+package(features = ["layering_check"])
+
 rust_binary(
     name = "main",
     srcs = ["src/main.rs"],

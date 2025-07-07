@@ -17,6 +17,8 @@ load("@rules_rust//rust:defs.bzl", "rust_library_group")
 load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_toolchain")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_toolchain")
 
+package(features = ["layering_check"])
+
 rust_library_group(
     name = "prost_runtime",
     deps = ["@oak_crates_index//:prost"],

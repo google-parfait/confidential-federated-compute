@@ -19,6 +19,8 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 load("//:proto_data.bzl", "proto_data")
 
+package(features = ["layering_check"])
+
 rust_library(
     name = "access_policies",
     srcs = ["access_policies.rs"],

@@ -14,7 +14,10 @@
 
 load("//:proto_data.bzl", "proto_data")
 
-package(default_visibility = ["//ledger_service:__pkg__"])
+package(
+    default_visibility = ["//ledger_service:__pkg__"],
+    features = ["layering_check"],
+)
 
 proto_data(
     name = "endorsements",

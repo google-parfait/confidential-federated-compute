@@ -14,6 +14,8 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
+package(features = ["layering_check"])
+
 rust_library(
     name = "cfc_crypto",
     srcs = glob(["src/*.rs"]),

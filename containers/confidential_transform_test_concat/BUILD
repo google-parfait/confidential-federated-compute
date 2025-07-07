@@ -17,6 +17,8 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
+package(features = ["layering_check"])
+
 cc_library(
     name = "confidential_transform_server",
     hdrs = ["confidential_transform_server.h"],
@@ -50,10 +52,12 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@oak//cc/crypto:client_encryptor",
         "@oak//cc/crypto:encryption_key",

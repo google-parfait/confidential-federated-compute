@@ -15,6 +15,8 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//:proto_data.bzl", "proto_data")
 
+package(features = ["layering_check"])
+
 build_test(
     name = "access_policy_build_test",
     targets = [

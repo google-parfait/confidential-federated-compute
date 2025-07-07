@@ -14,6 +14,8 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
+package(features = ["layering_check"])
+
 cc_library(
     name = "test_utils",
     testonly = True,
@@ -23,6 +25,11 @@ cc_library(
     deps = [
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],

@@ -14,7 +14,10 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
-package(default_visibility = ["//:__subpackages__"])
+package(
+    default_visibility = ["//:__subpackages__"],
+    features = ["layering_check"],
+)
 
 cc_library(
     name = "sqlite_adapter",
@@ -23,8 +26,13 @@ cc_library(
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/client:example_query_result_cc_proto",
+        "@federated-compute//fcp/protos:plan_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
@@ -41,7 +49,11 @@ cc_test(
         ":sqlite_adapter",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@federated-compute//fcp/base",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
@@ -61,6 +73,7 @@ cc_test(
         "@com_google_absl//absl/log:check",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@google_benchmark//:benchmark",
+        "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",

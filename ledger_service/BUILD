@@ -16,6 +16,8 @@ load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//:proto_data.bzl", "proto_data")
 
+package(features = ["layering_check"])
+
 cargo_build_script(
     name = "build",
     srcs = ["build.rs"],
