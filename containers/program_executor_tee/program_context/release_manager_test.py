@@ -36,7 +36,7 @@ class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
     )
     server.start()
 
-    manager = release_manager.ReleaseManager(untrusted_root_port)
+    manager = release_manager.ReleaseManager(f"[::1]:{untrusted_root_port}")
     result_uri = "my_result"
     value = 5
     await manager.release(value, result_uri)

@@ -27,9 +27,9 @@ class ReleaseManager(
 ):
   """Helper class for releasing results to untrusted space."""
 
-  def __init__(self, port: str):
+  def __init__(self, outgoing_server_address: str):
     """Establishes a channel to the DataReadWrite service."""
-    self._channel = grpc.insecure_channel("[::]:{}".format(port))
+    self._channel = grpc.insecure_channel(outgoing_server_address)
     self._stub = data_read_write_pb2_grpc.DataReadWriteStub(self._channel)
 
   async def release(

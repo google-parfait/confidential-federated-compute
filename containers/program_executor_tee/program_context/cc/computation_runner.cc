@@ -136,11 +136,11 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
 
 ComputationRunner::ComputationRunner(std::vector<std::string> worker_bns,
                                      std::string attester_id,
-                                     int untrusted_root_port)
+                                     std::string outgoing_server_address)
     : worker_bns_(worker_bns), attester_id_(attester_id) {
   if (!worker_bns_.empty()) {
     stub_ = fcp::confidentialcompute::outgoing::ComputationDelegation::NewStub(
-        grpc::CreateChannel(absl::StrCat("localhost:", untrusted_root_port),
+        grpc::CreateChannel(outgoing_server_address,
                             grpc::InsecureChannelCredentials()));
     noise_client_sessions_.reserve(worker_bns_.size());
     for (const auto& worker_bns : worker_bns_) {

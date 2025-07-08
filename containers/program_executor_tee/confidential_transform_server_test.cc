@@ -70,28 +70,32 @@ inline constexpr int kMaxNumSessions = 8;
 class ProgramExecutorTeeTest : public Test {
  public:
   ProgramExecutorTeeTest() {
-    int port;
-    const std::string server_address = "[::1]:";
+    const std::string localhost = "[::1]:";
+
+    int confidential_transform_server_port;
     ServerBuilder builder;
-    builder.AddListeningPort(server_address + "0",
-                             grpc::InsecureServerCredentials(), &port);
+    builder.AddListeningPort(localhost + "0", grpc::InsecureServerCredentials(),
+                             &confidential_transform_server_port);
     builder.RegisterService(&service_);
     server_ = builder.BuildAndStart();
     LOG(INFO) << "ConfidentialTransform server listening on "
-              << server_address + std::to_string(port) << std::endl;
-    stub_ = ConfidentialTransform::NewStub(
-        grpc::CreateChannel(server_address + std::to_string(port),
-                            grpc::InsecureChannelCredentials()));
+              << localhost + std::to_string(confidential_transform_server_port)
+              << std::endl;
+    stub_ = ConfidentialTransform::NewStub(grpc::CreateChannel(
+        localhost + std::to_string(confidential_transform_server_port),
+        grpc::InsecureChannelCredentials()));
 
+    int data_read_write_service_port;
     ServerBuilder data_read_write_builder;
-    data_read_write_builder.AddListeningPort(server_address + "0",
+    data_read_write_builder.AddListeningPort(localhost + "0",
                                              grpc::InsecureServerCredentials(),
-                                             &data_read_write_service_port_);
+                                             &data_read_write_service_port);
     data_read_write_builder.RegisterService(&fake_data_read_write_service_);
     fake_data_read_write_server_ = data_read_write_builder.BuildAndStart();
+    data_read_write_server_address_ =
+        localhost + std::to_string(data_read_write_service_port);
     LOG(INFO) << "DataReadWrite server listening on "
-              << server_address + std::to_string(data_read_write_service_port_)
-              << std::endl;
+              << data_read_write_server_address_ << std::endl;
   }
 
   ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
@@ -102,7 +106,7 @@ class ProgramExecutorTeeTest : public Test {
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 
-  int data_read_write_service_port_;
+  std::string data_read_write_server_address_;
   FakeDataReadWriteService fake_data_read_write_service_;
   std::unique_ptr<Server> fake_data_read_write_server_;
 };
@@ -130,7 +134,7 @@ TEST_F(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
 
   ProgramExecutorTeeInitializeConfig config;
   config.set_program("fake_program");
-  config.set_outgoing_server_port(data_read_write_service_port_);
+  config.set_outgoing_server_address(data_read_write_server_address_);
 
   InitializeRequest* initialize_request = request.mutable_initialize_request();
   initialize_request->set_max_num_sessions(kMaxNumSessions);
@@ -174,7 +178,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
 
     ProgramExecutorTeeInitializeConfig config;
     config.set_program(program);
-    config.set_outgoing_server_port(data_read_write_service_port_);
+    config.set_outgoing_server_address(data_read_write_server_address_);
     config.set_attester_id("fake_attester");
     config.set_client_data_dir(client_data_dir);
     for (const std::string& client_id : client_ids) {

@@ -123,7 +123,7 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
         pybind11::module::import("asyncio").attr("ensure_future")(run_program(
             initialize_config_.program(), client_ids,
             initialize_config_.client_data_dir(), model_id_to_zip_file_,
-            initialize_config_.outgoing_server_port(), worker_bns_addresses,
+            initialize_config_.outgoing_server_address(), worker_bns_addresses,
             initialize_config_.attester_id(),
             data_parser_instance.attr("parse_read_response_to_value")));
 
