@@ -31,7 +31,7 @@ async def run_program(
     client_ids: list[str],
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
-    untrusted_root_port: int,
+    outgoing_server_address: str,
     worker_bns: list[str] = [],
     attester_id: str = "",
     parse_read_response_fn: Callable[
@@ -50,8 +50,9 @@ async def run_program(
     client_data_directory: The directory containing the client data.
     model_id_to_zip_file: A dictionary mapping model ids to the paths of the zip
       files containing the model weights for those models.
-    untrusted_root_port: The port at which the untrusted root server can be
-      reached for data read/write requests and computation delegation requests.
+    outgoing_server_address: The address at which the untrusted root server can
+      be reached for data read/write requests and computation delegation
+      requests.
     worker_bns: A list of worker bns addresses.
     attester_id: The attester id for setting up the noise sessions used for
       distributed execution. Needs to be set to a non-empty string if a
@@ -66,7 +67,7 @@ async def run_program(
   federated_language.framework.set_default_context(
       execution_context.TrustedAsyncContext(
           compilers.compile_tf_to_call_dominant,
-          untrusted_root_port,
+          outgoing_server_address,
           worker_bns,
           attester_id,
           parse_read_response_fn,
@@ -87,6 +88,6 @@ async def run_program(
       client_ids, client_data_directory, model_id_to_zip_file
   )
   initialized_release_manager = release_manager.ReleaseManager(
-      untrusted_root_port
+      outgoing_server_address
   )
   await trusted_program(input_provider, initialized_release_manager)

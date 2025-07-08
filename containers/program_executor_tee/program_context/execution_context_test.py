@@ -31,11 +31,12 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   def setUp(self):
     self.untrusted_root_port = portpicker.pick_unused_port()
-    self.worker_bns = []
-    self.attester_id = ""
     self.assertIsNotNone(
         self.untrusted_root_port, "Failed to pick an unused port."
     )
+    self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
+    self.worker_bns = []
+    self.attester_id = ""
     self.data_read_write_service = (
         fake_service_bindings.FakeDataReadWriteService()
     )
@@ -51,7 +52,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     mock_compiler = unittest.mock.Mock()
     context = execution_context.TrustedAsyncContext(
         mock_compiler,
-        self.untrusted_root_port,
+        self.outgoing_server_address,
         self.worker_bns,
         self.attester_id,
         test_helpers.parse_read_response_fn,
@@ -89,7 +90,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
             compilers.compile_tf_to_call_dominant,
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,
@@ -122,7 +123,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
             compilers.compile_tf_to_call_dominant,
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,
@@ -169,7 +170,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
             lambda x: x,
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,
@@ -192,7 +193,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedAsyncContext(
             lambda x: x,
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,
@@ -225,6 +226,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     self.assertIsNotNone(
         self.untrusted_root_port, "Failed to pick an unused port."
     )
+    self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
 
     # Create 4 workers. The first worker is the server, and the other 3 are child workers.
     self.worker_bns = [
@@ -257,7 +259,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,
@@ -293,7 +295,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
-            self.untrusted_root_port,
+            self.outgoing_server_address,
             self.worker_bns,
             self.attester_id,
             test_helpers.parse_read_response_fn,

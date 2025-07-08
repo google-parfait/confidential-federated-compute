@@ -22,9 +22,9 @@
 
 ABSL_FLAG(int32_t, computatation_runner_port, 10000,
           "Port to run the computation runner on.");
-ABSL_FLAG(int32_t, untrusted_root_port, -1,
-          "Port at which the untrusted root server can be reached for data "
-          "read/write requests and computation delegation requests.");
+ABSL_FLAG(std::string, outgoing_server_address, "",
+          "The address at which the untrusted root server can be reached for "
+          "data read/write requests and computation delegation requests.");
 ABSL_FLAG(std::vector<std::string>, worker_bns, {},
           "A list of worker bns addresses.");
 ABSL_FLAG(std::string, attester_id, "",
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   auto computation_runner_service = std::make_unique<
       confidential_federated_compute::program_executor_tee::ComputationRunner>(
       absl::GetFlag(FLAGS_worker_bns), absl::GetFlag(FLAGS_attester_id),
-      absl::GetFlag(FLAGS_untrusted_root_port));
+      absl::GetFlag(FLAGS_outgoing_server_address));
 
   builder.RegisterService(computation_runner_service.get());
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());

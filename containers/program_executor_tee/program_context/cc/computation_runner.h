@@ -33,7 +33,8 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
                               ComputationDelegation::Service {
  public:
   ComputationRunner(std::vector<std::string> worker_bns,
-                    std::string attester_id, int untrusted_root_port);
+                    std::string attester_id,
+                    std::string outgoing_server_address);
 
   // Executes the TFF computation represented in the request message using a C++
   // execution stack. Returns a tensorflow_federated::v0::Value in the response

@@ -47,7 +47,7 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
               federated_language.framework.ConcreteComputation,
           ]
       ],
-      untrusted_root_port: int,
+      outgoing_server_address: str,
       worker_bns: list[str] = [],
       attester_id: str = "",
       parse_read_response_fn: Callable[
@@ -58,8 +58,8 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
 
     Args:
       compiler_fn: Python function that will be used to compile a computation.
-      untrusted_root_port: The port at which the untrusted root server can be
-        reached for data read/write requests and computation delegation
+      outgoing_server_address: The address at which the untrusted root server
+        can be reached for data read/write requests and computation delegation
         requests.
       worker_bns: A list of worker bns addresses.
       attester_id: The attester id for setting up the noise sessions used for
@@ -86,7 +86,7 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
     args = [
         computation_runner_binary_path,
         f"--computatation_runner_port={computation_runner_port}",
-        f"--untrusted_root_port={untrusted_root_port}",
+        f"--outgoing_server_address={outgoing_server_address}",
         f"--worker_bns={','.join(worker_bns)}",
         f"--attester_id={attester_id}",
     ]
@@ -97,7 +97,7 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
         computation_delegation_pb2_grpc.ComputationDelegationStub(channel)
     )
     self._data_read_write_stub = data_read_write_pb2_grpc.DataReadWriteStub(
-        grpc.insecure_channel("[::1]:{}".format(untrusted_root_port))
+        grpc.insecure_channel(outgoing_server_address)
     )
 
   def resolve_fileinfo_to_tff_value(
