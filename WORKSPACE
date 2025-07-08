@@ -195,10 +195,13 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-0IgL2etptmbLQ22HY73KG1Z0U53+e9MqBbzy40qDFkw=",
-    patches = ["//third_party/oak:oak_attestation_verification.patch"],
-    strip_prefix = "oak-205aec221ca6a7c5d223641076470b1fb2db75a1",
-    url = "https://github.com/project-oak/oak/archive/205aec221ca6a7c5d223641076470b1fb2db75a1.tar.gz",
+    integrity = "sha256-/qfxXbhDGoitrllQ2vQdrYszGrGVVMHIJj1AelkbGn4=",
+    patches = [
+        "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:protobuf.patch",
+    ],
+    strip_prefix = "oak-706193333936def5aace176e12e1f1225bf8db29",
+    url = "https://github.com/project-oak/oak/archive/706193333936def5aace176e12e1f1225bf8db29.tar.gz",
 )
 
 http_archive(
@@ -326,9 +329,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-2pdWbHbrdbq8P4rpqJC2Y9hJT+ZL2h2LrnG5HL1Sbvw=",
-    strip_prefix = "trusted-computations-platform-225919e62214f4ce80f6e141fca65a879765c5c5",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/225919e62214f4ce80f6e141fca65a879765c5c5.tar.gz",
+    integrity = "sha256-7MLAJJlK/Csm9NbwQQCsVSBAagSju57/3+UUMd+uGLY=",
+    strip_prefix = "trusted-computations-platform-879a9a960e3a474ec1fae9f1cfa64e53a714fa90",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/879a9a960e3a474ec1fae9f1cfa64e53a714fa90.tar.gz",
 )
 
 # TensorFlow pins an old version of upb that's compatible with their old
@@ -488,9 +491,9 @@ load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
 
 oak_toolchain_repositories()
 
-load("@oak//bazel/rust:deps.bzl", "load_rust_repositories")
+load("@oak//bazel/crates:patched_crates.bzl", "load_patched_crates")
 
-load_rust_repositories()
+load_patched_crates()
 
 load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 

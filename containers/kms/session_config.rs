@@ -16,12 +16,12 @@ use std::sync::Arc;
 
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::{encryptor::Encryptor, signer::Signer};
-use oak_proto_rust::oak::{attestation::v1::ReferenceValues, crypto::v1::SessionKeys};
+use oak_crypto::{encryptor::Encryptor, noise_handshake::OrderedCrypter, signer::Signer};
+use oak_dice_attestation_verifier::DiceAttestationVerifier;
+use oak_proto_rust::oak::attestation::v1::ReferenceValues;
 use oak_session::{
     attestation::AttestationType,
     config::{EncryptorProvider, SessionConfig},
-    dice_attestation::DiceAttestationVerifier,
     encryptors::UnorderedChannelEncryptor,
     handshake::HandshakeType,
     session_binding::SignatureBinderBuilder,
@@ -33,9 +33,9 @@ struct UnorderedEncryptorProvider;
 impl EncryptorProvider for UnorderedEncryptorProvider {
     fn provide_encryptor(
         &self,
-        session_keys: SessionKeys,
+        crypter: OrderedCrypter,
     ) -> Result<Box<dyn Encryptor>, anyhow::Error> {
-        TryInto::<UnorderedChannelEncryptor>::try_into((session_keys, /* window_size= */ 64))
+        TryInto::<UnorderedChannelEncryptor>::try_into((crypter, /* window_size= */ 64))
             .map(|v| Box::new(v) as Box<dyn Encryptor>)
     }
 }

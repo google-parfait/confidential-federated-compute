@@ -335,7 +335,7 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
 
         // Convert the max expiration time to a TTL.
         let now = response.now.as_ref().context("StorageResponse missing now")?;
-        let ttl = max_expiration.clone().map(|t| {
+        let ttl = max_expiration.map(|t| {
             let mut ttl = Duration {
                 seconds: t.seconds.saturating_sub(now.seconds),
                 nanos: t.nanos.saturating_sub(now.nanos),
@@ -346,7 +346,7 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
             }
             ttl
         });
-        Ok((max_expiration.clone(), ttl))
+        Ok((*max_expiration, ttl))
     }
 }
 
@@ -430,7 +430,7 @@ where
         let value = KeysetKeyValue {
             ikm: bssl_crypto::rand_array::<32>().into(),
             algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
-            ttl: Some(ttl.clone()),
+            ttl: Some(ttl),
         }
         .encode_to_vec();
 
@@ -450,7 +450,7 @@ where
                         .try_into()
                         .unwrap(),
                         value: Some(value.clone()),
-                        ttl: Some(ttl.clone()),
+                        ttl: Some(ttl),
                         preconditions: Some(update_request::Preconditions {
                             exists: Some(false),
                             ..Default::default()
@@ -557,7 +557,7 @@ where
         Ok(Response::new(LogicalPipelineState {
             name: request.name,
             value: value.state,
-            expiration: entry.expiration.clone(),
+            expiration: entry.expiration,
         }))
     }
 
@@ -592,7 +592,7 @@ where
                 intermediates_key: Some(KeysetKeyValue {
                     ikm: bssl_crypto::rand_array::<32>().into(),
                     algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
-                    ttl: Some(ttl.clone()),
+                    ttl: Some(ttl),
                 }),
                 keyset_ids: request.keyset_ids,
                 authorized_logical_pipeline_policies_hashes,
@@ -667,7 +667,7 @@ where
             .find_map(|entry| match entry.key.as_slice().try_into() {
                 Ok(StorageKey::PipelineInvocationState { .. }) => Some(
                     PipelineInvocationStateValue::decode(entry.value.as_slice())
-                        .map(|state| (state, entry.expiration.clone()))
+                        .map(|state| (state, entry.expiration))
                         .context("failed to decode PipelineInvocationStateValue")
                         .map_err(Self::convert_error),
                 ),
@@ -913,7 +913,7 @@ where
                     .try_into()
                     .unwrap(),
                 value: Some(dst_value.encode_to_vec()),
-                ttl: ttl.clone(),
+                ttl,
                 preconditions: Some(update_request::Preconditions {
                     // Ensure there's no existing state if `src_value` is None.
                     exists: if src_value.is_none() { Some(false) } else { None },
@@ -923,7 +923,7 @@ where
             logical_pipeline_states.push(LogicalPipelineState {
                 name: update.logical_pipeline_name.into(),
                 value: update.dst_state.into(),
-                expiration: expiration.clone(),
+                expiration,
             });
         }
         self.storage_client

@@ -1,0 +1,24 @@
+# Make Oak compatible with an older protobuf version.
+--- cc/oak_session/client_session.cc
++++ cc/oak_session/client_session.cc
+@@ -75 +75 @@
+-  if (!request.ParseFromString(**result)) {
++  if (!request.ParseFromArray(absl::string_view(**result).data(), absl::string_view(**result).size())) {
+@@ -103 +103 @@
+-  plaintext_message_result.set_plaintext(**result);
++  plaintext_message_result.set_plaintext(std::string(**result));
+@@ -141 +141 @@
+-  if (result->has_value() && !attestation.ParseFromString(**result)) {
++  if (result->has_value() && !attestation.ParseFromArray(absl::string_view(**result).data(), absl::string_view(**result).size())) {
+
+--- cc/oak_session/server_session.cc
++++ cc/oak_session/server_session.cc
+@@ -72 +72 @@
+-  if (!response.ParseFromString(**result)) {
++  if (!response.ParseFromArray(absl::string_view(**result).data(), absl::string_view(**result).size())) {
+@@ -98 +98 @@
+-  plaintext_message_result.set_plaintext(**result);
++  plaintext_message_result.set_plaintext(std::string(**result));
+@@ -134 +134 @@
+-  if (result->has_value() && !attestation.ParseFromString(**result)) {
++  if (result->has_value() && !attestation.ParseFromArray(absl::string_view(**result).data(), absl::string_view(**result).size())) {

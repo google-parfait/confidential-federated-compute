@@ -32,10 +32,7 @@ cargo_build_script(
         "@oak//proto/micro_rpc:options.proto",
     ],
     tools = ["@com_google_protobuf//:protoc"],
-    deps = [
-        "@oak//micro_rpc_build",
-        "@oak//oak_proto_build_utils",
-    ],
+    deps = ["@oak//micro_rpc_build"],
 )
 
 rust_library(
