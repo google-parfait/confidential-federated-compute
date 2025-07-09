@@ -55,10 +55,10 @@ void RunServer() {
 
 }  // namespace
 
-}  // namespace
-   // confidential_federated_compute::program_executor_tee
+}  // namespace confidential_federated_compute::program_executor_tee
 
 int main(int argc, char** argv) {
+  setenv("PYTHONPATH", CPP_PYTHON_PATH, true);
   confidential_federated_compute::program_executor_tee::RunServer();
   return 0;
 }

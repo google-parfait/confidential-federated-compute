@@ -546,6 +546,13 @@ oci_pull(
     platforms = ["linux/amd64"],
 )
 
+oci_pull(
+    name = "python_3_10_slim_bookworm",
+    digest = "sha256:9dd6774a1276178f94b0cc1fb1f0edd980825d0ea7634847af9940b1b6273c13",
+    image = "python",
+    platforms = ["linux/amd64"],
+)
+
 # Install a hermetic GCC toolchain for nostd builds. This must be defined after
 # rules_oci because it uses an older version of aspect_bazel_lib.
 http_archive(
