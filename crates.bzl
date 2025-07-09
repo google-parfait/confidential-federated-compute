@@ -68,14 +68,13 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
     ),
     "opentelemetry-appender-tracing": crate.spec(
         features = ["experimental_metadata_attributes"],
-        version = "0.3.0",
+        version = "0.26.0",
     ),
     "protoc-gen-prost": crate.spec(
-        version = "0.3.1",
+        version = "0.4.0",
     ),
     "protoc-gen-tonic": crate.spec(
-        # 0.4.1 requires tonic 0.12.
-        version = "=0.4.0",
+        version = "0.4.1",
     ),
     "tracing-slog": crate.spec(
         version = "0.3.0",

@@ -111,7 +111,7 @@ async fn main() {
     // Export basic metrics to OpenTelemetry (e.g. CPU usage and RPC latency).
     let oak_observer = init_metrics(MetricsConfig {
         launcher_addr: OPEN_TELEMETRY_ADDR.into(),
-        scope: "kms".into(),
+        scope: "kms",
         excluded_metrics: None,
     });
 

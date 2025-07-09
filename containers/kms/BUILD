@@ -258,6 +258,7 @@ rust_library(
     srcs = ["session_config.rs"],
     deps = [
         "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification/dice_attestation_verification:oak_dice_attestation_verifier",
         "@oak//oak_attestation_verification_types",
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",

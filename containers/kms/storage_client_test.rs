@@ -366,7 +366,7 @@ async fn update_succeeds() {
     storage
         .expect_call()
         .with(request_eq(storage_request::Kind::Update(update_request.clone())))
-        .return_const(Ok(storage_response::Kind::Update(update_response.clone())));
+        .return_const(Ok(storage_response::Kind::Update(update_response)));
 
     let (client, _server_handle) = start_server(storage, UpdateRequest::default).await;
     expect_that!(

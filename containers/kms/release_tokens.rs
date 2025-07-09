@@ -79,6 +79,7 @@ pub fn endorse_transform_signing_key(
 ///
 /// Returns the release token's payload, the endorsement's claims, and a
 /// function that verifies the endorsement's signature.
+#[allow(clippy::type_complexity)]
 pub fn verify_release_token(
     token: &[u8],
     endorsement: &[u8],
