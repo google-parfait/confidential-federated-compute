@@ -23,6 +23,7 @@ cc_library(
     name = "crypto",
     srcs = ["crypto.cc"],
     hdrs = ["crypto.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@boringssl//:crypto",
         "@com_google_absl//absl/base:core_headers",
@@ -77,6 +78,7 @@ cc_library(
     name = "blob_metadata",
     srcs = ["blob_metadata.cc"],
     hdrs = ["blob_metadata.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base",
@@ -106,6 +108,7 @@ cc_library(
     name = "crypto_test_utils",
     srcs = ["crypto_test_utils.cc"],
     hdrs = ["crypto_test_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":crypto",
         "@boringssl//:crypto",

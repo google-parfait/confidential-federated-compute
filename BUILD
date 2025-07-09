@@ -52,9 +52,9 @@ _RELEASE_BINARIES = {
     # keep-sorted start
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/kms:oci_runtime_bundle.tar": "kms/container.tar",
-    "//containers/program_executor_tee:oci_runtime_bundle.tar": "program_executor_tee/container.tar",
-    "//containers/program_worker:oci_runtime_bundle.tar": "program_worker/container.tar",
-    "//containers/tff_server:oci_runtime_bundle.tar": "tff_server/container.tar",
+    "//learning_containers/program_executor_tee:oci_runtime_bundle.tar": "program_executor_tee/container.tar",
+    "//learning_containers/program_worker:oci_runtime_bundle.tar": "program_worker/container.tar",
+    "//learning_containers/tff_server:oci_runtime_bundle.tar": "tff_server/container.tar",
     "//ledger_enclave_app": "ledger/binary",
     "//replicated_ledger_enclave_app": "replicated_ledger/binary",
     # keep-sorted end
