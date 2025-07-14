@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/data_parser.h"
+#include "program_executor_tee/program_context/cc/data_parser.h"
 
 #include <string>
 

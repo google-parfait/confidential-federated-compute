@@ -26,7 +26,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "learning_containers/program_worker/program_worker_server.h"
+#include "program_worker/program_worker_server.h"
 #include "proto/session/session.pb.h"
 
 namespace confidential_federated_compute::program_worker {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/data_parser.h"
+#include "program_executor_tee/program_context/cc/data_parser.h"
 
 #include "absl/log/check.h"
 #include "containers/crypto.h"
@@ -21,7 +21,7 @@
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "learning_containers/program_executor_tee/program_context/cc/generate_checkpoint.h"
+#include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"

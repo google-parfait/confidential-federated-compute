@@ -19,8 +19,8 @@
 #include <stdexcept>
 
 #include "grpcpp/server_context.h"
-#include "learning_containers/program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
-#include "learning_containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"
+#include "program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
+#include "program_executor_tee/program_context/cc/fake_data_read_write_service.h"
 #include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {

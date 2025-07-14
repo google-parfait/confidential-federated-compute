@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
+#include "program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"

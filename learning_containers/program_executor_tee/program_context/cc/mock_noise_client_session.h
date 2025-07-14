@@ -16,7 +16,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_MOCK_NOISE_CLIENT_SESSION_H_
 
 #include "gmock/gmock.h"
-#include "learning_containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "program_executor_tee/program_context/cc/noise_client_session.h"
 #include "proto/session/session.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {

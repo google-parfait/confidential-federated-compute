@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
+#include "program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
 
 #include <fstream>
 #include <memory>
@@ -68,17 +68,15 @@ using ::tensorflow_federated::v0::Value;
 using ::testing::Test;
 
 constexpr absl::string_view kNoArgumentComputationPath =
-    "learning_containers/program_worker/testing/no_argument_comp.txtpb";
+    "program_worker/testing/no_argument_comp.txtpb";
 constexpr absl::string_view kNoArgumentComputationExpectedResultPath =
-    "learning_containers/program_worker/testing/"
-    "no_argument_comp_expected_result.txtpb";
+    "program_worker/testing/no_argument_comp_expected_result.txtpb";
 constexpr absl::string_view kServerDataCompPath =
-    "learning_containers/program_worker/testing/server_data_comp.txtpb";
+    "program_worker/testing/server_data_comp.txtpb";
 constexpr absl::string_view kServerDataPath =
-    "learning_containers/program_worker/testing/server_data.txtpb";
+    "program_worker/testing/server_data.txtpb";
 constexpr absl::string_view kServerDataCompExpectedResultPath =
-    "learning_containers/program_worker/testing/"
-    "server_data_comp_expected_result.txtpb";
+    "program_worker/testing/server_data_comp_expected_result.txtpb";
 
 constexpr absl::string_view kFakeAttesterId = "fake_attester";
 constexpr absl::string_view kFakeEvent = "fake event";

@@ -30,8 +30,8 @@ import federated_language
 from google.protobuf import any_pb2
 from google.protobuf.message import DecodeError
 import grpc
-from learning_containers.program_executor_tee.program_context import replace_data_pointers
 import portpicker
+from program_executor_tee.program_context import replace_data_pointers
 import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
@@ -76,7 +76,7 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
     # Start the computation runner on a different process.
     computation_runner_binary_path = os.path.join(
         os.getcwd(),
-        "learning_containers/program_executor_tee/program_context/cc/computation_runner_binary",
+        "program_executor_tee/program_context/cc/computation_runner_binary",
     )
     if not os.path.isfile(computation_runner_binary_path):
       raise RuntimeError(

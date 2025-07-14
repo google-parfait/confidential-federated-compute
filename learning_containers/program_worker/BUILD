@@ -52,15 +52,15 @@ cc_test(
     size = "small",
     srcs = ["program_worker_server_test.cc"],
     data = [
-        "//learning_containers/program_worker/testing:test_tff_values",
+        "//program_worker/testing:test_tff_values",
     ],
     deps = [
         ":program_worker_server",
-        "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_protobuf//:protobuf",
+        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",

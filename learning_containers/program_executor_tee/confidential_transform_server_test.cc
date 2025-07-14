@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "learning_containers/program_executor_tee/confidential_transform_server.h"
+#include "program_executor_tee/confidential_transform_server.h"
 
 #include <filesystem>
 #include <fstream>
@@ -40,8 +40,8 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "learning_containers/program_executor_tee/program_context/cc/fake_data_read_write_service.h"
-#include "learning_containers/program_executor_tee/program_context/cc/generate_checkpoint.h"
+#include "program_executor_tee/program_context/cc/fake_data_read_write_service.h"
+#include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 #include "testing/parse_text_proto.h"
 

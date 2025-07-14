@@ -22,7 +22,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "learning_containers/tff_server/confidential_transform_server.h"
+#include "tff_server/confidential_transform_server.h"
 
 namespace confidential_federated_compute::tff_server {
 

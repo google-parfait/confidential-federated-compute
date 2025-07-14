@@ -22,7 +22,7 @@
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
-#include "learning_containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "program_executor_tee/program_context/cc/noise_client_session.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 

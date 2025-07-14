@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
+#include "program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
-#include "learning_containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "program_executor_tee/program_context/cc/noise_client_session.h"
 #include "proto/session/session.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 

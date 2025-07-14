@@ -17,9 +17,9 @@ import unittest
 from fcp.protos.confidentialcompute import file_info_pb2
 import federated_language
 from google.protobuf import any_pb2
-from learning_containers.program_executor_tee.program_context import replace_data_pointers
-from learning_containers.program_executor_tee.program_context import test_helpers
 import numpy as np
+from program_executor_tee.program_context import replace_data_pointers
+from program_executor_tee.program_context import test_helpers
 from tensorflow_federated.proto.v0 import executor_pb2
 
 

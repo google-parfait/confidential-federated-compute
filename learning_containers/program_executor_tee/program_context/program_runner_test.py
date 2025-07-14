@@ -18,11 +18,11 @@ from absl.testing import absltest
 from fcp.protos.confidentialcompute import confidential_transform_pb2
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
-from learning_containers.program_executor_tee.program_context import program_runner
-from learning_containers.program_executor_tee.program_context import test_helpers
-from learning_containers.program_executor_tee.program_context.cc import fake_service_bindings
 import numpy as np
 import portpicker
+from program_executor_tee.program_context import program_runner
+from program_executor_tee.program_context import test_helpers
+from program_executor_tee.program_context.cc import fake_service_bindings
 import tensorflow_federated as tff
 
 

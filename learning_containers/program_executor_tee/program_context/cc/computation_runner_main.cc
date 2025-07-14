@@ -18,7 +18,7 @@
 #include "absl/strings/str_cat.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "learning_containers/program_executor_tee/program_context/cc/computation_runner.h"
+#include "program_executor_tee/program_context/cc/computation_runner.h"
 
 ABSL_FLAG(int32_t, computatation_runner_port, 10000,
           "Port to run the computation runner on.");

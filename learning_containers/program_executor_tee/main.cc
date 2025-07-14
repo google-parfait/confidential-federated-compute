@@ -22,7 +22,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "learning_containers/program_executor_tee/confidential_transform_server.h"
+#include "program_executor_tee/confidential_transform_server.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 

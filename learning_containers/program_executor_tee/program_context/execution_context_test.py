@@ -18,12 +18,12 @@ from absl.testing import absltest
 from fcp.confidentialcompute.python import compiler
 import federated_language
 from federated_language_jax.computation import jax_computation
-from learning_containers.program_executor_tee.program_context import compilers
-from learning_containers.program_executor_tee.program_context import execution_context
-from learning_containers.program_executor_tee.program_context import test_helpers
-from learning_containers.program_executor_tee.program_context.cc import fake_service_bindings as fake_service_bindings
 import numpy as np
 import portpicker
+from program_executor_tee.program_context import compilers
+from program_executor_tee.program_context import execution_context
+from program_executor_tee.program_context import test_helpers
+from program_executor_tee.program_context.cc import fake_service_bindings as fake_service_bindings
 import tensorflow_federated as tff
 
 

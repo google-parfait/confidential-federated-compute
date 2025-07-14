@@ -16,9 +16,9 @@ from collections.abc import Callable
 from fcp.confidentialcompute.python import program_input_provider
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
-from learning_containers.program_executor_tee.program_context import compilers
-from learning_containers.program_executor_tee.program_context import execution_context
-from learning_containers.program_executor_tee.program_context import release_manager
+from program_executor_tee.program_context import compilers
+from program_executor_tee.program_context import execution_context
+from program_executor_tee.program_context import release_manager
 from tensorflow_federated.proto.v0 import executor_pb2
 
 # The name of the function in the customer-provided python code that wraps the

@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "learning_containers/tff_server/confidential_transform_server.h"
+#include "tff_server/confidential_transform_server.h"
 
 #include <execution>
 #include <fstream>
@@ -93,11 +93,11 @@ using ::tensorflow_federated::v0::Value;
 using ::testing::HasSubstr;
 
 constexpr absl::string_view kNoArgumentComputationPath =
-    "learning_containers/tff_server/testing/no_argument_function.txtpb";
+    "tff_server/testing/no_argument_function.txtpb";
 constexpr absl::string_view kServerDataComputationPath =
-    "learning_containers/tff_server/testing/server_data_function.txtpb";
+    "tff_server/testing/server_data_function.txtpb";
 constexpr absl::string_view kClientDataComputationPath =
-    "learning_containers/tff_server/testing/client_data_function.txtpb";
+    "tff_server/testing/client_data_function.txtpb";
 
 absl::StatusOr<Value> LoadFileAsTffValue(absl::string_view path) {
   // Before creating the std::ifstream, convert the absl::string_view to

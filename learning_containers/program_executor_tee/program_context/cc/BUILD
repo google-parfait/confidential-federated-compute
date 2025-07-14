@@ -16,7 +16,7 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(
-    default_visibility = ["//learning_containers/program_executor_tee:__subpackages__"],
+    default_visibility = ["//program_executor_tee:__subpackages__"],
     features = ["layering_check"],
 )
 
@@ -70,11 +70,11 @@ cc_library(
     srcs = ["data_parser.cc"],
     hdrs = ["data_parser.h"],
     deps = [
-        "//containers:crypto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@confidential-federated-compute//containers:crypto",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
@@ -90,10 +90,10 @@ cc_test(
     deps = [
         ":data_parser",
         ":generate_checkpoint",
-        "//containers:crypto",
-        "//containers:crypto_test_utils",
-        "//testing:matchers",
         "@com_google_absl//absl/log:check",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:crypto_test_utils",
+        "@confidential-federated-compute//testing:matchers",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@googletest//:gtest",
@@ -111,12 +111,12 @@ cc_library(
     srcs = ["fake_data_read_write_service.cc"],
     hdrs = ["fake_data_read_write_service.h"],
     deps = [
-        "//containers:crypto_test_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@confidential-federated-compute//containers:crypto_test_utils",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
@@ -129,13 +129,13 @@ cc_test(
     srcs = ["fake_data_read_write_service_test.cc"],
     deps = [
         ":fake_data_read_write_service",
-        "//containers:crypto",
-        "//containers:crypto_test_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:crypto_test_utils",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
@@ -250,12 +250,12 @@ cc_test(
     deps = [
         ":computation_delegation_lambda_runner",
         ":mock_noise_client_session",
-        "//testing:matchers",
-        "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@confidential-federated-compute//testing:matchers",
+        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -303,15 +303,15 @@ cc_test(
     size = "small",
     srcs = ["fake_computation_delegation_service_test.cc"],
     data = [
-        "//learning_containers/program_worker/testing:test_tff_values",
+        "//program_worker/testing:test_tff_values",
     ],
     deps = [
         ":fake_computation_delegation_service",
-        "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_protobuf//:protobuf",
+        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",

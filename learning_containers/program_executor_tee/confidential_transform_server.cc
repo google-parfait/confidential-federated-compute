@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "learning_containers/program_executor_tee/confidential_transform_server.h"
+#include "program_executor_tee/confidential_transform_server.h"
 
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
@@ -38,7 +38,7 @@
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
-#include "learning_containers/program_executor_tee/program_context/cc/data_parser.h"
+#include "program_executor_tee/program_context/cc/data_parser.h"
 #include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -108,10 +108,10 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
   pybind11::scoped_interpreter guard{};
   try {
     // Load the python function for running the program.
-    auto run_program = pybind11::module::import(
-                           "learning_containers.program_executor_tee.program_"
-                           "context.program_runner")
-                           .attr("run_program");
+    auto run_program =
+        pybind11::module::import(
+            "program_executor_tee.program_context.program_runner")
+            .attr("run_program");
 
     // Create a DataParser object bound to the BlobDecryptor pointer.
     pybind11::object data_parser_instance =

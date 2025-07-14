@@ -1,0 +1,14 @@
+--- third_party/federated_compute/visibility.patch
++++ third_party/federated_compute/visibility.patch
+@@ -6,3 +6,3 @@
+  cc_library(
+      name = "compression",
+-+    visibility = ["@//:__subpackages__"],
+++    visibility = ["//visibility:public"],
+
+--- testing/BUILD
++++ testing/BUILD
+@@ -16,2 +16,2 @@
+ package(
+-    default_visibility = ["//:__subpackages__"],
++    default_visibility = ["//visibility:public"],

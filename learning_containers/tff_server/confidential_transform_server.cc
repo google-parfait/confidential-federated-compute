@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "learning_containers/tff_server/confidential_transform_server.h"
+#include "tff_server/confidential_transform_server.h"
 
 #include <execution>
 #include <memory>

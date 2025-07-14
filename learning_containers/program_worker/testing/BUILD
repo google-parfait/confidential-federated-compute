@@ -17,5 +17,5 @@ package(features = ["layering_check"])
 filegroup(
     name = "test_tff_values",
     srcs = glob(["*.txtpb"]),
-    visibility = ["//learning_containers:__subpackages__"],
+    visibility = ["//:__subpackages__"],
 )

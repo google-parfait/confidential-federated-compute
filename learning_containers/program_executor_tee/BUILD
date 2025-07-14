@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@confidential-federated-compute//containers:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
+load("@confidential-federated-compute//containers:python_runtime.bzl", "trusted_py_runtime")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("//containers:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
-load("//containers:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
 
 trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
-        "//learning_containers/program_executor_tee/program_context:program_runner",
+        "//program_executor_tee/program_context:program_runner",
     ],
     source_repo_names = [
         "federated_language",
@@ -41,11 +41,7 @@ cc_library(
     # Include py runfiles needed to execute the federated program.
     data = [":trusted_program_py_runtime"],
     deps = [
-        "//containers:blob_metadata",
-        "//containers:confidential_transform_server_base",
-        "//containers:crypto",
-        "//containers:session",
-        "//learning_containers/program_executor_tee/program_context/cc:data_parser",
+        "//program_executor_tee/program_context/cc:data_parser",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -54,6 +50,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
+        "@confidential-federated-compute//containers:blob_metadata",
+        "@confidential-federated-compute//containers:confidential_transform_server_base",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:session",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:crypto",
@@ -80,17 +80,17 @@ cc_test(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
-        "//containers:crypto",
-        "//containers:crypto_test_utils",
-        "//learning_containers/program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//learning_containers/program_executor_tee/program_context/cc:generate_checkpoint",
-        "//testing:parse_text_proto",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:crypto_test_utils",
+        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
@@ -141,7 +141,7 @@ oci_image(
     # Set the workdir and entrypoint so that the main binary will be executed
     # from within the runfiles directory. This ensures that the main binary
     # will be able to find its runfiles properly.
-    entrypoint = ["learning_containers/program_executor_tee/main"],
+    entrypoint = ["program_executor_tee/main"],
     tars = [":tar"],
     workdir = "/main.runfiles/__main__/",
 )

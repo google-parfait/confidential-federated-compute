@@ -41,7 +41,7 @@ py_library(
 py_library(
     name = "execution_context",
     srcs = ["execution_context.py"],
-    data = ["//learning_containers/program_executor_tee/program_context/cc:computation_runner_binary"],
+    data = ["//program_executor_tee/program_context/cc:computation_runner_binary"],
     deps = [
         ":replace_data_pointers",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
@@ -76,7 +76,7 @@ py_test(
         ":compilers",
         ":execution_context",
         ":test_helpers",
-        "//learning_containers/program_executor_tee/program_context/cc:fake_service_bindings",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
@@ -121,7 +121,7 @@ py_test(
     tags = ["noasan"],
     deps = [
         ":release_manager",
-        "//learning_containers/program_executor_tee/program_context/cc:fake_service_bindings",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
@@ -178,7 +178,7 @@ py_test(
     deps = [
         ":program_runner",
         ":test_helpers",
-        "//learning_containers/program_executor_tee/program_context/cc:fake_service_bindings",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",

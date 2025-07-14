@@ -17,7 +17,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "fcp/confidentialcompute/lambda_runner.h"
-#include "learning_containers/program_executor_tee/program_context/cc/noise_client_session.h"
+#include "program_executor_tee/program_context/cc/noise_client_session.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 

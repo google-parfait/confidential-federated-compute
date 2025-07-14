@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/computation_runner.h"
+#include "program_executor_tee/program_context/cc/computation_runner.h"
 
 #include <optional>
 
@@ -32,7 +32,7 @@
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
-#include "learning_containers/program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
+#include "program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"

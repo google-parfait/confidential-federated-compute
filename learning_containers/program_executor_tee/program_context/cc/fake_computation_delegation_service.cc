@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "learning_containers/program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
+#include "program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
 
 #include <optional>
 #include <utility>
