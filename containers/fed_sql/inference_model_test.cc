@@ -20,12 +20,12 @@
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
+#include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::gcpp::Gemma;
@@ -234,31 +234,24 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   std::initializer_list<absl::string_view> transcript_values = {"one", "two",
                                                                 "three"};
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(
-          transcript_values));
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
 
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+  columns.push_back(std::move(*transcript_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   ASSERT_TRUE(inference_model.RunInference(columns).ok());
   ASSERT_EQ(columns.size(), 1);
-  ASSERT_EQ(columns.at(0).column_schema_.name(), "topic");
-  ASSERT_EQ(columns.at(0).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(0).tensor_.AsSpan<absl::string_view>(),
+  ASSERT_EQ(columns.at(0).name(), "topic");
+  ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(0).AsSpan<absl::string_view>(),
               UnorderedElementsAre("Hello, {{transcript}}---eno",
                                    "Hello, {{transcript}}---owt",
                                    "Hello, {{transcript}}---eerht"));
@@ -310,50 +303,40 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   std::initializer_list<absl::string_view> transcript_values = {"one", "two",
                                                                 "three"};
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(
-          transcript_values));
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
+
+  columns.push_back(std::move(*transcript_tensor));
 
   std::initializer_list<absl::string_view> input_values = {"uno", "dos",
                                                            "tres"};
   absl::StatusOr<Tensor> input_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(input_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(input_values));
-  ColumnSchema input_col_schema;
-  input_col_schema.set_name("input");
-  input_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn input_column =
-      TensorColumn::Create(input_col_schema, std::move(input_tensor.value()))
-          .value();
-  columns.push_back(std::move(input_column));
+      std::make_unique<MutableVectorData<absl::string_view>>(input_values),
+      /*name=*/"input");
+  ASSERT_OK(input_tensor);
+  columns.push_back(std::move(*input_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   ASSERT_TRUE(inference_model.RunInference(columns).ok());
   ASSERT_EQ(columns.size(), 2);
-  ASSERT_EQ(columns.at(0).column_schema_.name(), "topic");
-  ASSERT_EQ(columns.at(0).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(0).tensor_.AsSpan<absl::string_view>(),
+  ASSERT_EQ(columns.at(0).name(), "topic");
+  ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(0).AsSpan<absl::string_view>(),
               UnorderedElementsAre("Hello, {{transcript}}---eno",
                                    "Hello, {{transcript}}---owt",
                                    "Hello, {{transcript}}---eerht"));
-  ASSERT_EQ(columns.at(1).column_schema_.name(), "output");
-  ASSERT_EQ(columns.at(1).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(1).tensor_.AsSpan<absl::string_view>(),
+  ASSERT_EQ(columns.at(1).name(), "output");
+  ASSERT_EQ(columns.at(1).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(1).AsSpan<absl::string_view>(),
               UnorderedElementsAre("Good bye, {{input}}---onu",
                                    "Good bye, {{input}}---sod",
                                    "Good bye, {{input}}---sert"));
@@ -398,39 +381,28 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   // Non-prompt string column.
   std::initializer_list<absl::string_view> input_str_values = {"uno", "dos",
                                                                "tres"};
   absl::StatusOr<Tensor> input_str_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(input_str_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(input_str_values));
+      std::make_unique<MutableVectorData<absl::string_view>>(input_str_values),
+      /*name=*/"input_str_col");
+  ASSERT_OK(input_str_tensor);
 
-  ColumnSchema input_str_schema;
-  input_str_schema.set_name("input_str_col");
-  input_str_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn input_str_column =
-      TensorColumn::Create(input_str_schema,
-                           std::move(input_str_tensor.value()))
-          .value();
-  columns.push_back(std::move(input_str_column));
+  columns.push_back(std::move(*input_str_tensor));
 
   // Non-prompt int column.
   std::initializer_list<int64_t> input_int_values = {1, 2, 3};
   absl::StatusOr<Tensor> input_int_tensor = Tensor::Create(
       DataType::DT_INT64,
       TensorShape({static_cast<int64_t>(input_int_values.size())}),
-      std::make_unique<MutableVectorData<int64_t>>(input_int_values));
-
-  ColumnSchema input_int_schema;
-  input_int_schema.set_name("input_int_col");
-  input_int_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
-  TensorColumn input_int_column =
-      TensorColumn::Create(input_int_schema,
-                           std::move(input_int_tensor.value()))
-          .value();
-  columns.push_back(std::move(input_int_column));
+      std::make_unique<MutableVectorData<int64_t>>(input_int_values),
+      /*name=*/"input_int_col");
+  ASSERT_OK(input_int_tensor);
+  columns.push_back(std::move(*input_int_tensor));
 
   // Prompt column.
   std::initializer_list<absl::string_view> transcript_values = {"one", "two",
@@ -438,33 +410,24 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(
-          transcript_values));
-
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
+  columns.push_back(std::move(*transcript_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   ASSERT_TRUE(inference_model.RunInference(columns).ok());
   ASSERT_EQ(columns.size(), 3);
-  ASSERT_EQ(columns.at(0).column_schema_.name(), "input_str_col");
-  ASSERT_EQ(columns.at(0).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(0).tensor_.AsSpan<absl::string_view>(),
+  ASSERT_EQ(columns.at(0).name(), "input_str_col");
+  ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(0).AsSpan<absl::string_view>(),
               UnorderedElementsAre("uno", "dos", "tres"));
-  ASSERT_EQ(columns.at(1).column_schema_.name(), "input_int_col");
-  ASSERT_EQ(columns.at(1).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(1).tensor_.AsSpan<int64_t>(),
-              UnorderedElementsAre(1, 2, 3));
-  ASSERT_EQ(columns.at(2).column_schema_.name(), "topic");
-  ASSERT_EQ(columns.at(2).tensor_.shape().dim_sizes()[0], 3);
-  EXPECT_THAT(columns.at(2).tensor_.AsSpan<absl::string_view>(),
+  ASSERT_EQ(columns.at(1).name(), "input_int_col");
+  ASSERT_EQ(columns.at(1).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(1).AsSpan<int64_t>(), UnorderedElementsAre(1, 2, 3));
+  ASSERT_EQ(columns.at(2).name(), "topic");
+  ASSERT_EQ(columns.at(2).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(2).AsSpan<absl::string_view>(),
               UnorderedElementsAre("Hello, {{transcript}}---eno",
                                    "Hello, {{transcript}}---owt",
                                    "Hello, {{transcript}}---eerht"));
@@ -501,37 +464,27 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   std::initializer_list<absl::string_view> input_str_values = {"uno", "dos",
                                                                "tres"};
   absl::StatusOr<Tensor> input_str_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(input_str_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(input_str_values));
+      std::make_unique<MutableVectorData<absl::string_view>>(input_str_values),
+      /*name=*/"input_str_col");
+  ASSERT_OK(input_str_tensor);
 
-  ColumnSchema input_str_schema;
-  input_str_schema.set_name("input_str_col");
-  input_str_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn input_str_column =
-      TensorColumn::Create(input_str_schema,
-                           std::move(input_str_tensor.value()))
-          .value();
-  columns.push_back(std::move(input_str_column));
+  columns.push_back(std::move(*input_str_tensor));
 
   std::initializer_list<int64_t> input_int_values = {1, 2, 3};
   absl::StatusOr<Tensor> input_int_tensor = Tensor::Create(
       DataType::DT_INT64,
       TensorShape({static_cast<int64_t>(input_int_values.size())}),
-      std::make_unique<MutableVectorData<int64_t>>(input_int_values));
+      std::make_unique<MutableVectorData<int64_t>>(input_int_values),
+      /*name*/ "input_int_col");
+  ASSERT_OK(input_int_tensor);
 
-  ColumnSchema input_int_schema;
-  input_int_schema.set_name("input_int_col");
-  input_int_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
-  TensorColumn input_int_column =
-      TensorColumn::Create(input_int_schema,
-                           std::move(input_int_tensor.value()))
-          .value();
-  columns.push_back(std::move(input_int_column));
+  columns.push_back(std::move(*input_int_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   auto status = inference_model.RunInference(columns);
@@ -572,24 +525,16 @@ TEST(InferenceModelTest, RunInferenceNoPrompt) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   std::initializer_list<absl::string_view> transcript_values = {"one", "two",
                                                                 "three"};
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(
-          transcript_values));
-
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
+  columns.push_back(std::move(*transcript_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   auto status = inference_model.RunInference(columns);
@@ -629,22 +574,15 @@ TEST(InferenceModelTest, RunInferenceNonStringColumn) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   std::initializer_list<int64_t> transcript_values = {1, 2, 3};
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_INT64,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<int64_t>>(transcript_values));
-
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+      std::make_unique<MutableVectorData<int64_t>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
+  columns.push_back(std::move(*transcript_tensor));
 
   ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
   auto status = inference_model.RunInference(columns);
@@ -684,25 +622,17 @@ TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  std::vector<TensorColumn> columns;
+  std::vector<Tensor> columns;
   // Prompt column.
   std::initializer_list<absl::string_view> transcript_values = {"one", "two",
                                                                 "three"};
   absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
       DataType::DT_STRING,
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
-      std::make_unique<MutableVectorData<absl::string_view>>(
-          transcript_values));
-
-  ColumnSchema transcript_col_schema;
-  transcript_col_schema.set_name("transcript");
-  transcript_col_schema.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  TensorColumn transcript_column =
-      TensorColumn::Create(transcript_col_schema,
-                           std::move(transcript_tensor.value()))
-          .value();
-  columns.push_back(std::move(transcript_column));
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_OK(transcript_tensor);
+  columns.push_back(std::move(*transcript_tensor));
 
   auto status = inference_model.RunInference(columns);
   ASSERT_EQ(status.code(), absl::StatusCode::kUnimplemented);

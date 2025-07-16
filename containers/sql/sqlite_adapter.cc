@@ -33,6 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 
 namespace confidential_federated_compute::sql {
 
@@ -101,42 +102,33 @@ class StatementFinalizer final {
 // status_util: Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
 absl::Status BindSqliteParameter(sqlite3_stmt* stmt, int ordinal, int row_num,
-                                 const TensorColumn& column,
+                                 const Tensor& column,
                                  const SqliteResultHandler& status_util) {
-  switch (column.column_schema_.type()) {
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
+  switch (column.dtype()) {
+    case DataType::DT_INT32:
       return status_util.ToStatus(sqlite3_bind_int(
-          stmt, ordinal, column.tensor_.AsSpan<int32_t>().at(row_num)));
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
+          stmt, ordinal, column.AsSpan<int32_t>().at(row_num)));
+    case DataType::DT_INT64:
       return status_util.ToStatus(sqlite3_bind_int64(
-          stmt, ordinal, column.tensor_.AsSpan<int64_t>().at(row_num)));
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
-      return status_util.ToStatus(sqlite3_bind_int(
-          stmt, ordinal, column.tensor_.AsSpan<int32_t>().at(row_num)));
-    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
+          stmt, ordinal, column.AsSpan<int64_t>().at(row_num)));
+    case DataType::DT_FLOAT:
       return status_util.ToStatus(sqlite3_bind_double(
-          stmt, ordinal, column.tensor_.AsSpan<float>().at(row_num)));
-    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
+          stmt, ordinal, column.AsSpan<float>().at(row_num)));
+    case DataType::DT_DOUBLE:
       return status_util.ToStatus(sqlite3_bind_double(
-          stmt, ordinal, column.tensor_.AsSpan<double>().at(row_num)));
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES: {
+          stmt, ordinal, column.AsSpan<double>().at(row_num)));
+    case DataType::DT_STRING: {
       absl::string_view string_value =
-          column.tensor_.AsSpan<absl::string_view>().at(row_num);
+          column.AsSpan<absl::string_view>().at(row_num);
       return status_util.ToStatus(
           sqlite3_bind_blob(stmt, ordinal, string_value.data(),
                             string_value.size(), SQLITE_TRANSIENT));
     }
-    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING: {
-      absl::string_view string_value =
-          column.tensor_.AsSpan<absl::string_view>().at(row_num);
-      // Using sqlite3_bind_text means the string should be well-formed UTF8
-      return status_util.ToStatus(
-          sqlite3_bind_text(stmt, ordinal, string_value.data(),
-                            string_value.size(), SQLITE_TRANSIENT));
-    }
     default:
       return absl::InvalidArgumentError(
-          "Not a valid column type, can't bind value to this column.");
+          absl::StrFormat("Column type: %d is not a valid column type, can't "
+                          "bind value to this column.",
+                          column.dtype()));
   }
 }
 
@@ -245,10 +237,10 @@ absl::StatusOr<DataType> SqlDataTypeToTensorDtype(
   }
 }
 
-absl::Status ValidateInputColumns(const std::vector<TensorColumn>& columns,
+absl::Status ValidateInputColumns(const std::vector<Tensor>& columns,
                                   int num_rows) {
-  for (const TensorColumn& column : columns) {
-    if (column.tensor_.num_elements() != num_rows) {
+  for (const Tensor& column : columns) {
+    if (column.num_elements() != num_rows) {
       return absl::InvalidArgumentError("Column has the wrong number of rows");
     }
   }
@@ -267,20 +259,6 @@ void EscapeSqlColumnName(std::string* out, absl::string_view column) {
 }
 
 }  // namespace
-
-absl::StatusOr<TensorColumn> TensorColumn::Create(ColumnSchema column_schema,
-                                                  Tensor tensor) {
-  FCP_ASSIGN_OR_RETURN(DataType schema_dtype,
-                       SqlDataTypeToTensorDtype(column_schema.type()));
-  if (tensor.dtype() != schema_dtype) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Column `%s` type (%s) does not match the ColumnSchema type (%s).",
-        column_schema.name(), DataType_Name(tensor.dtype()),
-        ExampleQuerySpec::OutputVectorSpec::DataType_Name(
-            column_schema.type())));
-  }
-  return TensorColumn(column_schema, std::move(tensor));
-}
 
 absl::Status SqliteResultHandler::ToStatus(
     int result_code, absl::StatusCode error_status) const {
@@ -337,9 +315,9 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
   return absl::OkStatus();
 }
 
-absl::Status SqliteAdapter::InsertRows(
-    const std::vector<TensorColumn>& contents, int start_row_index,
-    int end_row_index, absl::string_view insert_stmt) {
+absl::Status SqliteAdapter::InsertRows(const std::vector<Tensor>& contents,
+                                       int start_row_index, int end_row_index,
+                                       absl::string_view insert_stmt) {
   sqlite3_stmt* stmt;
   FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
       db_, insert_stmt.data(), insert_stmt.size(), &stmt, nullptr)));
@@ -361,7 +339,7 @@ absl::Status SqliteAdapter::InsertRows(
 }
 
 absl::Status SqliteAdapter::AddTableContents(
-    const std::vector<TensorColumn>& contents, int num_rows) {
+    const std::vector<Tensor>& contents, int num_rows) {
   if (!table_schema_.has_value()) {
     return absl::InvalidArgumentError(
         "`DefineTable` must be called before adding to the table contents.");
@@ -409,7 +387,7 @@ absl::Status SqliteAdapter::AddTableContents(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<TensorColumn>> SqliteAdapter::EvaluateQuery(
+absl::StatusOr<std::vector<Tensor>> SqliteAdapter::EvaluateQuery(
     absl::string_view query,
     const RepeatedPtrField<ColumnSchema>& output_columns) const {
   std::vector<std::unique_ptr<TensorData>> result_columns(
@@ -470,18 +448,16 @@ absl::StatusOr<std::vector<TensorColumn>> SqliteAdapter::EvaluateQuery(
                                            result_columns.at(i).get()));
     }
   }
-  std::vector<TensorColumn> result(output_columns.size());
+  std::vector<Tensor> result(output_columns.size());
 
   for (int i = 0; i < output_columns.size(); ++i) {
     FCP_ASSIGN_OR_RETURN(DataType dtype,
                          SqlDataTypeToTensorDtype(output_columns.at(i).type()));
     FCP_ASSIGN_OR_RETURN(
         Tensor column_tensor,
-        Tensor::Create(dtype, {num_rows}, std::move(result_columns.at(i))));
-    FCP_ASSIGN_OR_RETURN(
-        TensorColumn tensor_column,
-        TensorColumn::Create(output_columns.at(i), std::move(column_tensor)));
-    result[i] = std::move(tensor_column);
+        Tensor::Create(dtype, {num_rows}, std::move(result_columns.at(i)),
+                       output_columns.at(i).name()));
+    result[i] = std::move(column_tensor);
   }
   return result;
 }

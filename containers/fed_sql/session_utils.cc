@@ -27,20 +27,17 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::TableSchema;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 }  // namespace
 
-absl::StatusOr<std::vector<TensorColumn>> Deserialize(
+absl::StatusOr<std::vector<Tensor>> Deserialize(
     const TableSchema& table_schema, CheckpointParser* checkpoint,
     std::optional<SessionInferenceConfiguration> inference_configuration) {
   absl::flat_hash_set<std::string> input_column_names;
@@ -60,9 +57,9 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
   // does not contain these, as they are generated during inference. Besides
   // that, input columns are not listed in the table schema, but are present in
   // the checkpoint, and have to be unpacked.
-  std::vector<TensorColumn> columns(table_schema.column_size() -
-                                    output_column_names.size() +
-                                    input_column_names.size());
+  std::vector<Tensor> columns(table_schema.column_size() -
+                              output_column_names.size() +
+                              input_column_names.size());
   std::optional<size_t> num_rows;
   int tensor_column_index = 0;
   for (int i = 0; i < table_schema.column_size(); i++) {
@@ -70,39 +67,28 @@ absl::StatusOr<std::vector<TensorColumn>> Deserialize(
       // Inference output columns do not exist in the checkpoint.
       continue;
     }
-    TFF_ASSIGN_OR_RETURN(Tensor tensor_column_values,
+    TFF_ASSIGN_OR_RETURN(Tensor column,
                          checkpoint->GetTensor(table_schema.column(i).name()));
     if (!num_rows.has_value()) {
-      num_rows.emplace(tensor_column_values.num_elements());
-    } else if (num_rows.value() != tensor_column_values.num_elements()) {
+      num_rows.emplace(column.num_elements());
+    } else if (num_rows.value() != column.num_elements()) {
       return absl::InvalidArgumentError(
           "Checkpoint has columns with differing numbers of rows.");
     }
-    TFF_ASSIGN_OR_RETURN(TensorColumn tensor_column,
-                         TensorColumn::Create(table_schema.column(i),
-                                              std::move(tensor_column_values)));
-    columns[tensor_column_index] = std::move(tensor_column);
+    columns[tensor_column_index] = std::move(column);
     tensor_column_index++;
   }
   for (const auto& column_name : input_column_names) {
     // Input columns are not listed in the per-client table schema, and have to
     // be added manually.
-    TFF_ASSIGN_OR_RETURN(Tensor tensor_column_values,
-                         checkpoint->GetTensor(column_name));
+    TFF_ASSIGN_OR_RETURN(Tensor column, checkpoint->GetTensor(column_name));
     if (!num_rows.has_value()) {
-      num_rows.emplace(tensor_column_values.num_elements());
-    } else if (num_rows.value() != tensor_column_values.num_elements()) {
+      num_rows.emplace(column.num_elements());
+    } else if (num_rows.value() != column.num_elements()) {
       return absl::InvalidArgumentError(
           "Checkpoint has columns with differing numbers of rows.");
     }
-    ColumnSchema input_col_schema;
-    input_col_schema.set_name(column_name);
-    input_col_schema.set_type(
-        ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-    TFF_ASSIGN_OR_RETURN(TensorColumn tensor_column,
-                         TensorColumn::Create(input_col_schema,
-                                              std::move(tensor_column_values)));
-    columns[tensor_column_index] = std::move(tensor_column);
+    columns[tensor_column_index] = std::move(column);
     tensor_column_index++;
   }
   return columns;

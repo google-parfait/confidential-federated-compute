@@ -50,7 +50,6 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 using ::confidential_federated_compute::sql::SqliteAdapter;
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::OkpKey;
@@ -78,6 +77,7 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::Tensor;
 
 constexpr size_t kBlobIdSize = 16;
 
@@ -146,7 +146,7 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>>
 KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                                      CheckpointParser* parser) {
   FCP_ASSIGN_OR_RETURN(
-      std::vector<TensorColumn> contents,
+      std::vector<Tensor> contents,
       Deserialize(configuration.input_schema, parser,
                   inference_model_.GetInferenceConfiguration()));
   if (inference_model_.HasModel()) {
@@ -156,13 +156,13 @@ KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
   if (contents.size() > 0) {
-    int num_rows = contents.at(0).tensor_.num_elements();
+    int num_rows = contents.at(0).num_elements();
     FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
     FCP_RETURN_IF_ERROR(
         sqlite->AddTableContents(std::move(contents), num_rows));
   }
   FCP_ASSIGN_OR_RETURN(
-      std::vector<TensorColumn> result,
+      std::vector<Tensor> result,
       sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
   return std::make_unique<InMemoryCheckpointParser>(std::move(result));
 }
