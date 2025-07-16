@@ -118,7 +118,7 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
         aggregator,
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
-    std::optional<SessionInferenceConfiguration> inference_configuration_,
+    std::optional<SessionInferenceConfiguration> inference_configuration,
     absl::string_view sensitive_values_key,
     std::vector<std::string> reencryption_keys,
     absl::string_view reencryption_policy_hash,
@@ -137,27 +137,19 @@ KmsFedSqlSession::KmsFedSqlSession(
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   // TODO: b/427333608 - Switch to the shared model once the Gemma.cpp engine is
   // updated.
-  if (inference_configuration_.has_value()) {
-    inference_model_.BuildModel(inference_configuration_.value());
+  if (inference_configuration.has_value()) {
+    CHECK_OK(inference_model_.BuildModel(inference_configuration.value()));
   }
 };
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
-                                     CheckpointParser* parser) {
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<Tensor> contents,
-      Deserialize(configuration.input_schema, parser,
-                  inference_model_.GetInferenceConfiguration()));
-  if (inference_model_.HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
-  }
+                                     std::vector<Tensor> contents) {
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
-  if (contents.size() > 0) {
+  if (!contents.empty()) {
     int num_rows = contents.at(0).num_elements();
-    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
     FCP_RETURN_IF_ERROR(
         sqlite->AddTableContents(std::move(contents), num_rows));
   }
@@ -282,8 +274,16 @@ KmsFedSqlSession::SessionAccumulate(
         parser.status()));
   }
   if (sql_configuration_ != std::nullopt) {
+    FCP_ASSIGN_OR_RETURN(
+        std::vector<Tensor> contents,
+        Deserialize(sql_configuration_->input_schema, parser->get(),
+                    inference_model_.GetInferenceConfiguration()));
+    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
+    if (inference_model_.HasModel()) {
+      FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
+    }
     absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
-        ExecuteClientQuery(*sql_configuration_, parser->get());
+        ExecuteClientQuery(*sql_configuration_, std::move(contents));
     if (!sql_result_parser.ok()) {
       return ToSessionWriteFinishedResponse(PrependMessage(
           "Failed to execute SQL query: ", sql_result_parser.status()));

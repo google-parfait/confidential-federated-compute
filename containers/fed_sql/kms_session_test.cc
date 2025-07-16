@@ -138,8 +138,8 @@ KmsFedSqlSession CreateDefaultSession() {
   std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle =
       std::make_shared<MockSigningKeyHandle>();
   return KmsFedSqlSession(
-      std::move(checkpoint_aggregator), intrinsics,
-      SessionInferenceConfiguration(), "sensitive_values_key",
+      std::move(checkpoint_aggregator), intrinsics, std::nullopt,
+      "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
       "reencryption_policy_hash", CreatePrivateState("", 1),
@@ -266,8 +266,8 @@ class KmsFedSqlSessionWriteTest : public Test {
     )pb");
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
-        std::move(checkpoint_aggregator), intrinsics_,
-        SessionInferenceConfiguration(), "sensitive_values_key",
+        std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
+        "sensitive_values_key",
         std::vector<std::string>{merge_public_private_key_pair.first,
                                  report_public_private_key_pair.first},
         "reencryption_policy_hash",

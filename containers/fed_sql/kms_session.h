@@ -36,9 +36,9 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-// FedSql implementation of Session interfacethat works in conjunction with the
+// FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
-// threadsafe.
+// thread-safe.
 class KmsFedSqlSession final : public confidential_federated_compute::Session {
  public:
   KmsFedSqlSession(
@@ -46,7 +46,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      std::optional<SessionInferenceConfiguration> inference_configuration_,
+      std::optional<SessionInferenceConfiguration> inference_configuration,
       absl::string_view sensitive_values_key,
       std::vector<std::string> reencryption_keys,
       absl::string_view reencryption_policy_hash,
@@ -116,7 +116,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
   ExecuteClientQuery(
       const SqlConfiguration& configuration,
-      tensorflow_federated::aggregation::CheckpointParser* parser);
+      std::vector<tensorflow_federated::aggregation::Tensor> contents);
   // Encrypts the intermediate result for this session.
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
       absl::string_view plaintext);
