@@ -36,9 +36,6 @@ http_archive(
 # version.
 http_archive(
     name = "com_github_grpc_grpc",
-    patches = [
-        "//third_party/grpc:noexcept.patch",
-    ],
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
     strip_prefix = "grpc-1.50.0",
     urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
@@ -109,46 +106,19 @@ cc_library(
 http_archive(
     name = "federated-compute",
     integrity = "sha256-8AFSZmkrLH4I/V3rSVlFYcp6IQVv+6jY45eJqrvIKX8=",
-    patches = [
-        "//third_party/federated_compute:libcppbor.patch",
-        "//third_party/federated_compute:visibility.patch",
-        "//third_party/federated_compute:executors.patch",
-        "//third_party/federated_compute:min_sep.patch",
-    ],
+    patches = ["//third_party/federated_compute:visibility.patch"],
     strip_prefix = "federated-compute-a38b9d37459f44dda10cfc3ea4df7db14e155c81",
     url = "https://github.com/google/federated-compute/archive/a38b9d37459f44dda10cfc3ea4df7db14e155c81.tar.gz",
 )
 
 http_archive(
     name = "federated_language",
-    patches = [
-        "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
-        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
-        "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
-        "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
-    ],
     repo_mapping = {
         "@protobuf": "@com_google_protobuf",
     },
     sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
     strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
     url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
-)
-
-http_archive(
-    name = "federated_language_jax",
-    integrity = "sha256-KtH+Nfd3qYkvPcVjIH/NrJoXVgulCPo/dLzB7SGlCok=",
-    patches = [
-        "//third_party/federated_language_jax:eigen.patch",
-        "//third_party/federated_language_jax:federated_language.patch",
-        "//third_party/federated_language_jax:computation_visibility.patch",
-    ],
-    repo_mapping = {
-        "@federated_language_jax_pypi": "@pypi",
-        "@xla": "@local_xla",
-    },
-    strip_prefix = "federated-language-jax-182e5e9ec3cc0869a3588ea8048432c2c3922dfa",
-    url = "https://github.com/google-parfait/federated-language-jax/archive/182e5e9ec3cc0869a3588ea8048432c2c3922dfa.tar.gz",
 )
 
 http_archive(
@@ -189,7 +159,6 @@ git_repository(
     name = "libcppbor",
     build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-    patches = ["//third_party/libcppbor:libcppbor.patch"],
     remote = "https://android.googlesource.com/platform/external/libcppbor",
 )
 
@@ -208,8 +177,6 @@ http_archive(
     name = "org_tensorflow",
     integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
     patches = [
-        "//third_party/org_tensorflow:cython.patch",
-        "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:protobuf.patch",
         "//third_party/org_tensorflow:zlib.patch",
     ],
@@ -222,11 +189,6 @@ http_archive(
 http_archive(
     name = "org_tensorflow_federated",
     integrity = "sha256-ZoyPB5DDBDtFNOrH8lTHjsKqcBzAvqQZ2ZfdBo6WN9A=",
-    patches = [
-        "//third_party/org_tensorflow_federated:eigen.patch",
-        "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
-        "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
-    ],
     strip_prefix = "tensorflow-federated-23d710ed743c89627601da3c3a15e2dabed054f3",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/23d710ed743c89627601da3c3a15e2dabed054f3.tar.gz",
 )
@@ -369,19 +331,6 @@ python_register_toolchains(
     python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
 )
 
-load("@python//:defs.bzl", "interpreter")
-load("@rules_python//python:pip.bzl", "pip_parse")
-
-pip_parse(
-    name = "pypi",
-    python_interpreter_target = interpreter,
-    requirements_lock = "//:requirements_lock.txt",
-)
-
-load("@pypi//:requirements.bzl", "install_deps")
-
-install_deps()
-
 # The following is copied from TensorFlow's own WORKSPACE, see
 # https://github.com/tensorflow/tensorflow/blob/v2.19.0-rc0/WORKSPACE#L68
 load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
@@ -403,12 +352,6 @@ tf_workspace0()
 load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
 
 python_init_repositories(
-    local_wheel_dist_folder = "dist",
-    local_wheel_inclusion_list = [
-        "tensorflow*",
-        "tf_nightly*",
-    ],
-    local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
         "3.10": "//:requirements_lock_3_10.txt",
     },
@@ -546,13 +489,6 @@ oci_pull(
     platforms = ["linux/amd64"],
 )
 
-oci_pull(
-    name = "python_3_10_slim_bookworm",
-    digest = "sha256:9dd6774a1276178f94b0cc1fb1f0edd980825d0ea7634847af9940b1b6273c13",
-    image = "python",
-    platforms = ["linux/amd64"],
-)
-
 # Install a hermetic GCC toolchain for nostd builds. This must be defined after
 # rules_oci because it uses an older version of aspect_bazel_lib.
 http_archive(
@@ -589,9 +525,6 @@ llvm_toolchain(
     # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
     # https://github.com/llvm/llvm-project/issues/51620
     llvm_version = "14.0.0",
-    # Using the PyPi tensorflow package requires using libstdc++ to ensure the
-    # right C++ ABI.
-    stdlib = {"linux-x86_64": "stdc++"},
     sysroot = {"linux-x86_64": "@sysroot"},
 )
 
