@@ -27,7 +27,7 @@ namespace confidential_federated_compute::fed_sql {
 // with `key` (using HMAC-SHA256). Columns with the "SENSITIVE_" prefix are
 // required to be either the STRING or BYTES type.
 absl::Status HashSensitiveColumns(
-    std::vector<confidential_federated_compute::sql::TensorColumn>& contents,
+    std::vector<tensorflow_federated::aggregation::Tensor>& contents,
     absl::string_view key);
 
 }  // namespace confidential_federated_compute::fed_sql

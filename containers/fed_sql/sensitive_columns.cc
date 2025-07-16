@@ -26,54 +26,44 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::confidential_federated_compute::sql::TensorColumn;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
+using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 
 // Replace the values of the column with keyed hashes.
-absl::Status HashColumn(TensorColumn& column, absl::string_view key) {
+absl::StatusOr<Tensor> HashColumn(Tensor& column, absl::string_view key) {
   std::unique_ptr<MutableStringData> hashed_column =
-      std::make_unique<MutableStringData>(column.tensor_.num_elements());
+      std::make_unique<MutableStringData>(column.num_elements());
   absl::Span<const absl::string_view> column_span =
-      column.tensor_.AsSpan<absl::string_view>();
+      column.AsSpan<absl::string_view>();
 
   for (const absl::string_view value : column_span) {
     FCP_ASSIGN_OR_RETURN(std::string hashed_value, KeyedHash(value, key));
     hashed_column->Add(std::move(hashed_value));
   }
 
-  FCP_ASSIGN_OR_RETURN(
-      Tensor hashed_tensor,
-      Tensor::Create(column.tensor_.dtype(),
-                     {static_cast<int64_t>(column.tensor_.num_elements())},
-                     std::move(hashed_column)));
-  column.tensor_ = std::move(hashed_tensor);
-  return absl::OkStatus();
+  return Tensor::Create(column.dtype(),
+                        {static_cast<int64_t>(column.num_elements())},
+                        std::move(hashed_column), column.name());
 }
 
 }  // namespace
 
-absl::Status HashSensitiveColumns(std::vector<TensorColumn>& contents,
+absl::Status HashSensitiveColumns(std::vector<Tensor>& contents,
                                   absl::string_view key) {
-  for (TensorColumn& column : contents) {
+  for (Tensor& column : contents) {
     // Client upload columns are prefixed by <query_name>/ while server-side
     // data isn't.
-    if (absl::StartsWith(column.column_schema_.name(), "SENSITIVE_") ||
-        absl::StrContains(column.column_schema_.name(), "/SENSITIVE_")) {
-      if (column.column_schema_.type() !=
-              ExampleQuerySpec_OutputVectorSpec_DataType_STRING &&
-          column.column_schema_.type() !=
-              ExampleQuerySpec_OutputVectorSpec_DataType_BYTES) {
+    if (absl::StartsWith(column.name(), "SENSITIVE_") ||
+        absl::StrContains(column.name(), "/SENSITIVE_")) {
+      if (column.dtype() != DataType::DT_STRING) {
         return absl::InvalidArgumentError(absl::StrFormat(
-            "Only STRING or BYTES types are supported for sensitive columns. "
+            "Only DT_STRING types are supported for sensitive columns. "
             "Column %s has type %d",
-            column.column_schema_.name(), column.column_schema_.type()));
+            column.name(), column.dtype()));
       }
-      FCP_RETURN_IF_ERROR(HashColumn(column, key));
+      FCP_ASSIGN_OR_RETURN(Tensor hashed_column, HashColumn(column, key));
+      column = std::move(hashed_column);
     }
   }
   return absl::OkStatus();

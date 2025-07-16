@@ -21,7 +21,6 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "benchmark/benchmark.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
@@ -30,6 +29,7 @@
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql {
 
@@ -100,39 +100,25 @@ TableSchema CreateInputTableSchema(
   return schema;
 }
 
-absl::StatusOr<std::vector<TensorColumn>> CreateTableContents(
+absl::StatusOr<std::vector<Tensor>> CreateTableContents(
     const std::vector<int64_t>& int_vals,
     const std::vector<std::string>& str_vals,
     absl::string_view int_col_name = "int_vals",
     absl::string_view str_col_name = "str_vals") {
-  std::vector<TensorColumn> contents;
+  std::vector<Tensor> contents;
 
-  FCP_ASSIGN_OR_RETURN(
-      Tensor int_tensor,
-      Tensor::Create(DataType::DT_INT64,
-                     {static_cast<int64_t>(int_vals.size())},
-                     std::move(CreateTestData<int64_t>(int_vals))));
-  ColumnSchema int_col_schema;
-  int_col_schema.set_name(std::string(int_col_name));
-  int_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  FCP_ASSIGN_OR_RETURN(Tensor int_tensor,
+                       Tensor::Create(DataType::DT_INT64,
+                                      {static_cast<int64_t>(int_vals.size())},
+                                      CreateTestData<int64_t>(int_vals)));
 
-  FCP_ASSIGN_OR_RETURN(
-      Tensor str_tensor,
-      Tensor::Create(DataType::DT_STRING,
-                     {static_cast<int64_t>(str_vals.size())},
-                     std::move(CreateStringTestData(str_vals))));
-  ColumnSchema str_col_schema;
-  str_col_schema.set_name(std::string(str_col_name));
-  str_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+  FCP_ASSIGN_OR_RETURN(Tensor str_tensor,
+                       Tensor::Create(DataType::DT_STRING,
+                                      {static_cast<int64_t>(str_vals.size())},
+                                      CreateStringTestData(str_vals)));
 
-  FCP_ASSIGN_OR_RETURN(
-      TensorColumn int_column,
-      TensorColumn::Create(int_col_schema, std::move(int_tensor)));
-  FCP_ASSIGN_OR_RETURN(
-      TensorColumn str_column,
-      TensorColumn::Create(str_col_schema, std::move(str_tensor)));
-  contents.push_back(std::move(int_column));
-  contents.push_back(std::move(str_column));
+  contents.push_back(std::move(int_tensor));
+  contents.push_back(std::move(str_tensor));
   return contents;
 }
 
@@ -146,7 +132,7 @@ BENCHMARK_DEFINE_F(SqliteAdapterBenchmark, BM_AddTableContents)
     int_vals[i] = i;
     str_vals[i] = absl::StrCat("row_", i);
   }
-  absl::StatusOr<std::vector<TensorColumn>> contents =
+  absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents(int_vals, str_vals);
   CHECK_OK(contents);
   CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));

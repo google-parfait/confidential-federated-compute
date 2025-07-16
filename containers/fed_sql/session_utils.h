@@ -39,20 +39,20 @@ namespace confidential_federated_compute::fed_sql {
 // expected to be in the checkpoint.
 // TODO: Factor out the inference-specific logic and move this helper to the
 // containers/sql folder.
-absl::StatusOr<std::vector<sql::TensorColumn>> Deserialize(
-    const fcp::confidentialcompute::TableSchema& table_schema,
-    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
-    std::optional<SessionInferenceConfiguration> inference_configuration =
-        std::nullopt);
+absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+Deserialize(const fcp::confidentialcompute::TableSchema& table_schema,
+            tensorflow_federated::aggregation::CheckpointParser* checkpoint,
+            std::optional<SessionInferenceConfiguration>
+                inference_configuration = std::nullopt);
 
 // A simple pass-through CheckpointParser.
 class InMemoryCheckpointParser
     : public tensorflow_federated::aggregation::CheckpointParser {
  public:
   explicit InMemoryCheckpointParser(
-      std::vector<confidential_federated_compute::sql::TensorColumn> columns) {
+      std::vector<tensorflow_federated::aggregation::Tensor> columns) {
     for (auto& column : columns) {
-      tensors_[column.column_schema_.name()] = std::move(column.tensor_);
+      tensors_[column.name()] = std::move(column);
     }
   }
 

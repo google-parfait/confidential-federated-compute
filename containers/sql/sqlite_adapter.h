@@ -28,26 +28,6 @@
 
 namespace confidential_federated_compute::sql {
 
-class TensorColumn final {
- public:
-  static absl::StatusOr<TensorColumn> Create(
-      fcp::confidentialcompute::ColumnSchema column_schema,
-      tensorflow_federated::aggregation::Tensor tensor);
-
-  // Define a default constructor to enable creation of a vector of
-  // TensorColumns. A tensor created with the default constructor is not valid
-  // and thus should not actually be used.
-  TensorColumn() : column_schema_(), tensor_() {}
-
-  fcp::confidentialcompute::ColumnSchema column_schema_;
-  tensorflow_federated::aggregation::Tensor tensor_;
-
- private:
-  explicit TensorColumn(fcp::confidentialcompute::ColumnSchema column_schema,
-                        tensorflow_federated::aggregation::Tensor tensor)
-      : column_schema_(column_schema), tensor_(std::move(tensor)) {}
-};
-
 // Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
 class SqliteResultHandler final {
@@ -95,12 +75,14 @@ class SqliteAdapter {
   // The table must be created first via the most recent call to `DefineTable`,
   // and the column order of `contents` must match the schema specified for
   // `DefineTable`.
-  absl::Status AddTableContents(const std::vector<TensorColumn>& contents,
-                                int num_rows);
+  absl::Status AddTableContents(
+      const std::vector<tensorflow_federated::aggregation::Tensor>& contents,
+      int num_rows);
 
   // Evaluates the given SQL `query` statement, producing results matching the
   // provided `output_columns`.
-  absl::StatusOr<std::vector<TensorColumn>> EvaluateQuery(
+  absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+  EvaluateQuery(
       absl::string_view query,
       const google::protobuf::RepeatedPtrField<
           fcp::confidentialcompute::ColumnSchema>& output_columns) const;
@@ -117,9 +99,9 @@ class SqliteAdapter {
   // "INSERT INTO <table name> (<col name 1>, <col name 2>, ...) VALUES (?, ?,
   // ...), ..." and the columns should match `contents`, and the number of rows
   // should match `end_row_index -  start_row_index`.
-  absl::Status InsertRows(const std::vector<TensorColumn>& contents,
-                          int start_row_index, int end_row_index,
-                          absl::string_view insert_stmt);
+  absl::Status InsertRows(
+      const std::vector<tensorflow_federated::aggregation::Tensor>& contents,
+      int start_row_index, int end_row_index, absl::string_view insert_stmt);
 
   SqliteResultHandler result_handler_;
   sqlite3* db_;

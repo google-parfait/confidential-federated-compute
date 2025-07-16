@@ -47,8 +47,7 @@ class InferenceModel {
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
   absl::Status RunInference(
-      std::vector<::confidential_federated_compute::sql::TensorColumn>&
-          columns);
+      std::vector<tensorflow_federated::aggregation::Tensor>& columns);
   bool HasModel() const;
   const std::optional<SessionInferenceConfiguration>&
   GetInferenceConfiguration() const;

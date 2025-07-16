@@ -33,6 +33,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -43,16 +44,9 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::google::internal::federated::plan::
     ExampleQuerySpec_OutputVectorSpec_DataType;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -74,32 +68,26 @@ using ::testing::SizeIs;
 using ::testing::Test;
 using testing::UnorderedElementsAre;
 
-absl::StatusOr<TensorColumn> CreateStringTensorColumn(
+absl::StatusOr<Tensor> CreateStringTensor(
     const std::string& name,
     const std::initializer_list<absl::string_view>& data) {
-  absl::StatusOr<Tensor> tensor =
-      Tensor::Create(DataType::DT_STRING, {static_cast<int64_t>(data.size())},
-                     std::move(CreateTestData<absl::string_view>(data)));
-  FCP_RETURN_IF_ERROR(tensor.status());
-  ColumnSchema schema;
-  schema.set_name(name);
-  schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-  return TensorColumn::Create(schema, std::move(*tensor));
+  return Tensor::Create(DataType::DT_STRING,
+                        {static_cast<int64_t>(data.size())},
+                        CreateTestData<absl::string_view>(data), name);
 }
 
 TEST(SensitiveColumnsTest, NoSensitiveColumns) {
-  absl::StatusOr<TensorColumn> tensor_column =
-      CreateStringTensorColumn("not_sensitive", {"foo"});
-  CHECK_OK(tensor_column);
-  std::vector<TensorColumn> columns;
+  absl::StatusOr<Tensor> column = CreateStringTensor("not_sensitive", {"foo"});
+  CHECK_OK(column);
+  std::vector<Tensor> columns;
 
-  columns.push_back(std::move(*tensor_column));
+  columns.push_back(std::move(*column));
 
   std::string key = "unused_key";
 
   ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
   ASSERT_EQ(columns.size(), 1);
-  EXPECT_THAT(columns[0].tensor_.AsSpan<absl::string_view>(),
+  EXPECT_THAT(columns[0].AsSpan<absl::string_view>(),
               UnorderedElementsAre("foo"));
 }
 
@@ -107,11 +95,11 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithStringType) {
   std::string sensitive_value1 = "sensitive_value1";
   std::string sensitive_value2 = "sensitive_value2";
 
-  absl::StatusOr<TensorColumn> tensor_column = CreateStringTensorColumn(
+  absl::StatusOr<Tensor> column = CreateStringTensor(
       "SENSITIVE_str_col", {sensitive_value1, sensitive_value2});
-  CHECK_OK(tensor_column);
-  std::vector<TensorColumn> columns;
-  columns.push_back(std::move(*tensor_column));
+  CHECK_OK(column);
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*column));
 
   std::string key = "test_key";
   absl::StatusOr<std::string> hash1 = KeyedHash(sensitive_value1, key);
@@ -123,42 +111,19 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithStringType) {
   ASSERT_EQ(columns.size(), 1);
 
   absl::Span<const absl::string_view> column_span =
-      columns[0].tensor_.AsSpan<absl::string_view>();
+      columns[0].AsSpan<absl::string_view>();
   EXPECT_THAT(column_span, UnorderedElementsAre(*hash1, *hash2));
-}
-
-TEST(SensitiveColumnsTest, SensitiveColumnWithBytesType) {
-  std::string sensitive_value = "sensitive_value";
-
-  absl::StatusOr<TensorColumn> tensor_column =
-      CreateStringTensorColumn("SENSITIVE_byte_col", {sensitive_value});
-  CHECK_OK(tensor_column);
-  tensor_column->column_schema_.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_BYTES);
-  std::vector<TensorColumn> columns;
-  columns.push_back(std::move(*tensor_column));
-
-  std::string key = "test_key";
-  absl::StatusOr<std::string> hash = KeyedHash(sensitive_value, key);
-  CHECK_OK(hash);
-
-  ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
-  ASSERT_EQ(columns.size(), 1);
-
-  absl::Span<const absl::string_view> column_span =
-      columns[0].tensor_.AsSpan<absl::string_view>();
-  EXPECT_THAT(column_span, UnorderedElementsAre(*hash));
 }
 
 TEST(SensitiveColumnsTest, SensitiveColumnWithPrefix) {
   std::string sensitive_value1 = "sensitive_value1";
   std::string sensitive_value2 = "sensitive_value2";
 
-  absl::StatusOr<TensorColumn> tensor_column = CreateStringTensorColumn(
+  absl::StatusOr<Tensor> column = CreateStringTensor(
       "query-name/SENSITIVE_str_col", {sensitive_value1, sensitive_value2});
-  CHECK_OK(tensor_column);
-  std::vector<TensorColumn> columns;
-  columns.push_back(std::move(*tensor_column));
+  CHECK_OK(column);
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*column));
 
   std::string key = "test_key";
   absl::StatusOr<std::string> hash1 = KeyedHash(sensitive_value1, key);
@@ -170,19 +135,17 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithPrefix) {
   ASSERT_EQ(columns.size(), 1);
 
   absl::Span<const absl::string_view> column_span =
-      columns[0].tensor_.AsSpan<absl::string_view>();
+      columns[0].AsSpan<absl::string_view>();
   EXPECT_THAT(column_span, UnorderedElementsAre(*hash1, *hash2));
 }
 
 TEST(SensitiveColumnsTest, SensitiveColumnWithInvalidType) {
-  absl::StatusOr<TensorColumn> tensor_column =
-      CreateStringTensorColumn("SENSITIVE_invalid_col", {"unused"});
-  CHECK_OK(tensor_column);
-  tensor_column->column_schema_.set_type(
-      ExampleQuerySpec_OutputVectorSpec_DataType_INT32);
+  absl::StatusOr<Tensor> column =
+      Tensor::Create(DataType::DT_INT64, {1}, CreateTestData<int64_t>({42}),
+                     "SENSITIVE_invalid_col");
 
-  std::vector<TensorColumn> columns;
-  columns.push_back(std::move(*tensor_column));
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*column));
 
   std::string key = "test_key";
 
@@ -191,30 +154,30 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithInvalidType) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(result.message(),
-              HasSubstr("Only STRING or BYTES types are supported"));
+              HasSubstr("Only DT_STRING types are supported"));
 }
 
 TEST(SensitiveColumnsTest, MultipleSensitiveColumns) {
   std::string sensitive_value1 = "sensitive_value1";
   std::string sensitive_value2 = "sensitive_value2";
 
-  absl::StatusOr<TensorColumn> tensor_column1 =
-      CreateStringTensorColumn("SENSITIVE_col_1", {sensitive_value1});
-  CHECK_OK(tensor_column1);
-  absl::StatusOr<TensorColumn> tensor_column2 =
-      CreateStringTensorColumn("prefix/SENSITIVE_col_2", {sensitive_value2});
-  CHECK_OK(tensor_column2);
+  absl::StatusOr<Tensor> column1 =
+      CreateStringTensor("SENSITIVE_col_1", {sensitive_value1});
+  CHECK_OK(column1);
+  absl::StatusOr<Tensor> column2 =
+      CreateStringTensor("prefix/SENSITIVE_col_2", {sensitive_value2});
+  CHECK_OK(column2);
 
-  std::vector<TensorColumn> columns;
-  columns.push_back(std::move(*tensor_column1));
-  columns.push_back(std::move(*tensor_column2));
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*column1));
+  columns.push_back(std::move(*column2));
 
   std::string key = "test_key";
 
   ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
   ASSERT_EQ(columns.size(), 2);
-  ASSERT_EQ(columns[0].tensor_.num_elements(), 1);
-  ASSERT_EQ(columns[1].tensor_.num_elements(), 1);
+  ASSERT_EQ(columns[0].num_elements(), 1);
+  ASSERT_EQ(columns[1].num_elements(), 1);
 
   absl::StatusOr<std::string> hash1 = KeyedHash(sensitive_value1, key);
   CHECK_OK(hash1);
@@ -222,10 +185,10 @@ TEST(SensitiveColumnsTest, MultipleSensitiveColumns) {
   CHECK_OK(hash2);
 
   absl::Span<const absl::string_view> column_span1 =
-      columns[0].tensor_.AsSpan<absl::string_view>();
+      columns[0].AsSpan<absl::string_view>();
   EXPECT_EQ(column_span1.at(0), hash1.value());
   absl::Span<const absl::string_view> column_span2 =
-      columns[1].tensor_.AsSpan<absl::string_view>();
+      columns[1].AsSpan<absl::string_view>();
   EXPECT_EQ(column_span2.at(0), hash2.value());
 }
 

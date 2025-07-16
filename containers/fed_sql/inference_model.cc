@@ -25,13 +25,13 @@
 #include "gemma/configs.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "util/threading.h"
 
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::GEMMA2_2B;
@@ -62,8 +62,6 @@ using ::gcpp::PromptWrapping;
 using ::gcpp::RuntimeConfig;
 using ::gcpp::TimingInfo;
 using ::gcpp::Type;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -236,7 +234,7 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
   return output_stream.str();
 }
 
-absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
+absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
   if (!HasModel()) {
     return absl::UnimplementedError(
         "Model must be initialized before running inference.");
@@ -256,33 +254,30 @@ absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
         inference_task.column_config().output_column_name();
 
     // Iterate through the columns to find the input column.
-    TensorColumn output_column;
-    const auto it =
-        find_if(columns.begin(), columns.end(),
-                [&input_column_name](const TensorColumn& column) {
-                  return column.column_schema_.name() == input_column_name;
-                });
+    Tensor output_column;
+    const auto it = find_if(columns.begin(), columns.end(),
+                            [&input_column_name](const Tensor& column) {
+                              return column.name() == input_column_name;
+                            });
     if (it == columns.end()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Couldn't find an input column ", input_column_name,
                        " to run inference on."));
     }
-    const TensorColumn& input_column = *it;
-    if (input_column.column_schema_.type() !=
-        ExampleQuerySpec_OutputVectorSpec_DataType_STRING) {
+    const Tensor& input_column = *it;
+    if (input_column.dtype() != DataType::DT_STRING) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input column ", input_column_name, " is not of type STRING."));
     }
-    if (input_column.tensor_.shape().dim_sizes().size() != 1) {
+    if (input_column.shape().dim_sizes().size() != 1) {
       return absl::InvalidArgumentError(
           absl::StrCat("Input column ", input_column_name,
                        " is not a one-dimensional tensor."));
     }
-    int64_t tensor_size = input_column.tensor_.shape().dim_sizes()[0];
+    int64_t tensor_size = input_column.shape().dim_sizes()[0];
     std::unique_ptr<MutableStringData> output_string_data =
         std::make_unique<MutableStringData>(tensor_size);
-    for (const auto& input_value :
-         input_column.tensor_.AsSpan<absl::string_view>()) {
+    for (const auto& input_value : input_column.AsSpan<absl::string_view>()) {
       std::string output_string;
       ModelType model_type = GetModelType();
       switch (model_type) {
@@ -306,23 +301,16 @@ absl::Status InferenceModel::RunInference(std::vector<TensorColumn>& columns) {
     FCP_ASSIGN_OR_RETURN(
         Tensor out_tensor,
         Tensor::Create(DataType::DT_STRING, TensorShape({tensor_size}),
-                       std::move(output_string_data)));
+                       std::move(output_string_data), output_column_name));
 
-    ColumnSchema out_col_schema;
-    out_col_schema.set_name(output_column_name);
-    out_col_schema.set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
-    FCP_ASSIGN_OR_RETURN(
-        output_column,
-        TensorColumn::Create(out_col_schema, std::move(out_tensor)));
-
-    columns.push_back(std::move(output_column));
+    columns.push_back(std::move(out_tensor));
   }
 
-  auto new_end = std::remove_if(
-      columns.begin(), columns.end(),
-      [&erase_column_names](const TensorColumn& column) {
-        return erase_column_names.contains(column.column_schema_.name());
-      });
+  auto new_end =
+      std::remove_if(columns.begin(), columns.end(),
+                     [&erase_column_names](const Tensor& column) {
+                       return erase_column_names.contains(column.name());
+                     });
   columns.erase(new_end, columns.end());
   return absl::OkStatus();
 }

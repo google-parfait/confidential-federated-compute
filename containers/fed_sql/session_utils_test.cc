@@ -39,11 +39,8 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
-using ::confidential_federated_compute::sql::TensorColumn;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
 using ::tensorflow_federated::aggregation::AggVector;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
@@ -60,17 +57,16 @@ using ::testing::Each;
 using ::testing::PrintToString;
 using ::testing::UnorderedElementsAre;
 
-MATCHER_P(TensorColumnHasName, expected_name,
-          std::string("has column schema name '") + expected_name + "'") {
-  *result_listener << "whose column schema name is '"
-                   << arg.column_schema_.name() << "'";
-  return arg.column_schema_.name() == expected_name;
+MATCHER_P(TensorHasName, expected_name,
+          std::string("has '") + expected_name + "'") {
+  *result_listener << "whose name is '" << arg.name() << "'";
+  return arg.name() == expected_name;
 }
 
 MATCHER_P(TensorHasNumElements, expected_num_elements,
           std::string("tensor has ") + PrintToString(expected_num_elements) +
               " elements") {
-  const size_t actual_num_elements = arg.tensor_.num_elements();
+  const size_t actual_num_elements = arg.num_elements();
   if (actual_num_elements != expected_num_elements) {
     *result_listener << "tensor actually has " << actual_num_elements
                      << " elements";
@@ -92,23 +88,23 @@ std::vector<T> TensorValuesToVector(const Tensor& arg) {
   return vec;
 }
 
-MATCHER_P(Int64TensorColumnEq, expected_contents,
-          std::string("has tensor ") + PrintToString(expected_contents)) {
-  if (arg.tensor_.dtype() != DataType::DT_INT64) {
+MATCHER_P(Int64TensorEq, expected_contents,
+          std::string("tensor is ") + PrintToString(expected_contents)) {
+  if (arg.dtype() != DataType::DT_INT64) {
     return false;
   }
-  std::vector<int64_t> flat_vector = TensorValuesToVector<int64_t>(arg.tensor_);
-  *result_listener << "whose tensor is '" << PrintToString(flat_vector) << "'";
+  std::vector<int64_t> flat_vector = TensorValuesToVector<int64_t>(arg);
+  *result_listener << "tensor is '" << PrintToString(flat_vector) << "'";
   return flat_vector == expected_contents;
 }
 
-MATCHER_P(StringTensorColumnEq, expected_contents,
-          std::string("has tensor ") + PrintToString(expected_contents)) {
-  if (arg.tensor_.dtype() != DataType::DT_STRING) {
+MATCHER_P(StringTensorEq, expected_contents,
+          std::string("tensor is ") + PrintToString(expected_contents)) {
+  if (arg.dtype() != DataType::DT_STRING) {
     return false;
   }
   std::vector<absl::string_view> flat_vector =
-      TensorValuesToVector<absl::string_view>(arg.tensor_);
+      TensorValuesToVector<absl::string_view>(arg);
   *result_listener << "whose tensor is '" << PrintToString(flat_vector) << "'";
   return flat_vector == expected_contents;
 }
@@ -129,13 +125,11 @@ TEST(DeserializeTest, DeserializeSucceedsWithoutInferenceConfig) {
   EXPECT_THAT(deserialized_result, IsOk());
   EXPECT_EQ(deserialized_result->size(), 2);
   EXPECT_THAT(*deserialized_result,
-              UnorderedElementsAre(TensorColumnHasName("key"),
-                                   TensorColumnHasName("val")));
+              UnorderedElementsAre(TensorHasName("key"), TensorHasName("val")));
   EXPECT_THAT(*deserialized_result, Each(TensorHasNumElements(1)));
-  EXPECT_THAT(
-      *deserialized_result,
-      UnorderedElementsAre(Int64TensorColumnEq(std::vector<int64_t>{8}),
-                           Int64TensorColumnEq(std::vector<int64_t>{1})));
+  EXPECT_THAT(*deserialized_result,
+              UnorderedElementsAre(Int64TensorEq(std::vector<int64_t>{8}),
+                                   Int64TensorEq(std::vector<int64_t>{1})));
 }
 
 std::string BuildInferenceCheckpoint(
@@ -194,13 +188,12 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
   EXPECT_THAT(deserialized_result, IsOk());
   EXPECT_EQ(deserialized_result->size(), 2);
   EXPECT_THAT(*deserialized_result,
-              UnorderedElementsAre(TensorColumnHasName("key"),
-                                   TensorColumnHasName("val")));
+              UnorderedElementsAre(TensorHasName("key"), TensorHasName("val")));
   EXPECT_THAT(*deserialized_result, Each(TensorHasNumElements(1)));
   EXPECT_THAT(*deserialized_result,
               UnorderedElementsAre(
-                  Int64TensorColumnEq(std::vector<int64_t>{8}),
-                  StringTensorColumnEq(std::vector<absl::string_view>{"abc"})));
+                  Int64TensorEq(std::vector<int64_t>{8}),
+                  StringTensorEq(std::vector<absl::string_view>{"abc"})));
 }
 
 }  // namespace

@@ -221,14 +221,14 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-G1JqiVZtb9tstQOGmaBl0P3d0ygVlGkguz5ziVfvwAo=",
+    integrity = "sha256-ZoyPB5DDBDtFNOrH8lTHjsKqcBzAvqQZ2ZfdBo6WN9A=",
     patches = [
         "//third_party/org_tensorflow_federated:eigen.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
     ],
-    strip_prefix = "tensorflow-federated-dc779b04018e1c57698f17f77413a857100e2e33",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/dc779b04018e1c57698f17f77413a857100e2e33.tar.gz",
+    strip_prefix = "tensorflow-federated-23d710ed743c89627601da3c3a15e2dabed054f3",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/23d710ed743c89627601da3c3a15e2dabed054f3.tar.gz",
 )
 
 http_archive(
