@@ -10,64 +10,97 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    outputs:
-      binaries: ${{ steps.list-binaries.outputs.binaries }}
 
+  # Run a bazel build for each module root in the repository. New directories
+  # should be added to strategy.matrix.module-root below.
+  build:
     permissions:
       contents: read
 
     runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu24.04
 
+    strategy:
+      # Continue with other builds even if one fails.
+      fail-fast: false
+      matrix:
+        module-root:
+          - .
+          - learning_containers
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.13.0
+        uses: bazel-contrib/setup-bazel@0.15.0
         with:
+          module-root: ${{ matrix.module-root }}
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
+          disk-cache: ${{ github.workflow }}-${{ matrix.module-root }}
           repository-cache: true
       - name: Build
         run: |
-          bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
-      - name: List binaries
-        id: list-binaries
-        # Set the "binaries" output to a json-encoded list of the bazel build
-        # outputs, relative to `--destdir`. (e.g.
-        # ["agg_core/container.tar","ledger/binary"])
-        run: |
-          set -euxo pipefail
-          binaries="$(find "${{ runner.temp }}/binaries" -type f -printf '%P\n' | jq -Rsc 'split("\n")[:-1]')"
-          echo "binaries=${binaries}" >> "$GITHUB_OUTPUT"
+          cd "${{ matrix.module-root }}" && bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binaries-${{ matrix.module-root }}
           path: ${{ runner.temp }}/binaries/
           if-no-files-found: error
           retention-days: 5
 
-  attest:
+  # Produce a JSON-encoded list of all binaries produced by the `build` step.
+  list-binaries:
     needs: build
 
-    permissions:
-      id-token: write
-      attestations: write
+    outputs:
+      binaries: ${{ steps.list.outputs.binaries }}
 
-    runs-on: ubuntu-24.04
+    permissions: {}
 
-    strategy:
-      # Continue attesting other artifacts even if one fails.
-      fail-fast: false
-      matrix:
-        binary: ${{ fromJson(needs.build.outputs.binaries) }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: binaries
+          pattern: binaries-*
+          path: ${{ runner.temp }}/binaries
+          merge-multiple: true
+
+      - name: List binaries
+        id: list
+        # Set the "binaries" output to a json-encoded list of the bazel build
+        # artifacts. (e.g. ["agg_core/container.tar","ledger/binary"])
+        run: |
+          set -euxo pipefail
+          binaries="$(find "${{ runner.temp }}/binaries" -type f -printf '%P\n' | jq -Rsc 'split("\n")[:-1]')"
+          echo "binaries=${binaries}" >> "$GITHUB_OUTPUT"
+
+  # For each binary listed by the `list-binaries` step, generate signed build
+  # provenance. Provenance needs to be generated for each binary independently
+  # because Oak doesn't support reading multi-subject provenance. Provenance is
+  # then uploaded to Rekor and GCS.
+  attest:
+    needs: list-binaries
+
+    permissions:
+      id-token: write
+      attestations: write
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Continue attesting other artifacts even if one fails.
+      fail-fast: false
+      matrix:
+        binary: ${{ fromJson(needs.list-binaries.outputs.binaries) }}
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
       - name: Attest
         id: attest
         uses: actions/attest-build-provenance@v1
