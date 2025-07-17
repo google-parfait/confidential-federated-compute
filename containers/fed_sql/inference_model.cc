@@ -14,6 +14,8 @@
 
 #include "containers/fed_sql/inference_model.h"
 
+#include <regex>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -139,6 +141,16 @@ absl::StatusOr<ModelInfo> GetGemmaModelInfo(
                        gemma_config.tensor_type()));
   }
   return model_info;
+}
+
+// Apply a regex matching to the given text. Returns only the first match. If
+// no match is found, returns the original text.
+std::string RegexMatch(const std::string& text, const std::regex& regex) {
+  std::smatch match;
+  if (std::regex_match(text, match, regex) && match.size() > 1) {
+    return match[1];
+  }
+  return text;
 }
 
 }  // namespace
@@ -277,6 +289,10 @@ absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
     int64_t tensor_size = input_column.shape().dim_sizes()[0];
     std::unique_ptr<MutableStringData> output_string_data =
         std::make_unique<MutableStringData>(tensor_size);
+    std::unique_ptr<std::regex> regex;
+    if (!inference_task.prompt().regex().empty()) {
+      regex = std::make_unique<std::regex>(inference_task.prompt().regex());
+    }
     for (const auto& input_value : input_column.AsSpan<absl::string_view>()) {
       std::string output_string;
       ModelType model_type = GetModelType();
@@ -291,6 +307,9 @@ absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
         default:
           return absl::UnimplementedError(
               absl::StrCat("Unsupported model type: ", model_type));
+      }
+      if (regex) {
+        output_string = RegexMatch(output_string, *regex);
       }
       output_string_data->Add(std::move(output_string));
       // We can't remove the input column here yet as multiple prompts may rely

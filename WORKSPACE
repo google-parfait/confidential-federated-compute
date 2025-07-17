@@ -105,10 +105,10 @@ cc_library(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-8AFSZmkrLH4I/V3rSVlFYcp6IQVv+6jY45eJqrvIKX8=",
+    integrity = "sha256-aPU+BeK1ETrsNWVao0D+PUFZ5cq4NtBSCwbunOEYGik=",
     patches = ["//third_party/federated_compute:visibility.patch"],
-    strip_prefix = "federated-compute-a38b9d37459f44dda10cfc3ea4df7db14e155c81",
-    url = "https://github.com/google/federated-compute/archive/a38b9d37459f44dda10cfc3ea4df7db14e155c81.tar.gz",
+    strip_prefix = "federated-compute-59c593dcb3867b9f8a0d8eb50242987cc103510e",
+    url = "https://github.com/google/federated-compute/archive/59c593dcb3867b9f8a0d8eb50242987cc103510e.tar.gz",
 )
 
 http_archive(
