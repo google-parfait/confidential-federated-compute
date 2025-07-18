@@ -25,7 +25,6 @@ use access_policy_proto::{
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
 use googletest::prelude::*;
-use oak_proto_rust::oak::attestation::v1::ExtractedEvidence;
 use prost::Message;
 use session_test_utils::{get_test_endorsements, get_test_evidence, get_test_reference_values};
 
@@ -326,10 +325,8 @@ fn authorize_transform_success() {
             src_node_ids: elements_are!(eq(5), eq(6)),
             dst_node_ids: elements_are!(eq(7), eq(8)),
             config_constraints: some(matches_pattern!(Any { value: eq(b"config2") })),
-            extracted_evidence: matches_pattern!(ExtractedEvidence {
-                encryption_public_key: not(empty()),
-                signing_public_key: not(empty()),
-            }),
+            encryption_public_key: not(empty()),
+            signing_public_key: not(empty()),
         }))
     );
 }
@@ -456,7 +453,7 @@ fn authorize_transform_fails_without_match() {
             &Default::default(),
         ),
         err(displays_as(matches_regex(
-            "(?ms).*no transforms matched.+tag mismatch.+reference_values mismatch.*"
+            "(?ms).*no transforms matched.+tag mismatch.+unsupported ReferenceValues.*"
         )))
     );
 }

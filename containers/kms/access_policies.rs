@@ -12,20 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
 use access_policy_proto::fcp::confidentialcompute::{
     pipeline_variant_policy::Transform,
     DataAccessPolicyWithSerializedVariants as AuthorizedLogicalPipelinePoliciesWithSerializedVariants,
     PipelineVariantPolicy,
 };
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{anyhow, bail, ensure, Context};
 use kms_proto::{
     any_proto::google::protobuf::Any,
     endorsement_proto::oak::attestation::v1::Endorsements as KmsEndorsements,
     evidence_proto::oak::attestation::v1::Evidence as KmsEvidence,
     timestamp_proto::google::protobuf::Timestamp,
 };
-use oak_attestation_verification::verifier::verify;
-use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ExtractedEvidence};
+use oak_attestation_verification::{
+    policy::{
+        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
+        platform::AmdSevSnpPolicy, system::SystemPolicy, HYBRID_ENCRYPTION_PUBLIC_KEY_ID,
+        SIGNING_PUBLIC_KEY_ID,
+    },
+    verifier::{get_event_artifact, AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+};
+use oak_attestation_verification_types::{util::Clock, verifier::AttestationVerifier};
+use oak_proto_rust::oak::attestation::v1::{
+    attestation_results, reference_values, AmdSevReferenceValues, Endorsements, Evidence,
+    OakContainersReferenceValues, ReferenceValues, RootLayerReferenceValues,
+};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 
@@ -98,8 +111,10 @@ pub struct AuthorizedTransform {
     pub dst_node_ids: Vec<u32>,
     /// Any configuration constraints that should be applied by the transform.
     pub config_constraints: Option<Any>,
-    /// The evidence values extracted during attestation verification.
-    pub extracted_evidence: ExtractedEvidence,
+    /// The encryption public key extracted during attestation verification.
+    pub encryption_public_key: Vec<u8>,
+    /// The signing public key extracted during attestation verification.
+    pub signing_public_key: Vec<u8>,
 }
 
 /// Attempts to match the requestor against the Transforms in the access policy.
@@ -154,18 +169,93 @@ fn match_transform(
         ensure!(app_tag == tag, "tag mismatch");
     }
 
-    // Since we need ExtractedEvidence, we need to verify the attestation even
-    // if the ApplicationMatcher doesn't contain any ReferenceValues. This
-    // effectively makes ReferenceValues required for all transforms.
-    let reference_values = app.reference_values.unwrap_or_default().convert()?;
-    let extracted_evidence = verify(now_utc_millis, evidence, endorsements, &reference_values)
-        .context("reference_values mismatch")?;
+    // Since we need signing and encryption keys, we need to verify the
+    // attestation even if the ApplicationMatcher doesn't contain any
+    // ReferenceValues. This effectively makes ReferenceValues required for all
+    // transforms.
+    let verifier =
+        get_verifier(&app.reference_values.unwrap_or_default().convert()?, now_utc_millis)?;
+    let results = verifier.verify(evidence, endorsements).context("reference_values mismatch")?;
+    ensure!(
+        results.status == attestation_results::Status::Success as i32,
+        "attestation verification failed: {:?}: {}",
+        results.status,
+        results.reason
+    );
 
+    let encryption_public_key = get_event_artifact(&results, HYBRID_ENCRYPTION_PUBLIC_KEY_ID)
+        .context("evidence missing encryption public key")?;
+    let signing_public_key = get_event_artifact(&results, SIGNING_PUBLIC_KEY_ID)
+        .context("evidence missing signing public key")?;
     Ok(AuthorizedTransform {
         index,
         src_node_ids: transform.src_node_ids,
         dst_node_ids: transform.dst_node_ids,
         config_constraints: transform.config_constraints,
-        extracted_evidence,
+        encryption_public_key: encryption_public_key.clone(),
+        signing_public_key: signing_public_key.clone(),
     })
+}
+
+struct FixedClock {
+    now_utc_millis: i64,
+}
+impl Clock for FixedClock {
+    fn get_milliseconds_since_epoch(&self) -> i64 {
+        self.now_utc_millis
+    }
+}
+
+/// Returns an AttestationVerifier for the given ReferenceValues.
+fn get_verifier(
+    reference_values: &ReferenceValues,
+    now_utc_millis: i64,
+) -> anyhow::Result<Box<dyn AttestationVerifier>> {
+    match &reference_values.r#type {
+        // Oak Containers (insecure)
+        // TODO: b/432726860 - Use InsecureDiceAttestationVerifier once it is available.
+        Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer: Some(RootLayerReferenceValues { insecure: Some(_), .. }),
+            kernel_layer: Some(kernel_ref_vals),
+            system_layer: Some(system_ref_vals),
+            container_layer: Some(container_ref_vals),
+        })) => Ok(Box::new(EventLogVerifier::new(
+            vec![
+                Box::new(KernelPolicy::new(kernel_ref_vals)),
+                Box::new(SystemPolicy::new(system_ref_vals)),
+                Box::new(ContainerPolicy::new(container_ref_vals)),
+            ],
+            Arc::new(FixedClock { now_utc_millis }),
+        ))),
+
+        // Oak Containers (AMD SEV-SNP)
+        Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer:
+                Some(RootLayerReferenceValues {
+                    amd_sev:
+                        Some(
+                            amd_sev_ref_vals @ AmdSevReferenceValues {
+                                stage0: Some(stage0_ref_vals),
+                                ..
+                            },
+                        ),
+                    insecure: None,
+                    ..
+                }),
+            kernel_layer: Some(kernel_ref_vals),
+            system_layer: Some(system_ref_vals),
+            container_layer: Some(container_ref_vals),
+        })) => Ok(Box::new(AmdSevSnpDiceAttestationVerifier::new(
+            AmdSevSnpPolicy::new(amd_sev_ref_vals),
+            Box::new(FirmwarePolicy::new(stage0_ref_vals)),
+            vec![
+                Box::new(KernelPolicy::new(kernel_ref_vals)),
+                Box::new(SystemPolicy::new(system_ref_vals)),
+                Box::new(ContainerPolicy::new(container_ref_vals)),
+            ],
+            Arc::new(FixedClock { now_utc_millis }),
+        ))),
+
+        _ => bail!("unsupported ReferenceValues"),
+    }
 }

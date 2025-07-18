@@ -78,6 +78,7 @@ rust_library(
         "//third_party/federated_compute",
         "@oak//micro_rpc",
         "@oak//oak_attestation_verification",
+        "@oak//oak_attestation_verification_types",
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_restricted_kernel_sdk",
@@ -94,7 +95,10 @@ rust_library(
         "@oak_crates_index//:slog",
         "@trusted_computations_platform//runtime:tcp_runtime",
     ] + select({
-        "@platforms//os:linux": ["@oak//oak_attestation"],
+        "@platforms//os:linux": [
+            "@oak//oak_attestation",
+            "@oak//oak_sdk/standalone:oak_sdk_standalone",
+        ],
         "//conditions:default": [],
     }),
 )

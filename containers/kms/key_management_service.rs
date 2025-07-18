@@ -723,7 +723,7 @@ where
                 .authorized_logical_pipeline_policies_hashes,
         };
         let encrypted_message =
-            ClientEncryptor::create(&authorized_transform.extracted_evidence.encryption_public_key)
+            ClientEncryptor::create(&authorized_transform.encryption_public_key)
                 .and_then(|mut encryptor| {
                     encryptor.encrypt(
                         &protected_response.encode_to_vec(),
@@ -745,7 +745,7 @@ where
             &state_expiration,
         );
         let signing_key_endorsement = endorse_transform_signing_key(
-            &authorized_transform.extracted_evidence.signing_public_key,
+            &authorized_transform.signing_public_key,
             &cluster_key,
             ClaimsSetBuilder::new()
                 .issued_at(CwtTimestamp::WholeSeconds(now.seconds))

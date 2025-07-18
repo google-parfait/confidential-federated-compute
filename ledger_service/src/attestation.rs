@@ -14,8 +14,8 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use anyhow::Context;
+use alloc::{boxed::Box, string::String, sync::Arc, vec};
+use anyhow::{bail, ensure, Context};
 use cfc_crypto::CONFIG_PROPERTIES_CLAIM;
 use core::time::Duration;
 use coset::{cwt::ClaimName, cwt::ClaimsSet, CborSerializable, CoseKey, CoseSign1};
@@ -23,8 +23,23 @@ use federated_compute::proto::{
     value_matcher::Kind as ValueMatcherKind, value_matcher::NumberMatcher,
     value_matcher::StringMatcher, ApplicationMatcher, StructMatcher, ValueMatcher,
 };
-use oak_attestation_verification::verifier::{verify, verify_dice_chain_and_extract_evidence};
-use oak_proto_rust::oak::attestation::v1::{Endorsements, Evidence, ReferenceValues};
+use oak_attestation_verification::{
+    decode_event_proto,
+    policy::{
+        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
+        platform::AmdSevSnpPolicy, system::SystemPolicy, SIGNING_PUBLIC_KEY_ID,
+    },
+    verifier::{get_event_artifact, AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+};
+use oak_attestation_verification_types::{policy::Policy, verifier::AttestationVerifier};
+use oak_proto_rust::oak::{
+    attestation::v1::{
+        attestation_results, reference_values, AmdSevReferenceValues, ContainerLayerData,
+        Endorsements, EventAttestationResults, Evidence, OakContainersReferenceValues,
+        ReferenceValues, RootLayerReferenceValues,
+    },
+    Variant,
+};
 use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
 use prost::Message;
 use prost_types::{value::Kind as ValueKind, Struct, Value};
@@ -83,7 +98,15 @@ impl Application<'_> {
                 (Some(evidence), Some(endorsements)) => (evidence, endorsements),
                 _ => return false,
             };
-            verify(now_utc_millis, evidence, endorsements, rv).is_ok()
+            let verifier = match Self::get_verifier(rv, now_utc_millis) {
+                Ok(verifier) => verifier,
+                Err(_) => return false,
+            };
+            let results = match verifier.verify(evidence, endorsements) {
+                Ok(results) => results,
+                Err(_) => return false,
+            };
+            results.status == attestation_results::Status::Success as i32
         })
     }
 
@@ -154,6 +177,60 @@ impl Application<'_> {
             _ => false,
         }
     }
+
+    /// Returns an AttestationVerifier for the given ReferenceValues.
+    fn get_verifier(
+        reference_values: &ReferenceValues,
+        now_utc_millis: i64,
+    ) -> anyhow::Result<Box<dyn AttestationVerifier>> {
+        match &reference_values.r#type {
+            // Oak Containers (insecure)
+            // TODO: b/432726860 - Use InsecureDiceAttestationVerifier once it is available.
+            Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+                root_layer: Some(RootLayerReferenceValues { insecure: Some(_), .. }),
+                kernel_layer: Some(kernel_ref_vals),
+                system_layer: Some(system_ref_vals),
+                container_layer: Some(container_ref_vals),
+            })) => Ok(Box::new(EventLogVerifier::new(
+                vec![
+                    Box::new(KernelPolicy::new(kernel_ref_vals)),
+                    Box::new(SystemPolicy::new(system_ref_vals)),
+                    Box::new(ContainerPolicy::new(container_ref_vals)),
+                ],
+                Arc::new(FixedClock { now_utc_millis }),
+            ))),
+
+            // Oak Containers (AMD SEV-SNP)
+            Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+                root_layer:
+                    Some(RootLayerReferenceValues {
+                        amd_sev:
+                            Some(
+                                amd_sev_ref_vals @ AmdSevReferenceValues {
+                                    stage0: Some(stage0_ref_vals),
+                                    ..
+                                },
+                            ),
+                        insecure: None,
+                        ..
+                    }),
+                kernel_layer: Some(kernel_ref_vals),
+                system_layer: Some(system_ref_vals),
+                container_layer: Some(container_ref_vals),
+            })) => Ok(Box::new(AmdSevSnpDiceAttestationVerifier::new(
+                AmdSevSnpPolicy::new(amd_sev_ref_vals),
+                Box::new(FirmwarePolicy::new(stage0_ref_vals)),
+                vec![
+                    Box::new(KernelPolicy::new(kernel_ref_vals)),
+                    Box::new(SystemPolicy::new(system_ref_vals)),
+                    Box::new(ContainerPolicy::new(container_ref_vals)),
+                ],
+                Arc::new(FixedClock { now_utc_millis }),
+            ))),
+
+            _ => bail!("unsupported ReferenceValues"),
+        }
+    }
 }
 
 /// Verifies enclave attestation and returns an Application describing its
@@ -168,7 +245,7 @@ pub fn verify_attestation<'a>(
     tag: &'a str,
 ) -> anyhow::Result<(Application<'a>, CoseKey)> {
     let mut config_properties = None;
-    if let Some(evidence) = evidence {
+    if let (Some(evidence), Some(endorsements)) = (evidence, endorsements) {
         // If evidence was provided, pre-validate the DICE chain to ensure it's
         // structurally correct and that the public key is signed by its
         // application signing key. This duplicates validation that occurs
@@ -186,11 +263,31 @@ pub fn verify_attestation<'a>(
                 cwt.protected.header.alg.unwrap()
             ));
         }
-        let extracted_evidence =
-            verify_dice_chain_and_extract_evidence(evidence).context("invalid DICE chain")?;
-        let verifying_key =
-            VerifyingKey::from_sec1_bytes(&extracted_evidence.signing_public_key)
-                .map_err(|err| anyhow::anyhow!("invalid application signing key: {:?}", err))?;
+
+        // Construct a verifier that extracts the application signing key but
+        // doesn't check anything else. This is safe because the attestation
+        // evidence will be verified against the reference values later.
+        let verifier = EventLogVerifier::new(
+            vec![
+                Box::new(SkipPolicy {}),
+                Box::new(SkipPolicy {}),
+                Box::new(ExtractContainerSigningKeyPolicy {}),
+            ],
+            Arc::new(FixedClock { now_utc_millis: 0 }),
+        );
+        let results =
+            verifier.verify(evidence, endorsements).context("attestation verification failed")?;
+        ensure!(
+            results.status == attestation_results::Status::Success as i32,
+            "attestation verification failed: {:?}: {}",
+            results.status,
+            results.reason
+        );
+
+        let signing_public_key = get_event_artifact(&results, SIGNING_PUBLIC_KEY_ID)
+            .context("evidence missing signing public key")?;
+        let verifying_key = VerifyingKey::from_sec1_bytes(signing_public_key)
+            .map_err(|err| anyhow::anyhow!("invalid application signing key: {:?}", err))?;
         cwt.verify_signature(b"", |signature, message| {
             verifying_key.verify(message, &Signature::from_slice(signature)?)
         })
@@ -223,72 +320,125 @@ pub fn verify_attestation<'a>(
     ))
 }
 
+/// A no-op policy.
+struct SkipPolicy {}
+impl Policy<[u8]> for SkipPolicy {
+    fn verify(
+        &self,
+        _encoded_event: &[u8],
+        _encoded_endorsement: &Variant,
+        _milliseconds_since_epoch: i64,
+    ) -> anyhow::Result<EventAttestationResults> {
+        Ok(EventAttestationResults::default())
+    }
+}
+
+/// A Policy implementation that extracts the container layer's application
+/// signing key but performs no validation.
+struct ExtractContainerSigningKeyPolicy {}
+impl Policy<[u8]> for ExtractContainerSigningKeyPolicy {
+    fn verify(
+        &self,
+        encoded_event: &[u8],
+        _encoded_endorsement: &Variant,
+        _milliseconds_since_epoch: i64,
+    ) -> anyhow::Result<EventAttestationResults> {
+        let event = decode_event_proto::<ContainerLayerData>(
+            "type.googleapis.com/oak.attestation.v1.ContainerLayerData",
+            encoded_event,
+        )?;
+
+        let mut results = EventAttestationResults::default();
+        if !event.signing_public_key.is_empty() {
+            results.artifacts.insert(SIGNING_PUBLIC_KEY_ID.into(), event.signing_public_key);
+        }
+        Ok(results)
+    }
+}
+
+struct FixedClock {
+    now_utc_millis: i64,
+}
+impl oak_attestation_verification_types::util::Clock for FixedClock {
+    fn get_milliseconds_since_epoch(&self) -> i64 {
+        self.now_utc_millis
+    }
+}
+
+#[cfg(feature = "testing")]
+struct FakeData {
+    standalone: oak_sdk_standalone::Standalone,
+    signing_key: p256::ecdsa::SigningKey,
+}
+
+#[cfg(feature = "testing")]
+static FAKE_DATA: std::sync::LazyLock<FakeData> = std::sync::LazyLock::new(|| {
+    let signing_key = p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng);
+    let standalone = oak_sdk_standalone::Standalone::builder()
+        .signing_key_pair(Some((signing_key.clone(), VerifyingKey::from(&signing_key))))
+        .build()
+        .expect("failed to build Standalone");
+    FakeData { standalone, signing_key }
+});
+
 /// Helper function that returns a test Evidence message.
 #[cfg(feature = "testing")]
 pub fn get_test_evidence() -> Evidence {
-    use oak_restricted_kernel_sdk::{testing::MockAttester, Attester};
-
-    let mock_attester = MockAttester::create().expect("failed to create mock attester");
-    mock_attester.quote().expect("couldn't get evidence")
+    FAKE_DATA.standalone.endorsed_evidence().evidence.unwrap()
 }
 
 /// Helper function that returns a test Endorsements message.
 #[cfg(feature = "testing")]
 pub fn get_test_endorsements() -> Endorsements {
-    use oak_proto_rust::oak::attestation::v1::{
-        endorsements, OakRestrictedKernelEndorsements, RootLayerEndorsements,
-    };
+    FAKE_DATA.standalone.endorsed_evidence().endorsements.unwrap()
+}
 
-    Endorsements {
-        r#type: Some(endorsements::Type::OakRestrictedKernel(OakRestrictedKernelEndorsements {
-            root_layer: Some(RootLayerEndorsements::default()),
-            ..Default::default()
-        })),
-        ..Default::default()
-    }
+/// Helper function that returns a test SigningKey that matches the test
+/// Evidence.
+#[cfg(feature = "testing")]
+pub fn get_test_signer() -> impl oak_crypto::signer::Signer {
+    FAKE_DATA.signing_key.clone()
 }
 
 /// Helper function that returns ReferenceValues that match the test Evidence.
 #[cfg(feature = "testing")]
-pub fn get_test_reference_values() -> oak_proto_rust::oak::attestation::v1::ReferenceValues {
+pub fn get_test_reference_values() -> ReferenceValues {
     use oak_proto_rust::oak::attestation::v1::{
         binary_reference_value, kernel_binary_reference_value, reference_values,
-        text_reference_value, ApplicationLayerReferenceValues, BinaryReferenceValue,
+        text_reference_value, BinaryReferenceValue, ContainerLayerReferenceValues,
         InsecureReferenceValues, KernelBinaryReferenceValue, KernelLayerReferenceValues,
-        OakRestrictedKernelReferenceValues, RootLayerReferenceValues, SkipVerification,
-        TextReferenceValue,
+        SkipVerification, SystemLayerReferenceValues, TextReferenceValue,
     };
 
     let skip = BinaryReferenceValue {
         r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
     };
     ReferenceValues {
-        r#type: Some(reference_values::Type::OakRestrictedKernel(
-            OakRestrictedKernelReferenceValues {
-                root_layer: Some(RootLayerReferenceValues {
-                    insecure: Some(InsecureReferenceValues::default()),
-                    ..Default::default()
+        r#type: Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer: Some(RootLayerReferenceValues {
+                insecure: Some(InsecureReferenceValues::default()),
+                ..Default::default()
+            }),
+            kernel_layer: Some(KernelLayerReferenceValues {
+                kernel: Some(KernelBinaryReferenceValue {
+                    r#type: Some(kernel_binary_reference_value::Type::Skip(
+                        SkipVerification::default(),
+                    )),
                 }),
-                kernel_layer: Some(KernelLayerReferenceValues {
-                    kernel: Some(KernelBinaryReferenceValue {
-                        r#type: Some(kernel_binary_reference_value::Type::Skip(
-                            SkipVerification::default(),
-                        )),
-                    }),
-                    kernel_cmd_line_text: Some(TextReferenceValue {
-                        r#type: Some(text_reference_value::Type::Skip(SkipVerification::default())),
-                    }),
-                    init_ram_fs: Some(skip.clone()),
-                    memory_map: Some(skip.clone()),
-                    acpi: Some(skip.clone()),
-                    ..Default::default()
+                kernel_cmd_line_text: Some(TextReferenceValue {
+                    r#type: Some(text_reference_value::Type::Skip(SkipVerification::default())),
                 }),
-                application_layer: Some(ApplicationLayerReferenceValues {
-                    binary: Some(skip.clone()),
-                    configuration: Some(skip.clone()),
-                }),
-            },
-        )),
+                init_ram_fs: Some(skip.clone()),
+                memory_map: Some(skip.clone()),
+                acpi: Some(skip.clone()),
+                ..Default::default()
+            }),
+            system_layer: Some(SystemLayerReferenceValues { system_image: Some(skip.clone()) }),
+            container_layer: Some(ContainerLayerReferenceValues {
+                binary: Some(skip.clone()),
+                configuration: Some(skip.clone()),
+            }),
+        })),
     }
 }
 
@@ -309,7 +459,6 @@ mod tests {
     use oak_proto_rust::oak::attestation::v1::{
         endorsements, OakRestrictedKernelEndorsements, ReferenceValues,
     };
-    use oak_restricted_kernel_sdk::testing::MockSigner;
 
     /// Helper function to create a valid public key.
     fn create_public_key(config_properties: Option<&prost_types::Struct>) -> (Vec<u8>, CoseKey) {
@@ -334,7 +483,7 @@ mod tests {
         let cwt = CoseSign1Builder::new()
             .protected(header.build())
             .payload(claims.build().to_vec().unwrap())
-            .create_signature(b"", |message| MockSigner::create().unwrap().sign(message))
+            .create_signature(b"", |message| get_test_signer().sign(message))
             .build()
             .to_vec()
             .unwrap();
@@ -578,8 +727,8 @@ mod tests {
         let (cwt, _) = create_public_key(None);
         let evidence = Evidence::default();
         assert_that!(
-            verify_attestation(&cwt, Some(&evidence), None, ""),
-            err(displays_as(contains_substring("invalid DICE chain")))
+            verify_attestation(&cwt, Some(&evidence), Some(&get_test_endorsements()), ""),
+            err(displays_as(contains_substring("attestation verification failed")))
         );
     }
 
@@ -587,7 +736,12 @@ mod tests {
     fn test_verify_attestation_invalid_public_key_alg() {
         let (cwt, _) = create_public_key_with_algorithm(None, Some(coset::iana::Algorithm::ES256K));
         assert_that!(
-            verify_attestation(&cwt, Some(&get_test_evidence()), None, "tag"),
+            verify_attestation(
+                &cwt,
+                Some(&get_test_evidence()),
+                Some(&get_test_endorsements()),
+                "tag"
+            ),
             err(displays_as(contains_substring("unsupported public key algorithm")))
         );
     }
@@ -599,7 +753,12 @@ mod tests {
         invalid_cwt.signature = b"invalid".into();
         let invalid_public_key = invalid_cwt.to_vec().unwrap();
         assert_that!(
-            verify_attestation(&invalid_public_key, Some(&get_test_evidence()), None, ""),
+            verify_attestation(
+                &invalid_public_key,
+                Some(&get_test_evidence()),
+                Some(&get_test_endorsements()),
+                ""
+            ),
             err(displays_as(contains_substring("invalid public key signature")))
         );
     }

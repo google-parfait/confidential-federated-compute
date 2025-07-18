@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![no_std]
+#![cfg_attr(not(feature = "testing"), no_std)]
 // TODO: b/392802991 - Remove this once usage of the deprecated DataAccessPolicy
 // fields are removed.
 #![allow(deprecated)]
@@ -55,7 +55,9 @@ mod replication {
 }
 
 #[cfg(feature = "testing")]
-pub use attestation::{get_test_endorsements, get_test_evidence, get_test_reference_values};
+pub use attestation::{
+    get_test_endorsements, get_test_evidence, get_test_reference_values, get_test_signer,
+};
 
 use crate::replication::{
     authorize_access_event::BlobMetadata, AuthorizeAccessEvent, CreateKeyEvent, LedgerSnapshot,
@@ -1323,11 +1325,7 @@ mod tests {
                     .to_vec()
                     .unwrap(),
             )
-            .create_signature(b"", |message| {
-                // The MockSigner signs the key with application signing key provided by the
-                // MockEvidenceProvider.
-                MockSigner::create().unwrap().sign(message)
-            })
+            .create_signature(b"", |message| get_test_signer().sign(message))
             .build()
             .to_vec()
             .unwrap();
@@ -1482,11 +1480,7 @@ mod tests {
                     .to_vec()
                     .unwrap(),
             )
-            .create_signature(b"", |message| {
-                // The MockSigner signs the key with application signing key provided by the
-                // MockEvidenceProvider.
-                MockSigner::create().unwrap().sign(message)
-            })
+            .create_signature(b"", |message| get_test_signer().sign(message))
             .build()
             .to_vec()
             .unwrap();
