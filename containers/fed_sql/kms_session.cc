@@ -273,27 +273,19 @@ KmsFedSqlSession::SessionAccumulate(
         "Failed to deserialize checkpoint for AGGREGATION_TYPE_ACCUMULATE: ",
         parser.status()));
   }
-  if (sql_configuration_ != std::nullopt) {
-    FCP_ASSIGN_OR_RETURN(
-        std::vector<Tensor> contents,
-        Deserialize(sql_configuration_->input_schema, parser->get(),
-                    inference_model_.GetInferenceConfiguration()));
-    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-    if (inference_model_.HasModel()) {
-      FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
-    }
-    absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
-        ExecuteClientQuery(*sql_configuration_, std::move(contents));
-    if (!sql_result_parser.ok()) {
-      return ToSessionWriteFinishedResponse(PrependMessage(
-          "Failed to execute SQL query: ", sql_result_parser.status()));
-    }
-    parser = std::move(sql_result_parser);
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<Tensor> contents,
+      Deserialize(sql_configuration_->input_schema, parser->get(),
+                  inference_model_.GetInferenceConfiguration()));
+  FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
+  if (inference_model_.HasModel()) {
+    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
+
   // Queue the blob so it can be processed on commit.
   auto blob_id = LoadBigEndian<absl::uint128>(blob_header.blob_id());
   auto [unused, inserted] = uncommitted_inputs_.emplace(
-      blob_id, UncommittedInput{.parser = std::move(*parser),
+      blob_id, UncommittedInput{.contents = std::move(contents),
                                 .blob_header = std::move(blob_header)});
   if (!inserted) {
     return ToSessionWriteFinishedResponse(
@@ -350,6 +342,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
   Interval<uint64_t> range(commit_config.range().start(),
                            commit_config.range().end());
   absl::flat_hash_set<std::string> unique_key_ids;
+  std::vector<absl::Status> ignored_errors;
   for (auto& [blob_id, uncommitted_input] : uncommitted_inputs_) {
     // Use the high 64 bit of the blob_id to check whether the blob is
     // in the specified range.
@@ -365,9 +358,26 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
     if (!uncommitted_input.blob_header.key_id().empty()) {
       unique_key_ids.insert(uncommitted_input.blob_header.key_id());
     }
+    std::unique_ptr<CheckpointParser> parser;
+    // Execute the per-client SQL query if configured on each uncommitted blob.
+    if (sql_configuration_.has_value()) {
+      // TODO: b/432091990 - Update ExecuteClientQuery to accept a row
+      // iterator instead of a vector of tensors.
+      absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
+          ExecuteClientQuery(*sql_configuration_,
+                             std::move(uncommitted_input.contents));
+      if (!sql_result_parser.ok()) {
+        // Ignore this blob, but continue processing other blobs.
+        ignored_errors.push_back(sql_result_parser.status());
+        continue;
+      }
+      parser = std::move(*sql_result_parser);
+    } else {
+      parser = std::make_unique<InMemoryCheckpointParser>(
+          std::move(uncommitted_input.contents));
+    }
 
-    absl::Status accumulate_status =
-        aggregator_->Accumulate(*uncommitted_input.parser);
+    absl::Status accumulate_status = aggregator_->Accumulate(*parser);
     if (!accumulate_status.ok()) {
       if (absl::IsNotFound(accumulate_status)) {
         return absl::InvalidArgumentError(
