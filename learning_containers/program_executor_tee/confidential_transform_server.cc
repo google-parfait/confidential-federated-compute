@@ -17,6 +17,8 @@
 #include <pybind11/stl.h>
 
 #include <execution>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -157,6 +159,84 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
   return config_properties;
 }
 
+absl::Status AppendBytesToTempFile(std::string& file_path,
+                                   std::ios_base::openmode mode,
+                                   const char* data,
+                                   std::streamsize data_size) {
+  // Write or append binary content to file depending on mode.
+  std::ofstream temp_file(file_path, mode);
+  if (!temp_file.is_open()) {
+    return absl::DataLossError(
+        absl::StrCat("Failed to open temp file for writing: ", file_path));
+  }
+  temp_file.write(data, data_size);
+  temp_file.close();
+  return absl::OkStatus();
+}
+
+absl::Status
+ProgramExecutorTeeConfidentialTransform::ReadWriteConfigurationRequest(
+    const fcp::confidentialcompute::WriteConfigurationRequest&
+        write_configuration) {
+  std::ios_base::openmode file_open_mode;
+  // First request metadata is set for the first WriteConfigurationRequest of a
+  // new data blob.
+  if (write_configuration.has_first_request_metadata()) {
+    // Create a new file.
+    file_open_mode = std::ios::binary;
+    current_model_id_ =
+        write_configuration.first_request_metadata().configuration_id();
+    if (write_configuration_map_.find(current_model_id_) !=
+        write_configuration_map_.end()) {
+      return absl::InvalidArgumentError(
+          "Duplicated configuration_id found in WriteConfigurationRequest.");
+    }
+    // Create new temp files. Temp files are saved as "/tmp/model_1.zip",
+    // "/tmp/model_2.zip", etc. Use model_id to distinguish different model
+    // file names.
+    std::string temp_file_path =
+        absl::StrCat("/tmp/", current_model_id_, ".zip");
+
+    LOG(INFO) << "Start writing bytes for model_id: " << current_model_id_
+              << " to " << temp_file_path;
+
+    write_configuration_map_[current_model_id_] = WriteConfigurationMetadata{
+        .file_path = std::move(temp_file_path),
+        .total_size_bytes = static_cast<uint64_t>(
+            write_configuration.first_request_metadata().total_size_bytes()),
+        .commit = write_configuration.commit()};
+  } else {
+    // If the current write_configuration is not the first
+    // WriteConfigurationRequest of a data blob, append to existing file.
+    file_open_mode = std::ios::binary | std::ios::app;
+  }
+
+  auto& [current_file_path, current_total_size_bytes, commit] =
+      write_configuration_map_[current_model_id_];
+  FCP_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
+                                            write_configuration.data().data(),
+                                            write_configuration.data().size()));
+  // Update the commit status of the data blob in write_configuration_map_.
+  commit = write_configuration.commit();
+
+  // When it's the last WriteConfigurationRequest of a blob, check the size of
+  // the file matches the expectation.
+  if (commit) {
+    if (std::filesystem::file_size(current_file_path) !=
+        current_total_size_bytes) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("The total size of the data blob does not match "
+                       "expected size. Expecting ",
+                       current_total_size_bytes, ", got ",
+                       std::filesystem::file_size(current_file_path)));
+    }
+    LOG(INFO) << "Successfully wrote all " << current_total_size_bytes
+              << " bytes to " << current_file_path;
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
     const fcp::confidentialcompute::BlobMetadata& metadata) {
   return GetKeyIdFromMetadata(metadata);
@@ -164,6 +244,16 @@ absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
 
 absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session> >
 ProgramExecutorTeeConfidentialTransform::CreateSession() {
+  // Check that all zipped models passed in through WriteConfigurationRequest
+  // are committed and populate model_id_to_zip_file_.
+  for (const auto& [model_id, config_metadata] : write_configuration_map_) {
+    if (!config_metadata.commit) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Model with model_id ", model_id, " is not committed."));
+    }
+    model_id_to_zip_file_[model_id] = config_metadata.file_path;
+  }
+
   FCP_ASSIGN_OR_RETURN(BlobDecryptor * blob_decryptor, GetBlobDecryptor());
   return std::make_unique<ProgramExecutorTeeSession>(
       initialize_config_, model_id_to_zip_file_, blob_decryptor);

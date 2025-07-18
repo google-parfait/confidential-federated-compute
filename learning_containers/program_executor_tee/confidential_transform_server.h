@@ -88,12 +88,7 @@ class ProgramExecutorTeeConfidentialTransform final
 
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
-          write_configuration) override {
-    // TODO: Populate the model_id_to_zip_file_ map from the
-    // WriteConfigurationRequests.
-    return absl::UnimplementedError(
-        "WriteConfigurationRequests are not yet supported.");
-  }
+          write_configuration) override;
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
@@ -107,6 +102,18 @@ class ProgramExecutorTeeConfidentialTransform final
       initialize_config_;
   // Map of model ids to zip files representing tff FunctionalModels.
   std::map<std::string, std::string> model_id_to_zip_file_;
+  // Track the model_id of the current model passed to container through
+  // `ReadWriteConfigurationRequest`.
+  std::string current_model_id_;
+  // Tracking zipped models passed into the container through
+  // WriteConfigurationRequest.
+  struct WriteConfigurationMetadata {
+    std::string file_path;
+    uint64_t total_size_bytes;
+    bool commit;
+  };
+  absl::flat_hash_map<std::string, WriteConfigurationMetadata>
+      write_configuration_map_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

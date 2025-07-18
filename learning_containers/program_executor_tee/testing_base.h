@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -32,6 +34,7 @@ namespace {
 
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::ConfigurationMetadata;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
@@ -103,8 +106,28 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
                      std::vector<std::string> client_ids = {},
                      std::string client_data_dir = "") {
     grpc::ClientContext configure_context;
+
+    StreamInitializeRequest first_request;
+    std::filesystem::path dir_path =
+        std::filesystem::path(__FILE__).remove_filename();
+    std::filesystem::path file_path = dir_path /= "testdata/model1.zip";
+    std::string model_path = file_path.string();
+    std::ifstream file(model_path);
+    CHECK(file.is_open());
+    auto file_size = std::filesystem::file_size(model_path);
+    std::string file_content(file_size, '\0');
+    file.read(file_content.data(), file_size);
+    first_request.mutable_write_configuration()->set_data(file_content);
+    ConfigurationMetadata* metadata =
+        first_request.mutable_write_configuration()
+            ->mutable_first_request_metadata();
+    metadata->set_configuration_id("model1");
+    metadata->set_total_size_bytes(file_size);
+    first_request.mutable_write_configuration()->set_commit(true);
+    file.close();
+
     InitializeResponse response;
-    StreamInitializeRequest request;
+    StreamInitializeRequest second_request;
 
     ProgramExecutorTeeInitializeConfig config;
     config.set_program(program);
@@ -116,13 +139,14 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
     }
 
     InitializeRequest* initialize_request =
-        request.mutable_initialize_request();
+        second_request.mutable_initialize_request();
     initialize_request->set_max_num_sessions(kMaxNumSessions);
     initialize_request->mutable_configuration()->PackFrom(config);
 
     std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
         stub_->StreamInitialize(&configure_context, &response);
-    CHECK(writer->Write(request));
+    CHECK(writer->Write(first_request));
+    CHECK(writer->Write(second_request));
     CHECK(writer->WritesDone());
     CHECK(writer->Finish().ok());
 

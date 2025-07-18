@@ -34,9 +34,15 @@ trusted_py_runtime(
     ],
 )
 
+filegroup(
+    name = "testdata",
+    srcs = glob(["testdata/*"]),
+)
+
 cc_library(
     name = "testing_base",
     hdrs = ["testing_base.h"],
+    data = [":testdata"],
     deps = [
         ":confidential_transform_server",
         "//program_executor_tee/program_context/cc:fake_data_read_write_service",
@@ -111,6 +117,26 @@ cc_test(
     name = "data_source_integration_test",
     size = "medium",
     srcs = ["data_source_integration_test.cc"],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_runtime"],
+    deps = [
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "load_model_integration_test",
+    size = "medium",
+    srcs = ["load_model_integration_test.cc"],
     env = {
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
