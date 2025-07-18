@@ -28,6 +28,7 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
+#include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -98,7 +99,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
 
   // A partially processed but uncommitted input, along with its metadata.
   struct UncommittedInput {
-    std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser> parser;
+    std::vector<tensorflow_federated::aggregation::Tensor> contents;
     const fcp::confidentialcompute::BlobHeader blob_header;
   };
 
