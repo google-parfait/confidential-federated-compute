@@ -291,9 +291,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-7MLAJJlK/Csm9NbwQQCsVSBAagSju57/3+UUMd+uGLY=",
-    strip_prefix = "trusted-computations-platform-879a9a960e3a474ec1fae9f1cfa64e53a714fa90",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/879a9a960e3a474ec1fae9f1cfa64e53a714fa90.tar.gz",
+    integrity = "sha256-SEJdBbuya45Ce9F0AJ9KRG+DoB4D4vqkE0A8Mj7JDOQ=",
+    strip_prefix = "trusted-computations-platform-e8c1c8e69b2ce5bf732df94c757dec8d595a8094",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/e8c1c8e69b2ce5bf732df94c757dec8d595a8094.tar.gz",
 )
 
 # TensorFlow pins an old version of upb that's compatible with their old
