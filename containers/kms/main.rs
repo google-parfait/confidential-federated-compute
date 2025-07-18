@@ -23,7 +23,9 @@ use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManag
 use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
-use oak_sdk_containers::{init_metrics, InstanceSigner, MetricsConfig, OrchestratorClient};
+use oak_sdk_containers::{
+    init_metrics, InstanceSessionBinder, InstanceSigner, MetricsConfig, OrchestratorClient,
+};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::logs::LoggerProvider;
@@ -104,6 +106,7 @@ async fn main() {
 
     let attester = Arc::new(StaticAttester::new(evidence.clone()));
     let endorser = Arc::new(StaticEndorser::new(endorsements));
+    let session_binder = Arc::new(InstanceSessionBinder::create(&channel));
     let signer = InstanceSigner::create(&channel);
     let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
     let clock = Arc::new(SystemClock {});
@@ -125,11 +128,11 @@ async fn main() {
             get_init_request,
             attester.clone(),
             endorser.clone(),
-            signer.clone(),
+            session_binder.clone(),
             reference_values.clone(),
             clock.clone(),
         ),
-        signer.clone(),
+        signer,
     );
 
     // Create the TCP EndpointService, following the TCP recommendation of only
@@ -140,7 +143,7 @@ async fn main() {
     );
     let endpoint_service =
         TonicApplicationService::new(channel, evidence, Some(logger), move || {
-            StorageActor::new(attester, endorser, signer, reference_values, clock)
+            StorageActor::new(attester, endorser, session_binder, reference_values, clock)
         });
 
     // Start the gRPC server.

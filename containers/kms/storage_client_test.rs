@@ -19,13 +19,13 @@ use matchers::{code, has_context};
 use mockall::{predicate::eq as request_eq, PredicateBooleanExt};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
-use oak_session::{ProtocolEngine, ServerSession, Session};
+use oak_session::{session_binding::SessionBinder, ProtocolEngine, ServerSession, Session};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use session_test_utils::{
-    get_test_attester, get_test_endorser, get_test_reference_values, get_test_signer, FakeClock,
-    TestSigner,
+    get_test_attester, get_test_endorser, get_test_reference_values, get_test_session_binder,
+    FakeClock,
 };
 use session_v1_service_proto::{
     oak::services::{
@@ -68,7 +68,7 @@ struct FakeServer {
     storage: Arc<MockStorage>,
     attester: Arc<dyn Attester>,
     endorser: Arc<dyn Endorser>,
-    signer: TestSigner,
+    session_binder: Arc<dyn SessionBinder>,
     reference_values: ReferenceValues,
     clock: Arc<FakeClock>,
 }
@@ -79,7 +79,7 @@ impl FakeServer {
             storage: Arc::new(storage),
             attester: get_test_attester(),
             endorser: get_test_endorser(),
-            signer: get_test_signer(),
+            session_binder: get_test_session_binder(),
             reference_values: get_test_reference_values().convert().unwrap(),
             clock: Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
         }
@@ -98,8 +98,8 @@ impl OakSessionV1Service for FakeServer {
         let mut session = create_session_config(
             &self.attester,
             &self.endorser,
-            Box::new(self.signer.clone()),
-            self.reference_values.clone(),
+            &self.session_binder,
+            &self.reference_values,
             self.clock.clone(),
         )
         .and_then(ServerSession::create)
@@ -155,15 +155,15 @@ impl OakSessionV1Service for FakeServer {
     }
 }
 
-/// A Signer that calls `block_on` to emulate
-/// `oak_sdk_containers::InstanceSigner`.
+/// A SessionBinder that calls `block_on` to emulate
+/// `oak_sdk_containers::InstanceSessionBinder`.
 #[derive(Clone)]
-struct BlockingSigner {
-    inner: TestSigner,
+struct BlockingSessionBinder {
+    inner: Arc<dyn SessionBinder>,
 }
-impl oak_crypto::signer::Signer for BlockingSigner {
-    fn sign(&self, message: &[u8]) -> Vec<u8> {
-        tokio::runtime::Handle::current().block_on(async { self.inner.sign(message) })
+impl SessionBinder for BlockingSessionBinder {
+    fn bind(&self, bound_data: &[u8]) -> Vec<u8> {
+        tokio::runtime::Handle::current().block_on(async { self.inner.bind(bound_data) })
     }
 }
 
@@ -177,14 +177,14 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     let listener = TcpListener::bind("[::]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = FakeServer::new(storage);
-    // Test compatibility with `oak_sdk_containers::InstanceSigner`.
-    let signer = BlockingSigner { inner: server.signer.clone() };
+    // Test compatibility with `oak_sdk_containers::InstanceSessionBinder`.
+    let session_binder = BlockingSessionBinder { inner: server.session_binder.clone() };
     let client = GrpcStorageClient::new(
         OakSessionV1ServiceClient::connect(format!("http://{addr}")).await.unwrap(),
         init_fn,
         server.attester.clone(),
         server.endorser.clone(),
-        signer,
+        Arc::new(session_binder),
         server.reference_values.clone(),
         server.clock.clone(),
     );

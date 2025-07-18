@@ -25,49 +25,66 @@ use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
 use oak_sdk_common::{StaticAttester, StaticEncryptionKeyHandle, StaticEndorser};
 use oak_sdk_standalone::Standalone;
+use oak_session::session_binding::{SessionBinder, SignatureBinder};
 use p256::ecdsa::{SigningKey, VerifyingKey};
 use prost_proto_conversion::ProstProtoConversionExt;
 use rand_core::OsRng;
 
 pub use p256::ecdsa::SigningKey as TestSigner;
 
-static FAKE_DATA: std::sync::LazyLock<(Standalone, SigningKey)> = std::sync::LazyLock::new(|| {
+struct FakeData {
+    standalone: Standalone,
+    signing_key: SigningKey,
+    session_binding_key: SigningKey,
+}
+
+static FAKE_DATA: std::sync::LazyLock<FakeData> = std::sync::LazyLock::new(|| {
     let signing_key = SigningKey::random(&mut OsRng);
+    let session_binding_key = SigningKey::random(&mut OsRng);
     let standalone = Standalone::builder()
         .signing_key_pair(Some((signing_key.clone(), VerifyingKey::from(&signing_key))))
+        .session_binding_key_pair(Some((
+            session_binding_key.clone(),
+            VerifyingKey::from(&session_binding_key),
+        )))
         .build()
         .expect("failed to build Standalone");
-    (standalone, signing_key)
+    FakeData { standalone, signing_key, session_binding_key }
 });
 
 /// Returns test evidence that uses an insecure root.
 pub fn get_test_evidence() -> Evidence {
-    FAKE_DATA.0.endorsed_evidence().evidence.unwrap().convert().unwrap()
+    FAKE_DATA.standalone.endorsed_evidence().evidence.unwrap().convert().unwrap()
 }
 
 /// Returns an Attester that uses the test evidence.
 pub fn get_test_attester() -> Arc<dyn Attester> {
-    Arc::new(StaticAttester::new(FAKE_DATA.0.endorsed_evidence().evidence.unwrap()))
+    Arc::new(StaticAttester::new(FAKE_DATA.standalone.endorsed_evidence().evidence.unwrap()))
 }
 
 /// Returns test endorsements.
 pub fn get_test_endorsements() -> Endorsements {
-    FAKE_DATA.0.endorsed_evidence().endorsements.unwrap().convert().unwrap()
+    FAKE_DATA.standalone.endorsed_evidence().endorsements.unwrap().convert().unwrap()
 }
 
 /// Returns an Endorser that uses the test endorsements.
 pub fn get_test_endorser() -> Arc<dyn Endorser> {
-    Arc::new(StaticEndorser::new(FAKE_DATA.0.endorsed_evidence().endorsements.unwrap()))
+    Arc::new(StaticEndorser::new(FAKE_DATA.standalone.endorsed_evidence().endorsements.unwrap()))
 }
 
 /// Returns an EncryptionKeyHandle that uses the test evidence's encryption key.
 pub fn get_test_encryption_key_handle() -> StaticEncryptionKeyHandle {
-    FAKE_DATA.0.encryption_key_handle()
+    FAKE_DATA.standalone.encryption_key_handle()
 }
 
 /// Returns a Signer that uses the test evidence's signing key.
 pub fn get_test_signer() -> TestSigner {
-    FAKE_DATA.1.clone()
+    FAKE_DATA.signing_key.clone()
+}
+
+/// Returns a SessionBinder that uses the test evidence's session binding key.
+pub fn get_test_session_binder() -> Arc<dyn SessionBinder> {
+    Arc::new(SignatureBinder::new(Box::new(FAKE_DATA.session_binding_key.clone())))
 }
 
 /// Returns reference values compatible with the test evidence.

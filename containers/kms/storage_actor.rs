@@ -19,12 +19,13 @@ use hashbrown::{hash_map, HashMap};
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
-use oak_session::{config::SessionConfig, ProtocolEngine, ServerSession, Session};
+use oak_session::{
+    config::SessionConfig, session_binding::SessionBinder, ProtocolEngine, ServerSession, Session,
+};
 use prost::{bytes::Bytes, Message};
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
@@ -87,10 +88,10 @@ enum HandleStorageRequestOutcome {
 const CLOCK_UPDATE_INTERVAL_MS: u64 = 60_000;
 
 impl StorageActor {
-    pub fn new<S: Signer + Clone + 'static>(
+    pub fn new(
         attester: Arc<dyn Attester>,
         endorser: Arc<dyn Endorser>,
-        signer: S,
+        session_binder: Arc<dyn SessionBinder>,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -102,8 +103,8 @@ impl StorageActor {
             create_session_config(
                 &attester,
                 &endorser,
-                Box::new(signer.clone()),
-                rv_copy.clone(),
+                &session_binder,
+                &rv_copy,
                 clock_copy.clone(),
             )
         });

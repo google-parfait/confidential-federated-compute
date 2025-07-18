@@ -18,9 +18,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashMap;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification_types::util::Clock;
-use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
-use oak_session::{ClientSession, ProtocolEngine, Session};
+use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
@@ -69,12 +68,12 @@ pub struct GrpcStorageClient {
 }
 
 impl GrpcStorageClient {
-    pub fn new<S: Signer + Clone + 'static>(
+    pub fn new(
         client: OakSessionV1ServiceClient<tonic::transport::Channel>,
         init_fn: impl Fn() -> UpdateRequest + Send + 'static,
         attester: Arc<dyn Attester>,
         endorser: Arc<dyn Endorser>,
-        signer: S,
+        session_binder: Arc<dyn SessionBinder>,
         reference_values: ReferenceValues,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -88,7 +87,7 @@ impl GrpcStorageClient {
                 init_fn,
                 attester,
                 endorser,
-                signer,
+                session_binder,
                 reference_values,
                 clock,
                 pending_requests: HashMap::new(),
@@ -141,7 +140,7 @@ impl StorageClient for GrpcStorageClient {
     }
 }
 
-struct MessageSender<InitFn, S> {
+struct MessageSender<InitFn> {
     tx: mpsc::UnboundedSender<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     rx: mpsc::UnboundedReceiver<(StorageRequest, oneshot::Sender<Result<StorageResponse>>)>,
     client: OakSessionV1ServiceClient<tonic::transport::Channel>,
@@ -150,16 +149,12 @@ struct MessageSender<InitFn, S> {
     next_correlation_id: u64,
     attester: Arc<dyn Attester>,
     endorser: Arc<dyn Endorser>,
-    signer: S,
+    session_binder: Arc<dyn SessionBinder>,
     reference_values: ReferenceValues,
     clock: Arc<dyn Clock>,
 }
 
-impl<InitFn, S> MessageSender<InitFn, S>
-where
-    InitFn: Fn() -> UpdateRequest + 'static,
-    S: Signer + Clone + 'static,
-{
+impl<InitFn: Fn() -> UpdateRequest + 'static> MessageSender<InitFn> {
     pub async fn run(mut self) {
         // Limit the frequency with which we attempt to reconnect.
         let mut interval = tokio::time::interval(RECONNECT_INTERVAL);
@@ -247,8 +242,8 @@ where
         let mut session = create_session_config(
             &self.attester,
             &self.endorser,
-            Box::new(self.signer.clone()),
-            self.reference_values.clone(),
+            &self.session_binder,
+            &self.reference_values,
             self.clock.clone(),
         )
         .and_then(ClientSession::create)
@@ -274,10 +269,11 @@ where
                 .message()
                 .await?
                 .ok_or_else(|| anyhow!("server unexpectedly closed stream"))?;
-            // `oak_sdk_containers::InstanceSigner` performs blocking operations,
-            // so it cannot be called from an async thread. The signer is only
-            // used during the initial handshake, so it's not necessary to run
-            // subsequent ClientSession interactions on a separate thread.
+            // `oak_sdk_containers::InstanceSessionBinder` performs blocking
+            // operations, so it cannot be called from an async thread. The
+            // SessionBinder is only used during the initial handshake, so it's
+            // not necessary to run subsequent ClientSession interactions on a
+            // separate thread.
             let requests;
             (session, requests) = tokio::task::spawn_blocking(
                 move || -> Result<(ClientSession, Vec<SessionRequest>)> {

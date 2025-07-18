@@ -14,17 +14,28 @@
 
 use std::sync::Arc;
 
+use anyhow::bail;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_attestation_verification_types::util::Clock;
-use oak_crypto::{encryptor::Encryptor, noise_handshake::OrderedCrypter, signer::Signer};
-use oak_dice_attestation_verifier::DiceAttestationVerifier;
-use oak_proto_rust::oak::attestation::v1::ReferenceValues;
+use oak_attestation_verification::{
+    policy::{
+        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
+        platform::AmdSevSnpPolicy, system::SystemPolicy,
+    },
+    verifier::{AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+};
+use oak_attestation_verification_types::{util::Clock, verifier::AttestationVerifier};
+use oak_crypto::{encryptor::Encryptor, noise_handshake::OrderedCrypter};
+use oak_proto_rust::oak::attestation::v1::{
+    reference_values, AmdSevReferenceValues, OakContainersReferenceValues, ReferenceValues,
+    RootLayerReferenceValues,
+};
 use oak_session::{
     attestation::AttestationType,
     config::{EncryptorProvider, SessionConfig},
     encryptors::UnorderedChannelEncryptor,
     handshake::HandshakeType,
-    session_binding::SignatureBinderBuilder,
+    key_extractor::DefaultBindingKeyExtractor,
+    session_binding::SessionBinder,
 };
 
 const SESSION_ID: &str = "cfc_kms";
@@ -44,27 +55,70 @@ impl EncryptorProvider for UnorderedEncryptorProvider {
 pub fn create_session_config(
     attester: &Arc<dyn Attester>,
     endorser: &Arc<dyn Endorser>,
-    signer: Box<dyn Signer>,
-    reference_values: ReferenceValues,
+    session_binder: &Arc<dyn SessionBinder>,
+    reference_values: &ReferenceValues,
     clock: Arc<dyn Clock>,
 ) -> anyhow::Result<SessionConfig> {
+    let peer_verifier: Box<dyn AttestationVerifier> = match &reference_values.r#type {
+        // Oak Containers (insecure)
+        Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer: Some(RootLayerReferenceValues { insecure: Some(_), .. }),
+            kernel_layer: Some(kernel_ref_vals),
+            system_layer: Some(system_ref_vals),
+            container_layer: Some(container_ref_vals),
+        })) => {
+            // TODO: b/432726860 - use InsecureDiceAttestationVerifier once it's available.
+            Box::new(EventLogVerifier::new(
+                vec![
+                    Box::new(KernelPolicy::new(kernel_ref_vals)),
+                    Box::new(SystemPolicy::new(system_ref_vals)),
+                    Box::new(ContainerPolicy::new(container_ref_vals)),
+                ],
+                clock,
+            ))
+        }
+
+        // Oak Containers (SEV-SNP)
+        Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer:
+                Some(RootLayerReferenceValues {
+                    amd_sev:
+                        Some(
+                            amd_sev_ref_vals @ AmdSevReferenceValues {
+                                stage0: Some(stage0_ref_vals),
+                                ..
+                            },
+                        ),
+                    insecure: None,
+                    ..
+                }),
+            kernel_layer: Some(kernel_ref_vals),
+            system_layer: Some(system_ref_vals),
+            container_layer: Some(container_ref_vals),
+        })) => Box::new(AmdSevSnpDiceAttestationVerifier::new(
+            AmdSevSnpPolicy::new(amd_sev_ref_vals),
+            Box::new(FirmwarePolicy::new(stage0_ref_vals)),
+            vec![
+                Box::new(KernelPolicy::new(kernel_ref_vals)),
+                Box::new(SystemPolicy::new(system_ref_vals)),
+                Box::new(ContainerPolicy::new(container_ref_vals)),
+            ],
+            clock,
+        )),
+
+        _ => bail!("unsupported ReferenceValues"),
+    };
+
     Ok(SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
         .add_self_attester_ref(SESSION_ID.into(), attester)
         .add_self_endorser_ref(SESSION_ID.into(), endorser)
-        .add_peer_verifier(
+        .add_peer_verifier_with_key_extractor(
             SESSION_ID.into(),
-            Box::new(DiceAttestationVerifier::create(reference_values, clock)),
+            peer_verifier,
+            Box::new(DefaultBindingKeyExtractor {}),
         )
         // The communication channel is not guaranteed to be ordered.
         .set_encryption_provider(Box::new(UnorderedEncryptorProvider))
-        .add_session_binder(
-            SESSION_ID.into(),
-            Box::new(
-                SignatureBinderBuilder::default()
-                    .signer(signer)
-                    .build()
-                    .map_err(anyhow::Error::msg)?,
-            ),
-        )
+        .add_session_binder_ref(SESSION_ID.into(), session_binder)
         .build())
 }
