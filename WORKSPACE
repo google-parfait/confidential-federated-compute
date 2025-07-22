@@ -168,6 +168,7 @@ http_archive(
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:protobuf.patch",
+        "@trusted_computations_platform//third_party/oak:session_binder.patch",
     ],
     strip_prefix = "oak-706193333936def5aace176e12e1f1225bf8db29",
     url = "https://github.com/project-oak/oak/archive/706193333936def5aace176e12e1f1225bf8db29.tar.gz",
@@ -291,9 +292,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-SEJdBbuya45Ce9F0AJ9KRG+DoB4D4vqkE0A8Mj7JDOQ=",
-    strip_prefix = "trusted-computations-platform-e8c1c8e69b2ce5bf732df94c757dec8d595a8094",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/e8c1c8e69b2ce5bf732df94c757dec8d595a8094.tar.gz",
+    integrity = "sha256-hRQPKn0lMxrGwFmBVCpVBKEOOKYevMq1MjPFfk+MUfY=",
+    strip_prefix = "trusted-computations-platform-e2f4a81423441e5bdef7a8eb6d80e873db4b9499",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/e2f4a81423441e5bdef7a8eb6d80e873db4b9499.tar.gz",
 )
 
 # TensorFlow pins an old version of upb that's compatible with their old
