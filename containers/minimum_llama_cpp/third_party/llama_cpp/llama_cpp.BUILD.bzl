@@ -5,6 +5,8 @@ A custom build file for llama.cpp
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
+package(default_visibility = ["//visibility:public"])
+
 licenses(["notice"])
 
 exports_files(["COPYING"])
@@ -13,10 +15,13 @@ COPTS = [
     "-Wno-unused-function",
     "-Wno-implicit-function-declaration",
     "-Wno-int-conversion",
+    "-D_GNU_SOURCE",
 ]
 
+LINKOPTS = ["-lpthread"]
+
 cc_library(
-    name = "ggml_base",
+    name = "ggml-base",
     srcs = glob([
         "ggml/src/*.c",
         "ggml/src/*.cpp",
@@ -34,11 +39,14 @@ cc_library(
     local_defines = [
         "GGML_VERSION='\"0.0.0\"'",
         "GGML_COMMIT='\"6efcd65945a98cf6883cdd9de4c8ccd8c79d219a\"'",
+        "GGML_USE_CPU",
+        "GGML_USE_CUDA",
     ],
+    linkopts = LINKOPTS,
 )
 
 cc_library(
-    name = "ggml_cpu",
+    name = "ggml-cpu",
     srcs = glob([
         "ggml/src/ggml-cpu/*.c",
         "ggml/src/ggml-cpu/*.cpp",
@@ -57,12 +65,13 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":ggml_base",
+        ":ggml-base",
     ],
+    linkopts = LINKOPTS,
 )
 
 cuda_library(
-    name = "ggml_cuda",
+    name = "ggml-cuda",
     srcs = glob([
         "ggml/src/ggml-cuda/**/*.cu",
     ]),
@@ -81,7 +90,7 @@ cuda_library(
         "GGML_CUDA_NO_VMM",
     ],
     deps = [
-        ":ggml_base",
+        ":ggml-base",
         "@cuda_curand//:curand",
         "@cuda_cublas//:cublas",
     ],
@@ -117,9 +126,8 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        ":ggml_base",
-        ":ggml_cpu",
-        ":ggml_cuda",
+        ":ggml-base",
+        ":ggml-cpu",
+        ":ggml-cuda",
     ],
-    visibility = ["//visibility:public"],
 )

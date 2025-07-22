@@ -27,7 +27,6 @@ absl::Status GenerateOutput(std::string *output) {
   int ngl = 99;
   // Number of tokens to predict.
   int n_predict = 1024;
-  ggml_backend_load_all();
   llama_model_params model_params = llama_model_default_params();
   model_params.n_gpu_layers = ngl;
   // This is a local path to the model weights file within the container.

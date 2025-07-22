@@ -60,7 +60,6 @@ http_archive(
     name = "llama_cpp",
     build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
     integrity = "sha256-ia4rm4HjbOEnDEszG5kmJcEFOUNKFC9IUOtA1V1IsOo=",
-    patches = ["//third_party/llama_cpp:llama_cpp.patch"],
     strip_prefix = "llama.cpp-6efcd65945a98cf6883cdd9de4c8ccd8c79d219a",
     url = "https://github.com/ggml-org/llama.cpp/archive/6efcd65945a98cf6883cdd9de4c8ccd8c79d219a.tar.gz",
 )
