@@ -19,7 +19,6 @@ build --@rules_python//python/config_settings:bootstrap_impl=script  # https://g
 build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
-common --repo_env=TF_PYTHON_VERSION=3.10
 
 # PIC is required when linking boringssl with Rust binaries.
 build --per_file_copt=external/boringssl/@-fpic

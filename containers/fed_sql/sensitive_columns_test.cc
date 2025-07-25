@@ -45,8 +45,6 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::fcp::confidentialcompute::ColumnSchema;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;

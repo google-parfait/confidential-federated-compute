@@ -95,14 +95,6 @@ using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::ClientWriter;
 using ::grpc::Server;
@@ -158,7 +150,7 @@ SqlQuery CreateSqlQuery(TableSchema input_table_schema, std::string raw_query,
 }
 
 ColumnSchema CreateColumnSchema(
-    std::string name, ExampleQuerySpec_OutputVectorSpec_DataType type) {
+    std::string name, google::internal::federated::plan::DataType type) {
   ColumnSchema schema;
   schema.set_name(name);
   schema.set_type(type);
@@ -203,16 +195,12 @@ Configuration DefaultConfiguration() {
 SqlQuery DefaultSqlQuery() {
   TableSchema schema = CreateTableSchema(
       "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+      {CreateColumnSchema("key", google::internal::federated::plan::INT64),
+       CreateColumnSchema("val", google::internal::federated::plan::INT64)});
   return CreateSqlQuery(
       schema, "SELECT key, val * 2 AS val FROM input",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+      {CreateColumnSchema("key", google::internal::federated::plan::INT64),
+       CreateColumnSchema("val", google::internal::federated::plan::INT64)});
 }
 
 SessionRequest CreateDefaultWriteRequest(AggCoreAggregationType agg_type,
@@ -1298,15 +1286,13 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
   TableSchema schema = CreateTableSchema(
       "input", "CREATE TABLE input (SENSITIVE_key STRING, val INTEGER)",
       {CreateColumnSchema("SENSITIVE_key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+                          google::internal::federated::plan::STRING),
+       CreateColumnSchema("val", google::internal::federated::plan::INT64)});
   SqlQuery query = CreateSqlQuery(
       schema, "SELECT SENSITIVE_key, val * 2 AS val FROM input",
       {CreateColumnSchema("SENSITIVE_key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_STRING),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+                          google::internal::federated::plan::STRING),
+       CreateColumnSchema("val", google::internal::federated::plan::INT64)});
   configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration()->PackFrom(
       query);
@@ -1596,16 +1582,13 @@ TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
 
   TableSchema schema = CreateTableSchema(
       "input", "CREATE TABLE input (key INTEGER, val INTEGER)",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
-       CreateColumnSchema("val",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+      {CreateColumnSchema("key", google::internal::federated::plan::INT64),
+       CreateColumnSchema("val", google::internal::federated::plan::INT64)});
   SqlQuery query = CreateSqlQuery(
       schema, "SELECT key, val * 2 AS val_double FROM input",
-      {CreateColumnSchema("key",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64),
+      {CreateColumnSchema("key", google::internal::federated::plan::INT64),
        CreateColumnSchema("val_double",
-                          ExampleQuerySpec_OutputVectorSpec_DataType_INT64)});
+                          google::internal::federated::plan::INT64)});
 
   // The output columns of the SQL query don't match the aggregation config, so
   // the results can't be aggregated.

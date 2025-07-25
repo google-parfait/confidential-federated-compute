@@ -19,8 +19,16 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//:stub_repo.bzl", "stub_repo")
+load("//:stub_tf_proto_library.bzl", "stub_tf_proto_library")
 
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_repo
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_repo,stub_tf_proto_library
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "294cdd859e57fcaf101d4301978c408c88683fbc46fbc1a3829da92afbea55fb",
+    strip_prefix = "bazel-toolchains-8c717f8258cd5f6c7a45b97d974292755852b658",
+    url = "https://github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
+)
+
 http_archive(
     name = "boringssl",
     integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
@@ -29,11 +37,18 @@ http_archive(
     urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
 )
 
-# Pin a newer version of gRPC than the one provided by Tensorflow.
-# 1.50.0 is used as it is the gRPC version used by FCP. It's not a requirement
-# for the versions to stay in sync if we need a feature of a later gRPC version,
-# but simplifies the configuration of the two projects if we can use the same
-# version.
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "d71b02d6df0500f43279e22400db6680024c1c439115c57a9a82e9effe199d7b",
+    url = "https://github.com/bazelbuild/apple_support/releases/download/1.18.1/apple_support.1.18.1.tar.gz",
+)
+
+http_archive(
+    name = "build_bazel_rules_apple",
+    sha256 = "b4df908ec14868369021182ab191dbd1f40830c9b300650d5dc389e0b9266c8d",
+    url = "https://github.com/bazelbuild/rules_apple/releases/download/3.5.1/rules_apple.3.5.1.tar.gz",
+)
+
 http_archive(
     name = "com_github_grpc_grpc",
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
@@ -71,6 +86,21 @@ http_archive(
 )
 
 http_archive(
+    name = "com_google_googleapis",
+    sha256 = "249d83abc5d50bf372c35c49d77f900bff022b2c21eb73aa8da1458b6ac401fc",
+    strip_prefix = "googleapis-6b3fdcea8bc5398be4e7e9930c693f0ea09316a0",
+    url = "https://github.com/googleapis/googleapis/archive/6b3fdcea8bc5398be4e7e9930c693f0ea09316a0.tar.gz",
+)
+
+http_archive(
+    name = "com_google_protobuf",
+    patches = ["//third_party/protobuf:protobuf.patch"],
+    sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
+    strip_prefix = "protobuf-3.21.9",
+    url = "https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip",
+)
+
+http_archive(
     name = "com_google_sentencepiece",
     build_file = "@gemma//bazel:sentencepiece.bazel",
     patch_args = ["-p1"],
@@ -105,10 +135,11 @@ cc_library(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-aPU+BeK1ETrsNWVao0D+PUFZ5cq4NtBSCwbunOEYGik=",
+    integrity = "sha256-SzjzI8i308QcNn/oZokiuvAI7RDrEt/+NacWyakkxL4=",
     patches = ["//third_party/federated_compute:visibility.patch"],
-    strip_prefix = "federated-compute-59c593dcb3867b9f8a0d8eb50242987cc103510e",
-    url = "https://github.com/google/federated-compute/archive/59c593dcb3867b9f8a0d8eb50242987cc103510e.tar.gz",
+    repo_mapping = {"@org_tensorflow": "@tf_proto_library"},
+    strip_prefix = "federated-compute-5b97a9fc94ee4fe4f15122a8bdc01253ae72b576",
+    url = "https://github.com/google/federated-compute/archive/5b97a9fc94ee4fe4f15122a8bdc01253ae72b576.tar.gz",
 )
 
 http_archive(
@@ -119,6 +150,11 @@ http_archive(
     sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
     strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
     url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
+)
+
+stub_repo(
+    name = "flatbuffers",
+    rules = {":build_defs.bzl": ["flatbuffer_cc_library"]},
 )
 
 http_archive(
@@ -175,23 +211,16 @@ http_archive(
 )
 
 http_archive(
-    name = "org_tensorflow",
-    integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
-    patches = [
-        "//third_party/org_tensorflow:protobuf.patch",
-        "//third_party/org_tensorflow:zlib.patch",
-    ],
-    strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
-    urls = [
-        "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
-    ],
-)
-
-http_archive(
     name = "org_tensorflow_federated",
     integrity = "sha256-ZoyPB5DDBDtFNOrH8lTHjsKqcBzAvqQZ2ZfdBo6WN9A=",
     strip_prefix = "tensorflow-federated-23d710ed743c89627601da3c3a15e2dabed054f3",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/23d710ed743c89627601da3c3a15e2dabed054f3.tar.gz",
+)
+
+http_archive(
+    name = "platforms",
+    sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
+    url = "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
 )
 
 http_archive(
@@ -239,7 +268,6 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
 )
 
-# Initialize hermetic python prior to loading Tensorflow deps.
 http_archive(
     name = "rules_python",
     sha256 = "dc6e2756130fafb90273587003659cadd1a2dfef3f6464c227794cdc01ebf70e",
@@ -283,6 +311,10 @@ http_archive(
     url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
 
+stub_tf_proto_library(
+    name = "tf_proto_library",
+)
+
 http_archive(
     name = "toolchains_llvm",
     sha256 = "fded02569617d24551a0ad09c0750dc53a3097237157b828a245681f0ae739f8",
@@ -295,19 +327,6 @@ http_archive(
     integrity = "sha256-hRQPKn0lMxrGwFmBVCpVBKEOOKYevMq1MjPFfk+MUfY=",
     strip_prefix = "trusted-computations-platform-e2f4a81423441e5bdef7a8eb6d80e873db4b9499",
     url = "https://github.com/google-parfait/trusted-computations-platform/archive/e2f4a81423441e5bdef7a8eb6d80e873db4b9499.tar.gz",
-)
-
-# TensorFlow pins an old version of upb that's compatible with their old
-# version of gRPC, but not with the newer version we use. Pin the version that
-# would be added by gRPC 1.50.0.
-http_archive(
-    name = "upb",
-    sha256 = "017a7e8e4e842d01dba5dc8aa316323eee080cd1b75986a7d1f94d87220e6502",
-    strip_prefix = "upb-e4635f223e7d36dfbea3b722a4ca4807a7e882e2",
-    urls = [
-        "https://storage.googleapis.com/grpc-bazel-mirror/github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
-        "https://github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
-    ],
 )
 # go/keep-sorted end
 
@@ -329,95 +348,20 @@ py_repositories()
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
+    python_version = "3.10",
 )
 
-# The following is copied from TensorFlow's own WORKSPACE, see
-# https://github.com/tensorflow/tensorflow/blob/v2.19.0-rc0/WORKSPACE#L68
-load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
+load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 
-tf_workspace3()
+grpc_deps()
 
-load("@org_tensorflow//tensorflow:workspace2.bzl", "tf_workspace2")
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 
-tf_workspace2()
+grpc_extra_deps()
 
-load("@org_tensorflow//tensorflow:workspace1.bzl", "tf_workspace1")
+load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 
-tf_workspace1()
-
-load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
-
-tf_workspace0()
-
-load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
-
-python_init_repositories(
-    requirements = {
-        "3.10": "//:requirements_lock_3_10.txt",
-    },
-)
-
-load(
-    "@local_xla//third_party/py:python_repo.bzl",
-    "python_repository",
-)
-
-python_repository(name = "python_version_repo")
-
-load(
-    "@local_xla//third_party/py:python_wheel.bzl",
-    "python_wheel_version_suffix_repository",
-)
-
-python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
-
-load(
-    "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
-    "cuda_json_init_repository",
-)
-
-cuda_json_init_repository()
-
-load(
-    "@cuda_redist_json//:distributions.bzl",
-    "CUDA_REDISTRIBUTIONS",
-    "CUDNN_REDISTRIBUTIONS",
-)
-load(
-    "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
-    "cuda_redist_init_repositories",
-    "cudnn_redist_init_repository",
-)
-
-cuda_redist_init_repositories(
-    cuda_redistributions = CUDA_REDISTRIBUTIONS,
-)
-
-cudnn_redist_init_repository(
-    cudnn_redistributions = CUDNN_REDISTRIBUTIONS,
-)
-
-load(
-    "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
-    "cuda_configure",
-)
-
-cuda_configure(name = "local_config_cuda")
-
-load(
-    "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
-    "nccl_redist_init_repository",
-)
-
-nccl_redist_init_repository()
-
-load(
-    "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
-    "nccl_configure",
-)
-
-nccl_configure(name = "local_config_nccl")
+protobuf_deps()
 
 load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
 
