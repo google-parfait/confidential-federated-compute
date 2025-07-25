@@ -35,6 +35,25 @@ trusted_py_runtime(
 )
 
 cc_library(
+    name = "testing_base",
+    hdrs = ["testing_base.h"],
+    deps = [
+        ":confidential_transform_server",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@confidential-federated-compute//containers:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
@@ -79,27 +98,31 @@ cc_test(
     tags = ["noasan"],
     toolchains = [":trusted_program_py_runtime"],
     deps = [
-        ":confidential_transform_server",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        ":testing_base",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_protobuf//:protobuf",
-        "@confidential-federated-compute//containers:crypto",
-        "@confidential-federated-compute//containers:crypto_test_utils",
         "@confidential-federated-compute//testing:parse_text_proto",
-        "@federated-compute//fcp/confidentialcompute:cose",
-        "@federated-compute//fcp/confidentialcompute:crypto",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@googletest//:gtest",
-        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "data_source_integration_test",
+    size = "medium",
+    srcs = ["data_source_integration_test.cc"],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_runtime"],
+    deps = [
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
