@@ -1,6 +1,8 @@
 # The dependency versions in this file are chosen to be as close as possible to
 # those in the corresponding repos.
 
+googleapis-common-protos==1.70.0
+
 # Dependencies for federated_language.
 absl-py~=1.0
 attrs~=23.1
@@ -16,7 +18,6 @@ tensorflow>=2.14.0,==2.14.*
 tensorflow-privacy==0.9.0
 tensorflow-model-optimization==0.7.5
 portpicker~=1.6
-google-vizier==0.1.11
 tqdm~=4.64
 
 # Additional dependencies for federated_language_jax.
