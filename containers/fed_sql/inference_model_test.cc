@@ -31,10 +31,6 @@ using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::gcpp::Gemma;
 using ::gcpp::ModelInfo;
 using ::gcpp::NestedPools;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;

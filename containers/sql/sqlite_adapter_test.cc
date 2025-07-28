@@ -21,6 +21,7 @@
 #include "absl/strings/str_join.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "fcp/protos/data_type.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -36,22 +37,6 @@ using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BOOL;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::AggVector;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
@@ -82,7 +67,7 @@ std::unique_ptr<MutableStringData> CreateStringTestData(
 }
 
 void SetColumnNameAndType(ColumnSchema* col, std::string name,
-                          ExampleQuerySpec_OutputVectorSpec_DataType type) {
+                          google::internal::federated::plan::DataType type) {
   col->set_name(name);
   col->set_type(type);
 }
@@ -112,10 +97,10 @@ TableSchema CreateInputTableSchema(absl::string_view table_name = "t",
   schema.set_name(std::string(table_name));
   ColumnSchema* col1 = schema.add_column();
   col1->set_name(std::string(col1_name));
-  col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  col1->set_type(google::internal::federated::plan::INT64);
   ColumnSchema* col2 = schema.add_column();
   col2->set_name(std::string(col2_name));
-  col2->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+  col2->set_type(google::internal::federated::plan::STRING);
   const std::string create_table_stmt =
       absl::StrFormat(R"sql(CREATE TABLE %s (%s INTEGER, %s TEXT))sql",
                       table_name, col1_name, col2_name);
@@ -295,7 +280,7 @@ TEST_F(AddTableContentsTest, BatchedInserts) {
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       "SELECT int_vals FROM t ORDER BY int_vals;", output_schema.column());
@@ -329,7 +314,7 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
   std::string output_col_name = "two";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
   ASSERT_TRUE(result_status.ok());
@@ -347,7 +332,7 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicStringExpression) {
   std::string output_col_name = "str_val";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+                       google::internal::federated::plan::STRING);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
   ASSERT_TRUE(result_status.ok());
@@ -365,7 +350,7 @@ TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
   std::string output_col_name = "two";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
   ASSERT_TRUE(result_status.ok());
@@ -427,7 +412,7 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
   std::string output_col_name = "x";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(
@@ -453,7 +438,7 @@ TEST_F(EvaluateQueryTest, ResultsFromTable) {
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals FROM t;)sql", output_schema.column());
@@ -478,7 +463,7 @@ TEST_F(EvaluateQueryTest, MultipleAddTableContents) {
   std::string output_col_name = "n";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT COUNT(*) AS n FROM t;)sql", output_schema.column());
@@ -499,7 +484,7 @@ TEST_F(EvaluateQueryTest, MultipleResultRows) {
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals FROM t ORDER BY int_vals;)sql",
@@ -524,9 +509,9 @@ TEST_F(EvaluateQueryTest, MultipleColumns) {
   std::string str_output_col_name = "str_vals";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), int_output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
   SetColumnNameAndType(output_schema.add_column(), str_output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+                       google::internal::federated::plan::STRING);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals, str_vals FROM t;)sql", output_schema.column());
@@ -547,7 +532,7 @@ TEST_F(EvaluateQueryTest, IncorrectSchemaNumColumns) {
   TableSchema output_schema;
   ColumnSchema* column = output_schema.add_column();
   column->set_name(output_col_name);
-  column->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  column->set_type(google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(
@@ -566,7 +551,7 @@ TEST_F(EvaluateQueryTest, IncorrectSchemaColumnNames) {
   std::string output_col_name = "v1";
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), output_col_name,
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
 
   auto result_status =
       sqlite_->EvaluateQuery(R"sql(SELECT 42 AS v)sql", output_schema.column());
@@ -580,19 +565,19 @@ TEST_F(EvaluateQueryTest, IncorrectSchemaColumnNames) {
 TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
   TableSchema output_schema;
   SetColumnNameAndType(output_schema.add_column(), "int32_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT32);
+                       google::internal::federated::plan::INT32);
   SetColumnNameAndType(output_schema.add_column(), "int64_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+                       google::internal::federated::plan::INT64);
   SetColumnNameAndType(output_schema.add_column(), "float_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT);
+                       google::internal::federated::plan::FLOAT);
   SetColumnNameAndType(output_schema.add_column(), "double_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE);
+                       google::internal::federated::plan::DOUBLE);
   SetColumnNameAndType(output_schema.add_column(), "bool_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_BOOL);
+                       google::internal::federated::plan::BOOL);
   SetColumnNameAndType(output_schema.add_column(), "str_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+                       google::internal::federated::plan::STRING);
   SetColumnNameAndType(output_schema.add_column(), "binary_val",
-                       ExampleQuerySpec_OutputVectorSpec_DataType_BYTES);
+                       google::internal::federated::plan::BYTES);
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(

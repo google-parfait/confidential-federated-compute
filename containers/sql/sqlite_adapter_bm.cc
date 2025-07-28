@@ -25,6 +25,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "fcp/protos/data_type.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -37,10 +38,6 @@ namespace {
 
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
@@ -88,10 +85,10 @@ TableSchema CreateInputTableSchema(
   schema.set_name(std::string(table_name));
   ColumnSchema* col1 = schema.add_column();
   col1->set_name(std::string(int_col_name));
-  col1->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_INT64);
+  col1->set_type(google::internal::federated::plan::INT64);
   ColumnSchema* col2 = schema.add_column();
   col2->set_name(std::string(str_col_name));
-  col2->set_type(ExampleQuerySpec_OutputVectorSpec_DataType_STRING);
+  col2->set_type(google::internal::federated::plan::STRING);
   const std::string create_table_stmt =
       absl::StrFormat(R"sql(CREATE TABLE %s (%s INTEGER, %s TEXT))sql",
                       table_name, int_col_name, str_col_name);

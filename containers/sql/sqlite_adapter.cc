@@ -27,7 +27,7 @@
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
-#include "fcp/protos/plan.pb.h"
+#include "fcp/protos/data_type.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -40,24 +40,6 @@ namespace confidential_federated_compute::sql {
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::TableSchema;
-using ::google::internal::federated::plan::ExampleQuerySpec;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BOOL;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_BYTES;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT32;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_INT64;
-using ::google::internal::federated::plan::
-    ExampleQuerySpec_OutputVectorSpec_DataType_STRING;
-using ::google::internal::federated::plan::Plan;
 using ::google::protobuf::RepeatedPtrField;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
@@ -176,33 +158,33 @@ void StoreValue(TensorData* tensor_data, std::string value) {
 //
 // The result value is appended to the `TensorData* result` column.
 absl::Status ReadSqliteColumn(
-    sqlite3_stmt* stmt, ExampleQuerySpec_OutputVectorSpec_DataType column_type,
+    sqlite3_stmt* stmt, google::internal::federated::plan::DataType column_type,
     int column_index, const SqliteResultHandler& status_util,
     TensorData* result) {
   switch (column_type) {
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
+    case google::internal::federated::plan::INT32:
       StoreValue<int32_t>(result, sqlite3_column_int(stmt, column_index));
       break;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
+    case google::internal::federated::plan::INT64:
       StoreValue<int64_t>(result, sqlite3_column_int64(stmt, column_index));
       break;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
+    case google::internal::federated::plan::BOOL:
       StoreValue<int32_t>(result, sqlite3_column_int(stmt, column_index) == 1);
       break;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
+    case google::internal::federated::plan::FLOAT:
       StoreValue<float>(result, sqlite3_column_double(stmt, column_index));
       break;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
+    case google::internal::federated::plan::DOUBLE:
       StoreValue<double>(result, sqlite3_column_double(stmt, column_index));
       break;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES: {
+    case google::internal::federated::plan::BYTES: {
       std::string bytes_value(
           static_cast<const char*>(sqlite3_column_blob(stmt, column_index)),
           sqlite3_column_bytes(stmt, column_index));
       StoreValue<std::string>(result, std::move(bytes_value));
       break;
     }
-    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING: {
+    case google::internal::federated::plan::STRING: {
       std::string string_value(reinterpret_cast<const char*>(
                                    sqlite3_column_text(stmt, column_index)),
                                sqlite3_column_bytes(stmt, column_index));
@@ -217,20 +199,20 @@ absl::Status ReadSqliteColumn(
 }
 
 absl::StatusOr<DataType> SqlDataTypeToTensorDtype(
-    ExampleQuerySpec_OutputVectorSpec_DataType sql_type) {
+    google::internal::federated::plan::DataType sql_type) {
   switch (sql_type) {
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
+    case google::internal::federated::plan::INT32:
       return DataType::DT_INT32;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
+    case google::internal::federated::plan::INT64:
       return DataType::DT_INT64;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
+    case google::internal::federated::plan::BOOL:
       return DataType::DT_INT32;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
+    case google::internal::federated::plan::FLOAT:
       return DataType::DT_FLOAT;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
+    case google::internal::federated::plan::DOUBLE:
       return DataType::DT_DOUBLE;
-    case ExampleQuerySpec_OutputVectorSpec_DataType_STRING:
-    case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES:
+    case google::internal::federated::plan::STRING:
+    case google::internal::federated::plan::BYTES:
       return DataType::DT_STRING;
     default:
       return absl::InvalidArgumentError("Unsupported column type.");
@@ -395,23 +377,23 @@ absl::StatusOr<std::vector<Tensor>> SqliteAdapter::EvaluateQuery(
   for (int i = 0; i < output_columns.size(); i++) {
     std::unique_ptr<TensorData> data;
     switch (output_columns.at(i).type()) {
-      case ExampleQuerySpec_OutputVectorSpec_DataType_INT32:
+      case google::internal::federated::plan::INT32:
         data = std::make_unique<MutableVectorData<int32_t>>();
         break;
-      case ExampleQuerySpec_OutputVectorSpec_DataType_INT64:
+      case google::internal::federated::plan::INT64:
         data = std::make_unique<MutableVectorData<int64_t>>();
         break;
-      case ExampleQuerySpec_OutputVectorSpec_DataType_BOOL:
+      case google::internal::federated::plan::BOOL:
         data = std::make_unique<MutableVectorData<int32_t>>();
         break;
-      case ExampleQuerySpec_OutputVectorSpec_DataType_FLOAT:
+      case google::internal::federated::plan::FLOAT:
         data = std::make_unique<MutableVectorData<float>>();
         break;
-      case ExampleQuerySpec_OutputVectorSpec_DataType_DOUBLE:
+      case google::internal::federated::plan::DOUBLE:
         data = std::make_unique<MutableVectorData<double>>();
         break;
-      case ExampleQuerySpec_OutputVectorSpec_DataType_STRING:
-      case ExampleQuerySpec_OutputVectorSpec_DataType_BYTES:
+      case google::internal::federated::plan::STRING:
+      case google::internal::federated::plan::BYTES:
         data = std::make_unique<MutableStringData>(0);
         break;
       default:
