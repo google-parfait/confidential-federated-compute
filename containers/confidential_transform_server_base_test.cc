@@ -65,13 +65,17 @@ using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigurationMetadata;
+using ::fcp::confidentialcompute::ConfigureRequest;
+using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -83,10 +87,29 @@ using ::testing::HasSubstr;
 using ::testing::Return;
 using ::testing::Test;
 
+using SessionStream =
+    ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>;
+
 inline constexpr int kMaxNumSessions = 8;
 constexpr absl::string_view kKeyId = "key_id";
 
 class MockSession final : public confidential_federated_compute::Session {
+ public:
+  MOCK_METHOD(absl::StatusOr<ConfigureResponse>, Configure,
+              (ConfigureRequest request, Context& context), (override));
+  MOCK_METHOD(absl::StatusOr<WriteFinishedResponse>, Write,
+              (WriteRequest request, std::string unencrypted_data,
+               Context& context),
+              (override));
+  MOCK_METHOD(absl::StatusOr<CommitResponse>, Commit,
+              (CommitRequest request, Context& context), (override));
+  MOCK_METHOD(absl::StatusOr<FinalizeResponse>, Finalize,
+              (FinalizeRequest request, BlobMetadata input_metadata,
+               Context& context),
+              (override));
+};
+
+class MockLegacySession final : public LegacySession {
  public:
   MOCK_METHOD(absl::Status, ConfigureSession,
               (SessionRequest configure_request), (override));
@@ -115,7 +138,7 @@ SessionRequest CreateDefaultWriteRequest(std::string data) {
   return request;
 }
 
-SessionResponse GetFinalizeResponse(const std::string& result) {
+SessionResponse GetFinalizeReadResponse(const std::string& result) {
   SessionResponse response;
   ReadResponse* read_response = response.mutable_read();
   read_response->set_finish_read(true);
@@ -129,12 +152,11 @@ SessionResponse GetFinalizeResponse(const std::string& result) {
   return response;
 }
 
-SessionResponse GetDefaultFinalizeResponse() {
-  return GetFinalizeResponse("test result");
+SessionResponse GetDefaultFinalizeReadResponse() {
+  return GetFinalizeReadResponse("test result");
 }
 
-class FakeConfidentialTransform final
-    : public confidential_federated_compute::ConfidentialTransformBase {
+class FakeConfidentialTransform final : public ConfidentialTransformBase {
  public:
   FakeConfidentialTransform(
       std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
@@ -143,12 +165,12 @@ class FakeConfidentialTransform final
                                   std::move(encryption_key_handle)) {}
 
   void AddSession(
-      std::unique_ptr<confidential_federated_compute::MockSession> session) {
+      std::unique_ptr<confidential_federated_compute::Session> session) {
     session_ = std::move(session);
   };
 
  protected:
-  virtual absl::StatusOr<google::protobuf::Struct> InitializeTransform(
+  absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) {
     google::rpc::Status config_status;
     if (!request->configuration().UnpackTo(&config_status)) {
@@ -159,39 +181,38 @@ class FakeConfidentialTransform final
     }
     return google::protobuf::Struct();
   }
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) {
+
+  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
+      const fcp::confidentialcompute::InitializeRequest* request) override {
     FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
                          InitializeTransform(request));
     return config_properties;
   }
 
-  virtual absl::Status ReadWriteConfigurationRequest(
+  absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
-          write_configuration) {
+          write_configuration) override {
     return absl::OkStatus();
   }
 
-  virtual absl::StatusOr<
-      std::unique_ptr<confidential_federated_compute::Session>>
-  CreateSession() {
+  absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
+  CreateSession() override {
     if (session_ == nullptr) {
-      auto session =
-          std::make_unique<confidential_federated_compute::MockSession>();
-      EXPECT_CALL(*session, ConfigureSession(_))
+      auto session = std::make_unique<MockLegacySession>();
+      EXPECT_CALL(*session, ConfigureSession)
           .WillOnce(Return(absl::OkStatus()));
       return std::move(session);
     }
     return std::move(session_);
   }
 
-  virtual absl::StatusOr<std::string> GetKeyId(
-      const fcp::confidentialcompute::BlobMetadata& metadata) {
+  absl::StatusOr<std::string> GetKeyId(
+      const fcp::confidentialcompute::BlobMetadata& metadata) override {
     return std::string(kKeyId);
   }
 
  private:
-  std::unique_ptr<confidential_federated_compute::MockSession> session_;
+  std::unique_ptr<confidential_federated_compute::Session> session_;
 };
 
 class ConfidentialTransformServerBaseTest : public Test {
@@ -476,8 +497,7 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionBeforeInitialize) {
   configure_request.mutable_configure()->set_chunk_size(1000);
   configure_request.mutable_configure()->mutable_configuration();
 
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
+  std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_FALSE(stream->Read(&configure_response));
   auto status = stream->Finish();
@@ -510,16 +530,14 @@ TEST_F(ConfidentialTransformServerBaseTest,
   SessionResponse session_response;
   session_request.mutable_configure()->set_chunk_size(1000);
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
 
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
+  std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(session_request));
   ASSERT_TRUE(stream->Read(&session_response));
 
@@ -529,10 +547,11 @@ TEST_F(ConfidentialTransformServerBaseTest,
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   SessionRequest finalize_request;
-  SessionResponse finalize_response;
+  SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
   ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
   ASSERT_TRUE(stream->Read(&finalize_response));
   ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
@@ -560,8 +579,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
   SessionResponse configure_response;
   configure_request.mutable_configure()->mutable_configuration();
 
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&session_context);
+  std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_FALSE(stream->Read(&configure_response));
   auto status = stream->Finish();
@@ -589,9 +607,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   ASSERT_TRUE(writer->WritesDone());
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
-  std::vector<std::unique_ptr<
-      ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>>
-      streams;
+  std::vector<std::unique_ptr<SessionStream>> streams;
   std::vector<std::unique_ptr<grpc::ClientContext>> contexts;
   for (int i = 0; i < kMaxNumSessions; i++) {
     std::unique_ptr<grpc::ClientContext> session_context =
@@ -600,8 +616,8 @@ TEST_F(ConfidentialTransformServerBaseTest,
     SessionResponse session_response;
     session_request.mutable_configure()->set_chunk_size(1000);
 
-    std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-        stream = stub_->Session(session_context.get());
+    std::unique_ptr<SessionStream> stream =
+        stub_->Session(session_context.get());
     ASSERT_TRUE(stream->Write(session_request));
     ASSERT_TRUE(stream->Read(&session_response));
 
@@ -616,8 +632,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   SessionResponse rejected_response;
   rejected_request.mutable_configure()->set_chunk_size(1000);
 
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&rejected_context);
+  std::unique_ptr<SessionStream> stream = stub_->Session(&rejected_context);
   ASSERT_TRUE(stream->Write(rejected_request));
   ASSERT_FALSE(stream->Read(&rejected_response));
   ASSERT_EQ(stream->Finish().error_code(),
@@ -659,8 +674,7 @@ class InitializedConfidentialTransformServerBaseTest
         std::make_unique<NonceGenerator>(session_response.configure().nonce());
   }
   grpc::ClientContext session_context_;
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream_;
+  std::unique_ptr<SessionStream> stream_;
   std::unique_ptr<NonceGenerator> nonce_generator_;
   std::string public_key_;
 };
@@ -671,8 +685,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -681,7 +694,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
   StartSession();
 
@@ -694,14 +707,15 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   SessionRequest finalize_request;
-  SessionResponse finalize_response;
+  SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&read_response));
   ASSERT_TRUE(stream_->Read(&finalize_response));
   ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
-  ASSERT_THAT(finalize_response,
+  ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
                                  first_response_metadata {
                                    total_size_bytes: 11
@@ -711,6 +725,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                  finish_read: true
                                  data: "test result"
                                })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
@@ -720,8 +735,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   std::string chunk3 = "mno";
   std::string data = chunk1 + chunk2 + chunk3;
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, data))
@@ -730,7 +744,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
   StartSession();
 
@@ -759,14 +773,15 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   SessionRequest finalize_request;
-  SessionResponse finalize_response;
+  SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&read_response));
   ASSERT_TRUE(stream_->Read(&finalize_response));
   ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
-  ASSERT_THAT(finalize_response,
+  ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
                                  first_response_metadata {
                                    total_size_bytes: 11
@@ -776,6 +791,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                  finish_read: true
                                  data: "test result"
                                })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
@@ -784,28 +800,29 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetFinalizeResponse("abcdefghijklmno")));
+      .WillOnce(Return(GetFinalizeReadResponse("abcdefghijklmno")));
   service_->AddSession(std::move(mock_session));
   StartSession(/*chunk_size=*/6);
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   SessionRequest finalize_request;
-  SessionResponse finalize_response1, finalize_response2, finalize_response3;
+  SessionResponse read_response1, read_response2, read_response3,
+      finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&finalize_response1));
-  ASSERT_TRUE(stream_->Read(&finalize_response2));
-  ASSERT_TRUE(stream_->Read(&finalize_response3));
+  ASSERT_TRUE(stream_->Read(&read_response1));
+  ASSERT_TRUE(stream_->Read(&read_response2));
+  ASSERT_TRUE(stream_->Read(&read_response3));
+  ASSERT_TRUE(stream_->Read(&finalize_response));
   ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
-  ASSERT_THAT(finalize_response1,
+  ASSERT_THAT(read_response1,
               EqualsProto(R"pb(read {
                                  first_response_metadata {
                                    total_size_bytes: 15
@@ -814,17 +831,16 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                  }
                                  data: "abcdef"
                                })pb"));
-  ASSERT_THAT(finalize_response2,
-              EqualsProto(R"pb(read { data: "ghijkl" })pb"));
-  ASSERT_THAT(finalize_response3,
+  ASSERT_THAT(read_response2, EqualsProto(R"pb(read { data: "ghijkl" })pb"));
+  ASSERT_THAT(read_response3,
               EqualsProto(R"pb(read { data: "mno" finish_read: true })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionIgnoresInvalidInputs) {
   std::string data = "test data";
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -835,7 +851,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
   StartSession();
 
@@ -858,13 +874,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   SessionRequest finalize_request;
-  SessionResponse finalize_response;
+  SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&read_response));
   ASSERT_TRUE(stream_->Read(&finalize_response));
 
-  ASSERT_THAT(finalize_response,
+  ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
                                  first_response_metadata {
                                    total_size_bytes: 11
@@ -874,12 +891,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                  finish_read: true
                                  data: "test result"
                                })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionFailsIfWriteFails) {
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -897,8 +914,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByWrite) {
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   service_->AddSession(std::move(mock_session));
@@ -918,8 +934,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByFinalize) {
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   service_->AddSession(std::move(mock_session));
@@ -944,8 +959,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
        SessionFailsIfCommitFails) {
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionCommit(_))
@@ -968,8 +982,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -1006,8 +1019,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   std::string message_1 = "test data 1";
   std::string message_2 = "test data 2";
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -1020,7 +1032,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
   StartSession();
 
@@ -1136,8 +1148,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
        TransformIgnoresUndecryptableInputs) {
   std::string message_1 = "test data 1";
 
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
@@ -1146,7 +1157,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeResponse()));
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
   StartSession();
 
@@ -1234,6 +1245,192 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                })pb"));
 }
 
+TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure)
+      .WillOnce([](ConfigureRequest request, Session::Context& context) {
+        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
+                                             total_size_bytes: 3
+                                             compression_type:
+                                                 COMPRESSION_TYPE_NONE
+                                             unencrypted {}
+                                           }
+                                           data: "abc")pb"));
+        return ConfigureResponse{};
+      });
+  service_->AddSession(std::move(mock_session));
+  auto stream = stub_->Session(&session_context_);
+
+  SessionRequest configure_request;
+  configure_request.mutable_configure()->set_chunk_size(/*chunk_size=*/1000);
+  CHECK(stream->Write(configure_request));
+
+  SessionResponse read_response, configure_response;
+  CHECK(stream->Read(&read_response));
+  CHECK(stream->Read(&configure_response));
+
+  EXPECT_THAT(read_response,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 3
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "abc"
+                               })pb"));
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillOnce([](WriteRequest request, std::string unencrypted_data,
+                   Session::Context& context) {
+        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
+                                             total_size_bytes: 3
+                                             compression_type:
+                                                 COMPRESSION_TYPE_NONE
+                                             unencrypted {}
+                                           }
+                                           data: "abc")pb"));
+        return WriteFinishedResponse{};
+      });
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest write_request = CreateDefaultWriteRequest("foo");
+  CHECK(stream_->Write(write_request));
+
+  SessionResponse read_response, write_response;
+  CHECK(stream_->Read(&read_response));
+  CHECK(stream_->Read(&write_response));
+
+  EXPECT_THAT(read_response,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 3
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "abc"
+                               })pb"));
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Commit)
+      .WillOnce([](CommitRequest request, Session::Context& context) {
+        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
+                                             total_size_bytes: 3
+                                             compression_type:
+                                                 COMPRESSION_TYPE_NONE
+                                             unencrypted {}
+                                           }
+                                           data: "abc")pb"));
+        return CommitResponse{};
+      });
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest commit_request;
+  commit_request.mutable_commit();
+  CHECK(stream_->Write(commit_request));
+
+  SessionResponse read_response, commit_response;
+  CHECK(stream_->Read(&read_response));
+  CHECK(stream_->Read(&commit_response));
+
+  EXPECT_THAT(read_response,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 3
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "abc"
+                               })pb"));
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest,
+       ReadMultipleBlobsOnFinalize) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
+                                             total_size_bytes: 5
+                                             compression_type:
+                                                 COMPRESSION_TYPE_NONE
+                                             unencrypted {}
+                                           }
+                                           data: "first")pb"));
+        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
+                                             total_size_bytes: 6
+                                             compression_type:
+                                                 COMPRESSION_TYPE_NONE
+                                             unencrypted {}
+                                           }
+                                           data: "second")pb"));
+        return FinalizeResponse{};
+      });
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest finalize_request;
+  finalize_request.mutable_finalize();
+  CHECK(stream_->Write(finalize_request));
+
+  SessionResponse read_response1, read_response2, finalize_response;
+  CHECK(stream_->Read(&read_response1));
+  CHECK(stream_->Read(&read_response2));
+  CHECK(stream_->Read(&finalize_response));
+
+  EXPECT_THAT(read_response1,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 5
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "first"
+                               })pb"));
+  EXPECT_THAT(read_response2,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 6
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "second"
+                               })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTest, ReadNoBlobsOnFinalize) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) { return FinalizeResponse{}; });
+  service_->AddSession(std::move(mock_session));
+  StartSession();
+
+  SessionRequest finalize_request;
+  finalize_request.mutable_finalize();
+  CHECK(stream_->Write(finalize_request));
+
+  SessionResponse finalize_response;
+  CHECK(stream_->Read(&finalize_response));
+  EXPECT_TRUE(finalize_response.has_finalize());
+}
+
 class InitializedConfidentialTransformServerBaseTestWithKms
     : public ConfidentialTransformServerBaseTest {
  public:
@@ -1314,16 +1511,14 @@ class InitializedConfidentialTransformServerBaseTestWithKms
   }
 
   grpc::ClientContext session_context_;
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream_;
+  std::unique_ptr<SessionStream> stream_;
   std::string public_key_;
 };
 
 TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
        SessionDecryptsBlobSuccess) {
   std::string message = "test data";
-  auto mock_session =
-      std::make_unique<confidential_federated_compute::MockSession>();
+  auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))

@@ -36,6 +36,10 @@
 
 namespace confidential_federated_compute {
 
+using SessionStream =
+    grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
+                             fcp::confidentialcompute::SessionRequest>;
+
 // Base class that implements the ConfidentialTransform service protocol.
 class ConfidentialTransformBase
     : public fcp::confidentialcompute::ConfidentialTransform::Service {
@@ -46,11 +50,8 @@ class ConfidentialTransformBase
           reader,
       fcp::confidentialcompute::InitializeResponse* response) override;
 
-  grpc::Status Session(
-      grpc::ServerContext* context,
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream) override;
+  grpc::Status Session(grpc::ServerContext* context,
+                       SessionStream* stream) override;
 
  protected:
   ConfidentialTransformBase(
@@ -119,19 +120,14 @@ class ConfidentialTransformBase
           reader,
       fcp::confidentialcompute::InitializeResponse* response);
 
-  absl::Status SessionInternal(
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream);
+  absl::Status SessionImpl(SessionStream* stream);
 
   absl::Status HandleWrite(
-      const fcp::confidentialcompute::WriteRequest& request,
-      absl::Cord blob_data, BlobDecryptor* blob_decryptor,
+      confidential_federated_compute::Session* session,
+      fcp::confidentialcompute::WriteRequest request, absl::Cord blob_data,
+      BlobDecryptor* blob_decryptor,
       std::optional<fcp::confidential_compute::NonceChecker>& nonce_checker,
-      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                               fcp::confidentialcompute::SessionRequest>*
-          stream,
-      confidential_federated_compute::Session* session);
+      SessionStream* stream, Session::Context& context);
 
   absl::Mutex mutex_;
   // The mutex is used to protect the optional wrapping blob_decryptor_ and

@@ -53,6 +53,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

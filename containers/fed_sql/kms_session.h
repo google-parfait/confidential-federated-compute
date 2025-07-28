@@ -40,7 +40,8 @@ namespace confidential_federated_compute::fed_sql {
 // FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
 // thread-safe.
-class KmsFedSqlSession final : public confidential_federated_compute::Session {
+class KmsFedSqlSession final
+    : public confidential_federated_compute::LegacySession {
  public:
   KmsFedSqlSession(
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>

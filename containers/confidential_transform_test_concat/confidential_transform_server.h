@@ -34,7 +34,8 @@
 namespace confidential_federated_compute::confidential_transform_test_concat {
 
 // TestConcat implementation of Session interface. Not threadsafe.
-class TestConcatSession final : public confidential_federated_compute::Session {
+class TestConcatSession final
+    : public confidential_federated_compute::LegacySession {
  public:
   TestConcatSession() {};
   // Currently no per-session configuration.

@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/confidential_transform_server_base.h"
 
+#include <cstdint>
 #include <execution>
 #include <memory>
 #include <optional>
@@ -42,25 +43,71 @@ using ::fcp::confidential_compute::NonceChecker;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
+using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::ConfigureResponse;
+using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
+using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::ServerContext;
 using ::oak::crypto::DecryptionResult;
 using ::oak::crypto::ServerEncryptor;
 
+// Callable struct that provides functionality of chunked writing of
+// ReadResponse to the stream.
+class ChunkedStreamWriter : public Session::Context {
+ public:
+  ChunkedStreamWriter(SessionStream* stream, uint32_t chunk_size)
+      : stream_(stream), chunk_size_(chunk_size) {}
+
+ private:
+  bool Emit(ReadResponse read_response) override {
+    SessionResponse response;
+    ReadResponse* mutable_read = response.mutable_read();
+    *mutable_read = std::move(read_response);
+    mutable_read->set_finish_read(mutable_read->data().size() <= chunk_size_);
+    if (!mutable_read->finish_read()) {
+      // Chunked write implemented by splitting the provided
+      // ReadResponse.
+      absl::Cord data(std::move(*mutable_read->mutable_data()));
+      do {
+        absl::CopyCordToString(data.Subcord(0, chunk_size_),
+                               mutable_read->mutable_data());
+        data.RemovePrefix(chunk_size_);
+        if (!stream_->Write(response)) {
+          return false;
+        }
+        mutable_read->clear_first_response_configuration();
+        mutable_read->clear_first_response_metadata();
+      } while (data.size() > chunk_size_);
+
+      absl::CopyCordToString(data, mutable_read->mutable_data());
+      mutable_read->set_finish_read(true);
+    }
+
+    // Final chunk of data (or the only chunk if the data was smaller or
+    // equal than the chunk size).
+    return stream_->Write(response);
+  }
+
+  SessionStream* stream_;
+  uint32_t chunk_size_;
+};
+
 // Decrypts and parses a record and incorporates the record into the session.
 //
 // Reports status to the client in WriteFinishedResponse.
 absl::Status ConfidentialTransformBase::HandleWrite(
-    const WriteRequest& request, absl::Cord blob_data,
-    BlobDecryptor* blob_decryptor, std::optional<NonceChecker>& nonce_checker,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream,
-    confidential_federated_compute::Session* session) {
+    confidential_federated_compute::Session* session, WriteRequest request,
+    absl::Cord blob_data, BlobDecryptor* blob_decryptor,
+    std::optional<NonceChecker>& nonce_checker, SessionStream* stream,
+    Session::Context& context) {
   if (nonce_checker.has_value()) {
     absl::Status nonce_status =
         nonce_checker->CheckBlobNonce(request.first_request_metadata());
@@ -91,10 +138,13 @@ absl::Status ConfidentialTransformBase::HandleWrite(
   // Clear the memory used by the original encrypted data.
   blob_data.Clear();
 
+  SessionResponse response;
   FCP_ASSIGN_OR_RETURN(
-      SessionResponse response,
-      session->SessionWrite(request, std::move(unencrypted_data.value())));
+      WriteFinishedResponse write_response,
+      session->Write(std::move(request), std::move(unencrypted_data.value()),
+                     context));
 
+  *response.mutable_write() = std::move(write_response);
   stream->Write(response);
   return absl::OkStatus();
 }
@@ -225,8 +275,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
   return absl::OkStatus();
 }
 
-absl::Status ConfidentialTransformBase::SessionInternal(
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
+absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   BlobDecryptor* blob_decryptor;
   {
     absl::MutexLock l(&mutex_);
@@ -259,19 +308,25 @@ absl::Status ConfidentialTransformBase::SessionInternal(
         "chunk_size must be specified in the session ConfigureRequest.");
   }
 
+  // This provides the context for writing of ReadResponse messages.
+  ChunkedStreamWriter context(stream, chunk_size);
+
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
       CreateSession());
-  FCP_RETURN_IF_ERROR(session->ConfigureSession(configure_request));
-  SessionResponse configure_response;
-  auto* configure = configure_response.mutable_configure();
+  FCP_ASSIGN_OR_RETURN(
+      ConfigureResponse configure_response,
+      session->Configure(std::move(*configure_request.mutable_configure()),
+                         context));
+  SessionResponse response;
   std::optional<NonceChecker> nonce_checker = std::nullopt;
   // Nonces only need to be verified for the legacy ledger.
   if (!kms_enabled_) {
     nonce_checker = NonceChecker();
-    *configure->mutable_nonce() = nonce_checker->GetSessionNonce();
+    *configure_response.mutable_nonce() = nonce_checker->GetSessionNonce();
   }
-  stream->Write(configure_response);
+  *response.mutable_configure() = std::move(configure_response);
+  stream->Write(response);
 
   // Initialize result_blob_metadata with unencrypted metadata since
   // EarliestExpirationTimeMetadata expects inputs to have either unencrypted or
@@ -334,68 +389,46 @@ absl::Status ConfidentialTransformBase::SessionInternal(
           write_state = WriteState{.first_request = std::move(write_request),
                                    .data = std::move(data)};
         }
-
         if (is_commit) {
-          FCP_RETURN_IF_ERROR(HandleWrite(
-              write_state->first_request, std::move(write_state->data),
-              blob_decryptor, nonce_checker, stream, session.get()));
+          FCP_RETURN_IF_ERROR(
+              HandleWrite(session.get(), std::move(write_state->first_request),
+                          std::move(write_state->data), blob_decryptor,
+                          nonce_checker, stream, context));
           write_state.reset();
         }
-
         break;
       }
+
       case SessionRequest::kCommit: {
         if (write_state.has_value()) {
           return absl::FailedPreconditionError(
               "Session expected a continuation of chunked blob Write request "
               "but received a Commit request");
         }
-
         const CommitRequest& commit_request = session_request.commit();
-        FCP_ASSIGN_OR_RETURN(SessionResponse response,
-                             session->SessionCommit(commit_request));
+        FCP_ASSIGN_OR_RETURN(CommitResponse commit_response,
+                             session->Commit(commit_request, context));
+        SessionResponse response;
+        *response.mutable_commit() = std::move(commit_response);
         stream->Write(response);
         break;
       }
+
       case SessionRequest::kFinalize: {
         if (write_state.has_value()) {
           return absl::FailedPreconditionError(
               "Session expected a continuation of chunked blob Write request "
               "but received a Finalize request");
         }
-
-        FCP_ASSIGN_OR_RETURN(
-            SessionResponse finalize_response,
-            session->FinalizeSession(session_request.finalize(),
-                                     result_blob_metadata));
-        if (finalize_response.read().data().size() > chunk_size) {
-          // Chunked write implemented by splitting the provided
-          // finalize response.
-          finalize_response.mutable_read()->set_finish_read(false);
-          absl::Cord data(
-              std::move(*finalize_response.mutable_read()->mutable_data()));
-          do {
-            absl::CopyCordToString(
-                data.Subcord(0, chunk_size),
-                finalize_response.mutable_read()->mutable_data());
-            data.RemovePrefix(chunk_size);
-            stream->Write(finalize_response);
-            finalize_response.mutable_read()
-                ->clear_first_response_configuration();
-            finalize_response.mutable_read()->clear_first_response_metadata();
-          } while (data.size() > chunk_size);
-
-          absl::CopyCordToString(
-              data, finalize_response.mutable_read()->mutable_data());
-          finalize_response.mutable_read()->set_finish_read(true);
-        }
-
-        // Final chunk of data (or the only chunk if the data was smaller or
-        // equal than the chunk size).
-        stream->Write(finalize_response);
-
+        FCP_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
+                             session->Finalize(session_request.finalize(),
+                                               result_blob_metadata, context));
+        SessionResponse response;
+        *response.mutable_finalize() = std::move(finalize_response);
+        stream->Write(response);
         return absl::OkStatus();
       }
+
       case SessionRequest::kConfigure:
       default:
         return absl::FailedPreconditionError(absl::StrCat(
@@ -414,9 +447,8 @@ grpc::Status ConfidentialTransformBase::StreamInitialize(
   return ToGrpcStatus(StreamInitializeInternal(reader, response));
 }
 
-grpc::Status ConfidentialTransformBase::Session(
-    ServerContext* context,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
+grpc::Status ConfidentialTransformBase::Session(ServerContext* context,
+                                                SessionStream* stream) {
   SessionTracker* session_tracker;
   {
     absl::MutexLock l(&mutex_);
@@ -435,7 +467,7 @@ grpc::Status ConfidentialTransformBase::Session(
       !session_status.ok()) {
     return ToGrpcStatus(session_status);
   }
-  grpc::Status status = ToGrpcStatus(SessionInternal(stream));
+  grpc::Status status = ToGrpcStatus(SessionImpl(stream));
   absl::Status remove_session = session_tracker->RemoveSession();
   if (!remove_session.ok()) {
     return ToGrpcStatus(remove_session);

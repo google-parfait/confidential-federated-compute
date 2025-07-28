@@ -17,6 +17,8 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 
+#include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -58,6 +60,53 @@ fcp::confidentialcompute::SessionResponse ToSessionCommitResponse(
 // may not be threadsafe.
 class Session {
  public:
+  virtual ~Session() = default;
+
+  // Context interface that provides ability to emit an an arbitrary number of
+  // ReadResponse messages to the session stream.
+  class Context {
+   public:
+    virtual ~Context() = default;
+
+    // Emits a single ReadResponse message to the session stream. If necessary
+    // the message may be chunked.
+    virtual bool Emit(fcp::confidentialcompute::ReadResponse read_response) = 0;
+  };
+
+  // Initialize the session with the given configuration.
+  virtual absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
+      fcp::confidentialcompute::ConfigureRequest request, Context& context) = 0;
+
+  // Process a write request, optionally caching it to later incorporate into
+  // the session upon receiving commit request.
+  virtual absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
+      fcp::confidentialcompute::WriteRequest request,
+      std::string unencrypted_data, Context& context) = 0;
+
+  // Incorporate any cached write requests into the session.
+  virtual absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
+      fcp::confidentialcompute::CommitRequest request, Context& context) = 0;
+
+  // Run any session finalization logic and complete the session.
+  // After finalization, the session state is no longer mutable.
+  virtual absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
+      fcp::confidentialcompute::FinalizeRequest request,
+      fcp::confidentialcompute::BlobMetadata input_metadata,
+      Context& context) = 0;
+};
+
+// Backwards compatible legacy interface for interacting with a session in a
+// container. This class implements the Session interface above and surfaces
+// a set of virtual methods that are backwards compatible with the old
+// version of Session interface.
+//
+// Compared to Session interfaces, there are three differences:
+// - Methods aren't expected to return blobs via the callback
+// - FinalizeSession returns a single blob via SessionResponse containing a
+//   ReadResponse rather than a FinalizeResponse.
+// - All methods return SessionResponse rather than a specific type of response.
+class LegacySession : public Session {
+ public:
   // Initialize the session with the given configuration.
   virtual absl::Status ConfigureSession(
       fcp::confidentialcompute::SessionRequest configure_request) = 0;
@@ -77,7 +126,20 @@ class Session {
       const fcp::confidentialcompute::FinalizeRequest& request,
       const fcp::confidentialcompute::BlobMetadata& input_metadata) = 0;
 
-  virtual ~Session() = default;
+  // Implementations of Session interface.
+  absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
+      fcp::confidentialcompute::ConfigureRequest request,
+      Context& context) override;
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
+      fcp::confidentialcompute::WriteRequest request,
+      std::string unencrypted_data, Context& context) override;
+  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
+      fcp::confidentialcompute::CommitRequest request,
+      Context& context) override;
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
+      fcp::confidentialcompute::FinalizeRequest request,
+      fcp::confidentialcompute::BlobMetadata input_metadata,
+      Context& context) override;
 };
 
 }  // namespace confidential_federated_compute

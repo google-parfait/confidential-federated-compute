@@ -31,7 +31,8 @@
 namespace confidential_federated_compute::fed_sql {
 
 // FedSql implementation of Session interface. Not threadsafe.
-class FedSqlSession final : public confidential_federated_compute::Session {
+class FedSqlSession final
+    : public confidential_federated_compute::LegacySession {
  public:
   FedSqlSession(
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
