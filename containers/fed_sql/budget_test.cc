@@ -15,6 +15,7 @@
 #include "containers/fed_sql/budget.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "testing/matchers.h"
@@ -23,6 +24,8 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -32,7 +35,7 @@ TEST(BudgetTest, Parse) {
     buckets { key: "bar" budget: 2 }
   )pb");
   Budget budget(/*default_budget=*/5);
-  EXPECT_OK(budget.Parse(state));
+  EXPECT_THAT(budget.Parse(state), IsOk());
   // The "foo" bucket budget should be limited to 5.
   EXPECT_THAT(budget, UnorderedElementsAre(Pair("foo", 5), Pair("bar", 2)));
 }
@@ -43,7 +46,7 @@ TEST(BudgetTest, Serialize) {
     buckets { key: "bar" budget: 2 }
   )pb");
   Budget budget(/*default_budget=*/5);
-  EXPECT_OK(budget.Parse(state));
+  EXPECT_THAT(budget.Parse(state), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets { key: "foo" budget: 5 }
                 buckets { key: "bar" budget: 2 }
@@ -57,18 +60,18 @@ TEST(BudgetTest, StringParseAndSerialize) {
   )pb");
   std::string serialized_state = state.SerializeAsString();
   Budget budget(/*default_budget=*/5);
-  EXPECT_OK(budget.Parse(serialized_state));
+  EXPECT_THAT(budget.Parse(serialized_state), IsOk());
   std::string new_serialized_state = budget.SerializeAsString();
   // The new serialized state may not be the same due to the repeated
   // field reordering, but the size should be the same.
   EXPECT_EQ(serialized_state.size(), new_serialized_state.size());
   // Make sure we can parse again
-  EXPECT_OK(budget.Parse(new_serialized_state));
+  EXPECT_THAT(budget.Parse(new_serialized_state), IsOk());
 }
 
 TEST(BudgetTest, StringParseBadInput) {
   Budget budget(/*default_budget=*/5);
-  EXPECT_THAT(budget.Parse("foobar"), IsCode(absl::StatusCode::kInternal));
+  EXPECT_THAT(budget.Parse("foobar"), StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(BudgetTest, HasRemainingBudget) {
@@ -77,7 +80,7 @@ TEST(BudgetTest, HasRemainingBudget) {
     buckets { key: "bar" budget: 0 }
   )pb");
   Budget budget(/*default_budget=*/5);
-  EXPECT_OK(budget.Parse(state));
+  EXPECT_THAT(budget.Parse(state), IsOk());
   EXPECT_TRUE(budget.HasRemainingBudget("foo"));
   EXPECT_FALSE(budget.HasRemainingBudget("bar"));
   // This bucket is unknown so the default budget is assumed.
@@ -94,7 +97,7 @@ TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
     buckets { key: "bar" budget: 0 }
   )pb");
   Budget budget(/*default_budget=*/std::nullopt);
-  EXPECT_OK(budget.Parse(state));
+  EXPECT_THAT(budget.Parse(state), IsOk());
   // Should have budget in any bucket unless it is explicitly exhausted.
   EXPECT_TRUE(budget.HasRemainingBudget("foo"));
   EXPECT_FALSE(budget.HasRemainingBudget("bar"));
@@ -105,7 +108,7 @@ TEST(BudgetTest, UpdateDefaultBudget) {
   RangeTracker range_tracker;
   EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
-  EXPECT_OK(budget.UpdateBudget(range_tracker));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets { key: "foo" budget: 4 }
                 buckets { key: "bar" budget: 4 }
@@ -118,12 +121,12 @@ TEST(BudgetTest, UpdateParsedBudget) {
     buckets { key: "bar" budget: 2 }
   )pb");
   Budget budget(/*default_budget=*/5);
-  EXPECT_OK(budget.Parse(state));
+  EXPECT_THAT(budget.Parse(state), IsOk());
   // The set of buckets in the range tracker isn't the same.
   RangeTracker range_tracker;
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
   EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
-  EXPECT_OK(budget.UpdateBudget(range_tracker));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The first bucket remains unchanged, the second bucket is updated, and
   // the third bucket is set to the default budget and then updated.
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
@@ -144,14 +147,14 @@ TEST(BudgetTest, UpdateExhaustedBudget) {
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
   EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
   EXPECT_THAT(budget.UpdateBudget(range_tracker),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(BudgetTest, UpdateInfiniteBudget) {
   Budget budget(/*default_budget=*/std::nullopt);
   RangeTracker range_tracker;
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
-  EXPECT_OK(budget.UpdateBudget(range_tracker));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The budget should remain empty - no "bar" bucket.
   EXPECT_EQ(budget.begin(), budget.end());
 }

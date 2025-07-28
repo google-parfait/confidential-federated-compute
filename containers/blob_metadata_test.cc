@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/blob_metadata.h"
 
+#include "absl/status/status_matchers.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -23,6 +24,7 @@
 namespace confidential_federated_compute {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -45,7 +47,7 @@ TEST(EarliestExpirationTimeMetadataTest, BothUnencrypted) {
   BlobMetadata other;
   other.mutable_unencrypted();
 
-  ASSERT_TRUE(EarliestExpirationTimeMetadata(metadata, other).ok());
+  ASSERT_THAT(EarliestExpirationTimeMetadata(metadata, other), IsOk());
 }
 
 TEST(EarliestExpirationTimeMetadataTest,
@@ -57,14 +59,14 @@ TEST(EarliestExpirationTimeMetadataTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   encrypted_without_expiration.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_public_key);
 
-  ASSERT_TRUE(
-      EarliestExpirationTimeMetadata(unencrypted, encrypted_without_expiration)
-          .ok());
+  ASSERT_THAT(
+      EarliestExpirationTimeMetadata(unencrypted, encrypted_without_expiration),
+      IsOk());
 }
 
 TEST(EarliestExpirationTimeMetadataTest,
@@ -75,14 +77,14 @@ TEST(EarliestExpirationTimeMetadataTest,
   BlobMetadata encrypted_with_expiration;
   absl::StatusOr<std::string> reencryption_key_with_expiration =
       GetKeyWithExpiration(absl::FromUnixSeconds(1));
-  ASSERT_TRUE(reencryption_key_with_expiration.ok());
+  ASSERT_THAT(reencryption_key_with_expiration, IsOk());
   encrypted_with_expiration.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_key_with_expiration);
 
   absl::StatusOr<BlobMetadata> earliest =
       EarliestExpirationTimeMetadata(unencrypted, encrypted_with_expiration);
-  ASSERT_TRUE(earliest.ok());
+  ASSERT_THAT(earliest, IsOk());
   ASSERT_EQ(earliest->hpke_plus_aead_data()
                 .rewrapped_symmetric_key_associated_data()
                 .reencryption_public_key(),
@@ -95,7 +97,7 @@ TEST(EarliestExpirationTimeMetadataTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   encrypted_without_expiration.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_public_key);
@@ -103,14 +105,14 @@ TEST(EarliestExpirationTimeMetadataTest,
   BlobMetadata encrypted_with_expiration;
   absl::StatusOr<std::string> reencryption_key_with_expiration =
       GetKeyWithExpiration(absl::FromUnixSeconds(1));
-  ASSERT_TRUE(reencryption_key_with_expiration.ok());
+  ASSERT_THAT(reencryption_key_with_expiration, IsOk());
   encrypted_with_expiration.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_key_with_expiration);
 
   absl::StatusOr<BlobMetadata> earliest = EarliestExpirationTimeMetadata(
       encrypted_without_expiration, encrypted_with_expiration);
-  ASSERT_TRUE(earliest.ok());
+  ASSERT_THAT(earliest, IsOk());
   ASSERT_EQ(earliest->hpke_plus_aead_data()
                 .rewrapped_symmetric_key_associated_data()
                 .reencryption_public_key(),
@@ -121,7 +123,7 @@ TEST(EarliestExpirationTimeMetadataTest, BothEncryptedWithExpirationTime) {
   BlobMetadata earlier_metadata;
   absl::StatusOr<std::string> earlier_key =
       GetKeyWithExpiration(absl::FromUnixSeconds(1));
-  ASSERT_TRUE(earlier_key.ok());
+  ASSERT_THAT(earlier_key, IsOk());
   earlier_metadata.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*earlier_key);
@@ -129,14 +131,14 @@ TEST(EarliestExpirationTimeMetadataTest, BothEncryptedWithExpirationTime) {
   BlobMetadata later_metadata;
   absl::StatusOr<std::string> later_key =
       GetKeyWithExpiration(absl::FromUnixSeconds(42));
-  ASSERT_TRUE(later_key.ok());
+  ASSERT_THAT(later_key, IsOk());
   later_metadata.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*later_key);
 
   absl::StatusOr<BlobMetadata> earliest =
       EarliestExpirationTimeMetadata(later_metadata, earlier_metadata);
-  ASSERT_TRUE(earliest.ok());
+  ASSERT_THAT(earliest, IsOk());
   ASSERT_EQ(earliest->hpke_plus_aead_data()
                 .rewrapped_symmetric_key_associated_data()
                 .reencryption_public_key(),
@@ -147,7 +149,7 @@ TEST(EarliestExpirationTimeMetadataTest, BothEncryptedWithoutExpirationTime) {
   MessageDecryptor decryptor_1;
   absl::StatusOr<std::string> reencryption_public_key_1 =
       decryptor_1.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key_1.ok());
+  ASSERT_THAT(reencryption_public_key_1, IsOk());
   encrypted_without_expiration_1.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_public_key_1);
@@ -156,14 +158,14 @@ TEST(EarliestExpirationTimeMetadataTest, BothEncryptedWithoutExpirationTime) {
   MessageDecryptor decryptor_2;
   absl::StatusOr<std::string> reencryption_public_key_2 =
       decryptor_2.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key_2.ok());
+  ASSERT_THAT(reencryption_public_key_2, IsOk());
   encrypted_without_expiration_2.mutable_hpke_plus_aead_data()
       ->mutable_rewrapped_symmetric_key_associated_data()
       ->set_reencryption_public_key(*reencryption_public_key_2);
 
-  ASSERT_TRUE(EarliestExpirationTimeMetadata(encrypted_without_expiration_1,
-                                             encrypted_without_expiration_2)
-                  .ok());
+  ASSERT_THAT(EarliestExpirationTimeMetadata(encrypted_without_expiration_1,
+                                             encrypted_without_expiration_2),
+              IsOk());
 }
 
 TEST(EarliestExpirationTimeMetadataTest, UndecodeableKeysFail) {

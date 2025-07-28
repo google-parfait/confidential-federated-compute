@@ -17,6 +17,8 @@
 #include <tuple>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/session.h"
@@ -36,6 +38,9 @@
 namespace confidential_federated_compute {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -54,7 +59,7 @@ TEST(CryptoTest, KeyedHashSuccess) {
   absl::string_view input = "The quick brown fox jumps over the lazy dog";
   absl::string_view key = "key";
   absl::StatusOr<std::string> result = KeyedHash(input, key);
-  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 32);
   EXPECT_TRUE(*result != input);
 }
@@ -63,7 +68,7 @@ TEST(CryptoTest, KeyedHashEmptyInput) {
   absl::string_view input = "";
   absl::string_view key = "key";
   absl::StatusOr<std::string> result = KeyedHash(input, key);
-  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 32);
   EXPECT_TRUE(*result != input);
 }
@@ -72,7 +77,7 @@ TEST(CryptoTest, KeyedHashEmptyKey) {
   absl::string_view input = "foo";
   absl::string_view key = "";
   absl::StatusOr<std::string> result = KeyedHash(input, key);
-  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 32);
   EXPECT_TRUE(*result != input);
 }
@@ -81,7 +86,7 @@ TEST(CryptoTest, KeyedHashBothEmpty) {
   absl::string_view input = "";
   absl::string_view key = "";
   absl::StatusOr<std::string> result = KeyedHash(input, key);
-  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 32);
   EXPECT_TRUE(*result != input);
 }
@@ -96,18 +101,17 @@ TEST(CryptoTest, EncryptAndDecryptBlob) {
 
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
-  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
+  ASSERT_THAT(recipient_public_key, IsOk());
 
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob =
       crypto_test_utils::CreateRewrappedBlob(
           message, ciphertext_associated_data, *recipient_public_key, "nonce",
           reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob.ok()) << rewrapped_blob.status();
+  ASSERT_THAT(rewrapped_blob, IsOk());
 
-  absl::StatusOr<std::string> decrypt_result = blob_decryptor.DecryptBlob(
-      std::get<0>(*rewrapped_blob), std::get<1>(*rewrapped_blob));
-  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_EQ(*decrypt_result, message);
+  EXPECT_THAT(blob_decryptor.DecryptBlob(std::get<0>(*rewrapped_blob),
+                                         std::get<1>(*rewrapped_blob)),
+              IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, EncryptAndDecryptBlobWithKmsKeyId) {
@@ -122,7 +126,7 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithKmsKeyId) {
   MessageEncryptor encryptor;
   absl::StatusOr<EncryptMessageResult> encrypt_result =
       encryptor.Encrypt(message, public_key, associated_data);
-  ASSERT_TRUE(encrypt_result.ok()) << encrypt_result.status();
+  ASSERT_THAT(encrypt_result, IsOk());
 
   BlobMetadata metadata;
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
@@ -137,16 +141,15 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithKmsKeyId) {
   encryption_metadata->mutable_kms_symmetric_key_associated_data()
       ->set_record_header(associated_data);
 
-  absl::StatusOr<std::string> decrypt_result = blob_decryptor.DecryptBlob(
-      metadata, encrypt_result.value().ciphertext, key_id);
-  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_EQ(*decrypt_result, message);
+  EXPECT_THAT(blob_decryptor.DecryptBlob(
+                  metadata, encrypt_result.value().ciphertext, key_id),
+              IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {
   std::string message = "some plaintext message";
   absl::StatusOr<std::string> compressed = fcp::CompressWithGzip(message);
-  ASSERT_TRUE(compressed.ok()) << compressed.status();
+  ASSERT_THAT(compressed, IsOk());
   std::string reencryption_public_key = "reencryption_public_key";
   std::string ciphertext_associated_data = "ciphertext associated data";
 
@@ -155,20 +158,19 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {
 
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
-  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
+  ASSERT_THAT(recipient_public_key, IsOk());
 
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob =
       crypto_test_utils::CreateRewrappedBlob(
           *compressed, ciphertext_associated_data, *recipient_public_key,
           "nonce", reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob.ok()) << rewrapped_blob.status();
+  ASSERT_THAT(rewrapped_blob, IsOk());
   std::get<0>(*rewrapped_blob)
       .set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
 
-  absl::StatusOr<std::string> decrypt_result = blob_decryptor.DecryptBlob(
-      std::get<0>(*rewrapped_blob), std::get<1>(*rewrapped_blob));
-  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_EQ(*decrypt_result, message);
+  EXPECT_THAT(blob_decryptor.DecryptBlob(std::get<0>(*rewrapped_blob),
+                                         std::get<1>(*rewrapped_blob)),
+              IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, EncryptAndDecryptBlobWrongRecipient) {
@@ -184,18 +186,17 @@ TEST(CryptoTest, EncryptAndDecryptBlobWrongRecipient) {
   // blob_decryptor will not be able to decrypt the blob.
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor_other.GetPublicKey();
-  ASSERT_TRUE(recipient_public_key.ok()) << recipient_public_key.status();
+  ASSERT_THAT(recipient_public_key, IsOk());
 
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob =
       crypto_test_utils::CreateRewrappedBlob(
           message, ciphertext_associated_data, *recipient_public_key, "nonce",
           reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob.ok()) << rewrapped_blob.status();
+  ASSERT_THAT(rewrapped_blob, IsOk());
 
-  absl::StatusOr<std::string> decrypt_result = blob_decryptor.DecryptBlob(
-      std::get<0>(*rewrapped_blob), std::get<1>(*rewrapped_blob));
-  ASSERT_FALSE(decrypt_result.ok());
-  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()));
+  EXPECT_THAT(blob_decryptor.DecryptBlob(std::get<0>(*rewrapped_blob),
+                                         std::get<1>(*rewrapped_blob)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CryptoTest, DecryptUnencryptedBlob) {
@@ -206,37 +207,30 @@ TEST(CryptoTest, DecryptUnencryptedBlob) {
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, message);
-  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_EQ(*decrypt_result, message);
+  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, message),
+              IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, DecryptUnencryptedBlobWithGzipCompression) {
   std::string message = "some plaintext message";
   absl::StatusOr<std::string> compressed = fcp::CompressWithGzip(message);
-  ASSERT_TRUE(compressed.ok()) << compressed.status();
+  ASSERT_THAT(compressed, IsOk());
   NiceMock<crypto_test_utils::MockSigningKeyHandle> mock_signing_key_handle;
   BlobDecryptor blob_decryptor(mock_signing_key_handle);
 
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, *compressed);
-  ASSERT_TRUE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_EQ(*decrypt_result, message);
+  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, *compressed),
+              IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidKind) {
   NiceMock<crypto_test_utils::MockSigningKeyHandle> mock_signing_key_handle;
   BlobDecryptor blob_decryptor(mock_signing_key_handle);
   BlobMetadata metadata;
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, "message");
-  ASSERT_FALSE(decrypt_result.ok());
-  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()))
-      << decrypt_result.status();
+  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "message"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CryptoTest, DecryptBlobWithoutCompressionType) {
@@ -245,11 +239,8 @@ TEST(CryptoTest, DecryptBlobWithoutCompressionType) {
 
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, "message");
-  ASSERT_FALSE(decrypt_result.ok());
-  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()))
-      << decrypt_result.status();
+  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "message"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidGzipCompression) {
@@ -259,9 +250,7 @@ TEST(CryptoTest, DecryptBlobWithInvalidGzipCompression) {
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, "message");
-  ASSERT_FALSE(decrypt_result.ok());
+  EXPECT_FALSE(blob_decryptor.DecryptBlob(metadata, "message").ok());
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
@@ -276,15 +265,11 @@ TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
   // early.
   metadata.mutable_hpke_plus_aead_data()
       ->mutable_ledger_symmetric_key_associated_data();
-  absl::StatusOr<std::string> decrypt_result =
-      blob_decryptor.DecryptBlob(metadata, "unused message");
-  ASSERT_FALSE(decrypt_result.ok()) << decrypt_result.status();
-  ASSERT_TRUE(absl::IsInvalidArgument(decrypt_result.status()))
-      << decrypt_result.status();
-  ASSERT_THAT(decrypt_result.status().message(),
-              HasSubstr("Blob to decrypt must contain "
-                        "either rewrapped_symmetric_key_associated_data or "
-                        "kms_symmetric_key_associated_data"));
+  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "unused message"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Blob to decrypt must contain either "
+                                 "rewrapped_symmetric_key_associated_data or "
+                                 "kms_symmetric_key_associated_data")));
 }
 
 TEST(CryptoTest, BlobDecryptorGetPublicKey) {
@@ -300,17 +285,15 @@ TEST(CryptoTest, BlobDecryptorGetPublicKey) {
   BlobDecryptor blob_decryptor(mock_signing_key_handle, config_properties);
 
   absl::StatusOr<absl::string_view> public_key = blob_decryptor.GetPublicKey();
-  ASSERT_TRUE(public_key.ok()) << public_key.status();
+  ASSERT_THAT(public_key, IsOk());
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(*public_key);
-  ASSERT_TRUE(cwt.ok()) << cwt.status();
+  ASSERT_THAT(cwt, IsOk());
   EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(
       cwt->config_properties, config_properties))
       << "Actual: " << cwt->config_properties.DebugString();
 
-  absl::StatusOr<std::string> sig_structure =
-      cwt->BuildSigStructureForSigning(/*aad=*/"");
-  ASSERT_TRUE(sig_structure.ok()) << sig_structure.status();
-  EXPECT_EQ(sign_request, *sig_structure);
+  EXPECT_THAT(cwt->BuildSigStructureForSigning(/*aad=*/""),
+              IsOkAndHolds(sign_request));
   EXPECT_EQ(cwt->signature, "signature");
 }
 
@@ -331,14 +314,11 @@ TEST(CryptoTest, BlobDecryptorGetPublicKeyTwice) {
   BlobDecryptor blob_decryptor(mock_signing_key_handle);
 
   absl::StatusOr<absl::string_view> public_key = blob_decryptor.GetPublicKey();
-  ASSERT_TRUE(public_key.ok()) << public_key.status();
+  ASSERT_THAT(public_key, IsOk());
 
   // Now call GetPublicKey again.
   // This will succeed and return the same public key.
-  absl::StatusOr<absl::string_view> public_key_2 =
-      blob_decryptor.GetPublicKey();
-  ASSERT_TRUE(public_key_2.ok()) << public_key_2.status();
-  ASSERT_EQ(*public_key, *public_key_2);
+  EXPECT_THAT(blob_decryptor.GetPublicKey(), IsOkAndHolds(*public_key));
 }
 
 }  // namespace

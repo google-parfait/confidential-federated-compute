@@ -17,6 +17,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "fcp/base/monitoring.h"
@@ -31,6 +32,7 @@ namespace confidential_federated_compute::sql {
 
 namespace {
 
+using ::absl_testing::IsOk;
 using ::fcp::client::ExampleQueryResult_VectorData;
 using ::fcp::client::ExampleQueryResult_VectorData_Int64Values;
 using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
@@ -133,7 +135,7 @@ TEST(MultipleThreadsTest, ConcurrentDefineTable) {
 class DefineTableTest : public SqliteAdapterTest {};
 
 TEST_F(DefineTableTest, ValidCreateTableStatement) {
-  ASSERT_TRUE(sqlite_->DefineTable(CreateInputTableSchema()).ok());
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
 }
 
 TEST_F(DefineTableTest, InvalidCreateTableStatement) {
@@ -285,7 +287,7 @@ TEST_F(AddTableContentsTest, BatchedInserts) {
   auto result_status = sqlite_->EvaluateQuery(
       "SELECT int_vals FROM t ORDER BY int_vals;", output_schema.column());
 
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   EXPECT_EQ(result.size(), 1);
   EXPECT_THAT(result[0].num_elements(), Eq(num_rows));
@@ -317,7 +319,7 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
                        google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -335,7 +337,7 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicStringExpression) {
                        google::internal::federated::plan::STRING);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_STRING);
@@ -353,7 +355,7 @@ TEST_F(EvaluateQueryTest, ValidQueryScalarFunction) {
                        google::internal::federated::plan::INT64);
 
   auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -421,7 +423,7 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
                            )sql",
       output_schema.column());
 
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -442,7 +444,7 @@ TEST_F(EvaluateQueryTest, ResultsFromTable) {
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals FROM t;)sql", output_schema.column());
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -467,7 +469,7 @@ TEST_F(EvaluateQueryTest, MultipleAddTableContents) {
 
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT COUNT(*) AS n FROM t;)sql", output_schema.column());
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -490,7 +492,7 @@ TEST_F(EvaluateQueryTest, MultipleResultRows) {
       R"sql(SELECT int_vals FROM t ORDER BY int_vals;)sql",
       output_schema.column());
 
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -516,7 +518,7 @@ TEST_F(EvaluateQueryTest, MultipleColumns) {
   auto result_status = sqlite_->EvaluateQuery(
       R"sql(SELECT int_vals, str_vals FROM t;)sql", output_schema.column());
 
-  ASSERT_TRUE(result_status.ok());
+  ASSERT_THAT(result_status, IsOk());
   std::vector<Tensor> result = std::move(result_status.value());
   ASSERT_EQ(result.size(), 2);
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
@@ -592,7 +594,7 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
                             )sql",
       output_schema.column());
 
-  ASSERT_TRUE(result_status.ok()) << result_status.status().message();
+  ASSERT_THAT(result_status, IsOk());
 }
 
 }  // namespace

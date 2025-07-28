@@ -19,6 +19,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/crypto_test_utils.h"
@@ -41,6 +42,7 @@ namespace confidential_federated_compute::confidential_transform_test_concat {
 
 namespace {
 
+using ::absl_testing::IsOk;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
@@ -250,19 +252,19 @@ TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = "one";
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -283,12 +285,12 @@ TEST_F(TestConcatServerSessionTest, SessionDecryptsMultipleBlobsAndFinalizes) {
   std::string message_1 = "two";
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
@@ -325,19 +327,19 @@ TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = "zero";
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -356,12 +358,12 @@ TEST_F(TestConcatServerSessionTest, SessionIgnoresUndecryptableInputs) {
   ASSERT_EQ(response_0.write().status().code(), grpc::OK);
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           "unused message", ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest invalid_request;
   WriteRequest* invalid_write_request = invalid_request.mutable_write();

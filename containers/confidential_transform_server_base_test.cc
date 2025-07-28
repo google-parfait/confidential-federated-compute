@@ -19,6 +19,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
@@ -26,6 +27,7 @@
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/session.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -47,6 +49,8 @@ namespace confidential_federated_compute {
 
 namespace {
 
+using ::absl_testing::IsOk;
+using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -256,9 +260,8 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   ASSERT_TRUE(writer->WritesDone());
   // Finish is called to get the server's response and final status of the
   // stream.
-  ASSERT_TRUE(writer->Finish().ok());
-  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
+  ASSERT_THAT(OkpCwt::Decode(response.public_key()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
@@ -279,9 +282,8 @@ TEST_F(ConfidentialTransformServerBaseTest,
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
-  absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
+  ASSERT_THAT(OkpCwt::Decode(response.public_key()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitializeKmsEnabled) {
@@ -313,7 +315,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitializeKmsEnabled) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
   ASSERT_EQ(response.public_key(), "");
 }
 
@@ -399,7 +401,7 @@ TEST_F(ConfidentialTransformServerBaseTest, StreamInitializeMoreThanOnce) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
   grpc::ClientContext second_context;
   request.mutable_initialize_request()->mutable_configuration()->PackFrom(
@@ -500,7 +502,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
       stub_->StreamInitialize(&configure_context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
   grpc::ClientContext session_context;
   SessionRequest session_request;
@@ -531,7 +533,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
       config);
   ASSERT_TRUE(stream->Write(finalize_request));
   ASSERT_TRUE(stream->Read(&finalize_response));
-  ASSERT_TRUE(stream->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
@@ -550,7 +552,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
       stub_->StreamInitialize(&configure_context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -584,7 +586,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
       stub_->StreamInitialize(&configure_context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
   std::vector<std::unique_ptr<
       ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>>
@@ -696,7 +698,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
   ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_TRUE(stream_->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
   ASSERT_THAT(finalize_response,
               EqualsProto(R"pb(read {
@@ -761,7 +763,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       config);
   ASSERT_TRUE(stream_->Write(finalize_request));
   ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_TRUE(stream_->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
   ASSERT_THAT(finalize_response,
               EqualsProto(R"pb(read {
@@ -800,7 +802,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_TRUE(stream_->Read(&finalize_response1));
   ASSERT_TRUE(stream_->Read(&finalize_response2));
   ASSERT_TRUE(stream_->Read(&finalize_response3));
-  ASSERT_TRUE(stream_->Finish().ok());
+  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
 
   ASSERT_THAT(finalize_response1,
               EqualsProto(R"pb(read {
@@ -1024,18 +1026,18 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1058,12 +1060,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
@@ -1084,12 +1086,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
   absl::StatusOr<NonceAndCounter> nonce_2 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_2.ok());
+  ASSERT_THAT(nonce_2, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_2 =
       crypto_test_utils::CreateRewrappedBlob(
           message_2, ciphertext_associated_data, public_key_,
           nonce_2->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_2.ok()) << rewrapped_blob_2.status();
+  ASSERT_THAT(rewrapped_blob_2, IsOk());
 
   SessionRequest request_2;
   WriteRequest* write_request_2 = request_2.mutable_write();
@@ -1150,7 +1152,7 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data = "ciphertext associated data";
 
   // Create one blob that will fail to decrypt and one blob that can be
@@ -1158,12 +1160,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   std::string message_0 = "test data 0";
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1186,12 +1188,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
 
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();

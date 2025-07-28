@@ -21,6 +21,8 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "cc/crypto/client_encryptor.h"
@@ -31,11 +33,13 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "google/rpc/code.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -54,10 +58,14 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
+using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::MessageDecryptor;
@@ -96,11 +104,11 @@ using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::RepeatedPtrField;
+using ::google::rpc::Code;
 using ::grpc::ClientWriter;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
-using ::grpc::StatusCode;
 using ::oak::crypto::ClientEncryptor;
 using ::oak::crypto::EncryptionKeyProvider;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
@@ -231,20 +239,18 @@ std::string ReadFileContent(std::string file_path) {
 
 // Write the InitializeRequest to the client stream and then close
 // the stream, returning the status of Finish.
-grpc::Status WriteInitializeRequest(
+absl::Status WriteInitializeRequest(
     std::unique_ptr<ClientWriter<StreamInitializeRequest>> stream,
     InitializeRequest request) {
   StreamInitializeRequest stream_request;
   *stream_request.mutable_initialize_request() = std::move(request);
   if (!stream->Write(stream_request)) {
-    return grpc::Status(StatusCode::ABORTED,
-                        "Write to StreamInitialize failed.");
+    return absl::AbortedError("Write to StreamInitialize failed.");
   }
   if (!stream->WritesDone()) {
-    return grpc::Status(StatusCode::ABORTED,
-                        "WritesDone to StreamInitialize failed.");
+    return absl::AbortedError("WritesDone to StreamInitialize failed.");
   }
-  return stream->Finish();
+  return FromGrpcStatus(stream->Finish());
 }
 
 bool WritePipelinePrivateState(ClientWriter<StreamInitializeRequest>* stream,
@@ -380,8 +386,10 @@ TEST_F(FedSqlServerTest, ValidStreamInitializeWithoutInferenceConfigs) {
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   std::move(request)));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      IsOk());
 
   // Inference files shouldn't exist because no write_configuration is provided.
   ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_1"));
@@ -397,11 +405,11 @@ TEST_F(FedSqlServerTest, InvalidStreamInitializeRequest) {
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("is not a supported intrinsic_uri"));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("is not a supported intrinsic_uri")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeRequestNoIntrinsicConfigs) {
@@ -411,11 +419,12 @@ TEST_F(FedSqlServerTest, StreamInitializeRequestNoIntrinsicConfigs) {
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(invalid_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Configuration must have exactly one IntrinsicConfig"));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Configuration must have exactly one IntrinsicConfig")));
 }
 
 TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersStreamInitialize) {
@@ -453,11 +462,11 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersStreamInitialize) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("must both have type DT_DOUBLE"));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("must both have type DT_DOUBLE")));
 }
 
 TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsStreamInitialize) {
@@ -486,11 +495,12 @@ TEST_F(FedSqlServerTest, MultipleTopLevelIntrinsicsStreamInitialize) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Configuration must have exactly one IntrinsicConfig"));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Configuration must have exactly one IntrinsicConfig")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
@@ -501,16 +511,16 @@ TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
   request.mutable_configuration()->PackFrom(init_config);
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   request));
+  EXPECT_THAT(WriteInitializeRequest(
+                  stub_->StreamInitialize(&context, &response), request),
+              IsOk());
 
   grpc::ClientContext second_context;
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&second_context, &response), std::move(request));
-
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("SetIntrinsics can only be called once"));
+  EXPECT_THAT(WriteInitializeRequest(
+                  stub_->StreamInitialize(&second_context, &response),
+                  std::move(request)),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("SetIntrinsics can only be called once")));
 }
 
 TEST_F(FedSqlServerTest,
@@ -520,11 +530,13 @@ TEST_F(FedSqlServerTest,
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(DefaultFedSqlDpContainerConfig());
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   std::move(request)));
+  ASSERT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      IsOk());
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
+  ASSERT_THAT(cwt, IsOk());
   ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
             "fedsql_dp_group_by");
   ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
@@ -580,11 +592,13 @@ TEST_F(FedSqlServerTest,
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   std::move(request)));
+  ASSERT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      IsOk());
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
-  ASSERT_TRUE(cwt.ok());
+  ASSERT_THAT(cwt, IsOk());
   ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
             "differential_privacy_tensor_aggregator_bundle");
   ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
@@ -623,7 +637,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
       PARSE_TEXT_PROTO(R"pb(buckets { key: "foo" budget: 1 })pb");
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
                                         budget_state.SerializeAsString()));
-  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
@@ -649,7 +664,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsNoDpConfig) {
 
   auto writer = stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidPrivateState) {
@@ -676,7 +692,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidPrivateState) {
   auto writer = stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(), "invalid private state"));
   EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
-              IsCode(grpc::StatusCode::INTERNAL));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
@@ -700,11 +716,11 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Invalid intrinsic URI for DP configuration."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("Invalid intrinsic URI for DP configuration.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
@@ -728,11 +744,11 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Epsilon value does not match the expected value."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("Epsilon value does not match the expected value.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
@@ -756,11 +772,11 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Delta value does not match the expected value."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("Delta value does not match the expected value.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
@@ -781,12 +797,12 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
                                .value();
   *request.mutable_protected_response() = encrypted_request;
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_THAT(
-      status.error_message(),
-      HasSubstr("FedSqlContainerConfigConstraints cannot be unpacked."));
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("FedSqlContainerConfigConstraints cannot be unpacked.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
@@ -796,11 +812,11 @@ TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(value);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Configuration cannot be unpacked."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Configuration cannot be unpacked.")));
 }
 
 TEST_F(FedSqlServerTest, ValidStreamInitializeWithInferenceConfigs) {
@@ -861,8 +877,9 @@ TEST_F(FedSqlServerTest, ValidStreamInitializeWithInferenceConfigs) {
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
 
-  EXPECT_OK(
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request)));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      IsOk());
 
   ASSERT_TRUE(std::filesystem::exists("/tmp/write_configuration_1"));
   std::string tokenizer_file_content =
@@ -903,11 +920,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("model_init_config must be set."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("model_init_config must be set.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
@@ -933,10 +950,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(), HasSubstr("model_config must be set."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("model_config must be set.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
@@ -968,12 +986,12 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
   )pb");
   request.mutable_configuration()->PackFrom(init_config);
 
-  grpc::Status status = WriteInitializeRequest(
-      stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("inference_task.inference_logic must be set for all "
-                        "inference tasks."));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("inference_task.inference_logic must be set for all "
+                         "inference tasks.")));
 }
 
 TEST_F(FedSqlServerTest,
@@ -997,12 +1015,12 @@ TEST_F(FedSqlServerTest,
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
 
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
-                        "not committed."));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Data blob with configuration_id gemma_tokenizer_id is "
+                    "not committed.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
@@ -1025,13 +1043,13 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidGemmaTokenizerConfigurationId) {
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(
-      status.error_message(),
-      HasSubstr("Expected Gemma tokenizer configuration id "
-                "gemma_tokenizer_id is missing in WriteConfigurationRequest."));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "Expected Gemma tokenizer configuration id "
+              "gemma_tokenizer_id is missing in WriteConfigurationRequest.")));
 }
 
 TEST_F(FedSqlServerTest,
@@ -1064,14 +1082,12 @@ TEST_F(FedSqlServerTest,
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(model_weight_write_config));
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(
-      status.error_message(),
-      HasSubstr(
-          "Expected Gemma model weight configuration id "
-          "gemma_model_weight_id is missing in WriteConfigurationRequest."));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Expected Gemma model weight configuration id "
+                         "gemma_model_weight_id is missing in "
+                         "WriteConfigurationRequest.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
@@ -1095,13 +1111,11 @@ TEST_F(FedSqlServerTest, StreamInitializeDuplicatedConfigurationId) {
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
   ASSERT_TRUE(writer->Write(tokenizer_write_config));
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(
-      status.error_message(),
-      HasSubstr(
-          "Duplicated configuration_id found in WriteConfigurationRequest"));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Duplicated configuration_id found in "
+                         "WriteConfigurationRequest")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
@@ -1129,12 +1143,11 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(write_configuration));
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("The total size of the data blob does not match "
-                        "expected size."));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("The total size of the data blob does not match "
+                         "expected size.")));
 }
 
 TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
@@ -1148,10 +1161,9 @@ TEST_F(FedSqlServerTest, SessionBeforeInitialize) {
       stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
   ASSERT_FALSE(stream->Read(&configure_response));
-  auto status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Initialize must be called before Session"));
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Initialize must be called before Session")));
 }
 
 TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
@@ -1179,7 +1191,8 @@ TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
 
   auto writer = stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-  EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1277,8 +1290,10 @@ TEST_F(FedSqlServerTest, SensitiveColumnsAreHashed) {
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   std::move(request)));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      IsOk());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1340,8 +1355,10 @@ TEST_F(FedSqlServerTest,
   request.mutable_configuration()->PackFrom(init_config);
   request.set_max_num_sessions(kMaxNumSessions);
 
-  EXPECT_OK(WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
-                                   std::move(request)));
+  EXPECT_THAT(
+      WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                             std::move(request)),
+      IsOk());
 
   grpc::ClientContext session_context;
   SessionRequest configure_request;
@@ -1358,18 +1375,18 @@ TEST_F(FedSqlServerTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildFedSqlGroupByCheckpoint({9}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, response.public_key(),
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1421,7 +1438,7 @@ TEST_F(FedSqlServerTest,
                         result_metadata.encrypted_symmetric_key(),
                         result_metadata.ciphertext_associated_data(),
                         result_metadata.encapsulated_public_key());
-  ASSERT_TRUE(decrypted_result.ok()) << decrypted_result.status();
+  ASSERT_THAT(decrypted_result, IsOk());
 }
 
 class InitializedFedSqlServerTest : public FedSqlServerTest {
@@ -1435,8 +1452,10 @@ class InitializedFedSqlServerTest : public FedSqlServerTest {
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    EXPECT_OK(WriteInitializeRequest(
-        stub_->StreamInitialize(&context, &response), std::move(request)));
+    EXPECT_THAT(
+        WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                               std::move(request)),
+        IsOk());
     public_key_ = response.public_key();
   }
 
@@ -1457,10 +1476,9 @@ TEST_F(InitializedFedSqlServerTest, InvalidConfigureRequest) {
   ASSERT_TRUE(stream->Write(session_request));
   ASSERT_FALSE(stream->Read(&session_response));
 
-  grpc::Status status = stream->Finish();
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("does not contain exactly one table schema"));
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not contain exactly one table schema")));
 }
 
 TEST_F(InitializedFedSqlServerTest, ConfigureRequestWrongMessageType) {
@@ -1476,10 +1494,9 @@ TEST_F(InitializedFedSqlServerTest, ConfigureRequestWrongMessageType) {
   ASSERT_TRUE(stream->Write(session_request));
   ASSERT_FALSE(stream->Read(&session_response));
 
-  grpc::Status status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("configuration cannot be unpacked"));
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("configuration cannot be unpacked")));
 }
 
 TEST_F(InitializedFedSqlServerTest, ConfigureInvalidTableSchema) {
@@ -1497,10 +1514,9 @@ TEST_F(InitializedFedSqlServerTest, ConfigureInvalidTableSchema) {
   ASSERT_TRUE(stream->Write(session_request));
   ASSERT_FALSE(stream->Read(&session_response));
 
-  grpc::Status status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("SQL query input schema has no columns"));
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("SQL query input schema has no columns")));
 }
 
 TEST_F(InitializedFedSqlServerTest, SessionSqlQueryConfigureGeneratesNonce) {
@@ -1571,8 +1587,8 @@ TEST_F(InitializedFedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
       stream = stub_->Session(&rejected_context);
   ASSERT_TRUE(stream->Write(rejected_request));
   ASSERT_FALSE(stream->Read(&rejected_response));
-  ASSERT_EQ(stream->Finish().error_code(),
-            grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
@@ -1607,10 +1623,9 @@ TEST_F(InitializedFedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
 
   ASSERT_TRUE(stream->Write(write_request_1));
   ASSERT_FALSE(stream->Read(&write_response_1));
-  grpc::Status finish_status = stream->Finish();
-  ASSERT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(finish_status.error_message(),
-              HasSubstr("Failed to accumulate SQL query results"));
+  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Failed to accumulate SQL query results")));
 }
 
 TEST_F(InitializedFedSqlServerTest, SessionWithoutSqlQuerySucceeds) {
@@ -1678,18 +1693,18 @@ TEST_F(InitializedFedSqlServerTest,
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildFedSqlGroupByCheckpoint({8}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 = nonce_generator->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -1719,11 +1734,12 @@ TEST_F(InitializedFedSqlServerTest,
       finalize_config);
   ASSERT_TRUE(stream->Write(finalize_request));
   ASSERT_FALSE(stream->Read(&finalize_response));
-  grpc::Status finish_status = stream->Finish();
-  EXPECT_EQ(finish_status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_THAT(
-      finish_status.error_message(),
-      HasSubstr("No output access policy node ID set for serialized outputs"));
+      FromGrpcStatus(stream->Finish()),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "No output access policy node ID set for serialized outputs")));
 }
 
 class InitializedFedSqlServerKmsTest : public FedSqlServerTest {
@@ -1763,7 +1779,8 @@ class InitializedFedSqlServerKmsTest : public FedSqlServerTest {
 
     auto writer = stub_->StreamInitialize(&context, &response);
     EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-    EXPECT_OK(WriteInitializeRequest(std::move(writer), std::move(request)));
+    EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+                IsOk());
 
     SessionRequest session_request;
     SessionResponse session_response;
@@ -1830,7 +1847,8 @@ TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestSuccess) {
   SessionResponse response;
   ASSERT_TRUE(stream_->Write(request));
   ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(), grpc::OK);
+  ASSERT_EQ(response.write().status().code(), Code::OK)
+      << response.write().status().message();
   ASSERT_EQ(response.write().committed_size_bytes(), ciphertext.size());
 }
 
@@ -1858,7 +1876,8 @@ TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestNoKmsAssociatedData) {
   SessionResponse response;
   ASSERT_TRUE(stream_->Write(request));
   ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+  ASSERT_EQ(response.write().status().code(), Code::INVALID_ARGUMENT)
+      << response.write().status().message();
 }
 
 TEST_F(InitializedFedSqlServerKmsTest,
@@ -1880,7 +1899,8 @@ TEST_F(InitializedFedSqlServerKmsTest,
   SessionResponse response;
   ASSERT_TRUE(stream_->Write(request));
   ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+  ASSERT_EQ(response.write().status().code(), Code::INVALID_ARGUMENT)
+      << response.write().status().message();
 }
 
 TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestInvalidPolicyHash) {
@@ -1905,7 +1925,8 @@ TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestInvalidPolicyHash) {
   SessionResponse response;
   ASSERT_TRUE(stream_->Write(request));
   ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
+  ASSERT_EQ(response.write().status().code(), Code::INVALID_ARGUMENT)
+      << response.write().status().message();
 }
 
 class FedSqlGroupByTest : public FedSqlServerTest {
@@ -1921,8 +1942,10 @@ class FedSqlGroupByTest : public FedSqlServerTest {
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    EXPECT_OK(WriteInitializeRequest(
-        stub_->StreamInitialize(&context, &response), std::move(request)));
+    EXPECT_THAT(
+        WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
+                               std::move(request)),
+        IsOk());
     public_key_ = response.public_key();
 
     SessionRequest session_request;
@@ -2003,7 +2026,8 @@ TEST_F(FedSqlGroupByTest, SessionWriteAccumulateCommitsBlob) {
 
   ASSERT_TRUE(write_response.has_write());
   ASSERT_EQ(write_response.write().committed_size_bytes(), data.size());
-  ASSERT_EQ(write_response.write().status().code(), grpc::OK);
+  ASSERT_EQ(write_response.write().status().code(), Code::OK)
+      << write_response.write().status().message();
 }
 
 TEST_F(FedSqlGroupByTest, SessionAccumulatesAndReports) {
@@ -2075,12 +2099,12 @@ TEST_F(FedSqlGroupByTest, SessionAccumulatesAndSerializes) {
   std::string data = finalize_response.read().data();
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), data);
-  ASSERT_TRUE(deserialized_agg.ok());
+  ASSERT_THAT(deserialized_agg, IsOk());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  ASSERT_TRUE((*deserialized_agg)->Report(*checkpoint_builder).ok());
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
@@ -2098,7 +2122,7 @@ TEST_F(FedSqlGroupByTest, SessionMergesAndReports) {
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
 
   SessionRequest write_request = CreateDefaultWriteRequest(
       AGGREGATION_TYPE_MERGE, std::move(*input_aggregator).Serialize().value());
@@ -2162,11 +2186,7 @@ TEST_F(FedSqlGroupByTest, SerializeZeroInputsProducesEmptyOutput) {
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
 
-  absl::StatusOr<int> num_checkpoints_aggregated =
-      deserialized_agg->GetNumCheckpointsAggregated();
-  ASSERT_TRUE(num_checkpoints_aggregated.ok())
-      << num_checkpoints_aggregated.status();
-  ASSERT_EQ(*num_checkpoints_aggregated, 0);
+  EXPECT_THAT(deserialized_agg->GetNumCheckpointsAggregated(), IsOkAndHolds(0));
 
   // Merging the empty deserialized aggregator with another aggregator should
   // have no effect on the output of the other aggregator.
@@ -2176,12 +2196,14 @@ TEST_F(FedSqlGroupByTest, SerializeZeroInputsProducesEmptyOutput) {
           .value();
   std::unique_ptr<CheckpointAggregator> other_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(other_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(other_aggregator->Accumulate(*input_parser), IsOk());
 
-  ASSERT_TRUE(other_aggregator->MergeWith(std::move(*deserialized_agg)).ok());
+  ASSERT_THAT(other_aggregator->MergeWith(std::move(*deserialized_agg)),
+              IsOk());
 
-  ASSERT_TRUE((*other_aggregator).Report(*checkpoint_builder).ok());
+  ASSERT_THAT((*other_aggregator).Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  ASSERT_THAT(checkpoint, IsOk());
   auto parser = parser_factory.Create(*checkpoint);
   auto col_values = (*parser)->GetTensor("val_out");
   // The value from other_aggregator is unchanged by deserialized_agg
@@ -2200,8 +2222,8 @@ TEST_F(FedSqlGroupByTest, ReportZeroInputsReturnsInvalidArgument) {
       finalize_config);
   ASSERT_TRUE(stream_->Write(finalize_request));
   ASSERT_FALSE(stream_->Read(&finalize_response));
-  grpc::Status status = stream_->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(FromGrpcStatus(stream_->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FedSqlGroupByTest, SessionIgnoresUnparseableInputs) {
@@ -2222,7 +2244,8 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUnparseableInputs) {
   ASSERT_TRUE(invalid_write_response.has_write());
   ASSERT_EQ(invalid_write_response.write().committed_size_bytes(), 0);
   ASSERT_EQ(invalid_write_response.write().status().code(),
-            grpc::INVALID_ARGUMENT);
+            Code::INVALID_ARGUMENT)
+      << invalid_write_response.write().status().message();
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -2259,27 +2282,27 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresInputThatCannotBeQueried) {
 
   ASSERT_TRUE(stream_->Write(write_request_1));
   ASSERT_TRUE(stream_->Read(&write_response_1));
-  ASSERT_EQ(write_response_1.write().status().code(),
-            grpc::StatusCode::NOT_FOUND);
+  ASSERT_EQ(write_response_1.write().status().code(), Code::NOT_FOUND)
+      << write_response_1.write().status().message();
 }
 
 TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildFedSqlGroupByCheckpoint({9}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2299,17 +2322,18 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
 
   ASSERT_TRUE(stream_->Write(request_0));
   ASSERT_TRUE(stream_->Read(&response_0));
-  ASSERT_EQ(response_0.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_0.write().status().code(), Code::OK)
+      << response_0.write().status().message();
 
   std::string message_1 = BuildFedSqlGroupByCheckpoint({9}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
@@ -2326,17 +2350,18 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
 
   ASSERT_TRUE(stream_->Write(request_1));
   ASSERT_TRUE(stream_->Read(&response_1));
-  ASSERT_EQ(response_1.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_1.write().status().code(), Code::OK)
+      << response_1.write().status().message();
 
   std::string message_2 = BuildFedSqlGroupByCheckpoint({9}, {3});
   absl::StatusOr<NonceAndCounter> nonce_2 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_2.ok());
+  ASSERT_THAT(nonce_2, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_2 =
       crypto_test_utils::CreateRewrappedBlob(
           message_2, ciphertext_associated_data, public_key_,
           nonce_2->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_2.ok()) << rewrapped_blob_2.status();
+  ASSERT_THAT(rewrapped_blob_2, IsOk());
 
   SessionRequest request_2;
   WriteRequest* write_request_2 = request_2.mutable_write();
@@ -2353,7 +2378,8 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndReports) {
 
   ASSERT_TRUE(stream_->Write(request_2));
   ASSERT_TRUE(stream_->Read(&response_2));
-  ASSERT_EQ(response_2.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_2.write().status().code(), Code::OK)
+      << response_2.write().status().message();
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -2386,27 +2412,27 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   MessageDecryptor earliest_decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       earliest_decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
 
   absl::StatusOr<OkpCwt> reencryption_okp_cwt =
       OkpCwt::Decode(*reencryption_public_key);
-  ASSERT_TRUE(reencryption_okp_cwt.ok());
+  ASSERT_THAT(reencryption_okp_cwt, IsOk());
   reencryption_okp_cwt->expiration_time = absl::FromUnixSeconds(1);
   absl::StatusOr<std::string> earliest_reencryption_key =
       reencryption_okp_cwt->Encode();
-  ASSERT_TRUE(earliest_reencryption_key.ok());
+  ASSERT_THAT(earliest_reencryption_key, IsOk());
   std::string ciphertext_associated_data =
       BlobHeader::default_instance().SerializeAsString();
 
   std::string message_0 = BuildFedSqlGroupByCheckpoint({7}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *earliest_reencryption_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2426,30 +2452,31 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
 
   ASSERT_TRUE(stream_->Write(request_0));
   ASSERT_TRUE(stream_->Read(&response_0));
-  ASSERT_EQ(response_0.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_0.write().status().code(), Code::OK)
+      << response_0.write().status().message();
 
   std::string message_1 = BuildFedSqlGroupByCheckpoint({7}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
 
   MessageDecryptor later_decryptor;
   absl::StatusOr<std::string> other_reencryption_public_key =
       later_decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(other_reencryption_public_key.ok());
+  ASSERT_THAT(other_reencryption_public_key, IsOk());
 
   absl::StatusOr<OkpCwt> other_reencryption_okp_cwt =
       OkpCwt::Decode(*other_reencryption_public_key);
-  ASSERT_TRUE(other_reencryption_okp_cwt.ok());
+  ASSERT_THAT(other_reencryption_okp_cwt, IsOk());
   other_reencryption_okp_cwt->expiration_time = absl::FromUnixSeconds(99);
   absl::StatusOr<std::string> later_reencryption_key =
       reencryption_okp_cwt->Encode();
-  ASSERT_TRUE(later_reencryption_key.ok());
+  ASSERT_THAT(later_reencryption_key, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *later_reencryption_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
@@ -2466,7 +2493,8 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
 
   ASSERT_TRUE(stream_->Write(request_1));
   ASSERT_TRUE(stream_->Read(&response_1));
-  ASSERT_EQ(response_1.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_1.write().status().code(), Code::OK)
+      << response_1.write().status().message();
 
   // Unencrypted request should be incorporated, but the serialized result
   // should still be encrypted.
@@ -2476,7 +2504,8 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
 
   ASSERT_TRUE(stream_->Write(unencrypted_request));
   ASSERT_TRUE(stream_->Read(&unencrypted_response));
-  ASSERT_EQ(unencrypted_response.write().status().code(), grpc::OK);
+  ASSERT_EQ(unencrypted_response.write().status().code(), Code::OK)
+      << unencrypted_response.write().status().message();
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
@@ -2511,7 +2540,7 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
                                  result_metadata.encrypted_symmetric_key(),
                                  result_metadata.ciphertext_associated_data(),
                                  result_metadata.encapsulated_public_key());
-  ASSERT_TRUE(decrypted_result.ok()) << decrypted_result.status();
+  ASSERT_THAT(decrypted_result, IsOk());
   absl::StatusOr<std::string> failed_decrypt =
       later_decryptor.Decrypt(finalize_response.read().data(),
                               result_metadata.ciphertext_associated_data(),
@@ -2528,7 +2557,7 @@ TEST_F(FedSqlGroupByTest, SessionDecryptsMultipleRecordsAndSerializes) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  ASSERT_TRUE((*deserialized_agg)->Report(*checkpoint_builder).ok());
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
@@ -2543,7 +2572,7 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   MessageDecryptor decryptor;
   absl::StatusOr<std::string> reencryption_public_key =
       decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_TRUE(reencryption_public_key.ok());
+  ASSERT_THAT(reencryption_public_key, IsOk());
   std::string ciphertext_associated_data = "ciphertext associated data";
 
   // Create one blob that will fail to decrypt and one blob that can be
@@ -2551,12 +2580,12 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
   std::string message_0 = BuildFedSqlGroupByCheckpoint({42}, {1});
   absl::StatusOr<NonceAndCounter> nonce_0 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_0.ok());
+  ASSERT_THAT(nonce_0, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
       crypto_test_utils::CreateRewrappedBlob(
           message_0, ciphertext_associated_data, public_key_,
           nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_0.ok()) << rewrapped_blob_0.status();
+  ASSERT_THAT(rewrapped_blob_0, IsOk());
 
   SessionRequest request_0;
   WriteRequest* write_request_0 = request_0.mutable_write();
@@ -2576,17 +2605,18 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
 
   ASSERT_TRUE(stream_->Write(request_0));
   ASSERT_TRUE(stream_->Read(&response_0));
-  ASSERT_EQ(response_0.write().status().code(), grpc::INVALID_ARGUMENT);
+  ASSERT_EQ(response_0.write().status().code(), Code::INVALID_ARGUMENT)
+      << response_0.write().status().message();
 
   std::string message_1 = BuildFedSqlGroupByCheckpoint({42}, {2});
   absl::StatusOr<NonceAndCounter> nonce_1 =
       nonce_generator_->GetNextBlobNonce();
-  ASSERT_TRUE(nonce_1.ok());
+  ASSERT_THAT(nonce_1, IsOk());
   absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
       crypto_test_utils::CreateRewrappedBlob(
           message_1, ciphertext_associated_data, public_key_,
           nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_TRUE(rewrapped_blob_1.ok()) << rewrapped_blob_1.status();
+  ASSERT_THAT(rewrapped_blob_1, IsOk());
 
   SessionRequest request_1;
   WriteRequest* write_request_1 = request_1.mutable_write();
@@ -2603,7 +2633,8 @@ TEST_F(FedSqlGroupByTest, SessionIgnoresUndecryptableInputs) {
 
   ASSERT_TRUE(stream_->Write(request_1));
   ASSERT_TRUE(stream_->Read(&response_1));
-  ASSERT_EQ(response_1.write().status().code(), grpc::OK);
+  ASSERT_EQ(response_1.write().status().code(), Code::OK)
+      << response_1.write().status().message();
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -2745,12 +2776,12 @@ TEST_F(FedSqlServerTest,
   ASSERT_TRUE(writer->Write(first_model_weight_write_config));
   ASSERT_TRUE(writer->Write(second_model_weight_write_config));
 
-  grpc::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(initialize_request));
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("Expected Gemma tokenizer configuration id  is missing "
-                        "in WriteConfigurationRequest"));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected Gemma tokenizer configuration id  is missing "
+                    "in WriteConfigurationRequest")));
 
   // Remove inference files after assertions.
   std::filesystem::remove("/tmp/write_configuration_1");

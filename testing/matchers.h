@@ -21,112 +21,12 @@
 #include <string>
 #include <type_traits>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "google/protobuf/util/message_differencer.h"
-#include "google/rpc/status.pb.h"
-#include "grpcpp/support/status.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute {
 
-// Status and proto matchers forked from FCP.
-
-/**
- * Polymorphic matchers for Status or StatusOr on status code.
- */
-template <typename T>
-bool IsCode(absl::StatusOr<T> const& x, absl::StatusCode code) {
-  return x.status().code() == code;
-}
-inline bool IsCode(absl::Status const& x, absl::StatusCode code) {
-  return x.code() == code;
-}
-inline bool IsCode(grpc::Status const& x, absl::StatusCode code) {
-  return static_cast<absl::StatusCode>(x.error_code()) == code;
-}
-inline bool IsCode(google::rpc::Status const& x, absl::StatusCode code) {
-  return static_cast<absl::StatusCode>(x.code()) == code;
-}
-
-inline void Describe(::testing::MatchResultListener* listener,
-                     const absl::StatusCode& x) {
-  *listener << absl::StatusCodeToString(x);
-}
-inline void Describe(::testing::MatchResultListener* listener,
-                     const absl::Status& x) {
-  *listener << absl::StatusCodeToString(x.code()) << " : " << x.message();
-}
-inline void Describe(::testing::MatchResultListener* listener,
-                     const grpc::Status& x) {
-  *listener << absl::StatusCodeToString(
-                   static_cast<absl::StatusCode>(x.error_code()))
-            << " : " << x.error_message();
-}
-inline void Describe(::testing::MatchResultListener* listener,
-                     const google::rpc::Status& x) {
-  *listener << absl::StatusCodeToString(static_cast<absl::StatusCode>(x.code()))
-            << " : " << x.message();
-}
-template <typename T>
-inline void Describe(::testing::MatchResultListener* listener,
-                     const absl::StatusOr<T>& x) {
-  Describe(listener, x.status());
-}
-
-template <typename T>
-class StatusMatcherImpl : public ::testing::MatcherInterface<T> {
- public:
-  explicit StatusMatcherImpl(absl::StatusCode code) : code_(code) {}
-  void DescribeTo(::std::ostream* os) const override {
-    *os << "is " << absl::StatusCodeToString(code_);
-  }
-  void DescribeNegationTo(::std::ostream* os) const override {
-    *os << "is not " << absl::StatusCodeToString(code_);
-  }
-  bool MatchAndExplain(
-      T x, ::testing::MatchResultListener* listener) const override {
-    if (!IsCode(x, code_)) {
-      *listener << "\n  ";
-      Describe(listener, x);
-      return false;
-    }
-    return true;
-  }
-
- private:
-  absl::StatusCode code_;
-};
-
-class StatusMatcher {
- public:
-  explicit StatusMatcher(absl::StatusCode code) : code_(code) {}
-
-  template <typename T>
-  operator testing::Matcher<T>() const {  // NOLINT
-    return ::testing::MakeMatcher(new StatusMatcherImpl<T>(code_));
-  }
-
- private:
-  absl::StatusCode code_;
-};
-
-inline StatusMatcher IsCode(absl::StatusCode code) {
-  return StatusMatcher(code);
-}
-
-inline StatusMatcher IsCode(grpc::StatusCode code) {
-  return StatusMatcher(static_cast<absl::StatusCode>(code));
-}
-
-inline StatusMatcher IsOk() { return StatusMatcher(absl::StatusCode::kOk); }
-
-#ifndef ASSERT_OK
-#define ASSERT_OK(x) ASSERT_THAT((x), IsOk());
-#endif
-#ifndef EXPECT_OK
-#define EXPECT_OK(x) EXPECT_THAT((x), IsOk());
-#endif
+// Proto matchers forked from FCP.
 
 using RepeatedFieldComparison =
     google::protobuf::util::MessageDifferencer::RepeatedFieldComparison;

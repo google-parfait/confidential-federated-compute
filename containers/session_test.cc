@@ -15,16 +15,18 @@
 
 #include <thread>
 
+#include "absl/status/status_matchers.h"
 #include "absl/time/clock.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
-#include "testing/matchers.h"
 
 namespace confidential_federated_compute {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::testing::AllOf;
@@ -49,14 +51,14 @@ TEST(SessionTest, MaximumSessionsReachedAddSession) {
   SessionTracker session_tracker(1);
   EXPECT_THAT(session_tracker.AddSession(), IsOk());
   EXPECT_THAT(session_tracker.AddSession(),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(SessionTest, MaximumSessionsReachedCanAddSessionAfterRemoveSession) {
   SessionTracker session_tracker(1);
   EXPECT_THAT(session_tracker.AddSession(), IsOk());
   EXPECT_THAT(session_tracker.AddSession(),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
   EXPECT_THAT(session_tracker.RemoveSession(), IsOk());
   EXPECT_THAT(session_tracker.AddSession(), IsOk());
 }
@@ -64,7 +66,7 @@ TEST(SessionTest, MaximumSessionsReachedCanAddSessionAfterRemoveSession) {
 TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
   SessionTracker session_tracker(1);
   EXPECT_THAT(session_tracker.RemoveSession(),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {

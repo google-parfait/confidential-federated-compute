@@ -15,6 +15,7 @@
 #include "containers/fed_sql/range_tracker.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "testing/matchers.h"
@@ -23,6 +24,8 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::Pair;
@@ -126,28 +129,31 @@ TEST(RangeTrackerTest, StringParseAndSerialize) {
 
 TEST(RangeTrackerTest, StringParseBadInput) {
   EXPECT_THAT(RangeTracker::Parse("foobar"),
-              IsCode(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(RangeTrackerTest, ParseUnexpectedNumberOfValues) {
   RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 1 }
   )pb");
-  EXPECT_THAT(RangeTracker::Parse(state), IsCode(absl::StatusCode::kInternal));
+  EXPECT_THAT(RangeTracker::Parse(state),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(RangeTrackerTest, ParseUnexpectedOrderOfValues) {
   RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 2 values: 1 }
   )pb");
-  EXPECT_THAT(RangeTracker::Parse(state), IsCode(absl::StatusCode::kInternal));
+  EXPECT_THAT(RangeTracker::Parse(state),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(RangeTrackerTest, ParseUnexpectedOrderOfIntervals) {
   RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 2 values: 3 values: 0 values: 1 }
   )pb");
-  EXPECT_THAT(RangeTracker::Parse(state), IsCode(absl::StatusCode::kInternal));
+  EXPECT_THAT(RangeTracker::Parse(state),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(RangeTrackerTest, BundleEmptyRangeTracker) {
@@ -197,29 +203,29 @@ TEST(RangeTrackerTest, BundleAndUnbundleSuccess) {
 TEST(RangeTrackerTest, UnbundleSignatureMimatch) {
   std::string bundle1;
   EXPECT_THAT(UnbundleRangeTracker(bundle1),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
   std::string bundle2("abcd");
   EXPECT_THAT(UnbundleRangeTracker(bundle2),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RangeTrackerTest, UnbundleMissingStateSize) {
   std::string bundle(kRangeTrackerBundleSignature);
   EXPECT_THAT(UnbundleRangeTracker(bundle),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RangeTrackerTest, UnbundleIncompleteState) {
   std::string bundle(absl::StrCat(kRangeTrackerBundleSignature, "\x06", "ab"));
   EXPECT_THAT(UnbundleRangeTracker(bundle),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RangeTrackerTest, UnbundleMissingPayloadSize) {
   std::string bundle =
       absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'));
   EXPECT_THAT(UnbundleRangeTracker(bundle),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RangeTrackerTest, UnbundleIncompletePayload) {
@@ -227,7 +233,7 @@ TEST(RangeTrackerTest, UnbundleIncompletePayload) {
       absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
                    std::string(1, '\x6'), "ab");
   EXPECT_THAT(UnbundleRangeTracker(bundle),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

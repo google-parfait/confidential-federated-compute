@@ -21,6 +21,7 @@
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "containers/big_endian.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
@@ -33,6 +34,7 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
+#include "google/rpc/code.pb.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
@@ -46,6 +48,8 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
@@ -63,6 +67,7 @@ using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Value;
+using ::google::rpc::Code;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::Configuration;
@@ -121,7 +126,7 @@ std::shared_ptr<PrivateState> CreatePrivateState(
     const std::string& initial_state, uint32_t default_budget) {
   auto private_state =
       std::make_shared<PrivateState>(initial_state, default_budget);
-  EXPECT_OK(private_state->budget.Parse(initial_state));
+  EXPECT_THAT(private_state->budget.Parse(initial_state), IsOk());
   return private_state;
 }
 
@@ -174,7 +179,7 @@ TEST(KmsFedSqlSessionConfigureTest, ConfigureSessionSucceeds) {
   )pb");
   request.mutable_configure()->mutable_configuration()->PackFrom(sql_query);
 
-  EXPECT_OK(session.ConfigureSession(request));
+  EXPECT_THAT(session.ConfigureSession(request), IsOk());
 }
 
 TEST(KmsFedSqlSessionConfigureTest, InvalidRequestFails) {
@@ -182,7 +187,7 @@ TEST(KmsFedSqlSessionConfigureTest, InvalidRequestFails) {
   SessionRequest request;
   // Missing configure field.
   EXPECT_THAT(session.ConfigureSession(request),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(KmsFedSqlSessionConfigureTest, InvalidSqlQueryFails) {
@@ -193,7 +198,7 @@ TEST(KmsFedSqlSessionConfigureTest, InvalidSqlQueryFails) {
   request.mutable_configure()->mutable_configuration()->PackFrom(value);
 
   EXPECT_THAT(session.ConfigureSession(request),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(KmsFedSqlSessionConfigureTest, InvalidDatabaseSchemaFails) {
@@ -207,7 +212,7 @@ TEST(KmsFedSqlSessionConfigureTest, InvalidDatabaseSchemaFails) {
   request.mutable_configure()->mutable_configuration()->PackFrom(sql_query);
 
   EXPECT_THAT(session.ConfigureSession(request),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(KmsFedSqlSessionConfigureTest, ZeroInputColumnsFails) {
@@ -222,7 +227,7 @@ TEST(KmsFedSqlSessionConfigureTest, ZeroInputColumnsFails) {
   request.mutable_configure()->mutable_configuration()->PackFrom(sql_query);
 
   EXPECT_THAT(session.ConfigureSession(request),
-              IsCode(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
@@ -236,10 +241,10 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
   request.mutable_configure()->mutable_configuration()->PackFrom(sql_query);
 
   // First configuration should succeed.
-  EXPECT_OK(session.ConfigureSession(request));
+  EXPECT_THAT(session.ConfigureSession(request), IsOk());
   // Second configuration should fail.
   EXPECT_THAT(session.ConfigureSession(request),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 class KmsFedSqlSessionWriteTest : public Test {
@@ -332,9 +337,9 @@ TEST_F(KmsFedSqlSessionWriteTest, InvalidWriteConfigurationFails) {
   Value value;
   write_request.mutable_first_request_configuration()->PackFrom(value);
   auto result = session_->SessionWrite(write_request, "unused");
-  EXPECT_OK(result);
-  EXPECT_THAT(result.value().write().status(),
-              IsCode(grpc::StatusCode::INVALID_ARGUMENT));
+  ASSERT_THAT(result, IsOk());
+  EXPECT_EQ(result->write().status().code(), Code::INVALID_ARGUMENT)
+      << result->write().status().message();
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
@@ -353,13 +358,15 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
       MakeBlobMetadata(data, 2, "key_bar");
 
   auto write_result1 = session_->SessionWrite(write_request1, data);
-  EXPECT_OK(write_result1);
-  EXPECT_OK(write_result1.value().write().status());
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->write().status().code(), Code::OK)
+      << write_result1->write().status().message();
   EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(data.size()));
   auto write_result2 = session_->SessionWrite(write_request2, data);
-  EXPECT_OK(write_result2);
-  EXPECT_OK(write_result2.value().write().status());
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->write().status().code(), Code::OK)
+      << write_result2->write().status().message();
   EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(data.size()));
 
@@ -369,8 +376,9 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   auto commit_response = session_->SessionCommit(commit_request);
-  EXPECT_OK(commit_response);
-  EXPECT_OK(commit_response->commit().status());
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->commit().status().code(), Code::OK)
+      << commit_response->commit().status().message();
   EXPECT_EQ(commit_response->commit().stats().num_inputs_committed(), 2);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
@@ -382,7 +390,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   BlobMetadata unused;
   auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
-  EXPECT_OK(finalize_response);
+  ASSERT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
   auto actual_metadata = finalize_response->read().first_response_metadata();
   ASSERT_GT(actual_metadata.total_size_bytes(), 0);
@@ -399,12 +407,12 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
                   Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
-  ASSERT_OK(deserialized_agg);
+  ASSERT_THAT(deserialized_agg, IsOk());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  ASSERT_OK((*deserialized_agg)->Report(*checkpoint_builder));
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
@@ -430,13 +438,15 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
       MakeBlobMetadata(data, 2, "key_foo");
 
   auto write_result1 = session_->SessionWrite(write_request1, data);
-  EXPECT_OK(write_result1);
-  EXPECT_OK(write_result1.value().write().status());
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->write().status().code(), Code::OK)
+      << write_result1->write().status().message();
   EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(data.size()));
   auto write_result2 = session_->SessionWrite(write_request2, data);
-  EXPECT_OK(write_result2);
-  EXPECT_OK(write_result2.value().write().status());
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->write().status().code(), Code::OK)
+      << write_result2->write().status().message();
   EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(data.size()));
 
@@ -446,8 +456,9 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   auto commit_response = session_->SessionCommit(commit_request);
-  EXPECT_OK(commit_response);
-  EXPECT_OK(commit_response->commit().status());
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->commit().status().code(), Code::OK)
+      << commit_response->commit().status().message();
   EXPECT_EQ(commit_response->commit().stats().num_inputs_committed(), 2);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
@@ -464,7 +475,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
 
   auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
-  EXPECT_OK(finalize_response);
+  ASSERT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
   auto actual_metadata = finalize_response->read().first_response_metadata();
   ASSERT_GT(actual_metadata.total_size_bytes(), 0);
@@ -478,7 +489,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
       &final_result_config));
   absl::StatusOr<ReleaseToken> release_token =
       ReleaseToken::Decode(final_result_config.release_token());
-  ASSERT_OK(release_token);
+  ASSERT_THAT(release_token, IsOk());
   EXPECT_EQ(release_token->encryption_key_id, "report");
   EXPECT_EQ(release_token->src_state, initial_private_state_);
   EXPECT_EQ(release_token->signature, "signature");
@@ -495,7 +506,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
 
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
-  EXPECT_OK(parser);
+  ASSERT_THAT(parser, IsOk());
   auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles each input and the aggregation sums the
   // input column
@@ -515,10 +526,9 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfBlobWithNoBudgetFails) {
   *write_request.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 1, "key_baz");
   auto write_result = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result);
-  EXPECT_THAT(write_result.value().write().status(),
-              IsCode(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(write_result.value().write().status().message(),
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->write().status().code(), Code::FAILED_PRECONDITION);
+  EXPECT_THAT(write_result->write().status().message(),
               HasSubstr("No budget remaining"));
 }
 
@@ -532,15 +542,15 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
   *write_request.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 1, "key_foo");
   auto write_result = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result);
-  EXPECT_OK(write_result.value().write().status());
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->write().status().code(), Code::OK)
+      << write_result->write().status().message();
 
   // Submitting the same request again should fail due to duplicating blob ID.
   write_result = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result);
-  EXPECT_THAT(write_result.value().write().status(),
-              IsCode(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(write_result.value().write().status().message(),
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->write().status().code(), Code::FAILED_PRECONDITION);
+  EXPECT_THAT(write_result->write().status().message(),
               HasSubstr("Blob rejected due to duplicate ID"));
 }
 
@@ -556,8 +566,9 @@ TEST_F(KmsFedSqlSessionWriteTest,
       MakeBlobMetadata(data, 1, "foo");
 
   auto write_result = session_->SessionWrite(write_request, data);
-  EXPECT_OK(write_result);
-  EXPECT_OK(write_result.value().write().status());
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->write().status().code(), Code::OK)
+      << write_result->write().status().message();
   EXPECT_THAT(write_result.value().write().committed_size_bytes(),
               Eq(data.size()));
 
@@ -570,7 +581,7 @@ TEST_F(KmsFedSqlSessionWriteTest,
   BlobMetadata unused;
   auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
-  EXPECT_OK(finalize_response);
+  ASSERT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
   auto actual_metadata = finalize_response->read().first_response_metadata();
   ASSERT_GT(actual_metadata.total_size_bytes(), 0);
@@ -581,15 +592,15 @@ TEST_F(KmsFedSqlSessionWriteTest,
   std::string ciphertext = finalize_response->read().data();
   auto result_data = Decrypt(actual_metadata, ciphertext);
 
-  ASSERT_OK(UnbundleRangeTracker(result_data));
+  ASSERT_THAT(UnbundleRangeTracker(result_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
-  ASSERT_OK(deserialized_agg);
+  ASSERT_THAT(deserialized_agg, IsOk());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  ASSERT_TRUE((*deserialized_agg)->Report(*checkpoint_builder).ok());
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
@@ -606,7 +617,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
 
   std::string data = std::move(*input_aggregator).Serialize().value();
   RangeTracker range_tracker1;
@@ -629,13 +640,15 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
       MakeBlobMetadata(blob2, 2, "");
 
   auto write_result1 = session_->SessionWrite(write_request1, blob1);
-  EXPECT_OK(write_result1);
-  EXPECT_OK(write_result1.value().write().status());
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->write().status().code(), Code::OK)
+      << write_result1->write().status().message();
   EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(blob1.size()));
   auto write_result2 = session_->SessionWrite(write_request2, blob2);
-  EXPECT_OK(write_result2);
-  EXPECT_OK(write_result2.value().write().status());
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->write().status().code(), Code::OK)
+      << write_result2->write().status().message();
   EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(blob2.size()));
 
@@ -666,12 +679,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
 
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
-  ASSERT_OK(deserialized_agg);
+  ASSERT_THAT(deserialized_agg, IsOk());
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  ASSERT_OK((*deserialized_agg)->Report(*checkpoint_builder));
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   auto parser = parser_factory.Create(*checkpoint);
   auto col_values = (*parser)->GetTensor("val_out");
@@ -688,7 +701,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
 
   std::string data = (std::move(*input_aggregator).Serialize()).value();
   RangeTracker range_tracker1;
@@ -711,13 +724,15 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
       MakeBlobMetadata(blob2, 2, "key_foo");
 
   auto write_result1 = session_->SessionWrite(write_request1, blob1);
-  EXPECT_OK(write_result1);
-  EXPECT_OK(write_result1.value().write().status());
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->write().status().code(), Code::OK)
+      << write_result1->write().status().message();
   EXPECT_THAT(write_result1.value().write().committed_size_bytes(),
               Eq(blob1.size()));
   auto write_result2 = session_->SessionWrite(write_request2, blob2);
-  EXPECT_OK(write_result2);
-  EXPECT_OK(write_result2.value().write().status());
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->write().status().code(), Code::OK)
+      << write_result2->write().status().message();
   EXPECT_THAT(write_result2.value().write().committed_size_bytes(),
               Eq(blob2.size()));
 
@@ -734,7 +749,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
 
   auto finalize_response = session_->FinalizeSession(finalize_request, unused);
 
-  EXPECT_OK(finalize_response);
+  ASSERT_THAT(finalize_response, IsOk());
   ASSERT_TRUE(finalize_response->read().finish_read());
   auto actual_metadata = finalize_response->read().first_response_metadata();
   ASSERT_GT(actual_metadata.total_size_bytes(), 0);
@@ -748,7 +763,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
       &final_result_config));
   absl::StatusOr<ReleaseToken> release_token =
       ReleaseToken::Decode(final_result_config.release_token());
-  ASSERT_OK(release_token);
+  ASSERT_THAT(release_token, IsOk());
   EXPECT_EQ(release_token->encryption_key_id, "report");
   EXPECT_EQ(release_token->src_state, initial_private_state_);
   EXPECT_EQ(release_token->signature, "signature");
@@ -764,7 +779,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   auto result_data = Decrypt(actual_metadata, ciphertext);
 
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
-  EXPECT_OK(parser);
+  ASSERT_THAT(parser, IsOk());
   auto col_values = (*parser)->GetTensor("val_out");
   EXPECT_EQ(col_values->num_elements(), 1);
   EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
@@ -781,20 +796,20 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitRangeConflict) {
   write_request.mutable_first_request_configuration()->PackFrom(config);
   *write_request.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 1, "key_foo");
-  EXPECT_OK(session_->SessionWrite(write_request, data));
+  EXPECT_THAT(session_->SessionWrite(write_request, data), IsOk());
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
     range { start: 1 end: 3 }
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
-  EXPECT_OK(session_->SessionCommit(commit_request));
+  EXPECT_THAT(session_->SessionCommit(commit_request), IsOk());
 
   // Do another write and commit with the same range again - it should fail
   // because it uses the same range.
-  EXPECT_OK(session_->SessionWrite(write_request, data));
+  EXPECT_THAT(session_->SessionWrite(write_request, data), IsOk());
   EXPECT_THAT(session_->SessionCommit(commit_request),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, CommitBlobsOutsideOfRange) {
@@ -807,7 +822,7 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitBlobsOutsideOfRange) {
   write_request.mutable_first_request_configuration()->PackFrom(config);
   *write_request.mutable_first_request_metadata() =
       MakeBlobMetadata(data, 1, "key_foo");
-  EXPECT_OK(session_->SessionWrite(write_request, data));
+  EXPECT_THAT(session_->SessionWrite(write_request, data), IsOk());
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
@@ -815,7 +830,7 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitBlobsOutsideOfRange) {
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   EXPECT_THAT(session_->SessionCommit(commit_request),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeRangeConflict) {
@@ -825,7 +840,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeRangeConflict) {
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
 
   std::string data = std::move(*input_aggregator).Serialize().value();
   RangeTracker range_tracker1;
@@ -848,9 +863,9 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeRangeConflict) {
       MakeBlobMetadata(blob2, 2, "");
 
   // The second merge should fail due to the overlapping range.
-  EXPECT_OK(session_->SessionWrite(write_request1, blob1));
+  EXPECT_THAT(session_->SessionWrite(write_request1, blob1), IsOk());
   EXPECT_THAT(session_->SessionWrite(write_request2, blob2),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
@@ -860,7 +875,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
           .value();
   std::unique_ptr<CheckpointAggregator> input_aggregator =
       CheckpointAggregator::Create(DefaultConfiguration()).value();
-  ASSERT_TRUE(input_aggregator->Accumulate(*input_parser).ok());
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
 
   std::string data = (std::move(*input_aggregator).Serialize()).value();
 
@@ -885,8 +900,8 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
   *write_request2.mutable_first_request_metadata() =
       MakeBlobMetadata(blob2, 2, "key_baz");
 
-  EXPECT_OK(session_->SessionWrite(write_request1, blob1));
-  EXPECT_OK(session_->SessionWrite(write_request2, blob2));
+  EXPECT_THAT(session_->SessionWrite(write_request1, blob1), IsOk());
+  EXPECT_THAT(session_->SessionWrite(write_request2, blob2), IsOk());
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -895,7 +910,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
   EXPECT_THAT(session_->FinalizeSession(finalize_request, unused),
-              IsCode(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

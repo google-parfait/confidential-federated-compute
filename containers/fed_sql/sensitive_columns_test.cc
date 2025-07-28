@@ -18,6 +18,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -44,6 +45,7 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::absl_testing::IsOk;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::google::protobuf::RepeatedPtrField;
 using ::grpc::Server;
@@ -83,7 +85,7 @@ TEST(SensitiveColumnsTest, NoSensitiveColumns) {
 
   std::string key = "unused_key";
 
-  ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
+  ASSERT_THAT(HashSensitiveColumns(columns, key), IsOk());
   ASSERT_EQ(columns.size(), 1);
   EXPECT_THAT(columns[0].AsSpan<absl::string_view>(),
               UnorderedElementsAre("foo"));
@@ -105,7 +107,7 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithStringType) {
   absl::StatusOr<std::string> hash2 = KeyedHash(sensitive_value2, key);
   CHECK_OK(hash2);
 
-  ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
+  ASSERT_THAT(HashSensitiveColumns(columns, key), IsOk());
   ASSERT_EQ(columns.size(), 1);
 
   absl::Span<const absl::string_view> column_span =
@@ -129,7 +131,7 @@ TEST(SensitiveColumnsTest, SensitiveColumnWithPrefix) {
   absl::StatusOr<std::string> hash2 = KeyedHash(sensitive_value2, key);
   CHECK_OK(hash2);
 
-  ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
+  ASSERT_THAT(HashSensitiveColumns(columns, key), IsOk());
   ASSERT_EQ(columns.size(), 1);
 
   absl::Span<const absl::string_view> column_span =
@@ -172,7 +174,7 @@ TEST(SensitiveColumnsTest, MultipleSensitiveColumns) {
 
   std::string key = "test_key";
 
-  ASSERT_TRUE(HashSensitiveColumns(columns, key).ok());
+  ASSERT_THAT(HashSensitiveColumns(columns, key), IsOk());
   ASSERT_EQ(columns.size(), 2);
   ASSERT_EQ(columns[0].num_elements(), 1);
   ASSERT_EQ(columns[1].num_elements(), 1);

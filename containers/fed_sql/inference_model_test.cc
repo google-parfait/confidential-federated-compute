@@ -15,6 +15,7 @@
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -26,6 +27,7 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::gcpp::Gemma;
@@ -88,7 +90,7 @@ TEST(InferenceModelTest, HasModelGemma) {
       "/tmp/model_weight";
 
   ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   ASSERT_TRUE(inference_model.HasModel());
 }
 
@@ -122,7 +124,7 @@ TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
       "/tmp/model_weight";
 
   ON_CALL(inference_model, BuildGemmaModel).WillByDefault(Return());
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
 }
 
 TEST(InferenceModelTest, BuildModelGemmaInvalidModel) {
@@ -238,12 +240,12 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
 
   columns.push_back(std::move(*transcript_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
-  ASSERT_TRUE(inference_model.RunInference(columns).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
   ASSERT_EQ(columns.size(), 1);
   ASSERT_EQ(columns.at(0).name(), "topic");
   ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
@@ -303,12 +305,12 @@ TEST(InferenceModelTest, RunInferenceRegexOutput) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
 
   columns.push_back(std::move(*transcript_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
-  ASSERT_TRUE(inference_model.RunInference(columns).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
   ASSERT_EQ(columns.size(), 1);
   ASSERT_EQ(columns.at(0).name(), "topic");
   ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
@@ -370,7 +372,7 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
 
   columns.push_back(std::move(*transcript_tensor));
 
@@ -381,11 +383,11 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
       TensorShape({static_cast<int64_t>(input_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(input_values),
       /*name=*/"input");
-  ASSERT_OK(input_tensor);
+  ASSERT_THAT(input_tensor, IsOk());
   columns.push_back(std::move(*input_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
-  ASSERT_TRUE(inference_model.RunInference(columns).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
   ASSERT_EQ(columns.size(), 2);
   ASSERT_EQ(columns.at(0).name(), "topic");
   ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
@@ -466,7 +468,7 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasksWithRegex) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
 
   columns.push_back(std::move(*transcript_tensor));
 
@@ -477,11 +479,11 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasksWithRegex) {
       TensorShape({static_cast<int64_t>(input_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(input_values),
       /*name=*/"input");
-  ASSERT_OK(input_tensor);
+  ASSERT_THAT(input_tensor, IsOk());
   columns.push_back(std::move(*input_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
-  ASSERT_TRUE(inference_model.RunInference(columns).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
   ASSERT_EQ(columns.size(), 2);
   ASSERT_EQ(columns.at(0).name(), "topic");
   ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
@@ -541,7 +543,7 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
       TensorShape({static_cast<int64_t>(input_str_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(input_str_values),
       /*name=*/"input_str_col");
-  ASSERT_OK(input_str_tensor);
+  ASSERT_THAT(input_str_tensor, IsOk());
 
   columns.push_back(std::move(*input_str_tensor));
 
@@ -552,7 +554,7 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
       TensorShape({static_cast<int64_t>(input_int_values.size())}),
       std::make_unique<MutableVectorData<int64_t>>(input_int_values),
       /*name=*/"input_int_col");
-  ASSERT_OK(input_int_tensor);
+  ASSERT_THAT(input_int_tensor, IsOk());
   columns.push_back(std::move(*input_int_tensor));
 
   // Prompt column.
@@ -563,11 +565,11 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
   columns.push_back(std::move(*transcript_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
-  ASSERT_TRUE(inference_model.RunInference(columns).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
   ASSERT_EQ(columns.size(), 3);
   ASSERT_EQ(columns.at(0).name(), "input_str_col");
   ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
@@ -623,7 +625,7 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
       TensorShape({static_cast<int64_t>(input_str_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(input_str_values),
       /*name=*/"input_str_col");
-  ASSERT_OK(input_str_tensor);
+  ASSERT_THAT(input_str_tensor, IsOk());
 
   columns.push_back(std::move(*input_str_tensor));
 
@@ -633,11 +635,11 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
       TensorShape({static_cast<int64_t>(input_int_values.size())}),
       std::make_unique<MutableVectorData<int64_t>>(input_int_values),
       /*name*/ "input_int_col");
-  ASSERT_OK(input_int_tensor);
+  ASSERT_THAT(input_int_tensor, IsOk());
 
   columns.push_back(std::move(*input_int_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   auto status = inference_model.RunInference(columns);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_THAT(
@@ -684,10 +686,10 @@ TEST(InferenceModelTest, RunInferenceNoPrompt) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
   columns.push_back(std::move(*transcript_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   auto status = inference_model.RunInference(columns);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_THAT(status.message(),
@@ -732,10 +734,10 @@ TEST(InferenceModelTest, RunInferenceNonStringColumn) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<int64_t>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
   columns.push_back(std::move(*transcript_tensor));
 
-  ASSERT_TRUE(inference_model.BuildModel(inference_configuration).ok());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   auto status = inference_model.RunInference(columns);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_THAT(status.message(),
@@ -782,7 +784,7 @@ TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
       TensorShape({static_cast<int64_t>(transcript_values.size())}),
       std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
       /*name=*/"transcript");
-  ASSERT_OK(transcript_tensor);
+  ASSERT_THAT(transcript_tensor, IsOk());
   columns.push_back(std::move(*transcript_tensor));
 
   auto status = inference_model.RunInference(columns);

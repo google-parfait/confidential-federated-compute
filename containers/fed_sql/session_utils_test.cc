@@ -20,6 +20,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "containers/sql/sqlite_adapter.h"
@@ -31,12 +32,12 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
-#include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
+using ::absl_testing::IsOk;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::fcp::confidentialcompute::ColumnSchema;
