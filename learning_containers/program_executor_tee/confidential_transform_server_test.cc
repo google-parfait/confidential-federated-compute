@@ -15,10 +15,10 @@
 
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
+#include "fcp/testing/parse_text_proto.h"
 #include "gmock/gmock.h"
 #include "grpcpp/client_context.h"
 #include "program_executor_tee/testing_base.h"
-#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 

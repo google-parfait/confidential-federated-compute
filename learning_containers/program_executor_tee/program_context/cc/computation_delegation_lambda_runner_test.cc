@@ -17,11 +17,11 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
+#include "fcp/testing/parse_text_proto.h"
+#include "fcp/testing/testing.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock_noise_client_session.h"
-#include "testing/matchers.h"
-#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
@@ -29,6 +29,7 @@ namespace {
 namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
+using ::fcp::EqualsProto;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::oak::session::v1::PlaintextMessage;
 using ::tensorflow_federated::v0::Value;

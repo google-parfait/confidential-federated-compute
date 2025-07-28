@@ -1,0 +1,12 @@
+--- fcp/testing/BUILD
++++ fcp/testing/BUILD
+@@ -18,2 +18,2 @@
+ package(
+-    default_visibility = ["//fcp:internal"],
++    default_visibility = ["//visibility:public"],
+
+--- fcp/testing/parse_text_proto.h
++++ fcp/testing/parse_text_proto.h
+@@ -41 +41 @@
+-#define PARSE_TEXT_PROTO(STR) ParseProtoHelper(STR)
++#define PARSE_TEXT_PROTO(STR) fcp::ParseProtoHelper(STR)

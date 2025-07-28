@@ -34,6 +34,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/file_info.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
+#include "fcp/testing/parse_text_proto.h"
 #include "federated_language/proto/computation.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -55,7 +56,6 @@
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensor_serialization.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
-#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::tff_server {
 

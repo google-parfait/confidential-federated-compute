@@ -29,6 +29,7 @@
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
+#include "fcp/testing/parse_text_proto.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "google/protobuf/struct.pb.h"
@@ -39,7 +40,6 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
-#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 

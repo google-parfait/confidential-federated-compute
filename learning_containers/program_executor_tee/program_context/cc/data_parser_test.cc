@@ -19,6 +19,7 @@
 #include "containers/crypto_test_utils.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "fcp/testing/testing.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
@@ -27,12 +28,12 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "tensorflow_federated/cc/core/impl/executors/array_shape_test_utils.h"
 #include "tensorflow_federated/cc/core/impl/executors/array_test_utils.h"
-#include "testing/matchers.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
+using ::fcp::EqualsProto;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
 using ::tensorflow_federated::aggregation::CreateTestData;

@@ -106,9 +106,9 @@ cc_test(
     deps = [
         ":testing_base",
         "@com_github_grpc_grpc//:grpc++",
-        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
+        "@federated-compute//fcp/testing:parse_text_proto",
         "@googletest//:gtest",
     ],
 )

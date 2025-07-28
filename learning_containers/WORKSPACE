@@ -111,11 +111,14 @@ http_archive(
     name = "federated-compute",
     integrity = "sha256-aPU+BeK1ETrsNWVao0D+PUFZ5cq4NtBSCwbunOEYGik=",
     patches = [
+        "//:patches/federated-compute.patch",
         "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
         "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
         "@confidential-federated-compute//third_party/federated_compute:executors.patch",
         "@confidential-federated-compute//third_party/federated_compute:min_sep.patch",
     ],
+    # Prevent googletest from being pulled in twice, causing ODR violations.
+    repo_mapping = {"@com_google_googletest": "@googletest"},
     strip_prefix = "federated-compute-59c593dcb3867b9f8a0d8eb50242987cc103510e",
     url = "https://github.com/google/federated-compute/archive/59c593dcb3867b9f8a0d8eb50242987cc103510e.tar.gz",
 )
@@ -208,6 +211,8 @@ http_archive(
         "@confidential-federated-compute//third_party/org_tensorflow:protobuf.patch",
         "@confidential-federated-compute//third_party/org_tensorflow:zlib.patch",
     ],
+    # Prevent googletest from being pulled in twice, causing ODR violations.
+    repo_mapping = {"@com_google_googletest": "@googletest"},
     strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
     urls = [
         "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
