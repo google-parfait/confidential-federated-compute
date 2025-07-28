@@ -28,7 +28,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/client:example_query_result_cc_proto",

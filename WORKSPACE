@@ -38,22 +38,10 @@ http_archive(
 )
 
 http_archive(
-    name = "build_bazel_apple_support",
-    sha256 = "d71b02d6df0500f43279e22400db6680024c1c439115c57a9a82e9effe199d7b",
-    url = "https://github.com/bazelbuild/apple_support/releases/download/1.18.1/apple_support.1.18.1.tar.gz",
-)
-
-http_archive(
-    name = "build_bazel_rules_apple",
-    sha256 = "b4df908ec14868369021182ab191dbd1f40830c9b300650d5dc389e0b9266c8d",
-    url = "https://github.com/bazelbuild/rules_apple/releases/download/3.5.1/rules_apple.3.5.1.tar.gz",
-)
-
-http_archive(
     name = "com_github_grpc_grpc",
-    sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
-    strip_prefix = "grpc-1.50.0",
-    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
+    integrity = "sha256-rhSg3iIkhf1uO69SAox0rL2a2NaFyBNYBAHTgyz66fE=",
+    strip_prefix = "grpc-1.72.2",
+    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"],
 )
 
 # Avoid Kotlin dependencies.
@@ -64,9 +52,12 @@ stub_repo(
 
 http_archive(
     name = "com_google_absl",
-    integrity = "sha256-AyBYaFZnTRawt6TUr7IhUb3HmEkLt/KV7d2PamK0b+o=",
-    strip_prefix = "abseil-cpp-fb3621f4f897824c0dbe0615fa94543df6192f30",
-    url = "https://github.com/abseil/abseil-cpp/archive/fb3621f4f897824c0dbe0615fa94543df6192f30.tar.gz",
+    integrity = "sha256-9Q5awxGoE4Laf6dblzEOS5AGR0+VYKxG9UqZZ/B9SuM=",
+    # Prevent googletest from being pulled in twice, causing ODR and strict
+    # layering violations.
+    repo_mapping = {"@com_google_googletest": "@googletest"},
+    strip_prefix = "abseil-cpp-20240722.0",
+    url = "https://github.com/abseil/abseil-cpp/archive/20240722.0.tar.gz",
 )
 
 # The following enables the use of the library functions in the differential-
@@ -94,10 +85,9 @@ http_archive(
 
 http_archive(
     name = "com_google_protobuf",
-    patches = ["//third_party/protobuf:protobuf.patch"],
-    sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
-    strip_prefix = "protobuf-3.21.9",
-    url = "https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip",
+    integrity = "sha256-oZHSr911mXuln2IBlCUBZwPa7TVqnZL3Ql9HQUOa5UQ=",
+    strip_prefix = "protobuf-29.5",
+    url = "https://github.com/protocolbuffers/protobuf/releases/download/v29.5/protobuf-29.5.tar.gz",
 )
 
 http_archive(
@@ -203,7 +193,6 @@ http_archive(
     integrity = "sha256-/qfxXbhDGoitrllQ2vQdrYszGrGVVMHIJj1AelkbGn4=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
-        "//third_party/oak:protobuf.patch",
         "@trusted_computations_platform//third_party/oak:session_binder.patch",
     ],
     strip_prefix = "oak-706193333936def5aace176e12e1f1225bf8db29",
@@ -233,24 +222,9 @@ http_archive(
 
 http_archive(
     name = "rules_cc",
-    patch_args = ["-p1"],
-    # Patch rules_cc to be compatible with the older version of protobuf we use.
-    patches = ["@rules_rust//rust/private/3rdparty:rules_cc.patch"],
     sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
     strip_prefix = "rules_cc-0.0.17",
     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz",
-)
-
-# Avoid Java dependencies.
-stub_repo(
-    name = "rules_java",
-    rules = {"java:defs.bzl": [
-        "java_binary",
-        "java_library",
-        "java_lite_proto_library",
-        "java_proto_library",
-        "java_test",
-    ]},
 )
 
 http_archive(

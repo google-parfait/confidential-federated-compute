@@ -66,10 +66,12 @@ class Interval {
  private:
   friend class IntervalSet<T>;
   // Used by IntervalSet to extend the end of the interval.
-  void extend_end(T end) { end_ = std::max(end_, end); }
+  // Despite the Interval being used as a key in a btree set, it's safe to
+  // mutate the end since IntervalSet only orders by the start of each interval.
+  void extend_end(T end) const { end_ = std::max(end_, end); }
 
   T start_;
-  T end_;
+  mutable T end_;
 };
 
 template <typename T>
