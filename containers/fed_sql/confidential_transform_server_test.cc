@@ -351,7 +351,8 @@ FedSqlServerTest::DefaultFedSqlDpContainerConfig() const {
       intrinsic_configs: {
         intrinsic_uri: "fedsql_dp_group_by"
         intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
-        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
+        intrinsic_args { parameter { dtype: DT_INT64 int64_val: 0 } }
         output_tensors {
           name: "key_out"
           dtype: DT_INT64
@@ -437,7 +438,8 @@ TEST_F(FedSqlServerTest, FedSqlDpGroupByInvalidParametersStreamInitialize) {
       intrinsic_configs: {
         intrinsic_uri: "fedsql_dp_group_by"
         intrinsic_args { parameter { dtype: DT_INT64 int64_val: 42 } }
-        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
+        intrinsic_args { parameter { dtype: DT_INT64 int64_val: 42 } }
         output_tensors {
           name: "key_out"
           dtype: DT_INT64
@@ -543,7 +545,7 @@ TEST_F(FedSqlServerTest,
   ASSERT_EQ(config_properties.fields().at("intrinsic_uri").string_value(),
             "fedsql_dp_group_by");
   ASSERT_EQ(config_properties.fields().at("epsilon").number_value(), 1.1);
-  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 0.01);
   ASSERT_EQ(config_properties.fields().at("serialize_dest").number_value(), 42);
   ASSERT_EQ(config_properties.fields().at("report_dest").number_value(), 7);
 }
@@ -558,7 +560,7 @@ TEST_F(FedSqlServerTest,
       intrinsic_configs: {
         intrinsic_uri: "differential_privacy_tensor_aggregator_bundle"
         intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
-        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 2.2 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
         output_tensors {
           name: "key_out"
           dtype: DT_INT64
@@ -605,7 +607,7 @@ TEST_F(FedSqlServerTest,
   ASSERT_EQ(config_properties.fields().at("intrinsic_uri").string_value(),
             "differential_privacy_tensor_aggregator_bundle");
   ASSERT_EQ(config_properties.fields().at("epsilon").number_value(), 1.1);
-  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 0.01);
   ASSERT_EQ(config_properties.fields().at("serialize_dest").number_value(), 42);
   ASSERT_EQ(config_properties.fields().at("report_dest").number_value(), 7);
 }
@@ -618,7 +620,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
 
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
     epsilon: 1.1
-    delta: 2.2
+    delta: 0.01
     intrinsic_uri: "fedsql_dp_group_by"
     access_budget { times: 5 }
   )pb");
@@ -704,7 +706,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidUri) {
 
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
     epsilon: 1.1
-    delta: 2.2
+    delta: 0.01
     intrinsic_uri: "my_intrinsic_uri")pb");
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
@@ -732,7 +734,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
 
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
     epsilon: 1.2
-    delta: 2.2
+    delta: 0.01
     intrinsic_uri: "fedsql_dp_group_by")pb");
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
