@@ -82,9 +82,10 @@ absl::StatusOr<std::string> Decompress(
 
 BlobDecryptor::BlobDecryptor(
     oak::crypto::SigningKeyHandle& signing_key,
-    google::protobuf::Struct config_properties,
+    const google::protobuf::Struct& config_properties,
     const std::vector<absl::string_view>& decryption_keys)
-    : message_decryptor_(std::move(config_properties), decryption_keys),
+    : message_decryptor_(config_properties.SerializeAsString(),
+                         decryption_keys),
       signed_public_key_(message_decryptor_.GetPublicKey(
           [&signing_key](absl::string_view message) {
             return SignWithOakSigningKey(signing_key, message);

@@ -187,7 +187,12 @@ KmsFedSqlSession::EncryptFinalResult(absl::string_view plaintext) {
       message_encryptor.EncryptForRelease(
           plaintext, reencryption_keys_[1], associated_data,
           private_state_->initial_state,
-          private_state_->budget.SerializeAsString(), *signing_key_handle_));
+          private_state_->budget.SerializeAsString(),
+          [this](absl::string_view message) -> absl::StatusOr<std::string> {
+            FCP_ASSIGN_OR_RETURN(auto signature,
+                                 signing_key_handle_->Sign(message));
+            return std::move(*signature.mutable_signature());
+          }));
 
   BlobMetadata metadata =
       CreateBlobMetadata(encrypted_message, associated_data);

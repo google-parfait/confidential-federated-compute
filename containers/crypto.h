@@ -50,7 +50,7 @@ class BlobDecryptor {
   // Configuration properties are not required to be passed when using KMS since
   // validation of the config constraints is performed by the worker itself.
   BlobDecryptor(oak::crypto::SigningKeyHandle& signing_key,
-                google::protobuf::Struct config_properties = {},
+                const google::protobuf::Struct& config_properties = {},
                 const std::vector<absl::string_view>& decryption_keys = {});
 
   // BlobDecryptor is not copyable or moveable due to the use of

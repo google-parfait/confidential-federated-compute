@@ -34,6 +34,7 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/struct.pb.h"
 #include "google/rpc/code.pb.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
@@ -254,11 +255,10 @@ class KmsFedSqlSessionWriteTest : public Test {
         crypto_test_utils::GenerateKeyPair("merge");
     auto report_public_private_key_pair =
         crypto_test_utils::GenerateKeyPair("report");
-    google::protobuf::Struct config_properties;
     message_decryptor_ = std::make_unique<MessageDecryptor>(
-        config_properties, std::vector<absl::string_view>(
-                               {merge_public_private_key_pair.second,
-                                report_public_private_key_pair.second}));
+        /*config_properties=*/"", std::vector<absl::string_view>(
+                                      {merge_public_private_key_pair.second,
+                                       report_public_private_key_pair.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();

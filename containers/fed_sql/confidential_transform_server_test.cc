@@ -39,6 +39,7 @@
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "google/protobuf/struct.pb.h"
 #include "google/rpc/code.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
@@ -537,14 +538,14 @@ TEST_F(FedSqlServerTest,
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_THAT(cwt, IsOk());
-  ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
+  google::protobuf::Struct config_properties;
+  ASSERT_TRUE(config_properties.ParseFromString(cwt->config_properties));
+  ASSERT_EQ(config_properties.fields().at("intrinsic_uri").string_value(),
             "fedsql_dp_group_by");
-  ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
-  ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
-  ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
-            42);
-  ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
-            7);
+  ASSERT_EQ(config_properties.fields().at("epsilon").number_value(), 1.1);
+  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(config_properties.fields().at("serialize_dest").number_value(), 42);
+  ASSERT_EQ(config_properties.fields().at("report_dest").number_value(), 7);
 }
 
 TEST_F(FedSqlServerTest,
@@ -599,14 +600,14 @@ TEST_F(FedSqlServerTest,
 
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(response.public_key());
   ASSERT_THAT(cwt, IsOk());
-  ASSERT_EQ(cwt->config_properties.fields().at("intrinsic_uri").string_value(),
+  google::protobuf::Struct config_properties;
+  ASSERT_TRUE(config_properties.ParseFromString(cwt->config_properties));
+  ASSERT_EQ(config_properties.fields().at("intrinsic_uri").string_value(),
             "differential_privacy_tensor_aggregator_bundle");
-  ASSERT_EQ(cwt->config_properties.fields().at("epsilon").number_value(), 1.1);
-  ASSERT_EQ(cwt->config_properties.fields().at("delta").number_value(), 2.2);
-  ASSERT_EQ(cwt->config_properties.fields().at("serialize_dest").number_value(),
-            42);
-  ASSERT_EQ(cwt->config_properties.fields().at("report_dest").number_value(),
-            7);
+  ASSERT_EQ(config_properties.fields().at("epsilon").number_value(), 1.1);
+  ASSERT_EQ(config_properties.fields().at("delta").number_value(), 2.2);
+  ASSERT_EQ(config_properties.fields().at("serialize_dest").number_value(), 42);
+  ASSERT_EQ(config_properties.fields().at("report_dest").number_value(), 7);
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {

@@ -26,6 +26,7 @@
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
+#include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"

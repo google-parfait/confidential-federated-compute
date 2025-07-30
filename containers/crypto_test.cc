@@ -288,9 +288,11 @@ TEST(CryptoTest, BlobDecryptorGetPublicKey) {
   ASSERT_THAT(public_key, IsOk());
   absl::StatusOr<OkpCwt> cwt = OkpCwt::Decode(*public_key);
   ASSERT_THAT(cwt, IsOk());
+  google::protobuf::Struct cwt_config_properties;
+  ASSERT_TRUE(cwt_config_properties.ParseFromString(cwt->config_properties));
   EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(
-      cwt->config_properties, config_properties))
-      << "Actual: " << cwt->config_properties.DebugString();
+      cwt_config_properties, config_properties))
+      << "Actual: " << cwt_config_properties.DebugString();
 
   EXPECT_THAT(cwt->BuildSigStructureForSigning(/*aad=*/""),
               IsOkAndHolds(sign_request));
