@@ -29,11 +29,6 @@
 #include "program_worker/program_worker_server.h"
 #include "proto/session/session.pb.h"
 
-extern "C" {
-extern ::oak::session::SessionConfig* create_session_config(
-    const char* endorsed_evidence_bytes, size_t endorsed_evidence_len);
-}
-
 namespace confidential_federated_compute::program_worker {
 
 namespace {
@@ -50,6 +45,7 @@ using ::oak::session::SessionConfigBuilder;
 
 // Increase gRPC message size limit to 2GB
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
+static constexpr char kAttesterId[] = "attester_id";
 
 void RunServer() {
   std::string server_address("[::]:8080");
@@ -63,9 +59,28 @@ void RunServer() {
                << endorsed_evidence.status().code() << ": "
                << endorsed_evidence.status().message();
   }
-  std::string endorsed_evidence_bytes = endorsed_evidence->SerializeAsString();
-  auto* session_config = create_session_config(
-      endorsed_evidence_bytes.data(), endorsed_evidence_bytes.length());
+  auto attester = bindings::new_simple_attester(ffi_bindings::BytesView(
+      endorsed_evidence->evidence().SerializeAsString()));
+  if (attester.error != nullptr) {
+    LOG(FATAL) << "Failed to create attester:"
+               << ffi_bindings::ErrorIntoStatus(attester.error);
+  }
+  auto endorser = bindings::new_simple_endorser(ffi_bindings::BytesView(
+      endorsed_evidence->endorsements().SerializeAsString()));
+  if (endorser.error != nullptr) {
+    LOG(FATAL) << "Failed to create endorser:"
+               << ffi_bindings::ErrorIntoStatus(endorser.error);
+  }
+  auto signing_key = bindings::new_random_signing_key();
+  auto* session_config =
+      SessionConfigBuilder(AttestationType::kSelfUnidirectional,
+                           HandshakeType::kNoiseNN)
+          .AddSelfAttester(kAttesterId, attester.result)
+          .AddSelfEndorser(kAttesterId, endorser.result)
+          .AddSessionBinder(kAttesterId, signing_key)
+          .Build();
+  bindings::free_signing_key(signing_key);
+
   auto service = ProgramWorkerTee::Create(session_config);
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
