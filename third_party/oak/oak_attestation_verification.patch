@@ -22,3 +22,11 @@
 +        "@platforms//os:linux": ["@oak_crates_index//:regex-lite"],
 +        "//conditions:default": [],
 +    }) + [
+
+# Fix AmdSevSnpDiceAttestationVerifier incompatibility with oak_session.
+--- oak_attestation_verification/src/verifier.rs
++++ oak_attestation_verification/src/verifier.rs
+@@ -234,2 +234,2 @@
+         Ok(AttestationResults {
+-            status: Status::Unspecified.into(),
++            status: Status::Success.into(),
