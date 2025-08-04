@@ -1,0 +1,61 @@
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pxd.pxi src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pxd.pxi
+index e54e510754..26edbdb917 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pxd.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pxd.pxi
+@@ -51 +51 @@ cdef class CallbackWrapper:
+-            int succeed)
++            int succeed) noexcept
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi
+index f2d94a96e8..5dda90abd5 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi
+@@ -53 +53 @@ cdef class CallbackWrapper:
+-            int success):
++            int success) noexcept:
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/credentials.pyx.pxi src/python/grpcio/grpc/_cython/_cygrpc/credentials.pyx.pxi
+index 23de3a0b18..52071f575f 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/credentials.pyx.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/credentials.pyx.pxi
+@@ -317 +317 @@ cdef grpc_ssl_certificate_config_reload_status _server_cert_config_fetcher_wrapp
+-        void* user_data, grpc_ssl_server_certificate_config **config) with gil:
++        void* user_data, grpc_ssl_server_certificate_config **config) noexcept with gil:
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pxd.pxi src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pxd.pxi
+index a925bdd2e6..1ce986daeb 100644
+index a925bdd2e6..1ce986daeb 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pxd.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pxd.pxi
+@@ -23 +23 @@ cdef extern from "pthread.h" nogil:
+-cdef void __prefork() nogil
++cdef void __prefork() noexcept nogil
+@@ -26 +26 @@ cdef void __prefork() nogil
+-cdef void __postfork_parent() nogil
++cdef void __postfork_parent() noexcept nogil
+@@ -29 +29 @@ cdef void __postfork_parent() nogil
+-cdef void __postfork_child() nogil
++cdef void __postfork_child() noexcept nogil
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pyx.pxi src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pyx.pxi
+index 53657e8b1a..d4d1cff5c2 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pyx.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/fork_posix.pyx.pxi
+@@ -37 +37 @@ _fork_handler_failed = False
+-cdef void __prefork() nogil:
++cdef void __prefork() noexcept nogil:
+@@ -51 +51 @@ cdef void __prefork() nogil:
+-cdef void __postfork_parent() nogil:
++cdef void __postfork_parent() noexcept nogil:
+@@ -58 +58 @@ cdef void __postfork_parent() nogil:
+-cdef void __postfork_child() nogil:
++cdef void __postfork_child() noexcept nogil:
+diff --git src/python/grpcio/grpc/_cython/_cygrpc/vtable.pyx.pxi src/python/grpcio/grpc/_cython/_cygrpc/vtable.pyx.pxi
+index da4b81bd97..f59410073b 100644
+--- src/python/grpcio/grpc/_cython/_cygrpc/vtable.pyx.pxi
++++ src/python/grpcio/grpc/_cython/_cygrpc/vtable.pyx.pxi
+@@ -16 +16 @@
+-cdef void* _copy_pointer(void* pointer):
++cdef void* _copy_pointer(void* pointer) noexcept:
+@@ -21 +21 @@ cdef void* _copy_pointer(void* pointer):
+-cdef void _destroy_pointer(void* pointer):
++cdef void _destroy_pointer(void* pointer) noexcept:
+@@ -25 +25 @@ cdef void _destroy_pointer(void* pointer):
+-cdef int _compare_pointer(void* first_pointer, void* second_pointer):
++cdef int _compare_pointer(void* first_pointer, void* second_pointer) noexcept:

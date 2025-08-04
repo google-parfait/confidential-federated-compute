@@ -36,7 +36,7 @@ http_archive(
 http_archive(
     name = "com_github_grpc_grpc",
     patches = [
-        "@confidential-federated-compute//third_party/grpc:noexcept.patch",
+        "//third_party/grpc:noexcept.patch",
     ],
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
     strip_prefix = "grpc-1.50.0",
