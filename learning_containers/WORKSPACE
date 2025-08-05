@@ -52,59 +52,12 @@ http_archive(
     url = "https://github.com/abseil/abseil-cpp/archive/fb3621f4f897824c0dbe0615fa94543df6192f30.tar.gz",
 )
 
-# The following enables the use of the library functions in the differential-
-# privacy github repo
-http_archive(
-    name = "com_google_cc_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0/cc",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-)
-
-http_archive(
-    name = "com_google_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-)
-
-http_archive(
-    name = "com_google_sentencepiece",
-    build_file = "@gemma//bazel:sentencepiece.bazel",
-    patch_args = ["-p1"],
-    patches = ["@gemma//bazel:sentencepiece.patch"],
-    repo_mapping = {"@abseil-cpp": "@com_google_absl"},
-    sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
-    strip_prefix = "sentencepiece-0.1.96",
-    url = "https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip",
-)
-
 http_archive(
     name = "confidential-federated-compute",
     integrity = "sha256-YS8qO+3t5mwWekW+zBLOVjDY2vseaM3BFR3vdoYiaRs=",
     patches = ["//:patches/confidential-federated-compute.patch"],
     strip_prefix = "confidential-federated-compute-9eb316481115d8402f5500a650ff44a8e7490327",
     url = "https://github.com/google-parfait/confidential-federated-compute/archive/9eb316481115d8402f5500a650ff44a8e7490327.tar.gz",
-)
-
-# The following enables the use of the library functions in the gemma.cpp
-# github repo.
-http_archive(
-    name = "darts_clone",
-    build_file_content = """
-licenses(["notice"])
-exports_files(["LICENSE"])
-package(default_visibility = ["//visibility:public"])
-cc_library(
-    name = "darts_clone",
-    hdrs = [
-        "include/darts.h",
-    ],
-)
-""",
-    sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
-    strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
-    url = "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
 )
 
 http_archive(
@@ -156,31 +109,10 @@ http_archive(
 )
 
 http_archive(
-    name = "gemma",
-    sha256 = "748eca98c85d0fe3e5134eb11c68ea8ec12a94b88f520fce1fafb4e03f0e11ff",
-    strip_prefix = "gemma.cpp-0.1.4",
-    url = "https://github.com/google/gemma.cpp/archive/refs/tags/v0.1.4.tar.gz",
-)
-
-http_archive(
-    name = "google_benchmark",
-    sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
-    strip_prefix = "benchmark-1.8.3",
-    url = "https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz",
-)
-
-http_archive(
     name = "googletest",
     sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     strip_prefix = "googletest-1.14.0",
     url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
-)
-
-http_archive(
-    name = "highway",
-    sha256 = "a9e04d39eba738e4265ed03bcc05562677d224bf16da6538ba7b236c8163a727",
-    strip_prefix = "highway-c5bebf84ad01edec97e336f5c97ca4e0df6b4d06",
-    url = "https://github.com/google/highway/archive/c5bebf84ad01edec97e336f5c97ca4e0df6b4d06.tar.gz",
 )
 
 git_repository(
@@ -229,14 +161,6 @@ http_archive(
     ],
     strip_prefix = "tensorflow-federated-dc779b04018e1c57698f17f77413a857100e2e33",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/dc779b04018e1c57698f17f77413a857100e2e33.tar.gz",
-)
-
-http_archive(
-    name = "raft_rs",
-    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
-    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
-    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
-    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
 )
 
 http_archive(
@@ -292,14 +216,6 @@ http_archive(
     integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
     strip_prefix = "extensions/prost",
     url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
-)
-
-http_archive(
-    name = "sqlite",
-    build_file = "@confidential-federated-compute//third_party/sqlite:BUILD.sqlite",
-    sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
-    strip_prefix = "sqlite-amalgamation-3450200",
-    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
 )
 
 http_archive(
