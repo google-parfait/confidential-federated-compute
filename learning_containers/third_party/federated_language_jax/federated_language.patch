@@ -1,0 +1,103 @@
+# This patch replaces a federated_language pip dependency with the source dependency.
+diff --git federated_language_jax/backend/BUILD federated_language_jax/backend/BUILD
+index 39a37f0..5817af5 100644
+--- federated_language_jax/backend/BUILD
++++ federated_language_jax/backend/BUILD
+@@ -38,7 +38,7 @@ py_library(
+     deps = [
+         "//federated_language_jax/computation:jax_computation",
+         "//federated_language_jax/executor:executor_factory",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+     ],
+ )
+
+@@ -49,7 +49,7 @@ py_test(
+         ":execution_contexts",
+         "//federated_language_jax/computation:jax_computation",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//numpy",
+     ],
+ )
+diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
+index 8e8dbaa..c2340b4 100644
+--- federated_language_jax/computation/BUILD
++++ federated_language_jax/computation/BUILD
+@@ -35,7 +35,7 @@ py_library(
+     deps = [
+         ":jax_serialization",
+         "@federated_language_jax_pypi//dm_tree",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -47,7 +47,7 @@ py_test(
+     deps = [
+         ":jax_computation",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//ml_dtypes",
+         "@federated_language_jax_pypi//numpy",
+@@ -57,7 +57,7 @@ py_test(
+ py_library(
+     name = "jax_computation_context",
+     srcs = ["jax_computation_context.py"],
+-    deps = ["@federated_language_jax_pypi//federated_language"],
++    deps = ["@federated_language//federated_language"],
+ )
+
+ py_test(
+@@ -79,7 +79,7 @@ py_library(
+         ":xla_serialization",
+         "@federated_language//federated_language/common_libs:structure",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -93,7 +93,7 @@ py_test(
+         "@federated_language//federated_language/common_libs:structure",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -106,7 +106,7 @@ py_library(
+         "@federated_language//federated_language/common_libs:structure",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+         "@federated_language_jax_pypi//dm_tree",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//protobuf",
+         "@xla//xla/python:xla_client",
+     ],
+@@ -119,7 +119,7 @@ py_test(
+         ":xla_serialization",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+         "@federated_language_jax_pypi//protobuf",
+diff --git federated_language_jax/executor/BUILD federated_language_jax/executor/BUILD
+index 21e9c19..977a64f 100644
+--- federated_language_jax/executor/BUILD
++++ federated_language_jax/executor/BUILD
+@@ -39,7 +39,7 @@ py_library(
+     deps = [
+         "@federated_language_jax_pypi//absl_py",
+         "@federated_language_jax_pypi//cachetools",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+         "@org_tensorflow_federated//tensorflow_federated/python/core/impl/executors:cpp_to_python_executor",
+     ],
+ )

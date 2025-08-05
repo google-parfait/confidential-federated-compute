@@ -145,9 +145,9 @@ http_archive(
     name = "federated_language_jax",
     integrity = "sha256-KtH+Nfd3qYkvPcVjIH/NrJoXVgulCPo/dLzB7SGlCok=",
     patches = [
-        "@confidential-federated-compute//third_party/federated_language_jax:eigen.patch",
-        "@confidential-federated-compute//third_party/federated_language_jax:federated_language.patch",
-        "@confidential-federated-compute//third_party/federated_language_jax:computation_visibility.patch",
+        "//third_party/federated_language_jax:computation_visibility.patch",
+        "//third_party/federated_language_jax:eigen.patch",
+        "//third_party/federated_language_jax:federated_language.patch",
     ],
     repo_mapping = {
         "@federated_language_jax_pypi": "@pypi",
