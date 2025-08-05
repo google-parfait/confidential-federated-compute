@@ -206,13 +206,14 @@ http_archive(
     name = "org_tensorflow",
     integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
     patches = [
-        "@confidential-federated-compute//third_party/org_tensorflow:cython.patch",
-        "@confidential-federated-compute//third_party/org_tensorflow:internal_visibility.patch",
-        "@confidential-federated-compute//third_party/org_tensorflow:protobuf.patch",
-        "@confidential-federated-compute//third_party/org_tensorflow:zlib.patch",
+        "//third_party/org_tensorflow:cython.patch",
+        "//third_party/org_tensorflow:internal_visibility.patch",
+        "//third_party/org_tensorflow:protobuf.patch",
+        "//third_party/org_tensorflow:zlib.patch",
     ],
-    # Prevent googletest from being pulled in twice, causing ODR violations.
-    repo_mapping = {"@com_google_googletest": "@googletest"},
+    repo_mapping = {
+        "@com_google_googletest": "@googletest",
+    },
     strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
     url = "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
 )

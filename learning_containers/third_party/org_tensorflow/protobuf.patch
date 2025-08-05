@@ -1,0 +1,20 @@
+# Patch com_google_protobuf to define //:descriptor_proto_srcs. Since
+# TensorFlow already patches protobuf and tf_http_archive doesn't support
+# multiple patch files, we instead augment their patch.
+--- third_party/protobuf/protobuf.patch
++++ third_party/protobuf/protobuf.patch
+@@ -61,3 +61,13 @@
+          "//build_defs:config_msvc": [],
++@@ -172,3 +202,9 @@
++ )
++
+++filegroup(
+++    name = "descriptor_proto_srcs",
+++    srcs = ["src/google/protobuf/descriptor.proto"],
+++    visibility = ["//visibility:public"],
+++)
+++
++ filegroup(
+-@@ -1074,7 +1104,8 @@
++@@ -1074,7 +1110,8 @@
+          "@com_google_protobuf//:type_proto",
