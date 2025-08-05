@@ -27,7 +27,7 @@ http_archive(
         "//third_party/boringssl:rust.patch",
     ],
     strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
-    urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
+    url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
 )
 
 # Pin a newer version of gRPC than the one provided by Tensorflow.
@@ -42,7 +42,7 @@ http_archive(
     ],
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
     strip_prefix = "grpc-1.50.0",
-    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
+    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz",
 )
 
 http_archive(
@@ -76,7 +76,7 @@ http_archive(
     repo_mapping = {"@abseil-cpp": "@com_google_absl"},
     sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
     strip_prefix = "sentencepiece-0.1.96",
-    urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],
+    url = "https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip",
 )
 
 http_archive(
@@ -104,9 +104,7 @@ cc_library(
 """,
     sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
     strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
-    urls = [
-        "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
-    ],
+    url = "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
 )
 
 http_archive(
@@ -168,21 +166,21 @@ http_archive(
     name = "google_benchmark",
     sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
     strip_prefix = "benchmark-1.8.3",
-    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"],
+    url = "https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz",
 )
 
 http_archive(
     name = "googletest",
     sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     strip_prefix = "googletest-1.14.0",
-    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
+    url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
 )
 
 http_archive(
     name = "highway",
     sha256 = "a9e04d39eba738e4265ed03bcc05562677d224bf16da6538ba7b236c8163a727",
     strip_prefix = "highway-c5bebf84ad01edec97e336f5c97ca4e0df6b4d06",
-    urls = ["https://github.com/google/highway/archive/c5bebf84ad01edec97e336f5c97ca4e0df6b4d06.tar.gz"],
+    url = "https://github.com/google/highway/archive/c5bebf84ad01edec97e336f5c97ca4e0df6b4d06.tar.gz",
 )
 
 git_repository(
@@ -216,9 +214,7 @@ http_archive(
     # Prevent googletest from being pulled in twice, causing ODR violations.
     repo_mapping = {"@com_google_googletest": "@googletest"},
     strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
-    urls = [
-        "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
-    ],
+    url = "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
 )
 
 http_archive(
@@ -278,7 +274,7 @@ http_archive(
 http_archive(
     name = "rules_rust",
     integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz"],
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
 )
 
 http_archive(
