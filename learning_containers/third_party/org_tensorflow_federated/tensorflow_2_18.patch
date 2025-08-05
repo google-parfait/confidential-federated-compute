@@ -1,0 +1,105 @@
+# Patch to make TFF compatible with TF 2.18.
+
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
+index d5b3eb12b..cb271235a 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/BUILD
+@@ -30,10 +30,10 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:string_view",
++        "@local_tsl//tsl/platform:refcount",
+         "@org_tensorflow//tensorflow/core:framework",
+         "@org_tensorflow//tensorflow/core:protos_all_cc",
+         "@org_tensorflow//tensorflow/core/platform:tstring",
+-        "@org_tensorflow//tensorflow/tsl/platform:refcount",
+     ],
+ )
+
+@@ -132,8 +132,8 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
++        "@local_tsl//tsl/platform:env",
+         "@org_tensorflow//tensorflow/core/platform:env",
+-        "@org_tensorflow//tensorflow/tsl/platform:env",
+     ],
+ )
+
+@@ -167,8 +167,8 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
++        "@local_tsl//tsl/platform:env",
+         "@org_tensorflow//tensorflow/core/platform:env",
+-        "@org_tensorflow//tensorflow/tsl/platform:env",
+     ],
+ )
+
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
+index 3db0cab4f..098bae0c5 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.cc
+@@ -29,7 +29,7 @@
+ #include "tensorflow/core/framework/tensor_shape.h"
+ #include "tensorflow/core/framework/tensor_shape.pb.h"
+ #include "tensorflow/core/platform/tstring.h"
+-#include "tensorflow/tsl/platform/refcount.h"
++#include "tsl/platform/refcount.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/datatype.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
+index 3903a74d3..1febef402 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.cc
+@@ -29,7 +29,7 @@
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "tensorflow/core/platform/file_system.h"
+-#include "tensorflow/tsl/platform/env.h"
++#include "tsl/platform/env.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_builder.h"
+diff --git tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
+index dd2195773..ce736d63b 100644
+--- tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
++++ tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.cc
+@@ -29,7 +29,7 @@
+ #include "absl/strings/str_cat.h"
+ #include "absl/strings/string_view.h"
+ #include "tensorflow/core/platform/file_system.h"
+-#include "tensorflow/tsl/platform/env.h"
++#include "tsl/platform/env.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+ #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
+diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
+index 57f1c05d7..05bdcd907 100644
+--- tensorflow_federated/cc/core/impl/executors/BUILD
++++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -326,7 +326,7 @@ cc_library(
+         "@com_google_absl//absl/types:span",
+         "@com_google_absl//absl/utility",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+-        "@org_tensorflow//tensorflow/tsl/profiler/lib:traceme",
++        "@local_tsl//tsl/profiler/lib:traceme",
+     ],
+ )
+
+diff --git tensorflow_federated/cc/core/impl/executors/executor.h tensorflow_federated/cc/core/impl/executors/executor.h
+index 7e875dc74..f331b3554 100644
+--- tensorflow_federated/cc/core/impl/executors/executor.h
++++ tensorflow_federated/cc/core/impl/executors/executor.h
+@@ -37,9 +37,9 @@ limitations under the License
+ #include "absl/types/span.h"
+ #include "absl/utility/utility.h"
+ #include "federated_language/proto/computation.pb.h"
+-#include "tensorflow/tsl/profiler/lib/traceme.h"
+ #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
+ #include "tensorflow_federated/proto/v0/executor.pb.h"
++#include "tsl/profiler/lib/traceme.h"
+
+ namespace tensorflow_federated {
+
