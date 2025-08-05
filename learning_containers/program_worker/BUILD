@@ -16,6 +16,8 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 
 package(features = ["layering_check"])
 
@@ -75,12 +77,36 @@ cc_test(
     ],
 )
 
+rust_prost_library(
+    name = "session_prost_proto",
+    proto = "@oak//proto/session:messages_proto",
+)
+
+rust_library(
+    name = "session_config",
+    srcs = ["session_config.rs"],
+    deps = [
+        ":session_prost_proto",
+        "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification/dice_attestation_verification:oak_dice_attestation_verifier",
+        "@oak//oak_attestation_verification_types",
+        "@oak//oak_crypto",
+        "@oak//oak_proto_rust",
+        "@oak//oak_sdk/common:oak_sdk_common",
+        "@oak//oak_sdk/containers:oak_sdk_containers",
+        "@oak//oak_session",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:tokio",
+    ],
+)
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
     tags = ["noasan"],
     deps = [
         ":program_worker_server",
+        ":session_config",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
