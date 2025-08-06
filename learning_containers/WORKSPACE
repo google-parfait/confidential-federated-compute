@@ -72,8 +72,9 @@ http_archive(
         "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
         "//third_party/federated-compute:testing.patch",
     ],
-    # Prevent googletest from being pulled in twice, causing ODR violations.
-    repo_mapping = {"@com_google_googletest": "@googletest"},
+    repo_mapping = {
+        "@com_google_googletest": "@googletest",
+    },
     strip_prefix = "federated-compute-59c593dcb3867b9f8a0d8eb50242987cc103510e",
     url = "https://github.com/google/federated-compute/archive/59c593dcb3867b9f8a0d8eb50242987cc103510e.tar.gz",
 )
@@ -168,8 +169,10 @@ http_archive(
 http_archive(
     name = "rules_cc",
     patch_args = ["-p1"],
-    # Patch rules_cc to be compatible with the older version of protobuf we use.
-    patches = ["@rules_rust//rust/private/3rdparty:rules_cc.patch"],
+    patches = [
+        # Patch rules_cc to be compatible with the older version of protobuf we use.
+        "@rules_rust//rust/private/3rdparty:rules_cc.patch",
+    ],
     sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
     strip_prefix = "rules_cc-0.0.17",
     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz",
@@ -192,7 +195,6 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
 )
 
-# Initialize hermetic python prior to loading Tensorflow deps.
 http_archive(
     name = "rules_python",
     sha256 = "dc6e2756130fafb90273587003659cadd1a2dfef3f6464c227794cdc01ebf70e",
