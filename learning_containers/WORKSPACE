@@ -129,8 +129,8 @@ http_archive(
     name = "oak",
     integrity = "sha256-/qfxXbhDGoitrllQ2vQdrYszGrGVVMHIJj1AelkbGn4=",
     patches = [
-        "@confidential-federated-compute//third_party/oak:oak_attestation_verification.patch",
-        "@confidential-federated-compute//third_party/oak:protobuf.patch",
+        "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:protobuf.patch",
     ],
     strip_prefix = "oak-706193333936def5aace176e12e1f1225bf8db29",
     url = "https://github.com/project-oak/oak/archive/706193333936def5aace176e12e1f1225bf8db29.tar.gz",
