@@ -56,7 +56,7 @@ http_archive(
     name = "confidential-federated-compute",
     integrity = "sha256-YS8qO+3t5mwWekW+zBLOVjDY2vseaM3BFR3vdoYiaRs=",
     patches = [
-        "//third_party/confidential-federated-compute:visibility.patch",
+        "//third_party/confidential_federated_compute:visibility.patch",
     ],
     strip_prefix = "confidential-federated-compute-9eb316481115d8402f5500a650ff44a8e7490327",
     url = "https://github.com/google-parfait/confidential-federated-compute/archive/9eb316481115d8402f5500a650ff44a8e7490327.tar.gz",
@@ -70,7 +70,7 @@ http_archive(
         "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
         "@confidential-federated-compute//third_party/federated_compute:min_sep.patch",
         "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
-        "//third_party/federated-compute:testing.patch",
+        "//third_party/federated_compute:testing.patch",
     ],
     # Prevent googletest from being pulled in twice, causing ODR violations.
     repo_mapping = {"@com_google_googletest": "@googletest"},
