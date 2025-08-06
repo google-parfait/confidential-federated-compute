@@ -82,17 +82,22 @@ cuda_library(
     includes = [
         "ggml/src",
     ],
-    copts = [
+    host_copts = [
         "-stdlib=libstdc++",
+        "-Wno-pedantic",
+    ],
+    copts = [
+        "-use_fast_math",
+        "-extended-lambda",
     ],
     local_defines = [
-        # Turn off vmm which requires linking to Nvidia driver.
-        "GGML_CUDA_NO_VMM",
+        "GGML_CUDA_FORCE_CUBLAS",
     ],
     deps = [
         ":ggml-base",
         "@cuda_curand//:curand",
         "@cuda_cublas//:cublas",
+        "@nvidia_driver//:cuda_libs",
     ],
     alwayslink = True,
 )

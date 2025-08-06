@@ -35,6 +35,12 @@ pkg_tar(
     include_runfiles = True,
 )
 
+pkg_tar(
+    name = "checkpoint",
+    srcs = [":gemma-3-12b-it-q4_0.gguf"],
+    package_dir = "/saved_model",
+)
+
 oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
@@ -42,6 +48,7 @@ oci_image(
     tars = [
         # Install the main cc binary
         ":main_tar",
+        ":checkpoint",
     ],
 )
 

@@ -24,14 +24,14 @@ namespace {
 
 absl::Status GenerateOutput(std::string *output) {
   // Number of layers to offload to the GPU.
-  int ngl = 99;
+  int ngl = 999;
   // Number of tokens to predict.
   int n_predict = 1024;
   llama_model_params model_params = llama_model_default_params();
   model_params.n_gpu_layers = ngl;
   // This is a local path to the model weights file within the container.
   // If the other model is used, the file name needs to be updated.
-  std::string model_path = "/saved_model/gemma-3-4b-it-q4_0.gguf";
+  std::string model_path = "/saved_model/gemma-3-12b-it-q4_0.gguf";
   llama_model *model =
       llama_model_load_from_file(model_path.c_str(), model_params);
   const llama_vocab *vocab = llama_model_get_vocab(model);
