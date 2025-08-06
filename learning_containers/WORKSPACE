@@ -66,11 +66,11 @@ http_archive(
     name = "federated-compute",
     integrity = "sha256-aPU+BeK1ETrsNWVao0D+PUFZ5cq4NtBSCwbunOEYGik=",
     patches = [
-        "@confidential-federated-compute//third_party/federated_compute:executors.patch",
-        "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
-        "@confidential-federated-compute//third_party/federated_compute:min_sep.patch",
-        "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
+        "//third_party/federated_compute:executors.patch",
+        "//third_party/federated_compute:libcppbor.patch",
+        "//third_party/federated_compute:min_sep.patch",
         "//third_party/federated_compute:testing.patch",
+        "//third_party/federated_compute:visibility.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
