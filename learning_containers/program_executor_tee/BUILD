@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@confidential-federated-compute//containers:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
-load("@confidential-federated-compute//containers:python_runtime.bzl", "trusted_py_runtime")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
+load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
 
