@@ -1,5 +1,5 @@
 {
-  "checksum": "ee77bb72f94da8957b7f04aec03d437caa1605b54092c5aa27da3167a208c0b9",
+  "checksum": "4affe6eed99fbf75b482757a0ff735622e5310842d8e1014f5c9409f4f2cf5fb",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -60,44 +60,6 @@
         "MIT"
       ],
       "license_file": null
-    },
-    "adler32 1.2.0": {
-      "name": "adler32",
-      "version": "1.2.0",
-      "package_url": "https://github.com/remram44/adler32-rs",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/adler32/1.2.0/download",
-          "sha256": "aae1277d39aeec15cb388266ecc24b11c80469deae6067e17a1a7aa9e5c1f234"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "adler32",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "adler32",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2018",
-        "version": "1.2.0"
-      },
-      "license": "Zlib",
-      "license_ids": [
-        "Zlib"
-      ],
-      "license_file": "LICENSE"
     },
     "aead 0.5.2": {
       "name": "aead",
@@ -297,87 +259,6 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "aes-gcm-siv 0.11.1": {
-      "name": "aes-gcm-siv",
-      "version": "0.11.1",
-      "package_url": "https://github.com/RustCrypto/AEADs",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/aes-gcm-siv/0.11.1/download",
-          "sha256": "ae0784134ba9375416d469ec31e7c5f9fa94405049cf08c5ce5b4698be673e0d"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "aes_gcm_siv",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "aes_gcm_siv",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "aes",
-            "alloc",
-            "default",
-            "getrandom"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "aead 0.5.2",
-              "target": "aead"
-            },
-            {
-              "id": "aes 0.8.4",
-              "target": "aes"
-            },
-            {
-              "id": "cipher 0.4.4",
-              "target": "cipher"
-            },
-            {
-              "id": "ctr 0.9.2",
-              "target": "ctr"
-            },
-            {
-              "id": "polyval 0.6.2",
-              "target": "polyval"
-            },
-            {
-              "id": "subtle 2.6.1",
-              "target": "subtle"
-            },
-            {
-              "id": "zeroize 1.8.1",
-              "target": "zeroize"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2021",
-        "version": "0.11.1"
-      },
-      "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
     "ahash 0.8.11": {
       "name": "ahash",
       "version": "0.8.11",
@@ -465,51 +346,6 @@
           ],
           "selects": {}
         }
-      },
-      "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "allocator-api2 0.2.18": {
-      "name": "allocator-api2",
-      "version": "0.2.18",
-      "package_url": "https://github.com/zakarumych/allocator-api2",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/allocator-api2/0.2.18/download",
-          "sha256": "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "allocator_api2",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "allocator_api2",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "alloc"
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.2.18"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -1120,45 +956,6 @@
         "version": "2.6.0"
       },
       "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "bitmask 0.5.0": {
-      "name": "bitmask",
-      "version": "0.5.0",
-      "package_url": "https://github.com/d3lio/bitmask",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/bitmask/0.5.0/download",
-          "sha256": "5da9b3d9f6f585199287a473f4f8dfab6566cf827d15c00c219f53c645687ead"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "bitmask",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "bitmask",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2015",
-        "version": "0.5.0"
-      },
-      "license": "MIT/Apache-2.0",
       "license_ids": [
         "Apache-2.0",
         "MIT"
@@ -1873,60 +1670,6 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "core2 0.4.0": {
-      "name": "core2",
-      "version": "0.4.0",
-      "package_url": "https://github.com/bbqsrc/core2",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/core2/0.4.0/download",
-          "sha256": "b49ba7ef1ad6107f8824dbe97de947cbaac53c44e7f9756a1fba0d37c1eec505"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "core2",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "core2",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "alloc"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "memchr 2.7.4",
-              "target": "memchr"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.4.0"
-      },
-      "license": "Apache-2.0 OR MIT",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
     "coset 0.3.7": {
       "name": "coset",
       "version": "0.3.7",
@@ -2038,54 +1781,6 @@
         },
         "edition": "2018",
         "version": "0.2.12"
-      },
-      "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "crc32fast 1.4.2": {
-      "name": "crc32fast",
-      "version": "1.4.2",
-      "package_url": "https://github.com/srijs/rust-crc32fast",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/crc32fast/1.4.2/download",
-          "sha256": "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "crc32fast",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "crc32fast",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "cfg-if 1.0.0",
-              "target": "cfg_if"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2015",
-        "version": "1.4.2"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -2702,45 +2397,6 @@
       ],
       "license_file": "LICENSE"
     },
-    "dary_heap 0.3.6": {
-      "name": "dary_heap",
-      "version": "0.3.6",
-      "package_url": "https://github.com/hanmertens/dary_heap",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/dary_heap/0.3.6/download",
-          "sha256": "7762d17f1241643615821a8455a0b2c3e803784b058693d990b11f2dce25a0ca"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "dary_heap",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "dary_heap",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2018",
-        "version": "0.3.6"
-      },
-      "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
     "der 0.7.10": {
       "name": "der",
       "version": "0.7.10",
@@ -3226,14 +2882,6 @@
               "target": "aes_gcm"
             },
             {
-              "id": "aes-gcm-siv 0.11.1",
-              "target": "aes_gcm_siv"
-            },
-            {
-              "id": "ahash 0.8.11",
-              "target": "ahash"
-            },
-            {
               "id": "aml 0.16.4",
               "target": "aml"
             },
@@ -3258,16 +2906,8 @@
               "target": "bitflags"
             },
             {
-              "id": "bitmask 0.5.0",
-              "target": "bitmask"
-            },
-            {
               "id": "bitvec 1.0.1",
               "target": "bitvec"
-            },
-            {
-              "id": "byteorder 1.5.0",
-              "target": "byteorder"
             },
             {
               "id": "bytes 1.7.1",
@@ -3280,10 +2920,6 @@
             {
               "id": "const-oid 0.9.6",
               "target": "const_oid"
-            },
-            {
-              "id": "core2 0.4.0",
-              "target": "core2"
             },
             {
               "id": "coset 0.3.7",
@@ -3342,10 +2978,6 @@
               "target": "lazy_static"
             },
             {
-              "id": "libflate 2.1.0",
-              "target": "libflate"
-            },
-            {
               "id": "libm 0.2.8",
               "target": "libm"
             },
@@ -3394,20 +3026,12 @@
               "target": "prost"
             },
             {
-              "id": "rand 0.8.5",
-              "target": "rand"
-            },
-            {
               "id": "rand_chacha 0.3.1",
               "target": "rand_chacha"
             },
             {
               "id": "rand_core 0.6.4",
               "target": "rand_core"
-            },
-            {
-              "id": "rangemap 1.5.1",
-              "target": "rangemap"
             },
             {
               "id": "regex-lite 0.1.6",
@@ -3438,16 +3062,8 @@
               "target": "sha2"
             },
             {
-              "id": "slog 2.7.0",
-              "target": "slog"
-            },
-            {
               "id": "snafu 0.8.4",
               "target": "snafu"
-            },
-            {
-              "id": "spin 0.9.8",
-              "target": "spin"
             },
             {
               "id": "spinning_top 0.3.0",
@@ -4560,10 +4176,7 @@
         ],
         "crate_features": {
           "common": [
-            "ahash",
-            "allocator-api2",
-            "default",
-            "inline-more"
+            "ahash"
           ],
           "selects": {}
         },
@@ -4572,10 +4185,6 @@
             {
               "id": "ahash 0.8.11",
               "target": "ahash"
-            },
-            {
-              "id": "allocator-api2 0.2.18",
-              "target": "allocator_api2"
             }
           ],
           "selects": {}
@@ -5282,124 +4891,6 @@
         "MIT"
       ],
       "license_file": "LICENSE-APACHE"
-    },
-    "libflate 2.1.0": {
-      "name": "libflate",
-      "version": "2.1.0",
-      "package_url": "https://github.com/sile/libflate",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/libflate/2.1.0/download",
-          "sha256": "45d9dfdc14ea4ef0900c1cddbc8dcd553fbaacd8a4a282cf4018ae9dd04fb21e"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "libflate",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "libflate",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "adler32 1.2.0",
-              "target": "adler32"
-            },
-            {
-              "id": "core2 0.4.0",
-              "target": "core2"
-            },
-            {
-              "id": "crc32fast 1.4.2",
-              "target": "crc32fast"
-            },
-            {
-              "id": "dary_heap 0.3.6",
-              "target": "dary_heap"
-            },
-            {
-              "id": "libflate_lz77 2.1.0",
-              "target": "libflate_lz77"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2021",
-        "version": "2.1.0"
-      },
-      "license": "MIT",
-      "license_ids": [
-        "MIT"
-      ],
-      "license_file": "LICENSE"
-    },
-    "libflate_lz77 2.1.0": {
-      "name": "libflate_lz77",
-      "version": "2.1.0",
-      "package_url": "https://github.com/sile/libflate",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/libflate_lz77/2.1.0/download",
-          "sha256": "e6e0d73b369f386f1c44abd9c570d5318f55ccde816ff4b562fa452e5182863d"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "libflate_lz77",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "libflate_lz77",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "core2 0.4.0",
-              "target": "core2"
-            },
-            {
-              "id": "hashbrown 0.14.5",
-              "target": "hashbrown"
-            },
-            {
-              "id": "rle-decode-fast 1.0.3",
-              "target": "rle_decode_fast"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2021",
-        "version": "2.1.0"
-      },
-      "license": "MIT",
-      "license_ids": [
-        "MIT"
-      ],
-      "license_file": "LICENSE"
     },
     "libm 0.2.8": {
       "name": "libm",
@@ -7517,10 +7008,7 @@
         ],
         "crate_features": {
           "common": [
-            "alloc",
-            "getrandom",
             "rand_chacha",
-            "small_rng",
             "std_rng"
           ],
           "selects": {}
@@ -7631,7 +7119,6 @@
         ],
         "crate_features": {
           "common": [
-            "alloc",
             "getrandom"
           ],
           "selects": {}
@@ -7649,45 +7136,6 @@
         "version": "0.6.4"
       },
       "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "rangemap 1.5.1": {
-      "name": "rangemap",
-      "version": "1.5.1",
-      "package_url": "https://github.com/jeffparsons/rangemap",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/rangemap/1.5.1/download",
-          "sha256": "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "rangemap",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "rangemap",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2018",
-        "version": "1.5.1"
-      },
-      "license": "MIT/Apache-2.0",
       "license_ids": [
         "Apache-2.0",
         "MIT"
@@ -7826,45 +7274,6 @@
         "version": "0.4.0"
       },
       "license": "Apache-2.0 OR MIT",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
-    "rle-decode-fast 1.0.3": {
-      "name": "rle-decode-fast",
-      "version": "1.0.3",
-      "package_url": "https://github.com/WanzenBug/rle-decode-helper",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/rle-decode-fast/1.0.3/download",
-          "sha256": "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "rle_decode_fast",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "rle_decode_fast",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2015",
-        "version": "1.0.3"
-      },
-      "license": "MIT OR Apache-2.0",
       "license_ids": [
         "Apache-2.0",
         "MIT"
@@ -8903,78 +8312,6 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "slog 2.7.0": {
-      "name": "slog",
-      "version": "2.7.0",
-      "package_url": "https://github.com/slog-rs/slog",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/slog/2.7.0/download",
-          "sha256": "8347046d4ebd943127157b94d63abb990fcf729dc4e9978927fdf4ac3c998d06"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "slog",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        },
-        {
-          "BuildScript": {
-            "crate_name": "build_script_build",
-            "crate_root": "build.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "slog",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "slog 2.7.0",
-              "target": "build_script_build"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2015",
-        "version": "2.7.0"
-      },
-      "build_script_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "compile_data_glob_excludes": [
-          "**/*.rs"
-        ],
-        "data_glob": [
-          "**"
-        ]
-      },
-      "license": "MPL-2.0 OR MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT",
-        "MPL-2.0"
-      ],
-      "license_file": "LICENSE-APACHE"
-    },
     "smallvec 1.13.2": {
       "name": "smallvec",
       "version": "1.13.2",
@@ -9159,25 +8496,10 @@
         ],
         "crate_features": {
           "common": [
-            "barrier",
-            "default",
-            "lazy",
-            "lock_api",
-            "lock_api_crate",
             "mutex",
             "once",
             "rwlock",
             "spin_mutex"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "lock_api 0.4.12",
-              "target": "lock_api",
-              "alias": "lock_api_crate"
-            }
           ],
           "selects": {}
         },
@@ -12026,21 +11348,16 @@
     "acpi 5.0.0",
     "aead 0.5.2",
     "aes-gcm 0.10.3",
-    "aes-gcm-siv 0.11.1",
-    "ahash 0.8.11",
     "aml 0.16.4",
     "anyhow 1.0.86",
     "arrayvec 0.7.6",
     "atomic_refcell 0.1.13",
     "base64 0.21.7",
     "bitflags 2.6.0",
-    "bitmask 0.5.0",
     "bitvec 1.0.1",
-    "byteorder 1.5.0",
     "bytes 1.7.1",
     "ciborium 0.2.2",
     "const-oid 0.9.6",
-    "core2 0.4.0",
     "coset 0.3.7",
     "curve25519-dalek 4.1.3",
     "derive_builder 0.20.1",
@@ -12055,7 +11372,6 @@
     "hpke 0.11.0",
     "itertools 0.13.0",
     "lazy_static 1.5.0",
-    "libflate 2.1.0",
     "libm 0.2.8",
     "linked_list_allocator 0.10.5",
     "lock_api 0.4.12",
@@ -12068,10 +11384,8 @@
     "pkcs8 0.10.2",
     "primeorder 0.13.6",
     "prost 0.13.5",
-    "rand 0.8.5",
     "rand_chacha 0.3.1",
     "rand_core 0.6.4",
-    "rangemap 1.5.1",
     "regex-lite 0.1.6",
     "rlsf 0.2.1",
     "rsa 0.9.8",
@@ -12079,9 +11393,7 @@
     "serde 1.0.204",
     "serde_json 1.0.122",
     "sha2 0.10.9",
-    "slog 2.7.0",
     "snafu 0.8.4",
-    "spin 0.9.8",
     "spinning_top 0.3.0",
     "static_assertions 1.1.0",
     "strum 0.26.3",

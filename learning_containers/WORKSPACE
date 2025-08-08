@@ -237,13 +237,6 @@ http_archive(
     url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.4.0/toolchains_llvm-v1.4.0.tar.gz",
 )
 
-http_archive(
-    name = "trusted_computations_platform",
-    integrity = "sha256-7MLAJJlK/Csm9NbwQQCsVSBAagSju57/3+UUMd+uGLY=",
-    strip_prefix = "trusted-computations-platform-879a9a960e3a474ec1fae9f1cfa64e53a714fa90",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/879a9a960e3a474ec1fae9f1cfa64e53a714fa90.tar.gz",
-)
-
 # TensorFlow pins an old version of upb that's compatible with their old
 # version of gRPC, but not with the newer version we use. Pin the version that
 # would be added by gRPC 1.50.0.
@@ -446,17 +439,9 @@ load("@rules_rust_prost//:transitive_repositories.bzl", "rust_prost_transitive_r
 
 rust_prost_transitive_repositories()
 
-register_toolchains("@confidential-federated-compute//toolchains:prost_toolchain")
-
-load("@confidential-federated-compute//:crates.bzl", "CFC_ANNOTATIONS", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
-load("@trusted_computations_platform//bazel:crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
 
-create_oak_crate_repositories(
-    extra_annotations = CFC_ANNOTATIONS,
-    extra_no_std_packages = TCP_NO_STD_PACKAGES | CFC_NO_STD_PACKAGES,
-    extra_packages = TCP_PACKAGES | CFC_PACKAGES,
-)
+create_oak_crate_repositories()
 
 load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 
