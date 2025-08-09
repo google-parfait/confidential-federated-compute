@@ -1,11 +1,10 @@
 # Enable the regex feature for oak_attestation_verification for std builds.
 --- oak_attestation_verification/BUILD
 +++ oak_attestation_verification/BUILD
-@@ -25,12 +25,19 @@
- rust_library(
-     name = "oak_attestation_verification",
-     srcs = glob(["src/**"]),
-     compile_data = ["//oak_attestation_verification/data:amd_ask_certs"],
+@@ -29,6 +29,10 @@ rust_library(
+         "//oak_attestation_verification/data:amd_ask_certs",
+         "//oak_attestation_verification/data:intel_pck_root",
+     ],
 +    crate_features = select({
 +        "@platforms//os:linux": ["regex"],
 +        "//conditions:default": [],
@@ -13,7 +12,7 @@
      target_compatible_with = any_platform([
          "//:aarch64-apple-setting",
          "//:x86_64-linux-setting",
-         "//:x86_64-none-no_avx-setting",
+@@ -36,7 +40,10 @@ rust_library(
          "//:x86_64-none-setting",
          "//:wasm32-none-setting",
      ]),
@@ -22,3 +21,162 @@
 +        "@platforms//os:linux": ["@oak_crates_index//:regex-lite"],
 +        "//conditions:default": [],
 +    }) + [
+         "//oak_attestation_verification_types",
+         "//oak_crypto",
+         "//oak_dice",
+
+--- proto/BUILD
++++ proto/BUILD
+@@ -15,10 +15,10 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
++load("@rules_python//python:proto.bzl", "py_proto_library")
+
+ package(
+     default_visibility = ["//:default_visibility"],
+
+--- proto/attestation/BUILD
++++ proto/attestation/BUILD
+@@ -15,9 +15,8 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_lite_proto_library", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/containers/BUILD
++++ proto/containers/BUILD
+@@ -16,7 +16,7 @@
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/crypto/BUILD
++++ proto/crypto/BUILD
+@@ -15,9 +15,8 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_lite_proto_library", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/micro_rpc/BUILD
++++ proto/micro_rpc/BUILD
+@@ -15,9 +15,8 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_lite_proto_library", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/oak_debug/service/BUILD
++++ proto/oak_debug/service/BUILD
+@@ -15,7 +15,7 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/oak_functions/BUILD
++++ proto/oak_functions/BUILD
+@@ -15,8 +15,8 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/oak_functions/service/BUILD
++++ proto/oak_functions/service/BUILD
+@@ -15,7 +15,7 @@
+ #
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/services/BUILD
++++ proto/services/BUILD
+@@ -16,9 +16,9 @@
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+ load("@io_grpc_grpc_java//:java_grpc_library.bzl", "java_grpc_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- proto/session/BUILD
++++ proto/session/BUILD
+@@ -16,10 +16,9 @@
+
+ load("@bazel_skylib//rules:build_test.bzl", "build_test")
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+ load("@io_grpc_grpc_java//:java_grpc_library.bzl", "java_grpc_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@rules_java//java:defs.bzl", "java_lite_proto_library", "java_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
+--- third_party/google/rpc/BUILD
++++ third_party/google/rpc/BUILD
+@@ -14,7 +14,7 @@
+ # limitations under the License.
+ #
+
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
++load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+ load("@rules_proto//proto:defs.bzl", "proto_library")
+
+ package(
+
