@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
 use anyhow::{bail, Context};
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
-use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{
     init_metrics, InstanceSessionBinder, InstanceSigner, MetricsConfig, OrchestratorClient,
 };
+use oak_time_std::clock::SystemTimeClock;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::logs::LoggerProvider;
@@ -109,7 +106,7 @@ async fn main() {
     let session_binder = Arc::new(InstanceSessionBinder::create(&channel));
     let signer = InstanceSigner::create(&channel);
     let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
-    let clock = Arc::new(SystemClock {});
+    let clock = Arc::new(SystemTimeClock {});
 
     // Export basic metrics to OpenTelemetry (e.g. CPU usage and RPC latency).
     let oak_observer = init_metrics(MetricsConfig {
@@ -155,16 +152,4 @@ async fn main() {
         .serve("[::]:8080".parse().expect("failed to parse address"))
         .await
         .expect("failed to start server");
-}
-
-struct SystemClock {}
-impl Clock for SystemClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("SystemTime before Unix epoch")
-            .as_millis()
-            .try_into()
-            .expect("SystemTime too large")
-    }
 }

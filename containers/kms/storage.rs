@@ -23,7 +23,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use oak_attestation_verification_types::util::Clock;
+use oak_time::{Clock, Instant};
 use storage_proto::{
     confidential_federated_compute::kms::{
         read_response, update_request, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
@@ -59,8 +59,8 @@ struct StorageClock {
 }
 
 impl Clock for StorageClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        self.millis_since_epoch.load(Ordering::Relaxed)
+    fn get_time(&self) -> Instant {
+        Instant::from_unix_millis(self.millis_since_epoch.load(Ordering::Relaxed))
     }
 }
 

@@ -58,9 +58,8 @@ fn explain_ledger_evidence(
     buf: &mut dyn std::fmt::Write,
     evidence: &Evidence,
 ) -> anyhow::Result<()> {
-    let extracted_ledger_evidence =
-        oak_attestation_verification::extract::extract_evidence(evidence)
-            .context("could not extract evidence data from provided Evidence proto")?;
+    let extracted_ledger_evidence = oak_attestation_verification::extract_evidence(evidence)
+        .context("could not extract evidence data from provided Evidence proto")?;
 
     let write_link_to_oak = |buf: &mut dyn std::fmt::Write| -> anyhow::Result<()> {
         writeln!(

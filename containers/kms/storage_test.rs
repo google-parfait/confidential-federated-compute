@@ -14,6 +14,7 @@
 
 use googletest::prelude::*;
 use matchers::{code, has_context};
+use oak_time::{Instant, UNIX_EPOCH};
 use storage::Storage;
 use storage_proto::{
     confidential_federated_compute::kms::{
@@ -41,7 +42,7 @@ fn default_is_empty() {
         storage.read(&full_read_request()),
         ok(eq(ReadResponse { now: Some(Timestamp::default()), ..Default::default() }))
     );
-    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(0));
+    expect_that!(storage.clock().get_time(), eq(UNIX_EPOCH));
 }
 
 #[test_log::test(googletest::test)]
@@ -85,7 +86,7 @@ fn read_single_entry() {
             })],
         }))
     );
-    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(100_123));
+    expect_that!(storage.clock().get_time(), eq(Instant::from_unix_millis(100_123)));
 }
 
 #[test_log::test(googletest::test)]
@@ -426,7 +427,7 @@ fn clock_is_monotonic() {
             now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
         }))
     );
-    expect_that!(storage.clock().get_milliseconds_since_epoch(), eq(200_000));
+    expect_that!(storage.clock().get_time(), eq(Instant::from_unix_seconds(200)));
 }
 
 #[test_log::test(googletest::test)]
@@ -1200,7 +1201,7 @@ fn clear_removes_all_entries() {
         ok(anything())
     );
     let clock = storage.clock();
-    assert_that!(clock.get_milliseconds_since_epoch(), eq(100_000));
+    assert_that!(clock.get_time(), eq(Instant::from_unix_seconds(100)));
 
     storage.clear();
     expect_that!(
@@ -1212,7 +1213,7 @@ fn clear_removes_all_entries() {
     );
     // The clock obtained before `clear()` should still be valid and should have
     // been updated.
-    expect_that!(clock.get_milliseconds_since_epoch(), eq(0));
+    expect_that!(clock.get_time(), eq(UNIX_EPOCH));
 
     // The clock should also update when the storage is updated. This check
     // ensures that the clock wasn't orphaned by the `clear()` call.
@@ -1220,5 +1221,5 @@ fn clear_removes_all_entries() {
         storage.update(&Timestamp { seconds: 50, ..Default::default() }, UpdateRequest::default()),
         ok(anything())
     );
-    expect_that!(clock.get_milliseconds_since_epoch(), eq(50_000));
+    expect_that!(clock.get_time(), eq(Instant::from_unix_seconds(50)));
 }

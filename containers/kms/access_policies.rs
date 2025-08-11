@@ -27,18 +27,16 @@ use kms_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use oak_attestation_verification::{
-    policy::{
-        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
-        platform::AmdSevSnpPolicy, system::SystemPolicy, HYBRID_ENCRYPTION_PUBLIC_KEY_ID,
-        SIGNING_PUBLIC_KEY_ID,
-    },
-    verifier::{get_event_artifact, AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+    results::{get_hybrid_encryption_public_key, get_signing_public_key},
+    AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, EventLogVerifier,
+    FirmwarePolicy, KernelPolicy, SystemPolicy,
 };
-use oak_attestation_verification_types::{util::Clock, verifier::AttestationVerifier};
+use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_proto_rust::oak::attestation::v1::{
     attestation_results, reference_values, AmdSevReferenceValues, Endorsements, Evidence,
     OakContainersReferenceValues, ReferenceValues, RootLayerReferenceValues,
 };
+use oak_time::{clock::FixedClock, Instant};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 
@@ -183,10 +181,10 @@ fn match_transform(
         results.reason
     );
 
-    let encryption_public_key = get_event_artifact(&results, HYBRID_ENCRYPTION_PUBLIC_KEY_ID)
+    let encryption_public_key = get_hybrid_encryption_public_key(&results)
         .context("evidence missing encryption public key")?;
-    let signing_public_key = get_event_artifact(&results, SIGNING_PUBLIC_KEY_ID)
-        .context("evidence missing signing public key")?;
+    let signing_public_key =
+        get_signing_public_key(&results).context("evidence missing signing public key")?;
     Ok(AuthorizedTransform {
         index,
         src_node_ids: transform.src_node_ids,
@@ -195,15 +193,6 @@ fn match_transform(
         encryption_public_key: encryption_public_key.clone(),
         signing_public_key: signing_public_key.clone(),
     })
-}
-
-struct FixedClock {
-    now_utc_millis: i64,
-}
-impl Clock for FixedClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        self.now_utc_millis
-    }
 }
 
 /// Returns an AttestationVerifier for the given ReferenceValues.
@@ -225,7 +214,7 @@ fn get_verifier(
                 Box::new(SystemPolicy::new(system_ref_vals)),
                 Box::new(ContainerPolicy::new(container_ref_vals)),
             ],
-            Arc::new(FixedClock { now_utc_millis }),
+            Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
         ))),
 
         // Oak Containers (AMD SEV-SNP)
@@ -253,7 +242,7 @@ fn get_verifier(
                 Box::new(SystemPolicy::new(system_ref_vals)),
                 Box::new(ContainerPolicy::new(container_ref_vals)),
             ],
-            Arc::new(FixedClock { now_utc_millis }),
+            Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
         ))),
 
         _ => bail!("unsupported ReferenceValues"),

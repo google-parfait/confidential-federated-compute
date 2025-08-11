@@ -25,11 +25,9 @@ use federated_compute::proto::{
 };
 use oak_attestation_verification::{
     decode_event_proto,
-    policy::{
-        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
-        platform::AmdSevSnpPolicy, system::SystemPolicy, SIGNING_PUBLIC_KEY_ID,
-    },
-    verifier::{get_event_artifact, AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+    results::{get_signing_public_key, set_signing_public_key},
+    AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, EventLogVerifier,
+    FirmwarePolicy, KernelPolicy, SystemPolicy,
 };
 use oak_attestation_verification_types::{policy::Policy, verifier::AttestationVerifier};
 use oak_proto_rust::oak::{
@@ -40,6 +38,7 @@ use oak_proto_rust::oak::{
     },
     Variant,
 };
+use oak_time::{clock::FixedClock, Instant, UNIX_EPOCH};
 use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
 use prost::Message;
 use prost_types::{value::Kind as ValueKind, Struct, Value};
@@ -197,7 +196,7 @@ impl Application<'_> {
                     Box::new(SystemPolicy::new(system_ref_vals)),
                     Box::new(ContainerPolicy::new(container_ref_vals)),
                 ],
-                Arc::new(FixedClock { now_utc_millis }),
+                Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
             ))),
 
             // Oak Containers (AMD SEV-SNP)
@@ -225,7 +224,7 @@ impl Application<'_> {
                     Box::new(SystemPolicy::new(system_ref_vals)),
                     Box::new(ContainerPolicy::new(container_ref_vals)),
                 ],
-                Arc::new(FixedClock { now_utc_millis }),
+                Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
             ))),
 
             _ => bail!("unsupported ReferenceValues"),
@@ -273,7 +272,7 @@ pub fn verify_attestation<'a>(
                 Box::new(SkipPolicy {}),
                 Box::new(ExtractContainerSigningKeyPolicy {}),
             ],
-            Arc::new(FixedClock { now_utc_millis: 0 }),
+            Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
         );
         let results =
             verifier.verify(evidence, endorsements).context("attestation verification failed")?;
@@ -284,8 +283,8 @@ pub fn verify_attestation<'a>(
             results.reason
         );
 
-        let signing_public_key = get_event_artifact(&results, SIGNING_PUBLIC_KEY_ID)
-            .context("evidence missing signing public key")?;
+        let signing_public_key =
+            get_signing_public_key(&results).context("evidence missing signing public key")?;
         let verifying_key = VerifyingKey::from_sec1_bytes(signing_public_key)
             .map_err(|err| anyhow::anyhow!("invalid application signing key: {:?}", err))?;
         cwt.verify_signature(b"", |signature, message| {
@@ -325,9 +324,9 @@ struct SkipPolicy {}
 impl Policy<[u8]> for SkipPolicy {
     fn verify(
         &self,
-        _encoded_event: &[u8],
-        _encoded_endorsement: &Variant,
-        _milliseconds_since_epoch: i64,
+        _verification_time: Instant,
+        _evidence: &[u8],
+        _endorsement: &Variant,
     ) -> anyhow::Result<EventAttestationResults> {
         Ok(EventAttestationResults::default())
     }
@@ -339,29 +338,20 @@ struct ExtractContainerSigningKeyPolicy {}
 impl Policy<[u8]> for ExtractContainerSigningKeyPolicy {
     fn verify(
         &self,
-        encoded_event: &[u8],
-        _encoded_endorsement: &Variant,
-        _milliseconds_since_epoch: i64,
+        _verification_time: Instant,
+        evidence: &[u8],
+        _endorsement: &Variant,
     ) -> anyhow::Result<EventAttestationResults> {
         let event = decode_event_proto::<ContainerLayerData>(
             "type.googleapis.com/oak.attestation.v1.ContainerLayerData",
-            encoded_event,
+            evidence,
         )?;
 
         let mut results = EventAttestationResults::default();
         if !event.signing_public_key.is_empty() {
-            results.artifacts.insert(SIGNING_PUBLIC_KEY_ID.into(), event.signing_public_key);
+            set_signing_public_key(&mut results, &event.signing_public_key);
         }
         Ok(results)
-    }
-}
-
-struct FixedClock {
-    now_utc_millis: i64,
-}
-impl oak_attestation_verification_types::util::Clock for FixedClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        self.now_utc_millis
     }
 }
 

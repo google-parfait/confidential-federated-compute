@@ -24,15 +24,18 @@ The evidence describing this layer is outlined below.
 sev_snp:
   current_tcb:
     boot_loader: 3
+    fmc: 0
     microcode: 209
     snp: 22
     tee: 0
   debug: false
   hardware_id: c1f5c58f728e2eded313ee675ac982393169c9bbffe6e250c54d81fcea2dad556d314f3c62c16cb9ae3d22f68a747261835f220d3656d0e6b646e6b2f11252cf
   initial_measurement: 571e632335e16997bdc312208d540b083518fe05d84b8954a6529a019a04229f25347fdaac1bc80418addc64a3d48704
+  product: 2
   report_data: f75ac8ac3bfd479a0f121c384d71b4c032867895db71d91d135710083fd780a10000000000000000000000000000000000000000000000000000000000000000
   reported_tcb:
     boot_loader: 3
+    fmc: 0
     microcode: 209
     snp: 22
     tee: 0

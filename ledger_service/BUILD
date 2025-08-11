@@ -82,6 +82,7 @@ rust_library(
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_restricted_kernel_sdk",
+        "@oak//oak_time",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:hashbrown",

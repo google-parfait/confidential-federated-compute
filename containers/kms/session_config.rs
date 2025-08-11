@@ -17,13 +17,10 @@ use std::sync::Arc;
 use anyhow::bail;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_attestation_verification::{
-    policy::{
-        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
-        platform::AmdSevSnpPolicy, system::SystemPolicy,
-    },
-    verifier::{AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+    AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, EventLogVerifier,
+    FirmwarePolicy, KernelPolicy, SystemPolicy,
 };
-use oak_attestation_verification_types::{util::Clock, verifier::AttestationVerifier};
+use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_crypto::{encryptor::Encryptor, noise_handshake::OrderedCrypter};
 use oak_proto_rust::oak::attestation::v1::{
     reference_values, AmdSevReferenceValues, OakContainersReferenceValues, ReferenceValues,
@@ -37,6 +34,7 @@ use oak_session::{
     key_extractor::DefaultBindingKeyExtractor,
     session_binding::SessionBinder,
 };
+use oak_time::Clock;
 
 const SESSION_ID: &str = "cfc_kms";
 

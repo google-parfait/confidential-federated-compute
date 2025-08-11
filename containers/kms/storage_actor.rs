@@ -18,7 +18,6 @@ use anyhow::{anyhow, ensure, Context};
 use hashbrown::{hash_map, HashMap};
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
@@ -26,6 +25,7 @@ use oak_proto_rust::oak::{
 use oak_session::{
     config::SessionConfig, session_binding::SessionBinder, ProtocolEngine, ServerSession, Session,
 };
+use oak_time::{Clock, Instant, UNIX_EPOCH};
 use prost::{bytes::Bytes, Message};
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
@@ -226,13 +226,11 @@ impl StorageActor {
             }
             Some(storage_request::Kind::Update(msg)) => {
                 // Convert the update into an event to be propagated to followers.
+                let ts = clock.get_time().into_timestamp();
                 Ok(HandleStorageRequestOutcome::Event(StorageEvent {
                     session_id,
                     correlation_id: request.correlation_id,
-                    now: Some(Timestamp {
-                        seconds: clock.get_milliseconds_since_epoch() / 1_000,
-                        ..Default::default()
-                    }),
+                    now: Some(Timestamp { seconds: ts.seconds, nanos: ts.nanos }),
                     kind: Some(storage_event::Kind::Update(msg)),
                 }))
             }
@@ -390,14 +388,11 @@ impl Actor for StorageActor {
             let instant = self.context.as_ref().unwrap().instant();
             if instant >= self.last_clock_update_instant + CLOCK_UPDATE_INTERVAL_MS {
                 self.last_clock_update_instant = instant;
-                let millis_since_epoch = self.untrusted_clock.get_milliseconds_since_epoch();
+                let ts = self.untrusted_clock.get_time().into_timestamp();
                 return Ok(CommandOutcome::with_event(ActorEvent::with_proto(
                     0,
                     &StorageEvent {
-                        now: Some(Timestamp {
-                            seconds: millis_since_epoch / 1_000,
-                            nanos: (millis_since_epoch % 1_000 * 1_000_000) as i32,
-                        }),
+                        now: Some(Timestamp { seconds: ts.seconds, nanos: ts.nanos }),
                         kind: Some(storage_event::Kind::Update(UpdateRequest::default())),
                         ..Default::default()
                     },
@@ -517,13 +512,13 @@ struct FusedClock {
     clocks: Vec<Arc<dyn Clock>>,
 }
 impl Clock for FusedClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
+    fn get_time(&self) -> Instant {
         self.clocks
             .iter()
-            .find_map(|clock| match clock.get_milliseconds_since_epoch() {
-                now if now > 0 => Some(now),
+            .find_map(|clock| match clock.get_time() {
+                now if now > UNIX_EPOCH => Some(now),
                 _ => None,
             })
-            .unwrap_or(0)
+            .unwrap_or(UNIX_EPOCH)
     }
 }

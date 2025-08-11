@@ -20,12 +20,12 @@ use mockall::{predicate::eq as request_eq, PredicateBooleanExt};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
 use oak_session::{session_binding::SessionBinder, ProtocolEngine, ServerSession, Session};
+use oak_time::{clock::FixedClock, Clock, UNIX_EPOCH};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use session_test_utils::{
     get_test_attester, get_test_endorser, get_test_reference_values, get_test_session_binder,
-    FakeClock,
 };
 use session_v1_service_proto::{
     oak::services::{
@@ -70,7 +70,7 @@ struct FakeServer {
     endorser: Arc<dyn Endorser>,
     session_binder: Arc<dyn SessionBinder>,
     reference_values: ReferenceValues,
-    clock: Arc<FakeClock>,
+    clock: Arc<dyn Clock>,
 }
 
 impl FakeServer {
@@ -81,7 +81,7 @@ impl FakeServer {
             endorser: get_test_endorser(),
             session_binder: get_test_session_binder(),
             reference_values: get_test_reference_values().convert().unwrap(),
-            clock: Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+            clock: Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
         }
     }
 }

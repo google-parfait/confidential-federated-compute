@@ -22,7 +22,6 @@ use kms_proto::{
     evidence_proto::oak::attestation::v1::Evidence,
 };
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_attestation_verification_types::util::Clock;
 use oak_sdk_common::{StaticAttester, StaticEncryptionKeyHandle, StaticEndorser};
 use oak_sdk_standalone::Standalone;
 use oak_session::session_binding::{SessionBinder, SignatureBinder};
@@ -125,15 +124,5 @@ pub fn get_test_reference_values() -> ReferenceValues {
                 configuration: Some(skip.clone()),
             }),
         })),
-    }
-}
-
-/// A fake Clock that returns a fixed time.
-pub struct FakeClock {
-    pub milliseconds_since_epoch: i64,
-}
-impl Clock for FakeClock {
-    fn get_milliseconds_since_epoch(&self) -> i64 {
-        self.milliseconds_since_epoch
     }
 }

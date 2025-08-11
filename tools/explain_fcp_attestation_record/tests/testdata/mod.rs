@@ -156,9 +156,11 @@ fn create_skip_all_amd_sev_reference_values() -> ReferenceValues {
                             tee: 2,
                             snp: 3,
                             microcode: 4,
+                            fmc: 0,
                         }),
                         allow_debug: false,
                         stage0: Some(binary_ref_value_skip.clone()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }),

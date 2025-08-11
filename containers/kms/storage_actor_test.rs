@@ -17,19 +17,17 @@ use std::sync::Arc;
 use googletest::prelude::*;
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_attestation_verification_types::util::Clock;
 use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
 use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
+use oak_time::{clock::FixedClock, Clock, Instant, UNIX_EPOCH};
 use prost::{bytes::Bytes, Message};
 use prost_proto_conversion::ProstProtoConversionExt;
 use rand::Rng;
 use session_config::create_session_config;
-use session_test_utils::{
-    get_test_attester, get_test_endorser, get_test_session_binder, FakeClock,
-};
+use session_test_utils::{get_test_attester, get_test_endorser, get_test_session_binder};
 use slog::Drain;
 use storage_actor::StorageActor;
 use storage_proto::{
@@ -67,7 +65,7 @@ fn create_client_session(
     endorser: &Arc<dyn Endorser>,
     session_binder: &Arc<dyn SessionBinder>,
     reference_values: &ReferenceValues,
-    clock: Arc<FakeClock>,
+    clock: Arc<dyn Clock>,
 ) -> ClientSession {
     let mut session =
         create_session_config(attester, endorser, session_binder, reference_values, clock)
@@ -175,7 +173,7 @@ fn get_reference_values_succeeds() {
         get_test_endorser(),
         get_test_session_binder(),
         reference_values.clone(),
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
     );
 
     expect_that!(actor.get_reference_values(), eq(reference_values));
@@ -188,7 +186,7 @@ fn empty_command_ignored_on_follower() {
         get_test_endorser(),
         get_test_session_binder(),
         get_test_reference_values(),
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
     );
     assert_that!(actor.on_init(create_actor_context(/* leader= */ false)), ok(anything()));
 
@@ -201,7 +199,7 @@ fn empty_command_causes_periodic_clock_update() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 12_345_000 });
+    let clock = Arc::new(FixedClock::at_instant(Instant::from_unix_millis(12_345_678)));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -252,10 +250,7 @@ fn empty_command_causes_periodic_clock_update() {
 
     // Since the stored time hasn't been advanced yet, the actor's exported
     // clock should start at the current time.
-    expect_that!(
-        actor_clock.get_milliseconds_since_epoch(),
-        eq(clock.get_milliseconds_since_epoch())
-    );
+    expect_that!(actor_clock.get_time(), eq(clock.get_time()));
 
     // When the first empty command is sent, an event to update the time should
     // be generated since it's been more than a minute since the start time (0).
@@ -275,7 +270,7 @@ fn empty_command_causes_periodic_clock_update() {
     expect_that!(outcome.commands, elements_are![]);
 
     // The time should now be 12345 seconds.
-    expect_that!(actor_clock.get_milliseconds_since_epoch(), eq(12_345_000));
+    expect_that!(actor_clock.get_time(), eq(Instant::from_unix_millis(12_345_678)));
     let outcome = actor.on_process_command(Some(ActorCommand::with_header(
         2,
         &encode_request(
@@ -316,7 +311,7 @@ fn invalid_request_fails() {
         get_test_endorser(),
         get_test_session_binder(),
         get_test_reference_values(),
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
 
@@ -350,7 +345,7 @@ fn request_to_follower_fails() {
         get_test_endorser(),
         get_test_session_binder(),
         get_test_reference_values(),
-        Arc::new(FakeClock { milliseconds_since_epoch: 0 }),
+        Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
     );
     assert_that!(actor.on_init(create_actor_context(/* leader= */ false)), ok(anything()));
 
@@ -383,7 +378,7 @@ fn empty_storage_request_fails() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
+    let clock = Arc::new(FixedClock::at_instant(UNIX_EPOCH));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -431,7 +426,7 @@ fn write_and_read_succeeds() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
+    let clock = Arc::new(FixedClock::at_instant(Instant::from_unix_seconds(100)));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -496,7 +491,10 @@ fn write_and_read_succeeds() {
             )))),
         }))
     );
-    expect_that!(actor.get_clock_override().unwrap().get_milliseconds_since_epoch(), eq(100_000));
+    expect_that!(
+        actor.get_clock_override().unwrap().get_time(),
+        eq(Instant::from_unix_seconds(100))
+    );
 
     // Run a read command for key 5.
     let outcome = actor.on_process_command(Some(ActorCommand::with_header(
@@ -545,7 +543,7 @@ fn save_and_load_snapshot_succeeds() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 100_000 });
+    let clock = Arc::new(FixedClock::at_instant(Instant::from_unix_seconds(100)));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -619,11 +617,11 @@ fn save_and_load_snapshot_succeeds() {
         session_binder.clone(),
         reference_values.clone(),
         // This clock shouldn't affect the loaded snapshot.
-        Arc::new(FakeClock { milliseconds_since_epoch: 200_000 }),
+        Arc::new(FixedClock::at_instant(Instant::from_unix_seconds(200))),
     );
     assert_that!(actor.on_init(create_actor_context(true)), ok(anything()));
     assert_that!(actor.on_load_snapshot(snapshot.unwrap()), ok(anything()));
-    expect_that!(actor_clock.get_milliseconds_since_epoch(), eq(100_000));
+    expect_that!(actor_clock.get_time(), eq(Instant::from_unix_seconds(100)));
 
     // Run a read command for key 5.
     let mut session = create_client_session(
@@ -682,7 +680,7 @@ fn session_reuse_fails() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
+    let clock = Arc::new(FixedClock::at_instant(UNIX_EPOCH));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -747,7 +745,7 @@ fn session_reuse_after_close_succeeds() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
+    let clock = Arc::new(FixedClock::at_instant(UNIX_EPOCH));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
@@ -803,7 +801,7 @@ fn multiple_sessions_succeeds() {
     let endorser = get_test_endorser();
     let session_binder = get_test_session_binder();
     let reference_values = get_test_reference_values();
-    let clock = Arc::new(FakeClock { milliseconds_since_epoch: 0 });
+    let clock = Arc::new(FixedClock::at_instant(UNIX_EPOCH));
     let mut actor = StorageActor::new(
         attester.clone(),
         endorser.clone(),
