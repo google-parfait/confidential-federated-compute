@@ -15,8 +15,6 @@ build --output_filter='^//'  # Suppress warnings from external dependencies.
 # Build TensorFlow and XLA with more optimizations to avoid linker OOM
 build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG
 build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
-# Build boringssl without exceptions since it's used from Rust.
-build --per_file_copt=external/boringssl/@-fno-exceptions
 build --define xnn_enable_avx512fp16=false
 build --define xnn_enable_avx512amx=false
 build --define xnn_enable_avxvnni=false
@@ -26,9 +24,6 @@ build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
 common --repo_env=TF_PYTHON_VERSION=3.10
-
-# PIC is required when linking boringssl with Rust binaries.
-build --per_file_copt=external/boringssl/@-fpic
 
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect

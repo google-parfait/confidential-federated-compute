@@ -23,9 +23,6 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "boringssl",
     integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
-    patches = [
-        "//third_party/boringssl:rust.patch",
-    ],
     strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
     url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
 )
@@ -212,13 +209,6 @@ http_archive(
     name = "rules_rust_bindgen",
     integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
     strip_prefix = "extensions/bindgen",
-    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
-)
-
-http_archive(
-    name = "rules_rust_prost",
-    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
-    strip_prefix = "extensions/prost",
     url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
 )
 
@@ -431,14 +421,6 @@ load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
 
 setup_rust_dependencies()
 
-load("@rules_rust_prost//:repositories.bzl", "rust_prost_dependencies")
-
-rust_prost_dependencies()
-
-load("@rules_rust_prost//:transitive_repositories.bzl", "rust_prost_transitive_repositories")
-
-rust_prost_transitive_repositories()
-
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
 
 create_oak_crate_repositories()
@@ -446,8 +428,6 @@ create_oak_crate_repositories()
 load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 
 load_oak_crate_repositories()
-
-register_toolchains("@confidential-federated-compute//toolchains:bindgen_toolchain")
 
 load("@rules_oci//oci:dependencies.bzl", "rules_oci_dependencies")
 
