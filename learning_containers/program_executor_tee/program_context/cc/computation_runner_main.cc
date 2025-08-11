@@ -27,8 +27,9 @@ ABSL_FLAG(std::string, outgoing_server_address, "",
           "data read/write requests and computation delegation requests.");
 ABSL_FLAG(std::vector<std::string>, worker_bns, {},
           "A list of worker bns addresses.");
-ABSL_FLAG(std::string, attester_id, "",
-          "The attester id for setting up the noise session.");
+ABSL_FLAG(std::string, serialized_reference_values, "",
+          "The serialized reference values of the program worker for setting "
+          "up the client noise session.");
 
 int main(int argc, char* argv[]) {
   absl::ParseCommandLine(argc, argv);
@@ -39,7 +40,8 @@ int main(int argc, char* argv[]) {
 
   auto computation_runner_service = std::make_unique<
       confidential_federated_compute::program_executor_tee::ComputationRunner>(
-      absl::GetFlag(FLAGS_worker_bns), absl::GetFlag(FLAGS_attester_id),
+      absl::GetFlag(FLAGS_worker_bns),
+      absl::GetFlag(FLAGS_serialized_reference_values),
       absl::GetFlag(FLAGS_outgoing_server_address));
 
   builder.RegisterService(computation_runner_service.get());

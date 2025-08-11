@@ -1,0 +1,70 @@
+--- containers/crypto.cc
++++ containers/crypto.cc
+@@ -84,7 +84,8 @@ BlobDecryptor::BlobDecryptor(
+     oak::crypto::SigningKeyHandle& signing_key,
+     google::protobuf::Struct config_properties,
+     const std::vector<absl::string_view>& decryption_keys)
+-    : message_decryptor_(std::move(config_properties), decryption_keys),
++    : message_decryptor_(config_properties.SerializeAsString(),
++                         decryption_keys),
+       signed_public_key_(message_decryptor_.GetPublicKey(
+           [&signing_key](absl::string_view message) {
+             return SignWithOakSigningKey(signing_key, message);
+
+--- containers/confidential_transform_server_base.cc
++++ containers/confidential_transform_server_base.cc
+@@ -29,7 +29,7 @@
+ #include "containers/crypto.h"
+ #include "containers/session.h"
+ #include "fcp/base/status_converters.h"
+-#include "fcp/confidentialcompute/crypto.h"
++#include "fcp/confidentialcompute/nonce.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+ #include "fcp/protos/confidentialcompute/kms.pb.h"
+
+
+--- containers/confidential_transform_server_base.h
++++ containers/confidential_transform_server_base.h
+@@ -26,6 +26,7 @@
+ #include "cc/crypto/signing_key.h"
+ #include "containers/crypto.h"
+ #include "containers/session.h"
++#include "fcp/confidentialcompute/nonce.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+ #include "google/protobuf/any.pb.h"
+
+
+--- containers/confidential_transform_server_base_test.cc
++++ containers/confidential_transform_server_base_test.cc
+@@ -27,7 +27,7 @@
+ #include "containers/crypto_test_utils.h"
+ #include "containers/session.h"
+ #include "fcp/confidentialcompute/cose.h"
+-#include "fcp/confidentialcompute/crypto.h"
++#include "fcp/confidentialcompute/nonce.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+ #include "fcp/protos/confidentialcompute/kms.pb.h"
+
+--- containers/BUILD
++++ containers/BUILD
+@@ -172,7 +172,7 @@ cc_library(
+         "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/base",
+         "@federated-compute//fcp/base:status_converters",
+-        "@federated-compute//fcp/confidentialcompute:crypto",
++        "@federated-compute//fcp/confidentialcompute:nonce",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
+@@ -200,7 +200,7 @@ cc_test(
+         "@com_google_absl//absl/strings:str_format",
+         "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/confidentialcompute:cose",
+-        "@federated-compute//fcp/confidentialcompute:crypto",
++        "@federated-compute//fcp/confidentialcompute:nonce",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",

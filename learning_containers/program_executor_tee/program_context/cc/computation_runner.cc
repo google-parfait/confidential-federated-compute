@@ -61,8 +61,15 @@ constexpr absl::string_view kFakeAttesterId = "fake_attester";
 constexpr absl::string_view kFakeEvent = "fake event";
 constexpr absl::string_view kFakePlatform = "fake platform";
 
-SessionConfig* GetClientSessionConfig(std::string attester_id) {
-  if (attester_id == kFakeAttesterId) {
+extern "C" {
+extern ::oak::session::SessionConfig* create_session_config(
+    const char* reference_values_bytes, size_t reference_values_len);
+}
+
+absl::StatusOr<SessionConfig*> GetClientSessionConfig(
+    std::string serialized_reference_values) {
+  if (serialized_reference_values.empty()) {
+    // Create a fake session config for testing.
     auto verifier = bindings::new_fake_attestation_verifier(
         ffi_bindings::BytesView(kFakeEvent),
         ffi_bindings::BytesView(kFakePlatform));
@@ -70,9 +77,15 @@ SessionConfig* GetClientSessionConfig(std::string attester_id) {
                                 HandshakeType::kNoiseNN)
         .AddPeerVerifier(kFakeAttesterId, verifier)
         .Build();
+  } else {
+    auto* config = create_session_config(serialized_reference_values.data(),
+                                         serialized_reference_values.length());
+    if (config == nullptr) {
+      return absl::InternalError(
+          "Failed to create session config from worker reference values.");
+    }
+    return config;
   }
-  // TODO: Add config for prod use case.
-  return nullptr;
 }
 
 std::vector<int> GetNumClientsPerWorker(int num_clients, int num_workers) {
@@ -135,9 +148,9 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
 }  // namespace
 
 ComputationRunner::ComputationRunner(std::vector<std::string> worker_bns,
-                                     std::string attester_id,
+                                     std::string serialized_reference_values,
                                      std::string outgoing_server_address)
-    : worker_bns_(worker_bns), attester_id_(attester_id) {
+    : worker_bns_(worker_bns) {
   if (!worker_bns_.empty()) {
     stub_ = fcp::confidentialcompute::outgoing::ComputationDelegation::NewStub(
         grpc::CreateChannel(outgoing_server_address,
@@ -147,8 +160,11 @@ ComputationRunner::ComputationRunner(std::vector<std::string> worker_bns,
       // Create a noise client session for each worker and open the session.
       // So the session can be used to send computation requests when the
       // computation is invoked.
+      absl::StatusOr<SessionConfig*> session_config =
+          GetClientSessionConfig(serialized_reference_values);
+      CHECK_OK(session_config.status());
       auto client_session = NoiseClientSession::Create(
-          worker_bns, GetClientSessionConfig(attester_id), stub_.get());
+          worker_bns, session_config.value(), stub_.get());
       CHECK_OK(client_session);
       CHECK_OK(client_session.value()->OpenSession());
       noise_client_sessions_.push_back(std::move(client_session.value()));

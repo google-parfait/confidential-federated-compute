@@ -14,6 +14,7 @@
 
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_rust//rust:defs.bzl", "rust_library")
 
 package(
     default_visibility = ["//program_executor_tee:__subpackages__"],
@@ -26,6 +27,7 @@ cc_library(
     hdrs = ["computation_runner.h"],
     deps = [
         ":computation_delegation_lambda_runner",
+        ":session_config",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -336,5 +338,21 @@ pybind_extension(
         ":fake_data_read_write_service",
         "@com_github_grpc_grpc//:grpc++",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+rust_library(
+    name = "session_config",
+    srcs = ["session_config.rs"],
+    deps = [
+        "@oak//oak_attestation_types",
+        "@oak//oak_attestation_verification",
+        "@oak//oak_attestation_verification/dice_attestation_verification:oak_dice_attestation_verifier",
+        "@oak//oak_attestation_verification_types",
+        "@oak//oak_proto_rust",
+        "@oak//oak_session",
+        "@oak//oak_time:oak_time_std",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:prost",
     ],
 )

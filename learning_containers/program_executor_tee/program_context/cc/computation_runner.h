@@ -33,7 +33,7 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
                               ComputationDelegation::Service {
  public:
   ComputationRunner(std::vector<std::string> worker_bns,
-                    std::string attester_id,
+                    std::string serialized_reference_values,
                     std::string outgoing_server_address);
 
   // Executes the TFF computation represented in the request message using a C++
@@ -60,7 +60,6 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
   std::unique_ptr<
       fcp::confidentialcompute::outgoing::ComputationDelegation::Stub>
       stub_;
-  std::string attester_id_;
   std::vector<std::shared_ptr<NoiseClientSession>> noise_client_sessions_;
 };
 

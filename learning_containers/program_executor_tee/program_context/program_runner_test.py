@@ -68,7 +68,7 @@ async def trusted_program(input_provider, release_manager):
         model_id_to_zip_file={},
         outgoing_server_address=f"[::1]:{untrusted_root_port}",
         worker_bns=[],
-        attester_id="",
+        serialized_reference_values="",
         parse_read_response_fn=test_helpers.parse_read_response_fn,
     )
 
@@ -118,7 +118,7 @@ def incorrectly_named_trusted_program(release_manager):
           model_id_to_zip_file={},
           outgoing_server_address=f"[::1]:{portpicker.pick_unused_port()}",
           worker_bns=[],
-          attester_id="",
+          serialized_reference_values="",
           parse_read_response_fn=test_helpers.parse_read_response_fn,
       )
     self.assertEqual(

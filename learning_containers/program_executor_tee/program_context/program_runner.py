@@ -33,7 +33,7 @@ async def run_program(
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
     worker_bns: list[str] = [],
-    attester_id: str = "",
+    serialized_reference_values: str = "",
     parse_read_response_fn: Callable[
         [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
     ] = None,
@@ -54,9 +54,9 @@ async def run_program(
       be reached for data read/write requests and computation delegation
       requests.
     worker_bns: A list of worker bns addresses.
-    attester_id: The attester id for setting up the noise sessions used for
-      distributed execution. Needs to be set to a non-empty string if a
-      non-empty list of worker bns addresses is provided.
+    serialized_reference_values: A string containing a serialized
+      oak.attestation.v1.ReferenceValues proto that contains reference values of
+      the program worker binary to set up the client noise sessions.
     parse_read_response_fn: A function that takes a
       data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
       pointer) and returns a tff Value proto.
@@ -69,7 +69,7 @@ async def run_program(
           compilers.compile_tf_to_call_dominant,
           outgoing_server_address,
           worker_bns,
-          attester_id,
+          serialized_reference_values,
           parse_read_response_fn,
       )
   )

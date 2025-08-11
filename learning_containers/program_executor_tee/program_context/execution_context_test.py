@@ -36,7 +36,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     )
     self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
     self.worker_bns = []
-    self.attester_id = ""
+    self.serialized_reference_values = ""
     self.data_read_write_service = (
         fake_service_bindings.FakeDataReadWriteService()
     )
@@ -54,7 +54,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         mock_compiler,
         self.outgoing_server_address,
         self.worker_bns,
-        self.attester_id,
+        self.serialized_reference_values,
         test_helpers.parse_read_response_fn,
     )
 
@@ -92,7 +92,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             compilers.compile_tf_to_call_dominant,
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
@@ -125,7 +125,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             compilers.compile_tf_to_call_dominant,
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
@@ -172,7 +172,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             lambda x: x,
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
@@ -195,7 +195,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             lambda x: x,
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
@@ -235,7 +235,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "bns_address_3",
         "bns_address_4",
     ]
-    self.attester_id = "fake_attester"
+    self.serialized_reference_values = ""
     self.data_read_write_service = (
         fake_service_bindings.FakeDataReadWriteService()
     )
@@ -261,7 +261,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             ),
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
@@ -297,7 +297,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             ),
             self.outgoing_server_address,
             self.worker_bns,
-            self.attester_id,
+            self.serialized_reference_values,
             test_helpers.parse_read_response_fn,
         )
     )
