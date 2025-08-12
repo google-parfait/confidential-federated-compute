@@ -59,9 +59,9 @@ python.toolchain(
 http_archive(
     name = "llama_cpp",
     build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
-    integrity = "sha256-ia4rm4HjbOEnDEszG5kmJcEFOUNKFC9IUOtA1V1IsOo=",
-    strip_prefix = "llama.cpp-6efcd65945a98cf6883cdd9de4c8ccd8c79d219a",
-    url = "https://github.com/ggml-org/llama.cpp/archive/6efcd65945a98cf6883cdd9de4c8ccd8c79d219a.tar.gz",
+    integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
+    strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
+    url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
 )
 
 # Set up cc toolchain
@@ -143,6 +143,21 @@ use_repo(
     "cuda_cudart",
     "cuda_curand",
     "cuda_nvcc",
+)
+
+http_archive(
+    name = "nvidia_driver",
+    build_file_content = """
+load("@rules_cc//cc:defs.bzl", "cc_library")
+package(default_visibility = ["//visibility:public"])
+cc_library(
+    name = "cuda_libs",
+    srcs = glob(["lib/libcuda.so*"]),
+)
+""",
+    sha256 = "0fcaa9b47c124cca981df5155e2826615de3f28e31a27e139af8901e92d38b34",
+    strip_prefix = "nvidia_driver-linux-x86_64-570.124.06-archive",
+    url = "https://developer.download.nvidia.com/compute/cuda/redist/nvidia_driver/linux-x86_64/nvidia_driver-linux-x86_64-570.124.06-archive.tar.xz",
 )
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")

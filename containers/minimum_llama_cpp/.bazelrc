@@ -1,4 +1,4 @@
-common --@rules_cuda//cuda:compiler=clang
+common --@rules_cuda//cuda:compiler=nvcc
 # Static link cuda runtime deps.
 common --@rules_cuda//cuda:runtime=@cuda//:cuda_runtime_static
 # Build for H100 or equivalent.
