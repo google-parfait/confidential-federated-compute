@@ -36,8 +36,8 @@ import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
-class TrustedAsyncContext(federated_language.framework.AsyncContext):
-  """Asynchronous TFF execution context for executing TFF computations."""
+class TrustedContext(federated_language.program.FederatedContext):
+  """Execution context for executing computations in an Federated Program."""
 
   def __init__(
       self,
@@ -149,7 +149,7 @@ class TrustedAsyncContext(federated_language.framework.AsyncContext):
         combined_read_response, nonce, file_info.key
     )
 
-  async def invoke(self, comp: object, arg: Optional[object]) -> object:
+  def invoke(self, comp: object, arg: Optional[object]) -> object:
     """Executes comp(arg).
 
     Compiles the computation, serializes the comp and arg, and delegates

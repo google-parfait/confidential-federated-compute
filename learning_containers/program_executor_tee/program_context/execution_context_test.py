@@ -50,7 +50,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   async def test_compiler_caching(self):
     mock_compiler = unittest.mock.Mock()
-    context = execution_context.TrustedAsyncContext(
+    context = execution_context.TrustedContext(
         mock_compiler,
         self.outgoing_server_address,
         self.worker_bns,
@@ -76,8 +76,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     mock_compiler.return_value = compilers.compile_tf_to_call_dominant(my_comp)
 
-    result_1 = await context.invoke(my_comp, my_comp_arg_1)
-    result_2 = await context.invoke(my_comp, my_comp_arg_2)
+    result_1 = context.invoke(my_comp, my_comp_arg_1)
+    result_2 = context.invoke(my_comp, my_comp_arg_2)
 
     # The compilation helper function should only be called once due to
     # caching.
@@ -88,7 +88,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   async def test_tf_execution_context(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
             self.outgoing_server_address,
             self.worker_bns,
@@ -110,18 +110,18 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     def my_comp(client_data, server_state):
       return federated_language.federated_sum(client_data), server_state
 
-    result_1, result_2 = await my_comp([1, 2], 10)
+    result_1, result_2 = my_comp([1, 2], 10)
     self.assertEqual(result_1, 3)
     self.assertEqual(result_2, 10)
 
     # Change the cardinality of the inputs.
-    result_1, result_2 = await my_comp([1, 2, 3], 10)
+    result_1, result_2 = my_comp([1, 2, 3], 10)
     self.assertEqual(result_1, 6)
     self.assertEqual(result_2, 10)
 
   async def test_tf_execution_context_data_pointer_arg(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
             self.outgoing_server_address,
             self.worker_bns,
@@ -162,13 +162,13 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         "client_2", "mykey", client_data_type.member
     ).computation
 
-    result_1, result_2 = await my_comp([client_1_data, client_2_data], 10)
+    result_1, result_2 = my_comp([client_1_data, client_2_data], 10)
     self.assertEqual(result_1, 3)
     self.assertEqual(result_2, 10)
 
   async def test_tf_execution_context_no_arg(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             lambda x: x,
             self.outgoing_server_address,
             self.worker_bns,
@@ -187,11 +187,11 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
           create_ten, federated_language.SERVER
       )
 
-    self.assertEqual(await my_comp(), 10)
+    self.assertEqual(my_comp(), 10)
 
   async def test_tf_execution_context_jax_computation(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             lambda x: x,
             self.outgoing_server_address,
             self.worker_bns,
@@ -211,7 +211,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       )
 
     with self.assertRaises(RuntimeError) as context:
-      await my_comp()
+      my_comp()
     self.assertIn(
         "Request to computation runner failed with error:"
         " `TensorFlowExecutor::CreateValueComputation`",
@@ -254,7 +254,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
 
   async def test_execution_context(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             functools.partial(
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
@@ -279,18 +279,18 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     def my_comp(client_data, server_state):
       return federated_language.federated_sum(client_data), server_state
 
-    result_1, result_2 = await my_comp([1, 2], 10)
+    result_1, result_2 = my_comp([1, 2], 10)
     self.assertEqual(result_1, 3)
     self.assertEqual(result_2, 10)
 
     # Change the cardinality of the inputs.
-    result_1, result_2 = await my_comp([1, 2, 3, 4], 10)
+    result_1, result_2 = my_comp([1, 2, 3, 4], 10)
     self.assertEqual(result_1, 10)
     self.assertEqual(result_2, 10)
 
   async def test_execution_context_data_pointer_arg(self):
     federated_language.framework.set_default_context(
-        execution_context.TrustedAsyncContext(
+        execution_context.TrustedContext(
             functools.partial(
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
@@ -334,7 +334,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "client_2", "mykey", client_data_type.member
     ).computation
 
-    result_1, result_2 = await my_comp([client_1_data, client_2_data], 10)
+    result_1, result_2 = my_comp([client_1_data, client_2_data], 10)
     self.assertEqual(result_1, 3)
     self.assertEqual(result_2, 10)
 

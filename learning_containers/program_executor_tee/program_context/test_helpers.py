@@ -47,7 +47,7 @@ def create_array_value(value: object, type_spec: object) -> executor_pb2.Value:
 def parse_read_response_fn(
     read_response: data_read_write_pb2.ReadResponse, nonce: str, key: str
 ) -> executor_pb2.Value:
-  """Parsing function to provide as an arg to TrustedAsyncContext for testing.
+  """Parsing function to provide as an arg to TrustedContext for testing.
 
   This function assumes that any ReadResponses it is asked to parse contain
   unencrypted data that is a serialized tff Value proto. The nonce and key

@@ -65,7 +65,7 @@ async def run_program(
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
   """
   federated_language.framework.set_default_context(
-      execution_context.TrustedAsyncContext(
+      execution_context.TrustedContext(
           compilers.compile_tf_to_call_dominant,
           outgoing_server_address,
           worker_bns,
@@ -90,4 +90,5 @@ async def run_program(
   initialized_release_manager = release_manager.ReleaseManager(
       outgoing_server_address
   )
+
   await trusted_program(input_provider, initialized_release_manager)

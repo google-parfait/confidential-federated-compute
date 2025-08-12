@@ -84,7 +84,7 @@ async def trusted_program(input_provider, release_manager):
   # Run four rounds, which will guarantee that each client is used exactly twice.
   server_state = [0,0,0]
   for _ in range(4):
-    server_state = await my_comp(server_state, data_source_iterator.select(2))
+    server_state = my_comp(server_state, data_source_iterator.select(2))
 
   await release_manager.release(server_state, "result")
   )",

@@ -55,7 +55,7 @@ async def trusted_program(input_provider, release_manager):
     def my_comp(client_data, server_state):
         return federated_language.federated_sum(client_data), server_state
 
-    result1, result2 = await my_comp([1, 2], 10)
+    result1, result2 = my_comp([1, 2], 10)
 
     await release_manager.release(result1, "result1")
     await release_manager.release(result2, "result2")
