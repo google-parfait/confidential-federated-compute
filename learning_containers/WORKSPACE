@@ -155,15 +155,15 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-G1JqiVZtb9tstQOGmaBl0P3d0ygVlGkguz5ziVfvwAo=",
+    integrity = "sha256-D6LGKBzoe+gELpS8yqVw8Ph9fWLlyeDbSZfv9Kvm4Hw=",
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:eigen.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "//third_party/org_tensorflow_federated:vizier.patch",
     ],
-    strip_prefix = "tensorflow-federated-dc779b04018e1c57698f17f77413a857100e2e33",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/dc779b04018e1c57698f17f77413a857100e2e33.tar.gz",
+    strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
 )
 
 http_archive(
