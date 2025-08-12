@@ -1,17 +1,17 @@
-# Adjust the visibility of the computation package so its targets can be depended on directly.
+# Update the visibility of the jax_computation so that it can be used without
+# importing all of the federated-language-jax package. There is an unexplored
+# issue importing both the tensorflow-federated and federated-language-jax
+# bindings and this patch avoids trying to debug that issue.
+
 diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
-index c2340b4..bf93118 100644
+index e7adb04..6d4f725 100644
 --- federated_language_jax/computation/BUILD
 +++ federated_language_jax/computation/BUILD
-@@ -16,10 +16,7 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
-
- package(
-     default_applicable_licenses = ["//:package_license"],
--    default_visibility = [
--        "//federated_language_jax:__pkg__",
--        "//federated_language_jax/backend:__subpackages__",
--    ],
-+    default_visibility = ["//visibility:public"],
- )
-
- licenses(["notice"])
+@@ -32,6 +32,7 @@ py_library(
+ py_library(
+     name = "jax_computation",
+     srcs = ["jax_computation.py"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":jax_serialization",
+         "@federated_language_jax_pypi//dm_tree",

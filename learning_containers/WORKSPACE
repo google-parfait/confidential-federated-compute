@@ -93,18 +93,19 @@ http_archive(
 
 http_archive(
     name = "federated_language_jax",
-    integrity = "sha256-KtH+Nfd3qYkvPcVjIH/NrJoXVgulCPo/dLzB7SGlCok=",
+    integrity = "sha256-CQlJQ88zfFXGQa2a+h6y9DovLr4IpqQywa09D2Y8ev4=",
     patches = [
         "//third_party/federated_language_jax:computation_visibility.patch",
         "//third_party/federated_language_jax:eigen.patch",
         "//third_party/federated_language_jax:federated_language.patch",
     ],
     repo_mapping = {
+        "@abseil-cpp": "@com_google_absl",
         "@federated_language_jax_pypi": "@pypi",
         "@xla": "@local_xla",
     },
-    strip_prefix = "federated-language-jax-182e5e9ec3cc0869a3588ea8048432c2c3922dfa",
-    url = "https://github.com/google-parfait/federated-language-jax/archive/182e5e9ec3cc0869a3588ea8048432c2c3922dfa.tar.gz",
+    strip_prefix = "federated-language-jax-4689e96e3e06f37d66d94f54913929aa4cddf8df",
+    url = "https://github.com/google-parfait/federated-language-jax/archive/4689e96e3e06f37d66d94f54913929aa4cddf8df.tar.gz",
 )
 
 http_archive(
