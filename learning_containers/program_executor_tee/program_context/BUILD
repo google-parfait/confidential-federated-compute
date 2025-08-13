@@ -80,12 +80,25 @@ py_test(
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
-        "@federated_language_jax//federated_language_jax/computation:jax_computation",
         "@pypi//absl_py",
         "@pypi//attrs",
         "@pypi//dm_tree",
         "@pypi//ml_dtypes",
         "@pypi//typing_extensions",
+    ],
+)
+
+py_test(
+    name = "execution_context_jax_test",
+    srcs = ["execution_context_jax_test.py"],
+    tags = ["noasan"],
+    deps = [
+        ":execution_context",
+        ":test_helpers",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
+        "@federated_language//federated_language",
+        "@federated_language_jax//federated_language_jax/computation:jax_computation",
+        "@pypi//absl_py",
     ],
 )
 

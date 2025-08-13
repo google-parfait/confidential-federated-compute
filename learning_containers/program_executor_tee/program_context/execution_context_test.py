@@ -14,16 +14,16 @@
 
 import functools
 import unittest
+
 from absl.testing import absltest
 from fcp.confidentialcompute.python import compiler
 import federated_language
-from federated_language_jax.computation import jax_computation
 import numpy as np
 import portpicker
 from program_executor_tee.program_context import compilers
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import test_helpers
-from program_executor_tee.program_context.cc import fake_service_bindings as fake_service_bindings
+from program_executor_tee.program_context.cc import fake_service_bindings
 import tensorflow_federated as tff
 
 
@@ -188,35 +188,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       )
 
     self.assertEqual(my_comp(), 10)
-
-  async def test_tf_execution_context_jax_computation(self):
-    federated_language.framework.set_default_context(
-        execution_context.TrustedContext(
-            lambda x: x,
-            self.outgoing_server_address,
-            self.worker_bns,
-            self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
-        )
-    )
-
-    @jax_computation.jax_computation
-    def create_ten_jax():
-      return 10
-
-    @federated_language.federated_computation
-    def my_comp():
-      return federated_language.federated_eval(
-          create_ten_jax, federated_language.SERVER
-      )
-
-    with self.assertRaises(RuntimeError) as context:
-      my_comp()
-    self.assertIn(
-        "Request to computation runner failed with error:"
-        " `TensorFlowExecutor::CreateValueComputation`",
-        str(context.exception),
-    )
 
 
 class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
