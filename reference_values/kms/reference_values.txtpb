@@ -52,10 +52,12 @@ oak_containers {
           }
         }
       }
-      min_tcb_version {
-        boot_loader: 3
-        snp: 0x18
-        microcode: 0xDB
+      milan {
+        minimum {
+          boot_loader: 3
+          snp: 0x18
+          microcode: 0xDB
+        }
       }
     }
   }

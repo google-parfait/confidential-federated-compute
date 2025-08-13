@@ -21,10 +21,11 @@ use federated_compute::proto::{
 use federated_compute::proto::{AccessBudget, DataAccessPolicy};
 use federated_compute::proto::{ApplicationMatcher, ValueMatcher};
 use oak_proto_rust::oak::attestation::v1::{
-    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
-    AmdSevReferenceValues, BinaryReferenceValue, Evidence, KernelBinaryReferenceValue,
-    KernelLayerReferenceValues, OakRestrictedKernelReferenceValues, ReferenceValues,
-    RootLayerReferenceValues, SkipVerification, TcbVersion, TextReferenceValue,
+    binary_reference_value, kernel_binary_reference_value, reference_values,
+    tcb_version_reference_value, text_reference_value, AmdSevReferenceValues, BinaryReferenceValue,
+    Evidence, KernelBinaryReferenceValue, KernelLayerReferenceValues,
+    OakRestrictedKernelReferenceValues, ReferenceValues, RootLayerReferenceValues,
+    SkipVerification, TcbVersion, TcbVersionReferenceValue, TextReferenceValue,
 };
 use prost::Message as _;
 
@@ -151,12 +152,14 @@ fn create_skip_all_amd_sev_reference_values() -> ReferenceValues {
             OakRestrictedKernelReferenceValues {
                 root_layer: Some(RootLayerReferenceValues {
                     amd_sev: Some(AmdSevReferenceValues {
-                        min_tcb_version: Some(TcbVersion {
-                            boot_loader: 1,
-                            tee: 2,
-                            snp: 3,
-                            microcode: 4,
-                            fmc: 0,
+                        milan: Some(TcbVersionReferenceValue {
+                            r#type: Some(tcb_version_reference_value::Type::Minimum(TcbVersion {
+                                boot_loader: 1,
+                                tee: 2,
+                                snp: 3,
+                                microcode: 4,
+                                fmc: 0,
+                            })),
                         }),
                         allow_debug: false,
                         stage0: Some(binary_ref_value_skip.clone()),

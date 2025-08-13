@@ -105,12 +105,13 @@ The reference values describing this layer are printed below.
 
 amd_sev:
   allow_debug: false
-  min_tcb_version:
-    boot_loader: 1
-    fmc: 0
-    microcode: 4
-    snp: 3
-    tee: 2
+  milan:
+    minimum:
+      boot_loader: 1
+      fmc: 0
+      microcode: 4
+      snp: 3
+      tee: 2
   stage0:
     skip: {}
 
@@ -162,12 +163,13 @@ The reference values describing this layer are printed below.
 
 amd_sev:
   allow_debug: false
-  min_tcb_version:
-    boot_loader: 1
-    fmc: 0
-    microcode: 4
-    snp: 3
-    tee: 2
+  milan:
+    minimum:
+      boot_loader: 1
+      fmc: 0
+      microcode: 4
+      snp: 3
+      tee: 2
   stage0:
     skip: {}
 
