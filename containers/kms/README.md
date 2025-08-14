@@ -121,16 +121,20 @@ then a reduce step that computes a sum (`sum`) using a hierarchical multi-step
 process. The sum step may therefore produce partially aggregated results that
 will be read in by another instance of the sum VM.
 
-<table>
-<thead>
-<tr>
-<td>Graph</td>
-<td>Protocol buffer</td>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
+```protobuf
+transforms {
+  src_node_ids: [0]
+  dst_node_ids: [1]
+  application { reference_values { ... } }
+  config_constraints { ... }
+}
+transform {
+  src_nodes_ids: [1, 2]
+  dst_node_ids: [2, 3]
+  application { reference_values { ... } }
+  config_constraints { ... }
+}
+```
 
 ```mermaid
 graph TB
@@ -151,29 +155,6 @@ graph TB
   0 --> square --> 1 --> sum --> 3
   2 --> sum --> 2
 ```
-
-</td>
-<td>
-
-```protobuf
-transforms {
-  src_node_ids: [0]
-  dst_node_ids: [1]
-  application { reference_values { ... } }
-  config_constraints { ... }
-}
-transform {
-  src_nodes_ids: [1, 2]
-  dst_node_ids: [2, 3]
-  application { reference_values { ... } }
-  config_constraints { ... }
-}
-```
-
-</td>
-</tr>
-</tbody>
-</table>
 
 By using different encryption keys for each data node (`0`, `1`, `2`, and `3`),
 the KMS can ensure that each transform is only able to read its authorized
