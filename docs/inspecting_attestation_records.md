@@ -4,11 +4,11 @@ Be sure to review the introductory [README.md](README.md) before reviewing this
 document.
 
 As described in the *Enabling External Verifiability of the Data Processing*
-section of the [Confidential Federated Computations
-paper](https://arxiv.org/abs/2404.10764), after a successful verification of
-ledger attestation evidence and the data access policy by a client device, the
-device will log an [attestation verification
-record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
+section of the
+[Confidential Federated Computations paper](https://arxiv.org/abs/2404.10764),
+after a successful verification of KMS or ledger attestation evidence and the
+data access policy by a client device, the device will log an
+[attestation verification record](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/verification_record.proto)
 which can then be inspected. Please see
 [fcp/client/attestation/README.md](https://github.com/google-parfait/federated-compute/blob/main/fcp/client/attestation/README.md)
 in the Federated Compute repository for instructions on how to gather
@@ -20,9 +20,9 @@ verification records can be inspected.
 
 Note: the main limitation of the approach described in this document is the
 infeasibility of instrumenting all devices that could possibly contribute data.
-There is a more scalable approach to inspecting the ledger attestation evidence
-and data access policies that any client device may accepts, which leverages a
-public transparency log and which addresses this limitation. See
+There is a more scalable approach to inspecting the KMS or ledger attestation
+evidence and data access policies that any client device may accepts, which
+leverages a public transparency log and which addresses this limitation. See
 [inspecting_endorsements.md](inspecting_endorsements.md) for more details on
 this approach.
 
@@ -30,26 +30,25 @@ this approach.
 
 Attestation verification records consist of two major parts:
 
-1.  *the attestation evidence that identifies the
-    [ledger application](/ledger_enclave_app)* which generated the encryption
-    key the client used to encrypt its data,
+1.  *the attestation evidence that identifies the [KMS](/containers/kms) or
+    [ledger](/ledger_enclave_app) application* that generated the encryption key
+    the client used to encrypt its data,
 
-2.  *the [data access policy](/ledger_enclave_app#access-policies)* that
-    prescribes the conditions under which the ledger binary will allow that
+2.  *the [data access policy](/containers/kms#access-policies)* that prescribes
+    the conditions under which the KMS or ledger binary will allow that
     encrypted data to be decrypted.
 
-To inspect the ledger attestation evidence and data access policy in an
+To inspect the KMS or ledger attestation evidence and data access policy in an
 `AttestationVerificationRecord`, the
-[explain\_fcp\_attestation\_record](/tools/explain_fcp_attestation_record/)
-tool in this repository can be used. This tool prints a human-readable summary
-of the ledger attestation evidence and the data access policy. The attestation
-evidence summary includes links to [SLSA
-provenance](https://slsa.dev/spec/v0.1/provenance) stored on sigstore.dev for
-each of the binaries at each layer of the TEE-hosted ledger application. The
-data access policy summary does not currently include links to sigstore.dev for
-the binary digests specified in each of the `ReferenceValues` protos in the
-policy, but does include instructions for crafting such sigstore.dev links
-manually.
+[explain\_fcp\_attestation\_record](/tools/explain_fcp_attestation_record/) tool
+in this repository can be used. This tool prints a human-readable summary of the
+attestation evidence and the data access policy. The attestation evidence
+summary includes links to
+[SLSA provenance](https://slsa.dev/spec/v0.1/provenance) stored on sigstore.dev
+for each of the binaries at each layer of the TEE-hosted application. The data
+access policy summary does not currently include links to sigstore.dev for the
+binary digests specified in each of the `ReferenceValues` protos in the policy,
+but does include instructions for crafting such sigstore.dev links manually.
 
 The following is an example of the type of output the tool produces.
 
@@ -136,10 +135,11 @@ configurations, and restricted kernel application layer binaries are produced
 from the code in this Confidential Federated Compute repository. We believe
 that all binaries are reproducibly buildable.
 
-All of the binaries attested in the ledger attestation evidence or allowed by a
-`DataAccessPolicy` should have SLSA provenance entries on sigstore.dev. For any
-allowed binary, you should be able to find the corresponding provenance using
-the `https://search.sigstore.dev/?hash={THE_SHA256_HASH}` URL format, where
+All of the binaries attested in the KMS or ledger attestation evidence or
+allowed by a `DataAccessPolicy` should have SLSA provenance entries on
+sigstore.dev. For any allowed binary, you should be able to find the
+corresponding provenance using the
+`https://search.sigstore.dev/?hash={THE_SHA256_HASH}` URL format, where
 `{THE_SHA256_HASH}` is the SHA2-256 hash of the binary in the evidence/access
 policy. These entries should show the binaries' provenance, including a link to
 the Git commit on GitHub that the binaries were built from, as well as the

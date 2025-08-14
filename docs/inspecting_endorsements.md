@@ -4,43 +4,44 @@ Be sure to review the introductory [README.md](README.md) before reviewing this
 document.
 
 As described in the *Enhanced External Verifiability* section of the
-[Confidential Federated Computations white
-paper](https://arxiv.org/abs/2404.10764), client devices can verify the ledger
-attestation evidence and data access policies by means of endorsements:
-cryptographic signatures over the ledger binary attestation evidence and the
-access policy, which in turn are published to a transparency log
-([Rekor](https://docs.sigstore.dev/logging/overview/)).
+[Confidential Federated Computations white paper](https://arxiv.org/abs/2404.10764),
+client devices can verify the KMS or ledger attestation evidence and data access
+policies by means of endorsements: cryptographic signatures over the binary
+attestation evidence and the access policy, which in turn are published to a
+transparency log ([Rekor](https://docs.sigstore.dev/logging/overview/)).
 
-Client devices validate that the ledger attestation evidence has been endorsed
-by the appropriate binary endorsement keys, and they validate that there is a
-valid corresponding transparency log inclusion proof, before accepting a ledger
-public key. Client devices also validate that the access policy has been
-endorsed by an appropriate endorsement key, and that this endorsement is also
-covered by a transparency log inclusion proof.
+Client devices validate that the KMS or ledger attestation evidence has been
+endorsed by the appropriate binary endorsement keys, and they validate that
+there is a valid corresponding transparency log inclusion proof, before
+accepting a KMS or ledger public key. Client devices also validate that the
+access policy has been endorsed by an appropriate endorsement key, and that this
+endorsement is also covered by a transparency log inclusion proof.
 
 By verifying these endorsements, the client can confirm that all data access
-policies as well as the server-side ledger and data processing binaries are
-correctly implemented and externally inspectable via their transparency log
+policies as well as the server-side KMS or ledger and data processing binaries
+are correctly implemented and externally inspectable via their transparency log
 entries. The following sections describe how those transparency log entries can
-be discovered and mapped to the actual source code for the corresponding ledger
-application and data processing steps described by the access policy.
+be discovered and mapped to the actual source code for the corresponding KMS or
+ledger application and data processing steps described by the access policy.
 
-The first part of this document describes how the complete set of ledger
+The first part of this document describes how the complete set of KMS or ledger
 applications that client devices may accept can be determined by monitoring the
 Rekor transparency log. The second part of this document describes how the
 complete set of active data access policies which clients may accept can be
 determined in a similar fashion.
 
-Note: there is an alternate approach to inspecting the ledger attestation
+Note: there is an alternate approach to inspecting the KMS or ledger attestation
 evidence and data access policies that a given client device accepts, which
 involves instrumenting the device. See
 [inspecting_attestation_records.md](inspecting_attestation_records.md)
 for more details on this approach.
 
-## Inspecting ledger binary transparency log entries
+## Inspecting binary transparency log entries
 
-The endorsement keys client devices use to validate the ledger application can be
-found in the [/reference_values/ledger](/reference_values/ledger) directory.
+The endorsement keys client devices use to validate the KMS or ledger
+applications can be found in the
+[`/reference_values/kms`](/reference_values/kms) and
+[`/reference_values/ledger`](/reference_values/ledger) directories.
 
 To find transparency log entries for these endorsement keys you can use the
 [rekor-monitor](https://github.com/sigstore/rekor-monitor) tool. For example,
@@ -540,10 +541,10 @@ directory. For each data access policy endorsement key there is an associated
 set of privacy properties that the corresponding app will ensure are upheld by
 every endorsed data access policy.
 
-Just as with the ledger binary endorsements, you can use the `rekor-monitor`
-tool to find transparency log entries for this endorsement key. The following
-example configuration will surface a recent data access policy endorsement for
-the
+Just as with the KMS or ledger binary endorsements, you can use the
+`rekor-monitor` tool to find transparency log entries for this endorsement key.
+The following example configuration will surface a recent data access policy
+endorsement for the
 [Gboard](https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin)
 app:
 
@@ -662,14 +663,15 @@ The source code for this particular application binary is available in the
 ## Additional notes
 
 ### Restrictions on endorsement log integration times
+
 To make it easier to discover all relevant active endorsements, we have added
-functionality to limit the endorsements that will be accepted by the ledger
-during peer-to-peer attestation, as well as by client devices, to those
+functionality to limit the endorsements that will be accepted by the KMS or
+ledger during peer-to-peer attestation, as well as by client devices, to those
 published to the transparency log only after a certain absolute date and within
 a certain number of days from the current time at the time of verification.
 
-This is reflected in the ledger and data access policies' reference values use
-of the `signed_timestamp` field:
+This is reflected in the KMS, ledger, and data access policies' reference values
+use of the `signed_timestamp` field:
 
 ```
 rekor {
@@ -707,6 +709,6 @@ reflected here.
 Following the instructions above, you can determine all possible code paths
 through which uploaded client data might be processed. By inspecting the
 provenance (open-source code and build instructions) for all relevant TEE-hosted
-binaries (ledger and data processing steps) and access policies, anyone can
-follow along and validate or falsify the privacy properties of data processed
-using confidential federated computations.
+binaries (KMS, ledger, and data processing steps) and access policies, anyone
+can follow along and validate or falsify the privacy properties of data
+processed using confidential federated computations.

@@ -27,30 +27,42 @@ data. The data will only be allowed to be decrypted by components that prove
 that the code they are running is allowed by the policy, by using remote
 attestation with a hardware root-of-trust to determine what binary is running.
 
-### Ledger
+### Key Management Service
 
 The component responsible for enforcing the policy on the data is called the
-Ledger. When data is uploaded, it is initially only decryptable by the Ledger,
-which stores the key that can decrypt the data in-memory. This means that if the
-Ledger dies, access to the uploaded data is lost forever. Other, short lived
+Confidential Federated Compute Key Management Service (CFC KMS). When data is
+uploaded, it is initially only decryptable by the KMS, which replicates and
+stores the corresponding decryption keys in-memory. This means that if the KMS
+restarts, access to the uploaded data is lost forever. Other, short lived
 components running in Trusted Execution Environments can provide attestations to
-the Ledger and request access to the data. If the attestation of the component
-along with its signed configuration matches the policy bound to the data, then
-the Ledger will carry out an encryption protocol to make the data decryptable by
-that component. This will allow the component to carry out its transformation on
-the data. The result of that transformation will continue to be subject to the
-same policy as the original data.
+the KMS and request access to these keys, which are only shared if the
+attestation matches the policy under which the data was uploaded. The KMS also
+maintains rollback-protected state for each pipeline for tracking privacy
+budgets.
 
-The code for the Ledger is located in the [`ledger_service`](ledger_service) and
+The code for the KMS is located in the [`containers/kms`](containers/kms)
+directory; see this directory for additional documentation. The KMS runs in a
+TEE using
+[Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
+
+### Ledger
+
+The ledger is the KMS's predecessor and plays a similar role. The main
+difference is that the ledger tracks privacy budgets itself on a per-upload
+basis instead of delegating budget tracking to each pipeline. Unfortunately,
+this requires ledger operations and state to scale with the amount of uploaded
+data, making the ledger a bottleneck for large-scale data processing.
+
+The code for the ledger is located in the [`ledger_service`](ledger_service) and
 [`ledger_enclave_app`](ledger_enclave_app) directories; see the latter for
-additional documentation. The Ledger will run on a TEE using the
+additional documentation. The ledger runs in a TEE using the
 [Oak Restricted Kernel](https://github.com/project-oak/oak/tree/main/oak_restricted_kernel).
 
 ### Transformations
 
-This repository also contains code for components that will run transformations
-over data within TEEs, if those transformations are allowed by the
-Ledger-enforced policy. Transforms are implemented using
+This repository also contains code for components that run transformations over
+data within TEEs, if those transformations are allowed by the KMS- or
+ledger-enforced policy. Transforms are implemented using
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
 
 *   [**`containers/confidential_transform_test_concat`**] Example transform that
@@ -63,10 +75,10 @@ See each transform's README for more details.
 ## Inspecting attestation verification records and endorsement transparency log entries
 
 See [docs/README.md](docs/README.md) for instructions for mapping attestation
-verification records logged by [Federated
-Compute](https://github.com/google-parfait/federated-compute) clients, as well
-as transparency log entries for ledger and data access policy endorsements to
-the reproducibly buildable binaries in this repository.
+verification records logged by
+[Federated Compute](https://github.com/google-parfait/federated-compute)
+clients, as well as transparency log entries for KMS, ledger, and data access
+policy endorsements to the reproducibly buildable binaries in this repository.
 
 ## Building
 
