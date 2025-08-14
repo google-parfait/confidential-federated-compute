@@ -16,6 +16,7 @@ load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_image_layer")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 # Define a set of PIP-provided deps to use.
@@ -25,6 +26,7 @@ compile_pip_requirements(
     extra_args = [
         "--allow-unsafe",
         "--resolver=backtracking",
+        "--extra-index-url=https://download.pytorch.org/whl/cu128",
     ],
     requirements_in = "requirements.in",
     requirements_txt = "requirements_lock.txt",
@@ -33,13 +35,34 @@ compile_pip_requirements(
 py_binary(
     name = "main",
     srcs = ["main.py"],
+    data = [
+        ":model.ckpt",
+        ":tokenizer.model",
+    ],
     main = "main.py",
-    deps = [requirement("torch")],
+    deps = [
+        requirement("absl_py"),
+        requirement("numpy"),
+        requirement("sentencepiece"),
+        requirement("torch"),
+        "@gemma_pytorch//:gemma",
+    ],
 )
 
 py_image_layer(
     name = "main_py",
     binary = ":main",
+)
+
+# model.ckpt and tokenizer.model files are downloaded from kaggle.
+# These files are too big to submit to github.
+pkg_tar(
+    name = "checkpoints",
+    srcs = [
+        ":model.ckpt",
+        ":tokenizer.model",
+    ],
+    package_dir = "/",
 )
 
 oci_image(
@@ -51,6 +74,7 @@ oci_image(
         "@bookworm//:flat",
         # Install the main python binary
         ":main_py",
+        ":checkpoints",
     ],
 )
 
