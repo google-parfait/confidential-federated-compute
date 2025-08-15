@@ -1376,6 +1376,7 @@ mod tests {
                     LogicalPipelinePolicy {
                         instances: vec![PipelineVariantPolicy {
                             transforms: vec![pipeline_variant_policy::Transform {
+                                src_node_ids: vec![0],
                                 application: Some(ApplicationMatcher {
                                     tag: Some(recipient_tag.to_owned()),
                                     ..Default::default()
@@ -2050,6 +2051,7 @@ mod tests {
                         LogicalPipelinePolicy {
                             instances: vec![PipelineVariantPolicy {
                                 transforms: vec![pipeline_variant_policy::Transform {
+                                    src_node_ids: vec![0],
                                     application: Some(ApplicationMatcher {
                                         tag: Some(recipient_tag_1.to_owned()),
                                         ..Default::default()
@@ -2066,6 +2068,7 @@ mod tests {
                         LogicalPipelinePolicy {
                             instances: vec![PipelineVariantPolicy {
                                 transforms: vec![pipeline_variant_policy::Transform {
+                                    src_node_ids: vec![0],
                                     application: Some(ApplicationMatcher {
                                         tag: Some(recipient_tag_2.to_owned()),
                                         ..Default::default()
@@ -2127,6 +2130,7 @@ mod tests {
                         instances: vec![
                             PipelineVariantPolicy {
                                 transforms: vec![pipeline_variant_policy::Transform {
+                                    src_node_ids: vec![0],
                                     application: Some(ApplicationMatcher {
                                         tag: Some(recipient_tag_1.to_owned()),
                                         ..Default::default()
@@ -2137,6 +2141,7 @@ mod tests {
                             },
                             PipelineVariantPolicy {
                                 transforms: vec![pipeline_variant_policy::Transform {
+                                    src_node_ids: vec![0],
                                     application: Some(ApplicationMatcher {
                                         tag: Some(recipient_tag_2.to_owned()),
                                         ..Default::default()
@@ -2252,6 +2257,7 @@ mod tests {
                     LogicalPipelinePolicy {
                         instances: vec![PipelineVariantPolicy {
                             transforms: vec![pipeline_variant_policy::Transform {
+                                src_node_ids: vec![0],
                                 application: Some(ApplicationMatcher {
                                     tag: Some(modern_policy_tag.to_owned()),
                                     ..Default::default()
@@ -2320,6 +2326,7 @@ mod tests {
                     LogicalPipelinePolicy {
                         instances: vec![PipelineVariantPolicy {
                             transforms: vec![pipeline_variant_policy::Transform {
+                                src_node_ids: vec![0],
                                 application: Some(ApplicationMatcher {
                                     tag: Some(modern_policy_tag.to_owned()),
                                     ..Default::default()

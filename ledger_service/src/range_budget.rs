@@ -321,13 +321,9 @@ impl BudgetTracker {
     ) -> Result<usize, micro_rpc::Status> {
         let mut matched_index: Option<usize> = None;
         for (i, transform) in policy.transforms.iter().enumerate() {
-            // If src_node_ids isn't set, fall back to checking the src field.
-            let src_matches = if transform.src_node_ids.is_empty() {
-                transform.src == node_id
-            } else {
-                transform.src_node_ids.contains(&node_id)
-            };
-            if !src_matches || !app.matches(&transform.application, now) {
+            if !transform.src_node_ids.contains(&node_id)
+                || !app.matches(&transform.application, now)
+            {
                 continue;
             }
             if matched_index.is_some() {
@@ -714,62 +710,6 @@ mod tests {
         assert_eq!(
             BudgetTracker::find_matching_transform(
                 /* node_id= */ 2,
-                &policy,
-                &app,
-                Duration::default()
-            ),
-            Ok(2)
-        );
-    }
-
-    #[test]
-    fn test_find_matching_transform_with_src() {
-        let app = Application { tag: "foo", ..Default::default() };
-        let policy = PipelineVariantPolicy {
-            transforms: vec![
-                // This transform won't match because the src index is wrong.
-                Transform {
-                    src: 0,
-                    application: Some(ApplicationMatcher {
-                        tag: Some(app.tag.to_owned()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                // This transform won't match because the tag is wrong.
-                Transform {
-                    src: 1,
-                    application: Some(ApplicationMatcher {
-                        tag: Some("other".to_owned()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                // This transform should match.
-                Transform {
-                    src: 1,
-                    application: Some(ApplicationMatcher {
-                        tag: Some(app.tag.to_owned()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-
-        assert_eq!(
-            BudgetTracker::find_matching_transform(
-                /* node_id= */ 0,
-                &policy,
-                &app,
-                Duration::default()
-            ),
-            Ok(0)
-        );
-        assert_eq!(
-            BudgetTracker::find_matching_transform(
-                /* node_id= */ 1,
                 &policy,
                 &app,
                 Duration::default()
