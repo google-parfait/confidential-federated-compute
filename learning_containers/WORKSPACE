@@ -163,6 +163,22 @@ http_archive(
     url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
 )
 
+# Required by `pybind11_bazel`.
+http_archive(
+    name = "pybind11",
+    build_file = "@pybind11_bazel//:pybind11-BUILD.bazel",
+    sha256 = "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20",
+    strip_prefix = "pybind11-2.13.6",
+    url = "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
+)
+
+http_archive(
+    name = "pybind11_bazel",
+    sha256 = "cae680670bfa6e82703c03f2a3c995408cdcbf43616d7bdd198ef45d3c327731",
+    strip_prefix = "pybind11_bazel-2.13.6",
+    url = "https://github.com/pybind/pybind11_bazel/archive/refs/tags/v2.13.6.tar.gz",
+)
+
 http_archive(
     name = "rules_cc",
     patch_args = ["-p1"],
