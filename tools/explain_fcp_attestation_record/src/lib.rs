@@ -166,7 +166,10 @@ fn explain_pipeline_variant_policy(
     for (i, transform) in policy.transforms.iter().enumerate() {
         writeln!(buf)?;
         writeln!(buf, ">>>>> Transform #{i} <<<<<",)?;
-        writeln!(buf, "Source blob ID: {}", transform.src)?;
+        writeln!(buf, "Source node IDs: {:?}", transform.src_node_ids)?;
+        if !transform.dst_node_ids.is_empty() {
+            writeln!(buf, "Destination node IDs: {:?}", transform.dst_node_ids)?;
+        }
         writeln!(buf)?;
         explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
         writeln!(buf)?;
