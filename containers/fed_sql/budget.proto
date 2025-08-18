@@ -38,6 +38,19 @@ message BudgetState {
     bytes key = 1;
     // The remaining budget for the bucket.
     uint32 budget = 2;
+    // The optional consumed_range_start value of a partially consumed bucket.
+    // This is the bounded partial range, meaning that it has been condensed
+    // from a series of possibly non-consecutive ranges to the minimum value for
+    // consumed_range_start. Must be specified if consumed_range_end is
+    // specified.
+    optional fixed64 consumed_range_start = 3;
+    // The optional consumed_range_end value of a partially consumed bucket.
+    // This is the bounded partial range, meaning that it has been condensed
+    // from a series of possibly non-consecutive ranges to the maximum value for
+    // consumed_range_end. Must be specified if consumed_range_start is
+    // specified.
+    optional fixed64 consumed_range_end = 4;
+
   }
   repeated Bucket buckets = 1;
 }
