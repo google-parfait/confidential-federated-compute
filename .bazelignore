@@ -1,5 +1,6 @@
 registry
 toolchains/sysroot
+containers/minimum_jax
 containers/minimum_llama_cpp
 containers/minimum_rules_cuda
 containers/minimum_pytorch
