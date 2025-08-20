@@ -162,9 +162,17 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         "client_2", "mykey", client_data_type.member
     ).computation
 
-    result_1, result_2 = my_comp([client_1_data, client_2_data], 10)
-    self.assertEqual(result_1, 3)
+    result_1, result_2 = my_comp(
+        [client_1_data, client_2_data, client_1_data], 10
+    )
+    self.assertEqual(result_1, 4)
     self.assertEqual(result_2, 10)
+
+    # Check that each uri was requested only once.
+    self.assertEqual(
+        self.data_read_write_service.get_read_request_uris(),
+        ["client_1", "client_2"],
+    )
 
   async def test_tf_execution_context_no_arg(self):
     federated_language.framework.set_default_context(
@@ -305,9 +313,17 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "client_2", "mykey", client_data_type.member
     ).computation
 
-    result_1, result_2 = my_comp([client_1_data, client_2_data], 10)
-    self.assertEqual(result_1, 3)
+    result_1, result_2 = my_comp(
+        [client_1_data, client_2_data, client_1_data], 10
+    )
+    self.assertEqual(result_1, 4)
     self.assertEqual(result_2, 10)
+
+    # Check that each uri was requested only once.
+    self.assertEqual(
+        self.data_read_write_service.get_read_request_uris(),
+        ["client_1", "client_2"],
+    )
 
 
 if __name__ == "__main__":

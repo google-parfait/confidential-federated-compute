@@ -96,6 +96,8 @@ PYBIND11_MODULE(fake_service_bindings, m) {
                                         std::string(result.message()));
              }
            })
+      .def("get_read_request_uris",
+           &FakeDataReadWriteService::GetReadRequestUris)
       .def("get_write_call_args", &FakeDataReadWriteService::GetWriteCallArgs);
 
   py::class_<FakeComputationDelegationService>(

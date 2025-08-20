@@ -74,6 +74,7 @@ class TrustedContext(federated_language.program.FederatedContext):
     """
     cache_decorator = functools.lru_cache()
     self._compiler_fn = cache_decorator(compiler_fn)
+    self._uri_to_value_cache = dict()
     self._parse_read_response_fn = parse_read_response_fn
 
     # Start the computation runner on a different process.
@@ -108,17 +109,20 @@ class TrustedContext(federated_language.program.FederatedContext):
   ) -> executor_pb2.Value:
     """Helper function for mapping a FileInfo Data pointer to a tff Value.
 
-    First a ReadRequest is sent to the DataReadWrite service to obtain a
-    ReadResponse for the FileInfo uri.
+    We maintain a FileInfo uri -> tff Value cache so that external requests to
+    resolve a uri only need to be made once per program instance.
 
-    Next, the ReadResponse, the nonce used in the ReadRequest, and the FileInfo
-    key are sent as args to the parse_read_response_fn provided at construction
-    time to obtain the tff Value proto. In production, the provided
-    parse_read_response_fn will callback to cpp code in order to decrypt the
+    If a uri is not in the cache, a ReadRequest is sent to the DataReadWrite
+    service to obtain a ReadResponse for the FileInfo uri. Next, the
+    ReadResponse, the nonce used in the ReadRequest, and the FileInfo key are
+    sent as args to the parse_read_response_fn provided at construction time to
+    obtain the tff Value proto. In production, the provided
+    parse_read_response_fn will call back to cpp code in order to decrypt the
     ReadResponse.
     """
-    # TODO: Cache ReadResponses so that we don't look up a uri multiple times.
-    #
+    if file_info.uri in self._uri_to_value_cache:
+      return self._uri_to_value_cache[file_info.uri]
+
     # Generate a nonce of 16 bytes to include in the ReadRequest. The
     # _parse_read_response_fn will later check that the received ReadResponse
     # is cryptographically tied to the same nonce.
@@ -145,9 +149,11 @@ class TrustedContext(federated_language.program.FederatedContext):
 
     # Use the provided parsing function to convert the combined ReadResponse
     # message into a tff Value.
-    return self._parse_read_response_fn(
+    value = self._parse_read_response_fn(
         combined_read_response, nonce, file_info.key
     )
+    self._uri_to_value_cache[file_info.uri] = value
+    return value
 
   def invoke(self, comp: object, arg: Optional[object]) -> object:
     """Executes comp(arg).
