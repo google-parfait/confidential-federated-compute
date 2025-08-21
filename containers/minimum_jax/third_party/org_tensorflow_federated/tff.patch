@@ -1,0 +1,13 @@
+diff --git tensorflow_federated/cc/core/impl/aggregation/core/BUILD tensorflow_federated/cc/core/impl/aggregation/core/BUILD
+index 1721aec51..6989a84a9 100644
+--- tensorflow_federated/cc/core/impl/aggregation/core/BUILD
++++ tensorflow_federated/cc/core/impl/aggregation/core/BUILD
+@@ -13,7 +13,7 @@
+ # limitations under the License.
+ 
+ load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library")
+-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
++load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+ 
+ package(
+     default_applicable_licenses = ["//:package_license"],

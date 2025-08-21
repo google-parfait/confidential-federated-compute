@@ -12,33 +12,56 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <pybind11/embed.h>
-#include <pybind11/stl.h>
-
-#include <iostream>
+#include <memory>
 #include <string>
-#include <vector>
 
-namespace py = pybind11;
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "cc/containers/sdk/encryption_key_handle.h"
+#include "cc/containers/sdk/orchestrator_client.h"
+#include "cc/containers/sdk/signing_key_handle.h"
+#include "confidential_transform_server.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+
+namespace confidential_federated_compute::minimum_jax {
+
+namespace {
+
+using ::grpc::Server;
+using ::grpc::ServerBuilder;
+using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
+using ::oak::containers::sdk::InstanceSigningKeyHandle;
+using ::oak::containers::sdk::OrchestratorClient;
+
+// Increase gRPC message size limit to 2GB.
+static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
+
+void RunServer() {
+  std::string server_address("[::]:8080");
+
+  SimpleConfidentialTransform service(
+      std::make_unique<InstanceSigningKeyHandle>());
+  ServerBuilder builder;
+  builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
+  builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+  std::unique_ptr<Server> server = builder.BuildAndStart();
+  LOG(INFO) << "Simple Confidential Transform Server listening on "
+            << server_address << "\n";
+
+  CHECK_OK(OrchestratorClient().NotifyAppReady());
+  server->Wait();
+}
+
+}  // namespace
+
+}  // namespace
+   // confidential_federated_compute::minimum_jax
 
 int main(int argc, char** argv) {
-  std::vector<std::string> inputs{"Winter is coming", "The north remembers",
-                                  "Winter came early", "My watch starts"};
-
-  py::scoped_interpreter guard{};
-
-  try {
-    py::module_ tokens_lib = py::module_::import("tokens");
-
-    py::object result_obj = tokens_lib.attr("find_most_frequent_token")(inputs);
-
-    std::string most_frequent_token = result_obj.cast<std::string>();
-    std::cout << "The most frequent token is " << most_frequent_token
-              << std::endl;
-
-  } catch (py::error_already_set& e) {
-    std::cerr << "Python error: " << e.what() << std::endl;
-    return 1;
-  }
+  confidential_federated_compute::minimum_jax::RunServer();
   return 0;
 }
