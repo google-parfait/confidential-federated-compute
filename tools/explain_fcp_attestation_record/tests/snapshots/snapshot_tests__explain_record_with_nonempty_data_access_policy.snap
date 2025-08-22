@@ -13,29 +13,29 @@ _____ Root Layer _____
 The attestation is rooted in an AMD SEV-SNP TEE.
 
 Attestations identifying the firmware captured in the evidence can be found here:
-https://search.sigstore.dev/?hash=a8c51290169976afc37e6e6d866107285b5f4711a9ce5389c05d9a5d297d68c5
+https://search.sigstore.dev/?hash=04e9cf2132fd633c9ccdc74688b0ec9195cd6d95af33c6b168af07059f718db8
 
-ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:571e632335e16997bdc312208d540b083518fe05d84b8954a6529a019a04229f25347fdaac1bc80418addc64a3d48704; it is listed as the 'initial_measurement' in the evidence of this layer.
+ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:306c9215737ba0da4cc5d16b655b9c9d66fd17d20cba4722bc2c339b1b0b90a61dd1fe781c91fa7a1ef0da45d1195d52; it is listed as the 'initial_measurement' in the evidence of this layer.
 
 The evidence describing this layer is outlined below.
 
 sev_snp:
   current_tcb:
-    boot_loader: 3
+    boot_loader: 4
     fmc: 0
-    microcode: 209
-    snp: 22
+    microcode: 219
+    snp: 24
     tee: 0
   debug: false
-  hardware_id: c1f5c58f728e2eded313ee675ac982393169c9bbffe6e250c54d81fcea2dad556d314f3c62c16cb9ae3d22f68a747261835f220d3656d0e6b646e6b2f11252cf
-  initial_measurement: 571e632335e16997bdc312208d540b083518fe05d84b8954a6529a019a04229f25347fdaac1bc80418addc64a3d48704
-  product: 2
-  report_data: f75ac8ac3bfd479a0f121c384d71b4c032867895db71d91d135710083fd780a10000000000000000000000000000000000000000000000000000000000000000
+  hardware_id: 755d54c9d4bf9f0b0f9d0af81b5fc073f8937faf15190b497f11f503cbe676f153b26bc6e7091af265a4b77cad1201bc26c854edc519e89075d9300553eca067
+  initial_measurement: 306c9215737ba0da4cc5d16b655b9c9d66fd17d20cba4722bc2c339b1b0b90a61dd1fe781c91fa7a1ef0da45d1195d52
+  product: 1
+  report_data: eb8c9464fc806ac5f819acfeb06b0d4989f162cb26132b46ab25ba6ed523016d0000000000000000000000000000000000000000000000000000000000000000
   reported_tcb:
-    boot_loader: 3
+    boot_loader: 4
     fmc: 0
-    microcode: 209
-    snp: 22
+    microcode: 219
+    snp: 24
     tee: 0
   vmpl: 0
 
@@ -45,22 +45,22 @@ Note: binaries for this layer are generally provided by the Oak project (https:/
 _____ Kernel Layer _____
 
 Attestations identifying the binaries captured in the evidence in this layer can be found as outlined below.
-Kernel: https://search.sigstore.dev/?hash=4b1e70ad0ad326f3ee6f8f45f77358f0b8bb5df05321a5abc34c66022e27450b
-Initial Ramdisk: https://search.sigstore.dev/?hash=51534334403d87176dc66406a07b5108d51f46a8534497c21f2769d1217c51b8
+Kernel: https://search.sigstore.dev/?hash=3e7c371858f2bd9c032894694bd5bb4893f2403ce8a0bcf73c07af3ef6a35a15
+Initial Ramdisk: https://search.sigstore.dev/?hash=66e7b9c7a249836bf9994afb331018165c45d7fa3ea82796022fa8d4d263c93e
 
 The evidence describing the kernel layer is outlined below.
 
 acpi:
-  sha2_256: dbaccae7bfbf006e2b8623a82f1a5fcda2ea0392233c26b18356b3bcfac231eb
+  sha2_256: 9afd4108d3ba568a2e01862a3cb4864a107ec53fe73b099785ed2b6e631aae60
 init_ram_fs:
-  sha2_256: 51534334403d87176dc66406a07b5108d51f46a8534497c21f2769d1217c51b8
+  sha2_256: 66e7b9c7a249836bf9994afb331018165c45d7fa3ea82796022fa8d4d263c93e
 kernel_image:
-  sha2_256: 4b1e70ad0ad326f3ee6f8f45f77358f0b8bb5df05321a5abc34c66022e27450b
+  sha2_256: 3e7c371858f2bd9c032894694bd5bb4893f2403ce8a0bcf73c07af3ef6a35a15
 kernel_raw_cmd_line: console=ttyS0
 kernel_setup_data:
   sha2_256: 4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1
 memory_map:
-  sha2_256: 807625f963ce93abe1f2d9965b5da03c66d476aec9756fded405ce5f41182b6f
+  sha2_256: 3d534ce794902288c18f83a9930fb0897bd1b180f71ad12def2f74d3404f2132
 
 
 Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
@@ -70,7 +70,7 @@ _____ Application Layer _____
 The evidence describing the application is outlined below.
 
 binary:
-  sha2_256: 5d10d8013345814e07141c6a4c9297d37653239132749574a2a71483c413e9fe
+  sha2_256: 2e09169bdb55d909929191f9dd523c4a7fb50de01094a85ebdf6c698c9b7870c
 config: {}
 
 
