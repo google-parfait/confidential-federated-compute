@@ -16,11 +16,8 @@ use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use oak_attestation_verification::{
-    policy::{
-        container::ContainerPolicy, firmware::FirmwarePolicy, kernel::KernelPolicy,
-        platform::AmdSevSnpPolicy, system::SystemPolicy,
-    },
-    verifier::{AmdSevSnpDiceAttestationVerifier, EventLogVerifier},
+    AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, FirmwarePolicy,
+    InsecureAttestationVerifier, KernelPolicy, SystemPolicy,
 };
 use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_proto_rust::oak::attestation::v1::{
@@ -44,17 +41,14 @@ fn create_session_config_internal(reference_values: ReferenceValues) -> Result<S
             kernel_layer: Some(kernel_ref_vals),
             system_layer: Some(system_ref_vals),
             container_layer: Some(container_ref_vals),
-        })) => {
-            // TODO: b/432726860 - use InsecureDiceAttestationVerifier once it's available.
-            Box::new(EventLogVerifier::new(
-                vec![
-                    Box::new(KernelPolicy::new(kernel_ref_vals)),
-                    Box::new(SystemPolicy::new(system_ref_vals)),
-                    Box::new(ContainerPolicy::new(container_ref_vals)),
-                ],
-                Arc::new(SystemTimeClock {}),
-            ))
-        }
+        })) => Box::new(InsecureAttestationVerifier::new(
+            Arc::new(SystemTimeClock {}),
+            vec![
+                Box::new(KernelPolicy::new(kernel_ref_vals)),
+                Box::new(SystemPolicy::new(system_ref_vals)),
+                Box::new(ContainerPolicy::new(container_ref_vals)),
+            ],
+        )),
 
         // Oak Containers (SEV-SNP)
         Some(reference_values::Type::OakContainers(OakContainersReferenceValues {

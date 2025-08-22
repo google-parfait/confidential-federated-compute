@@ -297,9 +297,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-ii3L1ud4jckfMZS6px6gJN5I+HQ5Fd3eIg63ZO/jWq4=",
-    strip_prefix = "trusted-computations-platform-b715b04bd53beb7307a74d750eca6534c90f1c4c",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/b715b04bd53beb7307a74d750eca6534c90f1c4c.tar.gz",
+    integrity = "sha256-vTDOzYQAKmxN6SF7cDe+uWqUb4W8yiuQgSs0sxzjaVQ=",
+    strip_prefix = "trusted-computations-platform-a8ecd251e29ceb30c45a2be9e234db9fdbfd9741",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/a8ecd251e29ceb30c45a2be9e234db9fdbfd9741.tar.gz",
 )
 # go/keep-sorted end
 

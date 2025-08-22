@@ -27,7 +27,7 @@ use oak_attestation_verification::{
     decode_event_proto,
     results::{get_signing_public_key, set_signing_public_key},
     AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, EventLogVerifier,
-    FirmwarePolicy, KernelPolicy, SystemPolicy,
+    FirmwarePolicy, InsecureAttestationVerifier, KernelPolicy, SystemPolicy,
 };
 use oak_attestation_verification_types::{policy::Policy, verifier::AttestationVerifier};
 use oak_proto_rust::oak::{
@@ -184,19 +184,18 @@ impl Application<'_> {
     ) -> anyhow::Result<Box<dyn AttestationVerifier>> {
         match &reference_values.r#type {
             // Oak Containers (insecure)
-            // TODO: b/432726860 - Use InsecureDiceAttestationVerifier once it is available.
             Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
                 root_layer: Some(RootLayerReferenceValues { insecure: Some(_), .. }),
                 kernel_layer: Some(kernel_ref_vals),
                 system_layer: Some(system_ref_vals),
                 container_layer: Some(container_ref_vals),
-            })) => Ok(Box::new(EventLogVerifier::new(
+            })) => Ok(Box::new(InsecureAttestationVerifier::new(
+                Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
                 vec![
                     Box::new(KernelPolicy::new(kernel_ref_vals)),
                     Box::new(SystemPolicy::new(system_ref_vals)),
                     Box::new(ContainerPolicy::new(container_ref_vals)),
                 ],
-                Arc::new(FixedClock::at_instant(Instant::from_unix_millis(now_utc_millis))),
             ))),
 
             // Oak Containers (AMD SEV-SNP)

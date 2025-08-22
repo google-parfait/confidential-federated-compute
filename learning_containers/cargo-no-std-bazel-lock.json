@@ -1,5 +1,5 @@
 {
-  "checksum": "3e21444e53902dbcbda812168330cff1f1215647da31d348c3a4bf3e4761b79b",
+  "checksum": "d755ea4901f6a5604c669180c7970ab1edc32fc1b0e7785b23ead7a062dfea4d",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -464,14 +464,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "anyhow 1.0.86": {
+    "anyhow 1.0.99": {
       "name": "anyhow",
-      "version": "1.0.86",
+      "version": "1.0.99",
       "package_url": "https://github.com/dtolnay/anyhow",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/anyhow/1.0.86/download",
-          "sha256": "b3d1d046238990b9cf5bcde22a3fb3584ee5cf65fb2765f454ed428c7a0063da"
+          "url": "https://static.crates.io/crates/anyhow/1.0.99/download",
+          "sha256": "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
         }
       },
       "targets": [
@@ -508,14 +508,14 @@
         "deps": {
           "common": [
             {
-              "id": "anyhow 1.0.86",
+              "id": "anyhow 1.0.99",
               "target": "build_script_build"
             }
           ],
           "selects": {}
         },
         "edition": "2018",
-        "version": "1.0.86"
+        "version": "1.0.99"
       },
       "build_script_attrs": {
         "compile_data_glob": [
@@ -1418,7 +1418,7 @@
               "target": "num_traits"
             },
             {
-              "id": "serde 1.0.204",
+              "id": "serde 1.0.219",
               "target": "serde"
             }
           ],
@@ -1474,7 +1474,7 @@
               "target": "ciborium_ll"
             },
             {
-              "id": "serde 1.0.204",
+              "id": "serde 1.0.219",
               "target": "serde"
             }
           ],
@@ -2886,7 +2886,7 @@
               "target": "aml"
             },
             {
-              "id": "anyhow 1.0.86",
+              "id": "anyhow 1.0.99",
               "target": "anyhow"
             },
             {
@@ -3054,7 +3054,7 @@
               "target": "self_cell"
             },
             {
-              "id": "serde 1.0.204",
+              "id": "serde 1.0.219",
               "target": "serde"
             },
             {
@@ -7880,14 +7880,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "serde 1.0.204": {
+    "serde 1.0.219": {
       "name": "serde",
-      "version": "1.0.204",
+      "version": "1.0.219",
       "package_url": "https://github.com/serde-rs/serde",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/serde/1.0.204/download",
-          "sha256": "bc76f558e0cbb2a839d37354c575f1dc3fdc6546b5be373ba43d95f231bf7c12"
+          "url": "https://static.crates.io/crates/serde/1.0.219/download",
+          "sha256": "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
         }
       },
       "targets": [
@@ -7932,7 +7932,7 @@
         "deps": {
           "common": [
             {
-              "id": "serde 1.0.204",
+              "id": "serde 1.0.219",
               "target": "build_script_build"
             }
           ],
@@ -7942,13 +7942,13 @@
         "proc_macro_deps": {
           "common": [
             {
-              "id": "serde_derive 1.0.204",
+              "id": "serde_derive 1.0.219",
               "target": "serde_derive"
             }
           ],
           "selects": {}
         },
-        "version": "1.0.204"
+        "version": "1.0.219"
       },
       "build_script_attrs": {
         "compile_data_glob": [
@@ -7968,14 +7968,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "serde_derive 1.0.204": {
+    "serde_derive 1.0.219": {
       "name": "serde_derive",
-      "version": "1.0.204",
+      "version": "1.0.219",
       "package_url": "https://github.com/serde-rs/serde",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/serde_derive/1.0.204/download",
-          "sha256": "e0cd7e117be63d3c3678776753929474f3b04a43a080c744d6b0ae2a8c28e222"
+          "url": "https://static.crates.io/crates/serde_derive/1.0.219/download",
+          "sha256": "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
         }
       },
       "targets": [
@@ -8021,7 +8021,7 @@
           "selects": {}
         },
         "edition": "2015",
-        "version": "1.0.204"
+        "version": "1.0.219"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -8092,7 +8092,7 @@
               "target": "ryu"
             },
             {
-              "id": "serde 1.0.204",
+              "id": "serde 1.0.219",
               "target": "serde"
             },
             {
@@ -11251,7 +11251,7 @@
     "aead 0.5.2",
     "aes-gcm 0.10.3",
     "aml 0.16.4",
-    "anyhow 1.0.86",
+    "anyhow 1.0.99",
     "arrayvec 0.7.6",
     "atomic_refcell 0.1.13",
     "base64 0.21.7",
@@ -11293,7 +11293,7 @@
     "rlsf 0.2.1",
     "rsa 0.9.8",
     "self_cell 1.0.4",
-    "serde 1.0.204",
+    "serde 1.0.219",
     "serde_json 1.0.122",
     "sha2 0.10.9",
     "snafu 0.8.4",
