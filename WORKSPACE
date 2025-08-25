@@ -193,6 +193,7 @@ http_archive(
     integrity = "sha256-3CzlN6XG3D3/sjJQIeK6XrMcjIU4TaYLfjamy3IC9Ew=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
+        "@trusted_computations_platform//third_party/oak:session_binder.patch",
     ],
     strip_prefix = "oak-4d5246a4786e3be0dd80590edbfdfb807f658f21",
     url = "https://github.com/project-oak/oak/archive/4d5246a4786e3be0dd80590edbfdfb807f658f21.tar.gz",
@@ -297,9 +298,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-vTDOzYQAKmxN6SF7cDe+uWqUb4W8yiuQgSs0sxzjaVQ=",
-    strip_prefix = "trusted-computations-platform-a8ecd251e29ceb30c45a2be9e234db9fdbfd9741",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/a8ecd251e29ceb30c45a2be9e234db9fdbfd9741.tar.gz",
+    integrity = "sha256-FNZ3wfZyBecdlC9rwAVvKWHCvU0LSTXAy2nnLEWQ0FU=",
+    strip_prefix = "trusted-computations-platform-132cc0230e066811be52b7b8e2f150984ef53bd2",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/132cc0230e066811be52b7b8e2f150984ef53bd2.tar.gz",
 )
 # go/keep-sorted end
 
