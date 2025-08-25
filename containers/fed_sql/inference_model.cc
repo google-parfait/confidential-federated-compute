@@ -20,16 +20,12 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
-#include "compression/io.h"
-#include "compression/shared.h"
 #include "fcp/base/status_converters.h"
-#include "gemma/common.h"
-#include "gemma/configs.h"
+#include "gemma/gemma_args.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
-#include "util/threading.h"
 
 namespace confidential_federated_compute::fed_sql {
 namespace {
@@ -50,98 +46,20 @@ using ::fcp::confidentialcompute::GEMMA_SFP;
 using ::fcp::confidentialcompute::GEMMA_TINY;
 using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
-using ::gcpp::Allocator;
-using ::gcpp::BoundedTopology;
-using ::gcpp::EOS_ID;
 using ::gcpp::Gemma;
+using ::gcpp::InferenceArgs;
 using ::gcpp::KVCache;
+using ::gcpp::LoaderArgs;
 using ::gcpp::MatMulEnv;
-using ::gcpp::Model;
-using ::gcpp::ModelInfo;
-using ::gcpp::NestedPools;
-using ::gcpp::Path;
 using ::gcpp::PromptWrapping;
 using ::gcpp::RuntimeConfig;
+using ::gcpp::ThreadingArgs;
+using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
-using ::gcpp::Type;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
-
-absl::StatusOr<ModelInfo> GetGemmaModelInfo(
-    const GemmaConfiguration& gemma_config) {
-  ModelInfo model_info;
-  switch (gemma_config.model()) {
-    case GEMMA_TINY: {
-      model_info.model = Model::GEMMA_TINY;
-      break;
-    }
-    case GEMMA_2B: {
-      model_info.model = Model::GEMMA_2B;
-      break;
-    }
-    case GEMMA2_2B: {
-      model_info.model = Model::GEMMA2_2B;
-      break;
-    }
-    case GEMMA_7B: {
-      model_info.model = Model::GEMMA_7B;
-      break;
-    }
-    case GEMMA2_9B: {
-      model_info.model = Model::GEMMA2_9B;
-      break;
-    }
-    case GEMMA3_1B: {
-      model_info.model = Model::GEMMA3_1B;
-      break;
-    }
-    case GEMMA3_4B: {
-      model_info.model = Model::GEMMA3_4B;
-      break;
-    }
-    case GEMMA3_12B: {
-      model_info.model = Model::GEMMA3_12B;
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Found invalid InferenceConfiguration.gemma_config.model: ",
-          gemma_config.model()));
-  }
-  switch (gemma_config.model_training()) {
-    case GEMMA_IT: {
-      model_info.wrapping = PromptWrapping::GEMMA_IT;
-      break;
-    }
-    case GEMMA_PT: {
-      model_info.wrapping = PromptWrapping::GEMMA_PT;
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Found invalid "
-                       "InferenceConfiguration.gemma_config.model_training: ",
-                       gemma_config.model_training()));
-  }
-  switch (gemma_config.tensor_type()) {
-    case GEMMA_F32: {
-      model_info.weight = Type::kF32;
-      break;
-    }
-    case GEMMA_SFP: {
-      model_info.weight = Type::kSFP;
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Found invalid "
-                       "InferenceConfiguration.gemma_config.tensor_type: ",
-                       gemma_config.tensor_type()));
-  }
-  return model_info;
-}
 
 // Apply a regex matching to the given text. Returns only the first match. If
 // no match is found, returns the original text.
@@ -156,17 +74,16 @@ std::string RegexMatch(const std::string& text, const std::regex& regex) {
 }  // namespace
 
 void InferenceModel::BuildGemmaModel(
-    const ModelInfo& model_info,
     const SessionGemmaConfiguration& gemma_config) {
-  BoundedTopology topology;
-  Allocator::Init(topology);
   GemmaModel& gemma_model = std::get<GemmaModel>(model_);
-  gemma_model.pools_ = std::make_unique<NestedPools>(topology);
-  gemma_model.env_ = std::make_unique<MatMulEnv>(topology, *gemma_model.pools_);
-  Path tokenizer_path = Path(gemma_config.tokenizer_path);
-  Path weights_path = Path(gemma_config.model_weight_path);
-  gemma_model.gemma_ = std::make_unique<Gemma>(tokenizer_path, weights_path,
-                                               model_info, *gemma_model.env_);
+  LoaderArgs loader_args(gemma_config.tokenizer_path,
+                         gemma_config.model_weight_path);
+  InferenceArgs inference_args;
+  ThreadingArgs threading_args;
+  gemma_model.ctx_ = std::make_unique<ThreadingContext>(threading_args);
+  gemma_model.gemma_ =
+      std::make_unique<Gemma>(loader_args, inference_args, *gemma_model.ctx_);
+  gemma_model.env_ = std::make_unique<MatMulEnv>(*gemma_model.ctx_);
 }
 
 absl::Status InferenceModel::BuildModel(
@@ -180,15 +97,12 @@ absl::Status InferenceModel::BuildModel(
               .gemma_config();
       if (!inference_configuration.gemma_configuration.has_value()) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Missing session Gemma configuration in the model: ",
-                         gemma_config.model()));
+            absl::StrCat("Missing session Gemma configuration"));
       }
-      FCP_ASSIGN_OR_RETURN(ModelInfo model_info,
-                           GetGemmaModelInfo(gemma_config));
       SessionGemmaConfiguration session_gemma_config =
           inference_configuration.gemma_configuration.value();
       model_.emplace<GemmaModel>();
-      BuildGemmaModel(model_info, session_gemma_config);
+      BuildGemmaModel(session_gemma_config);
       break;
     }
     default:
@@ -211,20 +125,21 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
     combined_prompt.replace(pos, old_value.size(), column_value);
   }
 
-  const size_t prefill_tbatch_size = 64;
   size_t generated = 0;
   GemmaModel& gemma_model = std::get<GemmaModel>(model_);
   Gemma* gemma = gemma_model.gemma_.get();
-  KVCache kv_cache =
-      KVCache::Create(gemma->GetModelConfig(), prefill_tbatch_size);
+  KVCache kv_cache(gemma->Config(), gemma->Inference(),
+                   gemma_model.ctx_->allocator);
+
   const std::vector<int> tokens = gcpp::WrapAndTokenize(
-      gemma->Tokenizer(), gemma->Info(), generated, combined_prompt);
+      gemma->Tokenizer(), gemma->ChatTemplate(), gemma->Config().wrapping,
+      generated, combined_prompt);
   const size_t prompt_size = tokens.size();
   std::stringstream output_stream;
   auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
                           int token, float) {
     ++generated;
-    if (generated >= prompt_size && !gemma->GetModelConfig().IsEOS(token)) {
+    if (generated >= prompt_size && !gemma->Config().IsEOS(token)) {
       std::string token_text;
       FCP_CHECK(gemma->Tokenizer().Decode({token}, &token_text));
       output_stream << token_text;
@@ -242,7 +157,8 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
       .verbosity = 0,
       .stream_token = stream_token,
   };
-  gemma->Generate(runtime_config, tokens, 0, kv_cache, timing_info);
+  gemma->Generate(runtime_config, tokens, 0, kv_cache, *gemma_model.env_,
+                  timing_info);
   return output_stream.str();
 }
 

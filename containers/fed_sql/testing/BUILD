@@ -41,7 +41,6 @@ cc_library(
     hdrs = ["mocks.h"],
     visibility = ["//containers/fed_sql:__pkg__"],
     deps = [
-        "@gemma//:gemma_lib",
         "@googletest//:gtest",
     ],
 )

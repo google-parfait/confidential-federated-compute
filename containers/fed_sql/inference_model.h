@@ -22,6 +22,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
+#include "util/threading_context.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -56,14 +57,13 @@ class InferenceModel {
   struct NoModel {};
   struct GemmaModel {
     std::unique_ptr<::gcpp::Gemma> gemma_;
-    std::unique_ptr<::gcpp::NestedPools> pools_;
     std::unique_ptr<::gcpp::MatMulEnv> env_;
+    std::unique_ptr<::gcpp::ThreadingContext> ctx_;
   };
 
-  // Builds a Gemma model from the given model info and gemma config.
+  // Builds a Gemma model from the given Gemma config.
   // This function assumes that the model_ is already a GemmaModel.
-  virtual void BuildGemmaModel(const ::gcpp::ModelInfo& model_info,
-                               const SessionGemmaConfiguration& gemma_config);
+  virtual void BuildGemmaModel(const SessionGemmaConfiguration& gemma_config);
 
   virtual absl::StatusOr<std::string> RunGemmaInference(
       const std::string& prompt, const absl::string_view& column_value,

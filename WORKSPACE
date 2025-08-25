@@ -149,9 +149,9 @@ stub_repo(
 
 http_archive(
     name = "gemma",
-    sha256 = "748eca98c85d0fe3e5134eb11c68ea8ec12a94b88f520fce1fafb4e03f0e11ff",
-    strip_prefix = "gemma.cpp-0.1.4",
-    url = "https://github.com/google/gemma.cpp/archive/refs/tags/v0.1.4.tar.gz",
+    sha256 = "9c9b1cb7d859d46fb6e8b3b814818111526bc236bb269d7496cba69f392fe5c1",
+    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
+    url = "https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz",
 )
 
 http_archive(
@@ -170,9 +170,9 @@ http_archive(
 
 http_archive(
     name = "highway",
-    sha256 = "a9e04d39eba738e4265ed03bcc05562677d224bf16da6538ba7b236c8163a727",
-    strip_prefix = "highway-c5bebf84ad01edec97e336f5c97ca4e0df6b4d06",
-    urls = ["https://github.com/google/highway/archive/c5bebf84ad01edec97e336f5c97ca4e0df6b4d06.tar.gz"],
+    sha256 = "8bdfbe5c0fb548b284505aa52fe395b50142efd4a999ded20d672a268d8e28d1",
+    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
+    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
 )
 
 # Avoid Java dependencies.

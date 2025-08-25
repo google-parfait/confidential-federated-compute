@@ -19,7 +19,6 @@
 #include <string>
 
 #include "containers/fed_sql/inference_model.h"
-#include "gemma/gemma.h"
 #include "gmock/gmock.h"
 
 namespace confidential_federated_compute::fed_sql::testing {
@@ -27,9 +26,7 @@ namespace confidential_federated_compute::fed_sql::testing {
 class MockInferenceModel : public InferenceModel {
  public:
   MOCK_METHOD(void, BuildGemmaModel,
-              (const gcpp::ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config),
-              (override));
+              (const SessionGemmaConfiguration& gemma_config), (override));
   MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
               (const std::string& prompt, const absl::string_view& column_value,
                const std::string& column_name),

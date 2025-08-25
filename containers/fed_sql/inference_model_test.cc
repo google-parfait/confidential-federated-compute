@@ -31,8 +31,6 @@ using ::absl_testing::IsOk;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::gcpp::Gemma;
-using ::gcpp::ModelInfo;
-using ::gcpp::NestedPools;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -46,9 +44,7 @@ using ::testing::UnorderedElementsAre;
 class MockInferenceModel : public InferenceModel {
  public:
   MOCK_METHOD(void, BuildGemmaModel,
-              (const ModelInfo& model_info,
-               const SessionGemmaConfiguration& gemma_config),
-              (override));
+              (const SessionGemmaConfiguration& gemma_config), (override));
   MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
               (const std::string& prompt, const absl::string_view& column_value,
                const std::string& column_name),
@@ -72,12 +68,7 @@ TEST(InferenceModelTest, HasModelGemma) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_TINY
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -106,12 +97,7 @@ TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -127,42 +113,6 @@ TEST(InferenceModelTest, BuildModelGemmaValidConfig) {
   ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
 }
 
-TEST(InferenceModelTest, BuildModelGemmaInvalidModel) {
-  InferenceModel inference_model = InferenceModel();
-  SessionInferenceConfiguration inference_configuration;
-  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
-    inference_config {
-      inference_task: {
-        column_config {
-          input_column_name: "transcript"
-          output_column_name: "topic"
-        }
-        prompt { prompt_template: "Hello, {{transcript}}" }
-      }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_MODEL_UNSPECIFIED
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
-    }
-    gemma_init_config {
-      tokenizer_configuration_id: "tokenizer_configuration_id"
-    }
-  )pb");
-  inference_configuration.gemma_configuration.emplace();
-  inference_configuration.gemma_configuration->tokenizer_path =
-      "/tmp/tokenizer";
-  inference_configuration.gemma_configuration->model_weight_path =
-      "/tmp/model_weight";
-
-  auto status = inference_model.BuildModel(inference_configuration);
-  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
-  ASSERT_THAT(
-      status.message(),
-      HasSubstr("Found invalid InferenceConfiguration.gemma_config.model: 0"));
-}
-
 TEST(InferenceModelTest, BuildModelGemmaMissingSessionGemmaConfiguration) {
   InferenceModel inference_model = InferenceModel();
   SessionInferenceConfiguration inference_configuration;
@@ -175,12 +125,6 @@ TEST(InferenceModelTest, BuildModelGemmaMissingSessionGemmaConfiguration) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -190,7 +134,7 @@ TEST(InferenceModelTest, BuildModelGemmaMissingSessionGemmaConfiguration) {
   auto status = inference_model.BuildModel(inference_configuration);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_THAT(status.message(),
-              HasSubstr("Missing session Gemma configuration in the model: 2"));
+              HasSubstr("Missing session Gemma configuration"));
 }
 
 TEST(InferenceModelTest, RunInferenceValidConfig) {
@@ -215,12 +159,7 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -280,12 +219,7 @@ TEST(InferenceModelTest, RunInferenceRegexOutput) {
           regex: "Classification:\\s*[*]{1,2}(\\w+)[*]{1,2}"
         }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -347,12 +281,7 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
         }
         prompt { prompt_template: "Good bye, {{input}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -443,12 +372,7 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasksWithRegex) {
           regex: "Category2:\\s*[#]{1,2}(\\w+)[#]{1,2}"
         }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -517,12 +441,7 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -600,12 +519,7 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -661,12 +575,7 @@ TEST(InferenceModelTest, RunInferenceNoPrompt) {
           output_column_name: "topic"
         }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -710,12 +619,7 @@ TEST(InferenceModelTest, RunInferenceNonStringColumn) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
@@ -758,12 +662,7 @@ TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config {
-        tokenizer_file: "/tmp/tokenizer.json"
-        model: GEMMA_2B
-        model_training: GEMMA_IT
-        tensor_type: GEMMA_SFP
-      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
