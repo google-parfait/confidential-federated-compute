@@ -1,0 +1,15 @@
+# Various changes to federated-compute visibility that should eventually be
+# upstreamed.
+--- fcp/base/BUILD
++++ fcp/base/BUILD
+@@ -551,2 +551,3 @@
+ cc_library(
+     name = "compression",
++    visibility = ["//visibility:public"],
+
+# Make event_time_range.proto public
+--- fcp/client/BUILD
++++ fcp/client/BUILD
+@@ -25,1 +25,2 @@
+ )
++exports_files(["event_time_range.proto"])
