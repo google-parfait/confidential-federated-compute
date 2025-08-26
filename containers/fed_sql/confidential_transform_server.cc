@@ -210,8 +210,22 @@ absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
     intrinsics = &*intrinsics_;
   }
 
+  // We are in the process of deprecating the `intrinsic_uri` field in favor of
+  // the `intrinsic_uris` field. For now, we check both fields and return an
+  // error if the intrinsic URI is not found in either field.
   const Intrinsic& fedsql_intrinsic = intrinsics->at(0);
-  if (fedsql_intrinsic.uri != config_constraints.intrinsic_uri()) {
+
+  bool uri_is_valid = false;
+  if (!config_constraints.intrinsic_uris().empty()) {
+    uri_is_valid = std::find(config_constraints.intrinsic_uris().begin(),
+                             config_constraints.intrinsic_uris().end(),
+                             fedsql_intrinsic.uri) !=
+                   config_constraints.intrinsic_uris().end();
+  } else {
+    uri_is_valid = fedsql_intrinsic.uri == config_constraints.intrinsic_uri();
+  }
+
+  if (!uri_is_valid) {
     return absl::FailedPreconditionError(
         "Invalid intrinsic URI for DP configuration.");
   }
