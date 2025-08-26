@@ -63,13 +63,15 @@ async def trusted_program(input_provider, release_manager):
   data_source_iterator = data_source.iterator()
 
   client_data_type = federated_language.FederatedType(
-      federated_language.TensorType(np.int32, [3]),
-      federated_language.CLIENTS
+      federated_language.TensorType(np.int32, [3]), federated_language.CLIENTS
   )
 
   server_data_type = federated_language.FederatedType(
-      federated_language.TensorType(np.int32, [3]),
-      federated_language.SERVER
+      federated_language.StructType([
+          ('sum', federated_language.TensorType(np.int32, [3])),
+          ('client_count', federated_language.TensorType(np.int32, [])),
+      ]),
+      federated_language.SERVER,
   )
 
   @tff.tensorflow.computation
@@ -79,14 +81,25 @@ async def trusted_program(input_provider, release_manager):
   @federated_language.federated_computation(server_data_type, client_data_type)
   def my_comp(server_state, client_data):
     summed_client_data = federated_language.federated_sum(client_data)
-    return federated_language.federated_map(add, (server_state, summed_client_data))
+    client_count = federated_language.federated_sum(
+        federated_language.federated_value(1, federated_language.CLIENTS)
+    )
+    return {
+        'sum': federated_language.federated_map(
+            add, (server_state.sum, summed_client_data)
+        ),
+        'client_count': federated_language.federated_map(
+            add, (server_state.client_count, client_count)
+        ),
+    }
 
   # Run four rounds, which will guarantee that each client is used exactly twice.
-  server_state = [0,0,0]
+  server_state = {'sum': [0, 0, 0], 'client_count': 0}
   for _ in range(4):
     server_state = my_comp(server_state, data_source_iterator.select(2))
 
-  await release_manager.release(server_state, "result")
+  await release_manager.release(server_state['sum'], "resulting_sum")
+  await release_manager.release(server_state['client_count'], "resulting_client_count")
   )",
                 client_ids, client_data_dir);
 
@@ -97,23 +110,27 @@ async def trusted_program(input_provider, release_manager):
   ASSERT_TRUE(stream_->Write(session_request));
   ASSERT_TRUE(stream_->Read(&session_response));
 
-  auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
-  expected_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id("result");
-  expected_request.set_commit(true);
-
   auto write_call_args = fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
+  ASSERT_EQ(write_call_args.size(), 2);
   ASSERT_EQ(write_call_args[0].size(), 1);
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result");
-  ASSERT_TRUE(write_request.commit());
+  auto sum_write_request = write_call_args[0][0];
+  ASSERT_EQ(sum_write_request.first_request_metadata().unencrypted().blob_id(),
+            "resulting_sum");
+  ASSERT_TRUE(sum_write_request.commit());
   tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(write_request.data());
+  released_value.ParseFromString(sum_write_request.data());
   ASSERT_THAT(released_value.array().int32_list().value(),
               ::testing::ElementsAreArray({44, 52, 60}));
+
+  ASSERT_EQ(write_call_args[1].size(), 1);
+  auto count_write_request = write_call_args[1][0];
+  ASSERT_EQ(
+      count_write_request.first_request_metadata().unencrypted().blob_id(),
+      "resulting_client_count");
+  ASSERT_TRUE(count_write_request.commit());
+  released_value.ParseFromString(count_write_request.data());
+  ASSERT_THAT(released_value.array().int32_list().value(),
+              ::testing::ElementsAreArray({8}));
 
   ASSERT_TRUE(session_response.has_read());
   ASSERT_TRUE(session_response.read().finish_read());
