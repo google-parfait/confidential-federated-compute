@@ -47,6 +47,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
   async def test_execution_context_jax_computation(self):
     context = execution_context.TrustedContext(
         lambda x: x,
+        execution_context.XLA_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -59,8 +60,9 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       def comp():
         return 10
 
-      with self.assertRaises(RuntimeError):
-        comp()
+      result = comp()
+
+    self.assertEqual(result, 10)
 
 
 if __name__ == "__main__":

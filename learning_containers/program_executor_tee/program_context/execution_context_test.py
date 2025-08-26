@@ -52,6 +52,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     mock_compiler = unittest.mock.Mock()
     context = execution_context.TrustedContext(
         mock_compiler,
+        execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -90,6 +91,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -123,6 +125,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -178,6 +181,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
+            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -238,6 +242,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
+            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -274,6 +279,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
+            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,

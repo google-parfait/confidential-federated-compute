@@ -49,14 +49,13 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
 cc_binary(
-    name = "computation_runner_binary",
-    srcs = ["computation_runner_main.cc"],
+    name = "computation_runner_binary_tensorflow",
+    srcs = ["computation_runner_main_tensorflow.cc"],
     deps = [
         ":computation_runner",
         "@com_github_grpc_grpc//:grpc++",
@@ -64,6 +63,23 @@ cc_binary(
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
+    ],
+)
+
+cc_binary(
+    name = "computation_runner_binary_xla",
+    srcs = ["computation_runner_main_xla.cc"],
+    deps = [
+        ":computation_runner",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@federated_language_jax//federated_language_jax/executor:xla_executor",
+        "@local_xla//xla/service:cpu_plugin",
+        "@local_xla//xla/stream_executor/host:host_platform",
     ],
 )
 

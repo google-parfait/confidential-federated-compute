@@ -35,7 +35,6 @@
 #include "program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
-#include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -105,11 +104,14 @@ std::vector<int> GetNumClientsPerWorker(int num_clients, int num_workers) {
 
 // Creates a non-distributed TFF execution stack.
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> CreateExecutor(
+    std::function<
+        absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+        leaf_executor_factory,
     int num_clients) {
-  auto leaf_executor_fn =
-      []() -> absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> {
-    return tensorflow_federated::CreateReferenceResolvingExecutor(
-        tensorflow_federated::CreateTensorFlowExecutor());
+  auto leaf_executor_fn = [leaf_executor_factory]()
+      -> absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> {
+    FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory());
+    return tensorflow_federated::CreateReferenceResolvingExecutor(executor);
   };
   tensorflow_federated::CardinalityMap cardinality_map;
   cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
@@ -147,10 +149,14 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
 
 }  // namespace
 
-ComputationRunner::ComputationRunner(std::vector<std::string> worker_bns,
-                                     std::string serialized_reference_values,
-                                     std::string outgoing_server_address)
-    : worker_bns_(worker_bns) {
+ComputationRunner::ComputationRunner(
+    std::function<
+        absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+        leaf_executor_factory,
+    std::vector<std::string> worker_bns,
+    std::string serialized_reference_values,
+    std::string outgoing_server_address)
+    : leaf_executor_factory_(leaf_executor_factory), worker_bns_(worker_bns) {
   if (!worker_bns_.empty()) {
     stub_ = fcp::confidentialcompute::outgoing::ComputationDelegation::NewStub(
         grpc::CreateChannel(outgoing_server_address,
@@ -227,7 +233,8 @@ grpc::Status ComputationRunner::Execute(
   // Create executor stack.
   absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> executor =
       worker_bns_.empty()
-          ? CreateExecutor(session_request.num_clients())
+          ? CreateExecutor(leaf_executor_factory_,
+                           session_request.num_clients())
           : CreateDistributedExecutor(session_request.num_clients());
   if (!executor.status().ok()) {
     return ToGrpcStatus(executor.status());

@@ -40,7 +40,6 @@ py_library(
 py_library(
     name = "execution_context",
     srcs = ["execution_context.py"],
-    data = ["//program_executor_tee/program_context/cc:computation_runner_binary"],
     deps = [
         ":replace_data_pointers",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
@@ -70,6 +69,7 @@ py_library(
 py_test(
     name = "execution_context_test",
     srcs = ["execution_context_test.py"],
+    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_tensorflow"],
     tags = ["noasan"],
     deps = [
         ":compilers",
@@ -91,6 +91,7 @@ py_test(
 py_test(
     name = "execution_context_jax_test",
     srcs = ["execution_context_jax_test.py"],
+    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_xla"],
     tags = ["noasan"],
     deps = [
         ":execution_context",
@@ -157,6 +158,7 @@ py_test(
 py_library(
     name = "program_runner",
     srcs = ["program_runner.py"],
+    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_tensorflow"],
     visibility = ["//visibility:public"],
     deps = [
         ":compilers",
