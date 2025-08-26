@@ -36,6 +36,10 @@ import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
+# The default gRPC message size is 4 KiB. Increase it to 100 KiB.
+_MAX_GPRC_MESSAGE_SIZE = 100 * 1024 * 1024
+
+
 class TrustedContext(federated_language.program.FederatedContext):
   """Execution context for executing computations in an Federated Program."""
 
@@ -95,7 +99,13 @@ class TrustedContext(federated_language.program.FederatedContext):
         f"--serialized_reference_values={serialized_reference_values}",
     ]
     self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
-    channel = grpc.insecure_channel("[::1]:{}".format(computation_runner_port))
+    channel_options = [
+        ("grpc.max_send_message_length", _MAX_GPRC_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", _MAX_GPRC_MESSAGE_SIZE),
+    ]
+    channel = grpc.insecure_channel(
+        "[::1]:{}".format(computation_runner_port), options=channel_options
+    )
     grpc.channel_ready_future(channel).result(timeout=5)
     self._computation_runner_stub = (
         computation_delegation_pb2_grpc.ComputationDelegationStub(channel)
