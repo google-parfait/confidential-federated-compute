@@ -218,6 +218,9 @@ class TrustedContext(federated_language.program.FederatedContext):
       result = executor_pb2.Value()
       delegation_response.result.Unpack(result)
       deserialized_result, _ = tff.framework.deserialize_value(result)
+      deserialized_result = federated_language.framework.type_to_py_container(
+          deserialized_result, comp.type_signature.result
+      )
       return deserialized_result
     except grpc.RpcError as e:
       raise RuntimeError(
