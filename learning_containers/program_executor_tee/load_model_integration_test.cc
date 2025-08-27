@@ -43,8 +43,7 @@ async def trusted_program(input_provider, release_manager):
       ),
   )
   state = learning_process.initialize()
-  converted_state = tff.structure.to_odict_or_tuple(state)
-  await release_manager.release(converted_state, "result")
+  await release_manager.release(state, "result")
   )");
 
   SessionRequest session_request;
