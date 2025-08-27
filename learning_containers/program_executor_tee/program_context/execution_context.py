@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 from collections.abc import Callable
 import functools
 import os
@@ -59,7 +60,7 @@ class TrustedContext(federated_language.program.FederatedContext):
       computation_runner_binary_path: str,
       outgoing_server_address: str,
       worker_bns: list[str] = [],
-      serialized_reference_values: str = "",
+      serialized_reference_values: bytes = b"",
       parse_read_response_fn: Callable[
           [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
       ] = None,
@@ -74,7 +75,7 @@ class TrustedContext(federated_language.program.FederatedContext):
         can be reached for data read/write requests and computation delegation
         requests.
       worker_bns: A list of worker bns addresses.
-      serialized_reference_values: A string containing a serialized
+      serialized_reference_values: A bytestring containing a serialized
         oak.attestation.v1.ReferenceValues proto that contains reference values
         of the program worker binary to set up the client noise sessions. Need
         to be set to a non-empty string if a non-empty list of worker bns
@@ -104,7 +105,11 @@ class TrustedContext(federated_language.program.FederatedContext):
         f"--computatation_runner_port={computation_runner_port}",
         f"--outgoing_server_address={outgoing_server_address}",
         f"--worker_bns={','.join(worker_bns)}",
-        f"--serialized_reference_values={serialized_reference_values}",
+        # Encode the serialized reference values to base64 to prevent the
+        # argument from being truncated when passed from Python to the C++
+        # binary. The computation runner will decode the base64 string and parse
+        # it into a ReferenceValues proto.
+        f"--serialized_reference_values={base64.b64encode(serialized_reference_values).decode('ascii')}",
     ]
     self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
     channel_options = [

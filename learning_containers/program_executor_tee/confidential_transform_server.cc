@@ -126,7 +126,11 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
             initialize_config_.program(), client_ids,
             initialize_config_.client_data_dir(), model_id_to_zip_file_,
             initialize_config_.outgoing_server_address(), worker_bns_addresses,
-            initialize_config_.reference_values().SerializeAsString(),
+            // Explicitly convert the serialized reference values to bytes.
+            // Otherwise, it will be converted to a Python str by default and
+            // cause parsing error.
+            pybind11::bytes(
+                initialize_config_.reference_values().SerializeAsString()),
             data_parser_instance.attr("parse_read_response_to_value")));
 
     // Run the task in the event loop and get the result.

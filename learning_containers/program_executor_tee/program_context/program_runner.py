@@ -34,7 +34,7 @@ async def run_program(
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
     worker_bns: list[str] = [],
-    serialized_reference_values: str = "",
+    serialized_reference_values: bytes = b"",
     parse_read_response_fn: Callable[
         [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
     ] = None,
@@ -55,7 +55,7 @@ async def run_program(
       be reached for data read/write requests and computation delegation
       requests.
     worker_bns: A list of worker bns addresses.
-    serialized_reference_values: A string containing a serialized
+    serialized_reference_values: A bytestring containing a serialized
       oak.attestation.v1.ReferenceValues proto that contains reference values of
       the program worker binary to set up the client noise sessions.
     parse_read_response_fn: A function that takes a

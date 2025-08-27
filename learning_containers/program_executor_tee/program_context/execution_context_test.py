@@ -36,7 +36,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     )
     self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
     self.worker_bns = []
-    self.serialized_reference_values = ""
+    self.serialized_reference_values = b""
     self.data_read_write_service = (
         fake_service_bindings.FakeDataReadWriteService()
     )
@@ -218,7 +218,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         "bns_address_3",
         "bns_address_4",
     ]
-    self.serialized_reference_values = ""
+    self.serialized_reference_values = b""
     self.data_read_write_service = (
         fake_service_bindings.FakeDataReadWriteService()
     )

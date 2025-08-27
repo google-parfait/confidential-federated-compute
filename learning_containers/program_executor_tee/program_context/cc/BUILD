@@ -63,6 +63,7 @@ cc_binary(
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@oak//proto/attestation:reference_value_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
     ],
 )
@@ -80,6 +81,7 @@ cc_binary(
         "@federated_language_jax//federated_language_jax/executor:xla_executor",
         "@local_xla//xla/service:cpu_plugin",
         "@local_xla//xla/stream_executor/host:host_platform",
+        "@oak//proto/attestation:reference_value_cc_proto",
     ],
 )
 
