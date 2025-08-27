@@ -36,6 +36,11 @@ import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
+TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = "program_executor_tee/program_context/cc/computation_runner_binary_tensorflow"
+XLA_COMPUTATION_RUNNER_BINARY_PATH = (
+    "program_executor_tee/program_context/cc/computation_runner_binary_xla"
+)
+
 # The default gRPC message size is 4 KiB. Increase it to 100 KiB.
 _MAX_GPRC_MESSAGE_SIZE = 100 * 1024 * 1024
 
@@ -51,6 +56,7 @@ class TrustedContext(federated_language.program.FederatedContext):
               federated_language.framework.ConcreteComputation,
           ]
       ],
+      computation_runner_binary_path: str,
       outgoing_server_address: str,
       worker_bns: list[str] = [],
       serialized_reference_values: str = "",
@@ -62,6 +68,8 @@ class TrustedContext(federated_language.program.FederatedContext):
 
     Args:
       compiler_fn: Python function that will be used to compile a computation.
+      computation_runner_binary_path: The local path to the computation runner
+        binary.
       outgoing_server_address: The address at which the untrusted root server
         can be reached for data read/write requests and computation delegation
         requests.
@@ -84,7 +92,7 @@ class TrustedContext(federated_language.program.FederatedContext):
     # Start the computation runner on a different process.
     computation_runner_binary_path = os.path.join(
         os.getcwd(),
-        "program_executor_tee/program_context/cc/computation_runner_binary",
+        computation_runner_binary_path,
     )
     if not os.path.isfile(computation_runner_binary_path):
       raise RuntimeError(

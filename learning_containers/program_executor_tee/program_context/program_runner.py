@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Callable
+
 from fcp.confidentialcompute.python import program_input_provider
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
@@ -67,6 +68,7 @@ async def run_program(
   federated_language.framework.set_default_context(
       execution_context.TrustedContext(
           compilers.compile_tf_to_call_dominant,
+          execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
           outgoing_server_address,
           worker_bns,
           serialized_reference_values,

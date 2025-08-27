@@ -32,9 +32,13 @@ namespace confidential_federated_compute::program_executor_tee {
 class ComputationRunner : public fcp::confidentialcompute::outgoing::
                               ComputationDelegation::Service {
  public:
-  ComputationRunner(std::vector<std::string> worker_bns,
-                    std::string serialized_reference_values,
-                    std::string outgoing_server_address);
+  ComputationRunner(
+      std::function<
+          absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+          leaf_executor_factory,
+      std::vector<std::string> worker_bns,
+      std::string serialized_reference_values,
+      std::string outgoing_server_address);
 
   // Executes the TFF computation represented in the request message using a C++
   // execution stack. Returns a tensorflow_federated::v0::Value in the response
@@ -52,6 +56,9 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
   absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
   CreateDistributedExecutor(int num_clients);
 
+  std::function<
+      absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+      leaf_executor_factory_;
   // Addresses of worker machines running the program_worker binary that can be
   // used to execute computations in a distributed manner.
   std::vector<std::string> worker_bns_;

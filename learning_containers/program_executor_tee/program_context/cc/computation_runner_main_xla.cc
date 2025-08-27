@@ -16,6 +16,7 @@
 #include "absl/flags/parse.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "federated_language_jax/executor/xla_executor.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "program_executor_tee/program_context/cc/computation_runner.h"
@@ -31,8 +32,14 @@ ABSL_FLAG(std::string, serialized_reference_values, "",
           "The serialized reference values of the program worker for setting "
           "up the client noise session.");
 
+
 // The default gRPC message size is 4 KiB. Increase it to 100 KiB.
 constexpr int kMaxGrpcMessageSize = 100 * 1024 * 1024;
+
+absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+CreateExecutor() {
+  return federated_language_jax::CreateXLAExecutor();
+}
 
 int main(int argc, char* argv[]) {
   absl::ParseCommandLine(argc, argv);
@@ -45,7 +52,7 @@ int main(int argc, char* argv[]) {
 
   auto computation_runner_service = std::make_unique<
       confidential_federated_compute::program_executor_tee::ComputationRunner>(
-      absl::GetFlag(FLAGS_worker_bns),
+      CreateExecutor, absl::GetFlag(FLAGS_worker_bns),
       absl::GetFlag(FLAGS_serialized_reference_values),
       absl::GetFlag(FLAGS_outgoing_server_address));
 
