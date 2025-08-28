@@ -49,6 +49,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:windowing_schedule_proto_cc",
+        "@llama_cpp",
         "@oak//cc/crypto:signing_key",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:dp_fedsql_constants",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",

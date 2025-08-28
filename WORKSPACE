@@ -189,6 +189,16 @@ git_repository(
 )
 
 http_archive(
+    name = "llama_cpp",
+    build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
+    integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
+    patch_args = ["-p1"],
+    patches = ["//third_party/llama_cpp:add_build_info.patch"],
+    strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
+    url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
+)
+
+http_archive(
     name = "oak",
     integrity = "sha256-3CzlN6XG3D3/sjJQIeK6XrMcjIU4TaYLfjamy3IC9Ew=",
     patches = [

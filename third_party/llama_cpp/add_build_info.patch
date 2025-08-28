@@ -1,0 +1,12 @@
+diff --git a/common/build-info.cpp b/common/build-info.cpp
+new file mode 100644
+index 00000000..507147ac
+--- /dev/null
++++ b/common/build-info.cpp
+@@ -0,0 +1,6 @@
++#include "common.h"
++
++int LLAMA_BUILD_NUMBER = LLAMA_BUILD_NUMBER_DEFINED;
++const char* LLAMA_COMMIT = LLAMA_COMMIT_DEFINED;
++const char* LLAMA_COMPILER = LLAMA_COMPILER_DEFINED;
++const char* LLAMA_BUILD_TARGET = LLAMA_BUILD_TARGET_DEFINED;
