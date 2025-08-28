@@ -14,7 +14,7 @@
 
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_library")
@@ -42,15 +42,42 @@ py_library(
     ],
 )
 
-cc_binary(
-    name = "main",
-    srcs = ["main.cc"],
+cc_library(
+    name = "confidential_transform_server",
+    srcs = ["confidential_transform_server.cc"],
+    hdrs = ["confidential_transform_server.h"],
     data = [
         ":tokens",
     ],
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@confidential-federated-compute//containers:confidential_transform_server_base",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:session",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@oak//cc/crypto:signing_key",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
         "@pybind11",
         "@rules_python//python/cc:current_py_cc_libs",
+    ],
+)
+
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":confidential_transform_server",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@oak//cc/containers/sdk:encryption_key_handle",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
     ],
 )
 
