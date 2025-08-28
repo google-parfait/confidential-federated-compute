@@ -31,11 +31,21 @@
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 
 namespace confidential_federated_compute::fed_sql {
+
+// Holds parameters related to the differential privacy unit.
+struct DpUnitParameters {
+  // The windowing schedule for the DP unit.
+  fcp::confidentialcompute::WindowingSchedule windowing_schedule;
+  // The column names that define the DP unit (not including the event time
+  // or privacy id columns).
+  std::vector<std::string> column_names;
+};
 
 // FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
@@ -49,6 +59,7 @@ class KmsFedSqlSession final
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
       std::optional<SessionInferenceConfiguration> inference_configuration,
+      std::optional<DpUnitParameters> dp_unit_parameters,
       absl::string_view sensitive_values_key,
       std::vector<std::string> reencryption_keys,
       absl::string_view reencryption_policy_hash,
@@ -148,6 +159,8 @@ class KmsFedSqlSession final
   std::shared_ptr<PrivateState> private_state_;
   // The signing key handle used to sign the final result.
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
+  // Parameters for the differential privacy unit.
+  std::optional<DpUnitParameters> dp_unit_parameters_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

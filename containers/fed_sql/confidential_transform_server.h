@@ -25,9 +25,11 @@
 #include "absl/synchronization/mutex.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -89,6 +91,8 @@ class FedSqlConfidentialTransform final
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
+  // Parameters for the differential privacy unit.
+  std::optional<DpUnitParameters> dp_unit_parameters_;
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
