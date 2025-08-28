@@ -119,6 +119,7 @@ KmsFedSqlSession::KmsFedSqlSession(
         aggregator,
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
     std::optional<SessionInferenceConfiguration> inference_configuration,
+    std::optional<DpUnitParameters> dp_unit_parameters,
     absl::string_view sensitive_values_key,
     std::vector<std::string> reencryption_keys,
     absl::string_view reencryption_policy_hash,
@@ -126,6 +127,7 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
+      dp_unit_parameters_(dp_unit_parameters),
       sensitive_values_key_(sensitive_values_key),
       reencryption_keys_(std::move(reencryption_keys)),
       reencryption_policy_hash_(reencryption_policy_hash),

@@ -355,6 +355,20 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
   FCP_RETURN_IF_ERROR(
       InitializePrivateState(fed_sql_config_constraints.access_budget()));
 
+  if (fed_sql_config_constraints.has_dp_windowing_schedule()) {
+    DpUnitParameters dp_params;
+    if (!fed_sql_config_constraints.dp_windowing_schedule().UnpackTo(
+            &dp_params.windowing_schedule)) {
+      return absl::InvalidArgumentError(
+          "Failed to unpack dp_windowing_schedule from google::protobuf::Any.");
+    }
+    for (const auto& column_name :
+         fed_sql_config_constraints.dp_column_names()) {
+      dp_params.column_names.push_back(column_name);
+    }
+    dp_unit_parameters_ = std::move(dp_params);
+  }
+
   if (fed_sql_config.has_inference_init_config()) {
     FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
         fed_sql_config.inference_init_config()));
@@ -503,7 +517,7 @@ FedSqlConfidentialTransform::CreateSession() {
         << "Reencryption policy hash must be set when KMS is enabled.";
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_configuration_,
-        sensitive_values_key_, reencryption_keys_.value(),
+        dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
         reencryption_policy_hash_.value(), private_state_,
         GetOakSigningKeyHandle());
   } else {
