@@ -38,6 +38,7 @@ TEST_F(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
   }
 
   CreateSession(R"(
+import collections
 import federated_language
 from federated_language.proto import computation_pb2
 from federated_language.proto import data_type_pb2
@@ -84,19 +85,24 @@ async def trusted_program(input_provider, release_manager):
     client_count = federated_language.federated_sum(
         federated_language.federated_value(1, federated_language.CLIENTS)
     )
-    return {
-        'sum': federated_language.federated_map(
-            add, (server_state.sum, summed_client_data)
+    return tff.learning.templates.LearningProcessOutput(
+        federated_language.federated_zip(
+            collections.OrderedDict(
+                sum=federated_language.federated_map(
+                    add, (server_state.sum, summed_client_data)
+                ),
+                client_count=federated_language.federated_map(
+                    add, (server_state.client_count, client_count)
+                ),
+            )
         ),
-        'client_count': federated_language.federated_map(
-            add, (server_state.client_count, client_count)
-        ),
-    }
+        client_count,
+    )
 
   # Run four rounds, which will guarantee that each client is used exactly twice.
   server_state = {'sum': [0, 0, 0], 'client_count': 0}
   for _ in range(4):
-    server_state = my_comp(server_state, data_source_iterator.select(2))
+    server_state, metrics = my_comp(server_state, data_source_iterator.select(2))
 
   await release_manager.release(server_state['sum'], "resulting_sum")
   await release_manager.release(server_state['client_count'], "resulting_client_count")
