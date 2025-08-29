@@ -179,6 +179,10 @@ class TrustedContext(federated_language.program.FederatedContext):
     Returns:
       A deserialized result.
     """
+    # Save the computation return type since the compile call below may drop
+    # some of the information we need later.
+    comp_return_type = comp.type_signature.result
+
     if self._compiler_fn is not None:
       comp = self._compiler_fn(comp)
 
@@ -218,10 +222,17 @@ class TrustedContext(federated_language.program.FederatedContext):
       result = executor_pb2.Value()
       delegation_response.result.Unpack(result)
       deserialized_result, _ = tff.framework.deserialize_value(result)
-      deserialized_result = federated_language.framework.type_to_py_container(
-          deserialized_result, comp.type_signature.result
+      if isinstance(
+          deserialized_result, federated_language.common_libs.structure.Struct
+      ):
+        deserialized_result = (
+            federated_language.common_libs.structure.to_odict_or_tuple(
+                deserialized_result
+            )
+        )
+      return federated_language.framework.to_structure_with_type(
+          deserialized_result, comp_return_type
       )
-      return deserialized_result
     except grpc.RpcError as e:
       raise RuntimeError(
           f"Request to computation runner failed with error: {e.details()}"
