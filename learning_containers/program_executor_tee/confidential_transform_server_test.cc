@@ -58,6 +58,14 @@ TEST_F(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
 
   ProgramExecutorTeeInitializeConfig config;
   config.set_program("fake_program");
+  *config.mutable_reference_values() = PARSE_TEXT_PROTO(R"pb(
+    oak_containers {
+      root_layer {
+        amd_sev { stage0 { skip {} } }
+        insecure {}
+      }
+    }
+  )pb");
   config.set_outgoing_server_address(data_read_write_server_address_);
 
   InitializeRequest* initialize_request = request.mutable_initialize_request();

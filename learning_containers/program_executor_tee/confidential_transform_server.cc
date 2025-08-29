@@ -160,6 +160,9 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
   Struct config_properties;
   (*config_properties.mutable_fields())["program"].set_string_value(
       initialize_config_.program());
+  (*config_properties.mutable_fields())["worker_reference_values"]
+      .set_string_value(
+          initialize_config_.reference_values().SerializeAsString());
   return config_properties;
 }
 
