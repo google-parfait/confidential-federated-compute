@@ -79,15 +79,16 @@ http_archive(
     patches = [
         "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
         "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
-        "@org_tensorflow_federated//third_party/federated_language:python_deps.patch",
+        "//third_party/federated_language:python_toolchain.patch",
+        "//third_party/federated_language:python_deps.patch",
         "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
     ],
     repo_mapping = {
         "@protobuf": "@com_google_protobuf",
     },
-    sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
-    strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
-    url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
+    sha256 = "dd767b67d054d8ab14e62a16edad376e25610f2edc5b78ccf41b473ded5662d4",
+    strip_prefix = "federated-language-0.5.2",
+    url = "https://github.com/google-parfait/federated-language/archive/refs/tags/v0.5.2.tar.gz",
 )
 
 http_archive(
