@@ -105,11 +105,9 @@ class TrustedContext(federated_language.program.FederatedContext):
         f"--computatation_runner_port={computation_runner_port}",
         f"--outgoing_server_address={outgoing_server_address}",
         f"--worker_bns={','.join(worker_bns)}",
-        # Encode the serialized reference values to base64 to prevent the
-        # argument from being truncated when passed from Python to the C++
-        # binary. The computation runner will decode the base64 string and parse
-        # it into a ReferenceValues proto.
-        f"--serialized_reference_values={base64.b64encode(serialized_reference_values).decode('ascii')}",
+        # Convert the base64-encoded serialized reference value bytestring to a string.
+        # The computation runner will decode this arg into a ReferenceValues proto.
+        f"--serialized_reference_values={serialized_reference_values.decode('utf-8')}",
     ]
     self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
     channel_options = [

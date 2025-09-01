@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 from collections.abc import Callable
 
 from fcp.confidentialcompute.python import program_input_provider
@@ -28,7 +29,7 @@ TRUSTED_PROGRAM_KEY = "trusted_program"
 
 
 async def run_program(
-    program: str,
+    program: bytes,
     client_ids: list[str],
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
@@ -42,9 +43,10 @@ async def run_program(
   """Executes a federated program.
 
   Args:
-    program: A string that represents python code and contains a function named
-      TRUSTED_PROGRAM_KEY that describes the federated program to execute. The
-      TRUSTED_PROGRAM_KEY function should expect a ReleaseManager arg.
+    program: A base64-encoded bytestring that represents python code and
+      contains a function named TRUSTED_PROGRAM_KEY that describes the federated
+      program to execute. The TRUSTED_PROGRAM_KEY function should expect a
+      ReleaseManager arg.
     client_ids: A list of strings representing the client upload base filenames
       that can be used during program execution. The concatenation of
       'client_data_directory' and a client id is the full path to a client file.
@@ -55,9 +57,10 @@ async def run_program(
       be reached for data read/write requests and computation delegation
       requests.
     worker_bns: A list of worker bns addresses.
-    serialized_reference_values: A bytestring containing a serialized
-      oak.attestation.v1.ReferenceValues proto that contains reference values of
-      the program worker binary to set up the client noise sessions.
+    serialized_reference_values: A base64-encoded bytestring containing a
+      serialized oak.attestation.v1.ReferenceValues proto that contains
+      reference values of the program worker binary to set up the client noise
+      sessions.
     parse_read_response_fn: A function that takes a
       data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
       pointer) and returns a tff Value proto.
@@ -75,6 +78,14 @@ async def run_program(
           parse_read_response_fn,
       )
   )
+
+  # If the program was provided as a base64-encoded bytestring, attempt to decode it. Use a
+  # try/except block to catch failures while we transition all use cases to provided
+  # base64 encoded programs.
+  try:
+    program = base64.b64decode(program).decode("utf-8")
+  except Exception as e:
+    print(f"Providing a non-base64 encoded program is deprecated: {e}")
 
   # Load the provided python code into a namespace and extract the function
   # wrapping the program to run.

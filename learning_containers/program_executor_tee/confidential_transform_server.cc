@@ -29,6 +29,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -123,14 +124,14 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
     // Schedule execution of the program as a Task.
     pybind11::object task =
         pybind11::module::import("asyncio").attr("ensure_future")(run_program(
-            initialize_config_.program(), client_ids,
+            pybind11::bytes(initialize_config_.program()), client_ids,
             initialize_config_.client_data_dir(), model_id_to_zip_file_,
             initialize_config_.outgoing_server_address(), worker_bns_addresses,
             // Explicitly convert the serialized reference values to bytes.
             // Otherwise, it will be converted to a Python str by default and
             // cause parsing error.
-            pybind11::bytes(
-                initialize_config_.reference_values().SerializeAsString()),
+            pybind11::bytes(absl::Base64Escape(
+                initialize_config_.reference_values().SerializeAsString())),
             data_parser_instance.attr("parse_read_response_to_value")));
 
     // Run the task in the event loop and get the result.
@@ -161,8 +162,8 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
   (*config_properties.mutable_fields())["program"].set_string_value(
       initialize_config_.program());
   (*config_properties.mutable_fields())["worker_reference_values"]
-      .set_string_value(
-          initialize_config_.reference_values().SerializeAsString());
+      .set_string_value(absl::Base64Escape(
+          initialize_config_.reference_values().SerializeAsString()));
   return config_properties;
 }
 

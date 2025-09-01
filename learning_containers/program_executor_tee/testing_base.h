@@ -18,6 +18,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/escaping.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -130,7 +131,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
     StreamInitializeRequest second_request;
 
     ProgramExecutorTeeInitializeConfig config;
-    config.set_program(program);
+    config.set_program(absl::Base64Escape(program));
     config.set_outgoing_server_address(data_read_write_server_address_);
     config.set_attester_id("fake_attester");
     config.set_client_data_dir(client_data_dir);

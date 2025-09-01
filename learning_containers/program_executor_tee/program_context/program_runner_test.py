@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 import unittest
 
 from absl.testing import absltest
@@ -62,7 +63,7 @@ async def trusted_program(input_provider, release_manager):
     """
 
     await program_runner.run_program(
-        program_string,
+        base64.b64encode(program_string.encode("utf-8")),
         client_ids=[],
         client_data_directory="client_data_dir",
         model_id_to_zip_file={},
@@ -112,7 +113,7 @@ def incorrectly_named_trusted_program(release_manager):
 
     with self.assertRaises(ValueError) as context:
       await program_runner.run_program(
-          program_string,
+          base64.b64encode(program_string.encode("utf-8")),
           client_ids=[],
           client_data_directory="client_data_dir",
           model_id_to_zip_file={},
