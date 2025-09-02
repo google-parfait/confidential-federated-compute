@@ -21,7 +21,7 @@ package(features = ["layering_check"])
 # This rule adds a convenient way to update the requirements file.
 compile_pip_requirements(
     name = "requirements",
-    timeout = "moderate",
+    timeout = "long",
     extra_args = [
         "--allow-unsafe",
         "--resolver=backtracking",
