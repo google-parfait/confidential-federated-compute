@@ -30,6 +30,7 @@ py_library(
     srcs = ["execution_context.py"],
     deps = [
         ":replace_data_pointers",
+        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
@@ -38,19 +39,9 @@ py_library(
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
         "@pypi//googleapis_common_protos",
-        "@pypi//jax",
-        "@pypi//jaxlib",
-        "@pypi//ml_dtypes",
         "@pypi//portpicker",
-        "@pypi//tensorflow",
-        "@pypi//tensorflow_model_optimization",
-        "@pypi//tensorflow_privacy",
-        "@pypi//tqdm",
-        "@pypi//typing_extensions",
     ],
 )
 

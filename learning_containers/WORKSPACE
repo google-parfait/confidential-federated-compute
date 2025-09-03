@@ -156,6 +156,7 @@ http_archive(
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:eigen.patch",
+        "//third_party/org_tensorflow_federated:package.patch",
         "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "//third_party/org_tensorflow_federated:vizier.patch",
     ],
