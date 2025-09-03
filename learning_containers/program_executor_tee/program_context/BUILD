@@ -226,11 +226,6 @@ py_library(
         "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-        "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
-        "@pypi//ml_dtypes",
-        "@pypi//numpy",
-        "@pypi//typing_extensions",
+        "@pypi//googleapis_common_protos",
     ],
 )
