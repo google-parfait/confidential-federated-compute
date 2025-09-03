@@ -22,18 +22,6 @@ py_library(
     deps = [
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
-        "@pypi//jax",
-        "@pypi//jaxlib",
-        "@pypi//ml_dtypes",
-        "@pypi//portpicker",
-        "@pypi//tensorflow",
-        "@pypi//tensorflow_model_optimization",
-        "@pypi//tensorflow_privacy",
-        "@pypi//tqdm",
-        "@pypi//typing_extensions",
     ],
 )
 
