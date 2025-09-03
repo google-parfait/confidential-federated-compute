@@ -1,15 +1,15 @@
 # The dependency versions in this file are chosen to be as close as possible to
 # those in the corresponding repos.
 
+absl-py~=1.0
 googleapis-common-protos==1.70.0
+numpy~=1.25
 portpicker~=1.6
 
 # Additional dependencies required for org_tensorflow_federated.
-absl-py~=1.0
 attrs~=23.1
 dm-tree==0.1.8
 ml_dtypes>=0.2.0,==0.2.*
-numpy~=1.25
 protobuf~=4.21
 typing-extensions~=4.5
 

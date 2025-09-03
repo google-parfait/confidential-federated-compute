@@ -56,14 +56,11 @@ py_test(
         ":test_helpers",
         "//program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
-        "@pypi//ml_dtypes",
-        "@pypi//typing_extensions",
+        "@pypi//numpy",
+        "@pypi//portpicker",
     ],
 )
 
@@ -79,6 +76,7 @@ py_test(
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax/computation:jax_computation",
         "@pypi//absl_py",
+        "@pypi//portpicker",
     ],
 )
 
