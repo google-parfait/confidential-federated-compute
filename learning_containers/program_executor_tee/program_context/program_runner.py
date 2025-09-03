@@ -79,13 +79,11 @@ async def run_program(
       )
   )
 
-  # If the program was provided as a base64-encoded bytestring, attempt to decode it. Use a
-  # try/except block to catch failures while we transition all use cases to provided
-  # base64 encoded programs.
+  # Decode the program, which must be provided as a base64-encoded bytestring.
   try:
     program = base64.b64decode(program).decode("utf-8")
-  except Exception as e:
-    print(f"Providing a non-base64 encoded program is deprecated: {e}")
+  except:
+    raise ValueError("The provided program must be base64-encoded.")
 
   # Load the provided python code into a namespace and extract the function
   # wrapping the program to run.
