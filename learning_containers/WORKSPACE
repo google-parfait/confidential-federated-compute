@@ -80,10 +80,10 @@ http_archive(
         "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
         "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
         "//third_party/federated_language:python_toolchain.patch",
-        "//third_party/federated_language:python_deps.patch",
-        "@org_tensorflow_federated//third_party/federated_language:structure_visibility.patch",
+        "//third_party/federated_language:structure_visibility.patch",
     ],
     repo_mapping = {
+        "@federated_language_pypi": "@pypi",
         "@protobuf": "@com_google_protobuf",
     },
     sha256 = "dd767b67d054d8ab14e62a16edad376e25610f2edc5b78ccf41b473ded5662d4",
