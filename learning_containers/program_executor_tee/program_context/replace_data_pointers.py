@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Callable
+
 from fcp.protos.confidentialcompute import file_info_pb2
 from tensorflow_federated.proto.v0 import executor_pb2
 
