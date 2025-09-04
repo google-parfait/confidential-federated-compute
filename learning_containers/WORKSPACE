@@ -125,13 +125,13 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-3CzlN6XG3D3/sjJQIeK6XrMcjIU4TaYLfjamy3IC9Ew=",
+    integrity = "sha256-3lE5QG44/fGkOZiu/hTnnChAZ0qCmT28o+3pr1qJGac=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:protobuf.patch",
     ],
-    strip_prefix = "oak-4d5246a4786e3be0dd80590edbfdfb807f658f21",
-    url = "https://github.com/project-oak/oak/archive/4d5246a4786e3be0dd80590edbfdfb807f658f21.tar.gz",
+    strip_prefix = "oak-095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8",
+    url = "https://github.com/project-oak/oak/archive/095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8.tar.gz",
 )
 
 http_archive(
