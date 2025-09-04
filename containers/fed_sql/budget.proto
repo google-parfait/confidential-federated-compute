@@ -42,13 +42,13 @@ message BudgetState {
     // This is the bounded partial range, meaning that it has been condensed
     // from a series of possibly non-consecutive ranges to the minimum value for
     // consumed_range_start. Must be specified if consumed_range_end is
-    // specified.
+    // specified. Inclusive.
     optional fixed64 consumed_range_start = 3;
     // The optional consumed_range_end value of a partially consumed bucket.
     // This is the bounded partial range, meaning that it has been condensed
     // from a series of possibly non-consecutive ranges to the maximum value for
     // consumed_range_end. Must be specified if consumed_range_start is
-    // specified.
+    // specified. Exclusive.
     optional fixed64 consumed_range_end = 4;
 
   }
