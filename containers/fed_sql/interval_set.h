@@ -21,6 +21,7 @@
 #include <optional>
 #include <ostream>
 #include <type_traits>
+#include <utility>  // For std::move
 
 #include "absl/container/btree_set.h"
 #include "absl/log/check.h"
@@ -50,11 +51,11 @@ class Interval {
   // Returns true if the interval is empty.
   bool empty() const { return start_ == end_; }
 
-  friend bool operator==(const Interval &a, const Interval &b) {
+  friend bool operator==(const Interval& a, const Interval& b) {
     return a.start_ == b.start_ && a.end_ == b.end_;
   }
 
-  // Returns trus if the interval contains the specified value.
+  // Returns true if the interval contains the specified value.
   bool Contains(T value) const {
     // There is a special case for interval end being at the max
     // value, in which case the value is considered to be included.
@@ -75,7 +76,7 @@ class Interval {
 };
 
 template <typename T>
-auto operator<<(std::ostream &out, const Interval<T> &i)
+auto operator<<(std::ostream& out, const Interval<T>& i)
     -> decltype(out << i.start()) {
   return out << "[" << i.start() << ", " << i.end() << ")";
 }
@@ -93,18 +94,18 @@ class IntervalSet {
   struct IntervalLess {
     using is_transparent = void;
     // Implementation of the "less" operator
-    bool operator()(const Interval<T> &a, const Interval<T> &b) const {
+    bool operator()(const Interval<T>& a, const Interval<T>& b) const {
       return a.start() < b.start();
     }
 
     // Transparent overload  for an implicit point
     // interval `Interval<T>(a, a)`.
-    bool operator()(const T &a, const Interval<T> &b) const {
+    bool operator()(const T& a, const Interval<T>& b) const {
       return a < b.start();
     }
 
     // Transparent overload for an implicit point interval `Interval<T>(b, b)`.
-    bool operator()(const Interval<T> &a, const T &b) const {
+    bool operator()(const Interval<T>& a, const T& b) const {
       return a.start() < b;
     }
   };
@@ -132,6 +133,8 @@ class IntervalSet {
   // Returns the number of disjoint intervals contained in this IntervalSet.
   size_t size() const { return set_.size(); }
 
+  bool empty() const { return set_.empty(); }
+
   void Clear() { set_.clear(); }
 
   // Populates this IntervalSet with the specified intervals.
@@ -140,10 +143,12 @@ class IntervalSet {
   bool Assign(Iter first, Iter last) {
     InnerSet set;
     std::optional<T> prev_end;
+
     for (; first != last; ++first) {
       if (prev_end.has_value() && first->start() <= *prev_end) {
         return false;
       }
+
       prev_end = first->end();
       set.insert(set.end(), *first);
     }
@@ -213,12 +218,13 @@ class IntervalSet {
     if (insert_new) {
       set_.insert(interval);
     }
+
     return true;
   }
 
   // Merges this IntervalSet with another interval set.
   // This returns false if there is any overlap between the two sets.
-  bool Merge(const IntervalSet<T> &other) {
+  bool Merge(const IntervalSet<T>& other) {
     InnerSet merged_set;
     const_iterator this_it = set_.begin();
     const_iterator this_end = set_.end();
@@ -252,12 +258,24 @@ class IntervalSet {
     return true;
   }
 
+  // Returns the minimum bounding interval that covers all intervals in the set.
+  // Returns an empty interval if the set is empty.
+  Interval<T> BoundingInterval() const {
+    if (set_.empty()) {
+      return Interval<T>();  // Empty interval {0, 0}
+    }
+    // Because the set is ordered and intervals are non-overlapping,
+    // the bounding interval starts with the first element's start
+    // and ends with the last element's end.
+    return Interval<T>(set_.begin()->start(), set_.rbegin()->end());
+  }
+
  private:
   // Retrieves a next interval from two iterators based on which one
   // has a smaller start of the interval.  This is used for merging two sets.
-  static std::optional<Interval<T>> NextOfTwoSets(const_iterator &it1,
+  static std::optional<Interval<T>> NextOfTwoSets(const_iterator& it1,
                                                   const_iterator end1,
-                                                  const_iterator &it2,
+                                                  const_iterator& it2,
                                                   const_iterator end2) {
     if (it1 != end1) {
       if (it2 != end2 && it2->start() < it1->start()) {
