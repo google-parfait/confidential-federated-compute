@@ -140,7 +140,7 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
     if (has_old_range) {
       // Check for any overlap between [interval_min, interval_max) and
       // [old_range_start, old_range_end).
-      ranges_overlap = interval_max >= budget_info.consumed_range->start() &&
+      ranges_overlap = interval_max > budget_info.consumed_range->start() &&
                        interval_min < budget_info.consumed_range->end();
     }
     if (budget_info.budget == 0 and ranges_overlap) {
