@@ -81,58 +81,6 @@ py_test(
 )
 
 py_library(
-    name = "release_manager",
-    srcs = ["release_manager.py"],
-    deps = [
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@federated_language//federated_language",
-        "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
-        "@pypi//googleapis_common_protos",
-        "@pypi//jax",
-        "@pypi//jaxlib",
-        "@pypi//ml_dtypes",
-        "@pypi//portpicker",
-        "@pypi//tensorflow",
-        "@pypi//tensorflow_model_optimization",
-        "@pypi//tensorflow_privacy",
-        "@pypi//tqdm",
-        "@pypi//typing_extensions",
-    ],
-)
-
-py_test(
-    name = "release_manager_test",
-    srcs = ["release_manager_test.py"],
-    tags = ["noasan"],
-    deps = [
-        ":release_manager",
-        "//program_executor_tee/program_context/cc:fake_service_bindings",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@federated_language//federated_language",
-        "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//absl_py",
-        "@pypi//attrs",
-        "@pypi//dm_tree",
-        "@pypi//googleapis_common_protos",
-        "@pypi//jax",
-        "@pypi//jaxlib",
-        "@pypi//ml_dtypes",
-        "@pypi//portpicker",
-        "@pypi//tensorflow",
-        "@pypi//tensorflow_model_optimization",
-        "@pypi//tensorflow_privacy",
-        "@pypi//tqdm",
-        "@pypi//typing_extensions",
-    ],
-)
-
-py_library(
     name = "program_runner",
     srcs = ["program_runner.py"],
     data = ["//program_executor_tee/program_context/cc:computation_runner_binary_tensorflow"],
@@ -155,6 +103,36 @@ py_test(
     deps = [
         ":program_runner",
         ":test_helpers",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//absl_py",
+        "@pypi//numpy",
+        "@pypi//portpicker",
+    ],
+)
+
+py_library(
+    name = "release_manager",
+    srcs = ["release_manager.py"],
+    deps = [
+        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+    ],
+)
+
+py_test(
+    name = "release_manager_test",
+    srcs = ["release_manager_test.py"],
+    tags = ["noasan"],
+    deps = [
+        ":release_manager",
         "//program_executor_tee/program_context/cc:fake_service_bindings",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
