@@ -267,7 +267,10 @@ KmsFedSqlSession::SessionAccumulate(
 
   // Check if there is a budget for the bucket associated with the
   // blob key.
-  if (!private_state_->budget.HasRemainingBudget(blob_header.key_id())) {
+  auto blob_id = LoadBigEndian<absl::uint128>(blob_header.blob_id());
+  uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
+  if (!private_state_->budget.HasRemainingBudget(blob_header.key_id(),
+                                                 blob_id_high64)) {
     return ToSessionWriteFinishedResponse(
         absl::FailedPreconditionError("No budget remaining."));
   }
@@ -290,7 +293,6 @@ KmsFedSqlSession::SessionAccumulate(
   }
 
   // Queue the blob so it can be processed on commit.
-  auto blob_id = LoadBigEndian<absl::uint128>(blob_header.blob_id());
   auto [unused, inserted] = uncommitted_inputs_.emplace(
       blob_id, UncommittedInput{.contents = std::move(contents),
                                 .blob_header = std::move(blob_header)});

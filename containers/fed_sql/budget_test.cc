@@ -29,36 +29,78 @@ using ::absl_testing::StatusIs;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
+BudgetInfo CreateBudgetInfo(
+    uint32_t budget, std::optional<Interval<uint64_t>> range = std::nullopt) {
+  BudgetInfo info(budget);
+  info.consumed_range = range;
+  return info;
+}
+
 TEST(BudgetTest, Parse) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 7 }
-    buckets { key: "bar" budget: 2 }
-  )pb");
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 7 }
+        buckets { key: "bar" budget: 2 }
+        buckets {
+          key: "partial"
+          budget: 0
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+      )pb");
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
-  // The "foo" bucket budget should be limited to 5.
-  EXPECT_THAT(budget, UnorderedElementsAre(Pair("foo", 5), Pair("bar", 2)));
+  EXPECT_THAT(
+      budget,
+      UnorderedElementsAre(
+          Pair("foo", CreateBudgetInfo(5)), Pair("bar", CreateBudgetInfo(2)),
+          Pair("partial", CreateBudgetInfo(0, Interval<uint64_t>(10, 20)))));
 }
 
 TEST(BudgetTest, Serialize) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 7 }
-    buckets { key: "bar" budget: 2 }
-  )pb");
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 7 }
+        buckets { key: "bar" budget: 2 }
+        buckets {
+          key: "partial"
+          budget: 1
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+      )pb");
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
-  EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets { key: "foo" budget: 5 }
-                buckets { key: "bar" budget: 2 }
-              )pb"));
+
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 5 }
+        buckets { key: "bar" budget: 2 }
+        buckets {
+          key: "partial"
+          budget: 1
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
 }
 
 TEST(BudgetTest, StringParseAndSerialize) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 7 }
-    buckets { key: "bar" budget: 2 }
-  )pb");
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 7 }
+        buckets { key: "bar" budget: 2 }
+        buckets {
+          key: "partial"
+          budget: 1
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+      )pb");
   std::string serialized_state = state.SerializeAsString();
+
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(serialized_state), IsOk());
   std::string new_serialized_state = budget.SerializeAsString();
@@ -74,33 +116,58 @@ TEST(BudgetTest, StringParseBadInput) {
   EXPECT_THAT(budget.Parse("foobar"), StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST(BudgetTest, HasRemainingBudget) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 7 }
-    buckets { key: "bar" budget: 0 }
-  )pb");
+TEST(BudgetTest, HasRemainingBudgetSimple) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 7 }
+        buckets { key: "bar" budget: 0 }
+      )pb");
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
-  EXPECT_TRUE(budget.HasRemainingBudget("foo"));
-  EXPECT_FALSE(budget.HasRemainingBudget("bar"));
+  EXPECT_TRUE(budget.HasRemainingBudget("foo", 100));
+  EXPECT_FALSE(budget.HasRemainingBudget("bar", 100));
   // This bucket is unknown so the default budget is assumed.
-  EXPECT_TRUE(budget.HasRemainingBudget("foobar"));
+  EXPECT_TRUE(budget.HasRemainingBudget("foobar", 100));
 
   Budget budget2(/*default_budget=*/0);
-  // The default budget is zero, so no buckets should have any
-  // remaining budget.
-  EXPECT_FALSE(budget2.HasRemainingBudget("foo"));
+  // The default budget is zero, so no buckets should have any remaining budget.
+  EXPECT_FALSE(budget2.HasRemainingBudget("foo", 100));
+}
+
+TEST(BudgetTest, HasRemainingBudgetWithPartialRange) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "a" budget: 2 }
+        buckets {
+          key: "b"
+          budget: 0
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+        buckets { key: "c" budget: 0 }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(state), IsOk());
+
+  EXPECT_TRUE(budget.HasRemainingBudget("a", 5));    // budget > 1
+  EXPECT_TRUE(budget.HasRemainingBudget("b", 5));    // Outside range [10, 20)
+  EXPECT_FALSE(budget.HasRemainingBudget("b", 10));  // Inside range
+  EXPECT_FALSE(budget.HasRemainingBudget("b", 19));  // Inside range
+  EXPECT_TRUE(budget.HasRemainingBudget("b", 20));   // Outside range
+
+  EXPECT_FALSE(budget.HasRemainingBudget("c", 100));  // budget 0
 }
 
 TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "bar" budget: 0 }
-  )pb");
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "bar" budget: 0 }
+      )pb");
   Budget budget(/*default_budget=*/std::nullopt);
   EXPECT_THAT(budget.Parse(state), IsOk());
   // Should have budget in any bucket unless it is explicitly exhausted.
-  EXPECT_TRUE(budget.HasRemainingBudget("foo"));
-  EXPECT_FALSE(budget.HasRemainingBudget("bar"));
+  EXPECT_TRUE(budget.HasRemainingBudget("foo", 100));
+  EXPECT_FALSE(budget.HasRemainingBudget("bar", 100));
 }
 
 TEST(BudgetTest, UpdateDefaultBudget) {
@@ -110,37 +177,251 @@ TEST(BudgetTest, UpdateDefaultBudget) {
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets { key: "foo" budget: 4 }
-                buckets { key: "bar" budget: 4 }
+                buckets {
+                  key: "foo"
+                  budget: 4
+                  consumed_range_start: 1
+                  consumed_range_end: 4
+                }
+                buckets {
+                  key: "bar"
+                  budget: 4
+                  consumed_range_start: 1
+                  consumed_range_end: 4
+                }
               )pb"));
 }
 
 TEST(BudgetTest, UpdateParsedBudget) {
   BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 3 }
+    buckets {
+      key: "foo"
+      budget: 3
+      consumed_range_start: 1
+      consumed_range_end: 4
+    }
     buckets { key: "bar" budget: 2 }
   )pb");
+
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
   // The set of buckets in the range tracker isn't the same.
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 5));
   EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The first bucket remains unchanged, the second bucket is updated, and
   // the third bucket is set to the default budget and then updated.
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets { key: "foo" budget: 3 }
-                buckets { key: "bar" budget: 1 }
-                buckets { key: "baz" budget: 4 }
+                buckets {
+                  key: "foo"
+                  budget: 3
+                  consumed_range_start: 1
+                  consumed_range_end: 4
+                }
+                buckets {
+                  key: "bar"
+                  budget: 1
+                  consumed_range_start: 1
+                  consumed_range_end: 5
+                }
+                buckets {
+                  key: "baz"
+                  budget: 4
+                  consumed_range_start: 2
+                  consumed_range_end: 3
+                }
               )pb"));
 }
 
-TEST(BudgetTest, UpdateExhaustedBudget) {
-  BudgetState state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" budget: 3 }
-    buckets { key: "bar" budget: 0 }
-  )pb");
+TEST(BudgetTest, UpdateBudgetNewRanges) {
+  Budget budget(/*default_budget=*/5);
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("bar", 10, 14));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 4
+          consumed_range_start: 1
+          consumed_range_end: 4
+        }
+        buckets {
+          key: "bar"
+          budget: 4
+          consumed_range_start: 10
+          consumed_range_end: 14
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateParsedBudgetExistingKeysNoOverlap) {
+  BudgetState initial_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 3
+          consumed_range_start: 1
+          consumed_range_end: 4
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(initial_state), IsOk());
+
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("foo", 10, 14));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget not decremented, consumed range extended
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 3
+          consumed_range_start: 1
+          consumed_range_end: 14
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateParsedBudgetExistingKeysOverlap) {
+  BudgetState initial_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 3
+          consumed_range_start: 1
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(initial_state), IsOk());
+
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("foo", 5, 14));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget decremented, new range is the current range
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 2
+          consumed_range_start: 5
+          consumed_range_end: 14
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateBudgetDecrementToZero) {
+  BudgetState initial_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 1
+          consumed_range_start: 1
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(initial_state), IsOk());
+
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("foo", 3, 9));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget zero, partial range is updated.
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 0
+          consumed_range_start: 3
+          consumed_range_end: 9
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateBudgetZeroConsumed) {
+  BudgetState initial_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 0
+          consumed_range_start: 0
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(initial_state), IsOk());
+
+  RangeTracker range_tracker;
+  EXPECT_TRUE(
+      range_tracker.AddRange("foo", 11, std::numeric_limits<uint64_t>::max()));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget zero, partial range is cleared.
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 0 }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateBudgetFullRange) {
+  Budget budget(/*default_budget=*/2);
+  RangeTracker range_tracker;
+  EXPECT_TRUE(
+      range_tracker.AddRange("foo", 0, std::numeric_limits<uint64_t>::max()));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget decremented, range fields are not set because it's a full range
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 1 }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateExhaustedBudgetPartialRange) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 3 }
+        buckets {
+          key: "bar"
+          budget: 0
+          consumed_range_start: 1
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(state), IsOk());
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST(BudgetTest, UpdateExhaustedBudgetNoPartialRange) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 3 }
+        buckets { key: "bar" budget: 0 }
+      )pb");
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
   RangeTracker range_tracker;
