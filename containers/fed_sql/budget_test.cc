@@ -322,6 +322,38 @@ TEST(BudgetTest, UpdateParsedBudgetExistingKeysOverlap) {
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
 }
 
+TEST(BudgetTest, UpdateParsedBudgetOldRangeNotContained) {
+  BudgetState initial_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 3
+          consumed_range_start: 5
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(initial_state), IsOk());
+
+  RangeTracker range_tracker;
+  // New range is not contained in the old range.
+  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 5));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Budget range expanded.
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets {
+          key: "foo"
+          budget: 3
+          consumed_range_start: 1
+          consumed_range_end: 10
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
 TEST(BudgetTest, UpdateBudgetDecrementToZero) {
   BudgetState initial_state = PARSE_TEXT_PROTO(
       R"pb(
