@@ -274,6 +274,7 @@ cc_library(
         ":inference_model",
         ":private_state",
         ":range_tracker",
+        ":row_set",
         ":sensitive_columns",
         ":session_utils",
         "//containers:big_endian",

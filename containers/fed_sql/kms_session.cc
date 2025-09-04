@@ -27,6 +27,7 @@
 #include "containers/big_endian.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/private_state.h"
+#include "containers/fed_sql/row_set.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
@@ -127,12 +128,12 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
-      dp_unit_parameters_(dp_unit_parameters),
       sensitive_values_key_(sensitive_values_key),
       reencryption_keys_(std::move(reencryption_keys)),
       reencryption_policy_hash_(reencryption_policy_hash),
       private_state_(std::move(private_state)),
-      signing_key_handle_(signing_key_handle) {
+      signing_key_handle_(signing_key_handle),
+      dp_unit_parameters_(dp_unit_parameters) {
   CHECK(reencryption_keys_.size() == 2)
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
@@ -291,15 +292,16 @@ KmsFedSqlSession::SessionAccumulate(
   if (inference_model_.HasModel()) {
     FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
+  // TODO: Calculate the DP unit for each row in the blob and add a RowLocation
+  // to uncommitted_row_locations_ to track it.
 
-  // Queue the blob so it can be processed on commit.
-  auto [unused, inserted] = uncommitted_inputs_.emplace(
-      blob_id, UncommittedInput{.contents = std::move(contents),
-                                .blob_header = std::move(blob_header)});
+  auto [unused, inserted] = uncommitted_blob_ids_.insert(blob_id);
   if (!inserted) {
     return ToSessionWriteFinishedResponse(
         absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
   }
+  uncommitted_inputs_.push_back(Input{.contents = std::move(contents),
+                                      .blob_header = std::move(blob_header)});
 
   return ToSessionWriteFinishedResponse(absl::OkStatus(),
                                         metadata.total_size_bytes());
@@ -352,7 +354,10 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
                            commit_config.range().end());
   absl::flat_hash_set<std::string> unique_key_ids;
   std::vector<absl::Status> ignored_errors;
-  for (auto& [blob_id, uncommitted_input] : uncommitted_inputs_) {
+  // Iterate over uncommitted_blob_ids_ and check that they're in the specified
+  // range.
+  // TODO: Update this to use partition keys instead of blob IDs.
+  for (auto blob_id : uncommitted_blob_ids_) {
     // Use the high 64 bit of the blob_id to check whether the blob is
     // in the specified range.
     uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
@@ -363,7 +368,10 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
                        range.start(), ", ", range.end(),
                        "), blob id (high 8 bytes): ", blob_id_high64));
     }
-
+  }
+  for (auto& uncommitted_input : uncommitted_inputs_) {
+    // TODO: Once we switch to using DP time unit for budget buckets, we'll need
+    // to use DP time units here instead of key ID.
     if (!uncommitted_input.blob_header.key_id().empty()) {
       unique_key_ids.insert(uncommitted_input.blob_header.key_id());
     }
@@ -408,6 +416,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
   SessionResponse response =
       ToSessionCommitResponse(absl::OkStatus(), uncommitted_inputs_.size(), {});
   uncommitted_inputs_.clear();
+  uncommitted_blob_ids_.clear();
   return response;
 }
 
