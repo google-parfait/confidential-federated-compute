@@ -25,6 +25,7 @@ trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
         "//program_executor_tee/program_context:program_runner",
+        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
     ],
     source_repo_names = [
         "federated_language",
