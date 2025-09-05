@@ -155,9 +155,8 @@ http_archive(
     integrity = "sha256-D6LGKBzoe+gELpS8yqVw8Ph9fWLlyeDbSZfv9Kvm4Hw=",
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
-        "//third_party/org_tensorflow_federated:eigen.patch",
+        "//third_party/org_tensorflow_federated:bazel_deps.patch",
         "//third_party/org_tensorflow_federated:package.patch",
-        "//third_party/org_tensorflow_federated:tensorflow_2_18.patch",
         "//third_party/org_tensorflow_federated:vizier.patch",
     ],
     strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
