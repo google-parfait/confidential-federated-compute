@@ -27,19 +27,14 @@ http_archive(
     url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
 )
 
-# Pin a newer version of gRPC than the one provided by Tensorflow.
-# 1.50.0 is used as it is the gRPC version used by FCP. It's not a requirement
-# for the versions to stay in sync if we need a feature of a later gRPC version,
-# but simplifies the configuration of the two projects if we can use the same
-# version.
 http_archive(
     name = "com_github_grpc_grpc",
     patches = [
         "//third_party/grpc:noexcept.patch",
     ],
-    sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
-    strip_prefix = "grpc-1.50.0",
-    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz",
+    sha256 = "7f42363711eb483a0501239fd5522467b31d8fe98d70d7867c6ca7b52440d828",
+    strip_prefix = "grpc-1.51.0",
+    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.51.0.tar.gz",
 )
 
 http_archive(
