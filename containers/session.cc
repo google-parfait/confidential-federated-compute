@@ -63,33 +63,47 @@ absl::Status SessionTracker::RemoveSession() {
   return absl::OkStatus();
 }
 
+WriteFinishedResponse ToWriteFinishedResponse(absl::Status status,
+                                              long committed_size_bytes) {
+  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
+  WriteFinishedResponse response;
+  response.mutable_status()->set_code(grpc_status.error_code());
+  response.mutable_status()->set_message(grpc_status.error_message());
+  response.set_committed_size_bytes(committed_size_bytes);
+  return response;
+}
+
 SessionResponse ToSessionWriteFinishedResponse(absl::Status status,
                                                long committed_size_bytes) {
-  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
   SessionResponse session_response;
-  WriteFinishedResponse* response = session_response.mutable_write();
-  response->mutable_status()->set_code(grpc_status.error_code());
-  response->mutable_status()->set_message(grpc_status.error_message());
-  response->set_committed_size_bytes(committed_size_bytes);
+  *session_response.mutable_write() =
+      ToWriteFinishedResponse(std::move(status), committed_size_bytes);
   return session_response;
+}
+
+CommitResponse ToCommitResponse(absl::Status status, int num_inputs_committed,
+                                std::vector<absl::Status> ignored_errors) {
+  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
+  CommitResponse response;
+  response.mutable_status()->set_code(grpc_status.error_code());
+  response.mutable_status()->set_message(grpc_status.error_message());
+  response.mutable_stats()->set_num_inputs_committed(num_inputs_committed);
+  for (absl::Status& ignored_error : ignored_errors) {
+    grpc::Status grpc_ignored_error = ToGrpcStatus(std::move(ignored_error));
+    auto* ignored_status = response.mutable_stats()->add_ignored_errors();
+
+    ignored_status->set_code(grpc_ignored_error.error_code());
+    ignored_status->set_message(grpc_ignored_error.error_message());
+  }
+  return response;
 }
 
 SessionResponse ToSessionCommitResponse(
     absl::Status status, int num_inputs_committed,
     std::vector<absl::Status> ignored_errors) {
-  grpc::Status grpc_status = ToGrpcStatus(std::move(status));
   SessionResponse session_response;
-  CommitResponse* response = session_response.mutable_commit();
-  response->mutable_status()->set_code(grpc_status.error_code());
-  response->mutable_status()->set_message(grpc_status.error_message());
-  response->mutable_stats()->set_num_inputs_committed(num_inputs_committed);
-  for (absl::Status& ignored_error : ignored_errors) {
-    grpc::Status grpc_ignored_error = ToGrpcStatus(std::move(ignored_error));
-    auto* ignored_status = response->mutable_stats()->add_ignored_errors();
-
-    ignored_status->set_code(grpc_ignored_error.error_code());
-    ignored_status->set_message(grpc_ignored_error.error_message());
-  }
+  *session_response.mutable_commit() = ToCommitResponse(
+      std::move(status), num_inputs_committed, std::move(ignored_errors));
   return session_response;
 }
 

@@ -17,8 +17,9 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 
-#include "absl/base/nullability.h"
-#include "absl/functional/any_invocable.h"
+#include <vector>
+
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -47,9 +48,18 @@ class SessionTracker {
   int max_num_sessions_;
 };
 
+// Creates WriteFinishedResponse.
+fcp::confidentialcompute::WriteFinishedResponse ToWriteFinishedResponse(
+    absl::Status status, long committed_size_bytes = 0);
+
 // Create a SessionResponse with a WriteFinishedResponse.
 fcp::confidentialcompute::SessionResponse ToSessionWriteFinishedResponse(
     absl::Status status, long committed_size_bytes = 0);
+
+// Creates CommitResponse.
+fcp::confidentialcompute::CommitResponse ToCommitResponse(
+    absl::Status status, int num_inputs_committed = 0,
+    std::vector<absl::Status> ignored_errors = {});
 
 // Create a SessionResponse with a CommitResponse.
 fcp::confidentialcompute::SessionResponse ToSessionCommitResponse(

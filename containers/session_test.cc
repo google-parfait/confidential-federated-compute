@@ -29,6 +29,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
 using ::testing::Eq;
@@ -69,6 +70,14 @@ TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
+TEST(SessionTest, ErrorToWriteFinishedResponseTest) {
+  WriteFinishedResponse response =
+      ToWriteFinishedResponse(absl::InvalidArgumentError("invalid arg"));
+  EXPECT_EQ(response.committed_size_bytes(), 0);
+  EXPECT_EQ(response.status().code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_EQ(response.status().message(), "invalid arg");
+}
+
 TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
   SessionResponse response =
       ToSessionWriteFinishedResponse(absl::InvalidArgumentError("invalid arg"));
@@ -77,6 +86,13 @@ TEST(SessionTest, ErrorToSessionWriteFinishedResponseTest) {
   EXPECT_EQ(response.write().status().code(),
             grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_EQ(response.write().status().message(), "invalid arg");
+}
+
+TEST(SessionTest, OkToWriteFinishedResponseTest) {
+  WriteFinishedResponse response = ToWriteFinishedResponse(absl::OkStatus(), 6);
+  EXPECT_EQ(response.committed_size_bytes(), 6);
+  EXPECT_EQ(response.status().code(), grpc::StatusCode::OK);
+  EXPECT_TRUE(response.status().message().empty());
 }
 
 TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
@@ -88,13 +104,13 @@ TEST(SessionTest, OkToSessionWriteFinishedResponseTest) {
   EXPECT_TRUE(response.write().status().message().empty());
 }
 
-TEST(SessionTest, ErrorToSessionCommitResponseTest) {
-  SessionResponse response = ToSessionCommitResponse(
+TEST(SessionTest, ErrorToCommitResponseTest) {
+  CommitResponse response = ToCommitResponse(
       /*status=*/absl::InvalidArgumentError("invalid arg"),
       /*num_inputs_committed*/ 0,
       /*ignored_errors=*/std::vector<absl::Status>{});
   EXPECT_THAT(
-      response.commit(),
+      response,
       AllOf(
           Property(
               &CommitResponse::status,
@@ -107,13 +123,56 @@ TEST(SessionTest, ErrorToSessionCommitResponseTest) {
                              Eq(0))))));
 }
 
-TEST(SessionTest, OkToSessionCommitResponseTest) {
-  SessionResponse response = ToSessionCommitResponse(
+TEST(SessionTest, ErrorToSessionCommitResponseTest) {
+  SessionResponse session_response = ToSessionCommitResponse(
+      /*status=*/absl::InvalidArgumentError("invalid arg"),
+      /*num_inputs_committed*/ 0,
+      /*ignored_errors=*/std::vector<absl::Status>{});
+  ASSERT_TRUE(session_response.has_commit());
+  EXPECT_THAT(
+      session_response.commit(),
+      AllOf(
+          Property(
+              &CommitResponse::status,
+              RpcStatusIs(grpc::StatusCode::INVALID_ARGUMENT, "invalid arg")),
+          Property(
+              &CommitResponse::stats,
+              AllOf(Property(&CommitResponse::CommitStats::num_inputs_committed,
+                             Eq(0)),
+                    Property(&CommitResponse::CommitStats::ignored_errors_size,
+                             Eq(0))))));
+}
+
+TEST(SessionTest, OkToCommitResponseTest) {
+  CommitResponse response = ToCommitResponse(
       /*status=*/absl::OkStatus(), /*num_inputs_committed=*/42,
       /*ignored_errors=*/
       std::vector<absl::Status>{absl::InvalidArgumentError("ignored")});
   EXPECT_THAT(
-      response.commit(),
+      response,
+      AllOf(
+          Property(&CommitResponse::status,
+                   RpcStatusIs(grpc::StatusCode::OK, IsEmpty())),
+          Property(
+              &CommitResponse::stats,
+              AllOf(Property(&CommitResponse::CommitStats::num_inputs_committed,
+                             Eq(42)),
+                    Property(&CommitResponse::CommitStats::ignored_errors_size,
+                             Eq(1)),
+                    Property(&CommitResponse::CommitStats::ignored_errors,
+                             ElementsAre(
+                                 RpcStatusIs(grpc::StatusCode::INVALID_ARGUMENT,
+                                             "ignored")))))));
+}
+
+TEST(SessionTest, OkToSessionCommitResponseTest) {
+  SessionResponse session_response = ToSessionCommitResponse(
+      /*status=*/absl::OkStatus(), /*num_inputs_committed=*/42,
+      /*ignored_errors=*/
+      std::vector<absl::Status>{absl::InvalidArgumentError("ignored")});
+  ASSERT_TRUE(session_response.has_commit());
+  EXPECT_THAT(
+      session_response.commit(),
       AllOf(
           Property(&CommitResponse::status,
                    RpcStatusIs(grpc::StatusCode::OK, IsEmpty())),
