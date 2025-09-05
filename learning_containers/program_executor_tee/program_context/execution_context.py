@@ -84,8 +84,13 @@ class TrustedContext(federated_language.program.FederatedContext):
         data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
         pointer) and returns a tff Value proto.
     """
-    cache_decorator = functools.lru_cache()
-    self._compiler_fn = cache_decorator(compiler_fn)
+
+    if compiler_fn is not None:
+      cache_decorator = functools.lru_cache()
+      self._compiler_fn = cache_decorator(compiler_fn)
+    else:
+      self._compiler_fn = None
+
     self._uri_to_value_cache = dict()
     self._parse_read_response_fn = parse_read_response_fn
 
