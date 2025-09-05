@@ -46,8 +46,24 @@ py_library(
 )
 
 py_test(
-    name = "execution_context_test",
-    srcs = ["execution_context_test.py"],
+    name = "execution_context_jax_test",
+    srcs = ["execution_context_jax_test.py"],
+    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_xla"],
+    tags = ["noasan"],
+    deps = [
+        ":execution_context",
+        ":test_helpers",
+        "//program_executor_tee/program_context/cc:fake_service_bindings",
+        "@federated_language//federated_language",
+        "@federated_language_jax//federated_language_jax/computation:jax_computation",
+        "@pypi//absl_py",
+        "@pypi//portpicker",
+    ],
+)
+
+py_test(
+    name = "execution_context_tensorflow_test",
+    srcs = ["execution_context_tensorflow_test.py"],
     data = ["//program_executor_tee/program_context/cc:computation_runner_binary_tensorflow"],
     tags = ["noasan"],
     deps = [
@@ -60,22 +76,6 @@ py_test(
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
         "@pypi//numpy",
-        "@pypi//portpicker",
-    ],
-)
-
-py_test(
-    name = "execution_context_jax_test",
-    srcs = ["execution_context_jax_test.py"],
-    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_xla"],
-    tags = ["noasan"],
-    deps = [
-        ":execution_context",
-        ":test_helpers",
-        "//program_executor_tee/program_context/cc:fake_service_bindings",
-        "@federated_language//federated_language",
-        "@federated_language_jax//federated_language_jax/computation:jax_computation",
-        "@pypi//absl_py",
         "@pypi//portpicker",
     ],
 )
