@@ -1,11 +1,15 @@
-# Replaces the federated_language_jax_pypi Python dependency with the
-# federated_language Bazel dependency.
+# Update computation visibility:
+#
+# ```
+# buildozer 'replace deps @eigen//:eigen @eigen_archive//:eigen3' //...:*
+# buildozer 'replace deps @federated_language_jax_pypi//federated_language @federated_language//federated_language' //...:*
+# ```
 
 diff --git federated_language_jax/backend/BUILD federated_language_jax/backend/BUILD
-index b008774..1e55995 100644
+index 2eea2bc..5694e15 100644
 --- federated_language_jax/backend/BUILD
 +++ federated_language_jax/backend/BUILD
-@@ -38,7 +38,7 @@ py_library(
+@@ -39,7 +39,7 @@ py_library(
      deps = [
          "//federated_language_jax/computation:jax_computation",
          "//federated_language_jax/executor:executor_factory",
@@ -14,7 +18,7 @@ index b008774..1e55995 100644
      ],
  )
 
-@@ -48,8 +48,8 @@ py_test(
+@@ -49,8 +49,8 @@ py_test(
      deps = [
          ":execution_contexts",
          "//federated_language_jax/computation:jax_computation",
@@ -25,11 +29,11 @@ index b008774..1e55995 100644
      ],
  )
 diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
-index 6d4f725..f411d04 100644
+index 774efd2..e116f04 100644
 --- federated_language_jax/computation/BUILD
 +++ federated_language_jax/computation/BUILD
 @@ -35,8 +35,8 @@ py_library(
-     visibility = ["//visibility:public"],
+     srcs = ["jax_computation.py"],
      deps = [
          ":jax_serialization",
 +        "@federated_language//federated_language",
@@ -57,30 +61,28 @@ index 6d4f725..f411d04 100644
  )
 
  py_test(
-@@ -78,9 +78,9 @@ py_library(
+@@ -78,8 +78,8 @@ py_library(
      deps = [
          ":jax_computation_context",
          ":xla_serialization",
 +        "@federated_language//federated_language",
-         "@federated_language//federated_language/common_libs:structure",
          "@federated_language//federated_language/proto:computation_py_pb2",
 -        "@federated_language_jax_pypi//federated_language",
          "@federated_language_jax_pypi//jax",
          "@federated_language_jax_pypi//numpy",
      ],
-@@ -91,10 +91,10 @@ py_test(
+@@ -90,9 +90,9 @@ py_test(
      srcs = ["jax_serialization_test.py"],
      deps = [
          ":jax_serialization",
 +        "@federated_language//federated_language",
-         "@federated_language//federated_language/common_libs:structure",
          "@federated_language//federated_language/proto:computation_py_pb2",
          "@federated_language_jax_pypi//absl_py",
 -        "@federated_language_jax_pypi//federated_language",
          "@federated_language_jax_pypi//jax",
          "@federated_language_jax_pypi//numpy",
      ],
-@@ -104,8 +104,8 @@ py_library(
+@@ -102,8 +102,8 @@ py_library(
      name = "xla_serialization",
      srcs = ["xla_serialization.py"],
      deps = [
@@ -90,7 +92,7 @@ index 6d4f725..f411d04 100644
          "@federated_language_jax_pypi//protobuf",
          "@xla//xla/python:xla_client",
      ],
-@@ -116,9 +116,9 @@ py_test(
+@@ -114,9 +114,9 @@ py_test(
      srcs = ["xla_serialization_test.py"],
      deps = [
          ":xla_serialization",
@@ -102,10 +104,10 @@ index 6d4f725..f411d04 100644
          "@federated_language_jax_pypi//numpy",
          "@federated_language_jax_pypi//protobuf",
 diff --git federated_language_jax/executor/BUILD federated_language_jax/executor/BUILD
-index 997cbaf..c11fca0 100644
+index 4c3306b..439a479 100644
 --- federated_language_jax/executor/BUILD
 +++ federated_language_jax/executor/BUILD
-@@ -39,9 +39,9 @@ py_library(
+@@ -40,9 +40,9 @@ py_library(
      srcs = ["executor_factory.py"],
      data = ["@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor_bindings"],
      deps = [
@@ -116,3 +118,12 @@ index 997cbaf..c11fca0 100644
          "@org_tensorflow_federated//tensorflow_federated/python/core/impl/executors:cpp_to_python_executor",
      ],
  )
+@@ -209,7 +209,7 @@ cc_test(
+         ":xla_utils",
+         "@abseil-cpp//absl/status",
+         "@abseil-cpp//absl/status:statusor",
+-        "@eigen",
++        "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
