@@ -342,7 +342,7 @@ python_init_repositories(
     ],
     local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
-        "3.10": "//:requirements_lock_3_10.txt",
+        "3.10": "@org_tensorflow//:requirements_lock_3_10.txt",
     },
 )
 
