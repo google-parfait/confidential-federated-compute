@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "program_worker/program_worker_server.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/statusor.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/tff_execution_helper.h"
@@ -27,6 +28,11 @@
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_worker {
+
+extern "C" {
+extern void* enter_tokio_runtime();
+extern void exit_tokio_runtime(void* guard_ptr);
+}
 
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidentialcompute::ComputationRequest;
@@ -95,6 +101,11 @@ grpc::Status ProgramWorkerTee::Execute(ServerContext* context,
         grpc::StatusCode::INVALID_ARGUMENT,
         "ComputationRequest cannot be unpacked to noise SessionRequest.");
   }
+
+  // Enter the Rust runtime to get the key for session binding.
+  void* guard_ptr = enter_tokio_runtime();
+  auto cleanup =
+      absl::MakeCleanup([guard_ptr] { exit_tokio_runtime(guard_ptr); });
 
   // Perform handshake until the channel is open.
   if (!server_session_->IsOpen()) {

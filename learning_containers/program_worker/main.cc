@@ -30,8 +30,8 @@
 #include "proto/session/session.pb.h"
 
 extern "C" {
-extern ::oak::session::SessionConfig* create_session_config(
-    const char* endorsed_evidence_bytes, size_t endorsed_evidence_len);
+extern ::oak::session::SessionConfig* create_session_config();
+extern void init_tokio_runtime();
 }
 namespace confidential_federated_compute::program_worker {
 
@@ -42,6 +42,7 @@ namespace bindings = ::oak::session::bindings;
 
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
+using ::oak::containers::sdk::OrchestratorClient;
 using ::oak::session::AttestationType;
 using ::oak::session::HandshakeType;
 using ::oak::session::SessionConfig;
@@ -53,18 +54,9 @@ static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 void RunServer() {
   std::string server_address("[::]:8080");
 
-  oak::containers::sdk::OrchestratorClient orchestrator_client;
-  absl::StatusOr<oak::session::v1::EndorsedEvidence> endorsed_evidence =
-      orchestrator_client.GetEndorsedEvidence();
-  if (!endorsed_evidence.ok()) {
-    LOG(FATAL) << "Failed to get endorsed evidence. Orchestrator returned "
-                  "error status: "
-               << endorsed_evidence.status().code() << ": "
-               << endorsed_evidence.status().message();
-  }
-  std::string endorsed_evidence_bytes = endorsed_evidence->SerializeAsString();
-  auto* session_config = create_session_config(
-      endorsed_evidence_bytes.data(), endorsed_evidence_bytes.length());
+  // Initialize the Rust runtime to create the session config.
+  init_tokio_runtime();
+  auto* session_config = create_session_config();
   auto service = ProgramWorkerTee::Create(session_config);
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
@@ -77,7 +69,7 @@ void RunServer() {
   std::unique_ptr<Server> server = builder.BuildAndStart();
   LOG(INFO) << "Program Worker Server listening on " << server_address << "\n";
 
-  CHECK_OK(orchestrator_client.NotifyAppReady());
+  CHECK_OK(OrchestratorClient().NotifyAppReady());
   server->Wait();
 }
 

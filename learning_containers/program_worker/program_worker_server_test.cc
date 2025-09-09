@@ -42,6 +42,10 @@
 
 namespace confidential_federated_compute::program_worker {
 
+extern "C" {
+extern void init_tokio_runtime();
+}
+
 namespace {
 
 namespace ffi_bindings = ::oak::ffi::bindings;
@@ -166,6 +170,7 @@ class ProgramWorkerTeeServerTest : public Test {
   ProgramWorkerTeeServerTest() {
     int port;
     const std::string server_address = "[::1]:";
+    init_tokio_runtime();
     auto service = ProgramWorkerTee::Create(TestConfigAttestedNNServer());
     CHECK_OK(service);
     service_ = std::move(service.value());

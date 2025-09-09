@@ -12,16 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
-use oak_proto_rust::oak::session::v1::EndorsedEvidence;
 use oak_sdk_common::{StaticAttester, StaticEndorser};
-use oak_sdk_containers::InstanceSessionBinder;
+use oak_sdk_containers::{InstanceSessionBinder, OrchestratorClient};
 use oak_session::session_binding::SessionBinder;
 use oak_session::{attestation::AttestationType, config::SessionConfig, handshake::HandshakeType};
-use prost::Message;
+use once_cell::sync::Lazy;
+use std::ffi::c_void;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 
 const SESSION_ID: &str = "cfc_program_worker";
+
+pub static RUNTIME: Lazy<Runtime> =
+    Lazy::new(|| Builder::new_multi_thread().enable_all().build().unwrap());
+
+/// Initializes the Tokio runtime context.
+#[no_mangle]
+pub extern "C" fn init_tokio_runtime() {
+    Lazy::force(&RUNTIME);
+    println!("Rust runtime is running");
+}
+
+/// Enters the Tokio runtime context and returns an opaque handle.
+///
+/// The caller is responsible for calling `exit_tokio_runtime` with this
+/// handle to exit the context. Failure to do so will lead to resource leaks.
+#[no_mangle]
+pub extern "C" fn enter_tokio_runtime() -> *mut c_void {
+    println!("Rust: enter_tokio_runtime called");
+    // Create an EnterGuard and keep it alive on the heap.
+    let guard = Box::new(RUNTIME.enter());
+    // Return a raw, type-erased pointer to the C++ caller.
+    Box::into_raw(guard) as *mut c_void
+}
+
+/// Exits the Tokio runtime context using the handle from `enter_tokio_runtime`.
+#[no_mangle]
+pub extern "C" fn exit_tokio_runtime(guard_ptr: *mut c_void) {
+    println!("Rust: exit_tokio_runtime called");
+    if guard_ptr.is_null() {
+        return;
+    }
+    // Reconstruct the Box from the raw pointer. The guard is dropped at the
+    // end of this scope, which exits the Tokio context.
+    unsafe {
+        let _ = Box::from_raw(guard_ptr as *mut tokio::runtime::EnterGuard);
+    }
+}
 
 /// Creates a SessionConfig for the program worker.
 ///
@@ -49,22 +86,18 @@ const SESSION_ID: &str = "cfc_program_worker";
 /// buffer. Data must not be modified during this function call. It may be
 /// modified or discarded after, as this function will make its own copy.
 #[no_mangle]
-pub unsafe extern "C" fn create_session_config(
-    endorsed_evidence_bytes: *const u8,
-    endorsed_evidence_len: usize,
-) -> *mut SessionConfig {
-    let runtime = Runtime::new().expect("Failed to create Tokio runtime");
-    let channel = runtime
+pub unsafe extern "C" fn create_session_config() -> *mut SessionConfig {
+    let channel = RUNTIME
         .block_on(oak_sdk_containers::default_orchestrator_channel())
         .expect("Failed to create orchestrator channel");
-
-    let endorsed_evidence_slice =
-        std::slice::from_raw_parts(endorsed_evidence_bytes, endorsed_evidence_len);
-    let endorsed_evidence =
-        EndorsedEvidence::decode(endorsed_evidence_slice).expect("failed to decode evidence");
+    let mut orchestrator_client = OrchestratorClient::create(&channel);
+    let endorsed_evidence = RUNTIME
+        .block_on(orchestrator_client.get_endorsed_evidence())
+        .expect("failed to get endorsed evidence");
     let evidence = endorsed_evidence.evidence.expect("EndorsedEvidence.evidence not set");
     let endorsements =
         endorsed_evidence.endorsements.expect("EndorsedEvidence.endorsements not set");
+
     let attester: Arc<dyn Attester> = Arc::new(StaticAttester::new(evidence.clone()));
     let endorser: Arc<dyn Endorser> = Arc::new(StaticEndorser::new(endorsements.clone()));
     let session_binder: Arc<dyn SessionBinder> = Arc::new(InstanceSessionBinder::create(&channel));

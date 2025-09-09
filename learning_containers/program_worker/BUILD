@@ -26,6 +26,7 @@ cc_library(
     hdrs = ["program_worker_server.h"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -57,6 +58,7 @@ cc_test(
     ],
     deps = [
         ":program_worker_server",
+        ":session_config",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -88,7 +90,7 @@ rust_library(
         "@oak//oak_sdk/common:oak_sdk_common",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak//oak_session",
-        "@oak_crates_index//:prost",
+        "@oak_crates_index//:once_cell",
         "@oak_crates_index//:tokio",
     ],
 )
