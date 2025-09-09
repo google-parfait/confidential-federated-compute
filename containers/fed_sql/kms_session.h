@@ -28,9 +28,9 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
-#include "containers/fed_sql/row_set.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
+#include "containers/sql/row_set.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -122,9 +122,7 @@ class KmsFedSqlSession final
 
   absl::StatusOr<
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
-  ExecuteClientQuery(
-      const SqlConfiguration& configuration,
-      std::vector<tensorflow_federated::aggregation::Tensor> contents);
+  ExecuteClientQuery(const SqlConfiguration& configuration, sql::RowSet rows);
   // Encrypts the intermediate result for this session.
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
       absl::string_view plaintext);
@@ -147,7 +145,7 @@ class KmsFedSqlSession final
   std::string reencryption_policy_hash_;
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
-  std::vector<Input> uncommitted_inputs_;
+  std::vector<sql::Input> uncommitted_inputs_;
   // The blob IDs of the uncommitted inputs.
   absl::flat_hash_set<absl::uint128> uncommitted_blob_ids_;
   // Tracks committed ranges of blobs for this session.

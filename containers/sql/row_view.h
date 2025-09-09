@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_VIEW_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_VIEW_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +22,7 @@
 #include "fcp/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::sql {
 
 // A non-owning view of a single row, which is composed of elements from
 // multiple columns (Tensors).
@@ -56,6 +56,6 @@ class RowView {
   uint32_t row_index_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::sql
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_VIEW_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_

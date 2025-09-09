@@ -11,9 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/fed_sql/row_view.h"
+#include "containers/sql/row_view.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::sql {
 
 absl::StatusOr<RowView> RowView::Create(
     absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
@@ -30,4 +30,4 @@ absl::StatusOr<RowView> RowView::Create(
 
   return RowView(columns, row_index);
 }
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::sql

@@ -40,6 +40,7 @@ namespace {
 using ::absl_testing::IsOk;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::sql::RowLocation;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::AggVector;
@@ -55,6 +56,8 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::FieldsAre;
 using ::testing::PrintToString;
 using ::testing::UnorderedElementsAre;
 
@@ -195,6 +198,47 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
               UnorderedElementsAre(
                   Int64TensorEq(std::vector<int64_t>{8}),
                   StringTensorEq(std::vector<absl::string_view>{"abc"})));
+}
+
+TEST(CreateRowLocationsForAllRowsTest, EmptyColumnsVectorReturnsEmpty) {
+  EXPECT_THAT(CreateRowLocationsForAllRows({}), ::testing::IsEmpty());
+}
+
+TEST(CreateRowLocationsForAllRowsTest, ColumnsWithZeroRowsReturnsEmpty) {
+  absl::StatusOr<Tensor> tensor = Tensor::Create(
+      DataType::DT_INT64, TensorShape({0}), CreateTestData<int64_t>({}));
+  ASSERT_THAT(tensor, IsOk());
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*tensor));
+  EXPECT_THAT(CreateRowLocationsForAllRows(std::move(tensors)),
+              ::testing::IsEmpty());
+}
+
+TEST(CreateRowLocationsForAllRowsTest, SingleColumnReturnsCorrectLocations) {
+  absl::StatusOr<Tensor> tensor =
+      Tensor::Create(DataType::DT_INT64, TensorShape({3}),
+                     CreateTestData<int64_t>({10, 20, 30}));
+  ASSERT_THAT(tensor, IsOk());
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*tensor));
+  auto locations = CreateRowLocationsForAllRows(std::move(tensors));
+  EXPECT_THAT(locations, ElementsAre(FieldsAre(0, 0, 0), FieldsAre(0, 0, 1),
+                                     FieldsAre(0, 0, 2)));
+}
+
+TEST(CreateRowLocationsForAllRowsTest, MultipleColumnsReturnsCorrectLocations) {
+  absl::StatusOr<Tensor> tensor1 = Tensor::Create(
+      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({10, 20}));
+  ASSERT_THAT(tensor1, IsOk());
+  absl::StatusOr<Tensor> tensor2 =
+      Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                     CreateTestData<absl::string_view>({"a", "b"}));
+  ASSERT_THAT(tensor2, IsOk());
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*tensor1));
+  tensors.push_back(std::move(*tensor2));
+  auto locations = CreateRowLocationsForAllRows(std::move(tensors));
+  EXPECT_THAT(locations, ElementsAre(FieldsAre(0, 0, 0), FieldsAre(0, 0, 1)));
 }
 
 }  // namespace

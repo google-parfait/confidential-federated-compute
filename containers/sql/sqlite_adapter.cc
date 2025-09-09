@@ -24,6 +24,8 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "containers/sql/row_set.h"
+#include "containers/sql/row_view.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -75,43 +77,47 @@ class StatementFinalizer final {
 // ordinal: The index of the SQL parameter to be set. The leftmost SQL parameter
 // has an index of 1.
 //
-// row_num: The index of the value to bind in `column_values`.
+// row: The row containing the value to bind.
 //
-// column_values: A `Values` representing a column.
-//
-// column_type: The data type of `column_values`.
+// col_index: The index of the column in the row.
 //
 // status_util: Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
-absl::Status BindSqliteParameter(sqlite3_stmt* stmt, int ordinal, int row_num,
-                                 const Tensor& column,
-                                 const SqliteResultHandler& status_util) {
-  switch (column.dtype()) {
+inline absl::Status BindValue(sqlite3_stmt* stmt, int ordinal,
+                              const RowView& row, int col_index,
+                              const SqliteResultHandler& status_util) {
+  int bind_result;
+  switch (row.GetColumnType(col_index)) {
     case DataType::DT_INT32:
-      return status_util.ToStatus(sqlite3_bind_int(
-          stmt, ordinal, column.AsSpan<int32_t>().at(row_num)));
+      bind_result =
+          sqlite3_bind_int(stmt, ordinal, row.GetValue<int32_t>(col_index));
+      break;
     case DataType::DT_INT64:
-      return status_util.ToStatus(sqlite3_bind_int64(
-          stmt, ordinal, column.AsSpan<int64_t>().at(row_num)));
+      bind_result =
+          sqlite3_bind_int64(stmt, ordinal, row.GetValue<int64_t>(col_index));
+      break;
     case DataType::DT_FLOAT:
-      return status_util.ToStatus(sqlite3_bind_double(
-          stmt, ordinal, column.AsSpan<float>().at(row_num)));
+      bind_result =
+          sqlite3_bind_double(stmt, ordinal, row.GetValue<float>(col_index));
+      break;
     case DataType::DT_DOUBLE:
-      return status_util.ToStatus(sqlite3_bind_double(
-          stmt, ordinal, column.AsSpan<double>().at(row_num)));
+      bind_result =
+          sqlite3_bind_double(stmt, ordinal, row.GetValue<double>(col_index));
+      break;
     case DataType::DT_STRING: {
       absl::string_view string_value =
-          column.AsSpan<absl::string_view>().at(row_num);
-      return status_util.ToStatus(
-          sqlite3_bind_blob(stmt, ordinal, string_value.data(),
-                            string_value.size(), SQLITE_TRANSIENT));
+          row.GetValue<absl::string_view>(col_index);
+      bind_result = sqlite3_bind_blob(stmt, ordinal, string_value.data(),
+                                      string_value.size(), SQLITE_TRANSIENT);
+      break;
     }
     default:
       return absl::InvalidArgumentError(
           absl::StrFormat("Column type: %d is not a valid column type, can't "
                           "bind value to this column.",
-                          column.dtype()));
+                          row.GetColumnType(col_index)));
   }
+  return status_util.ToStatus(bind_result);
 }
 
 // Validate that the output columns for the prepared SQL statement match the
@@ -219,16 +225,6 @@ absl::StatusOr<DataType> SqlDataTypeToTensorDtype(
   }
 }
 
-absl::Status ValidateInputColumns(const std::vector<Tensor>& columns,
-                                  int num_rows) {
-  for (const Tensor& column : columns) {
-    if (column.num_elements() != num_rows) {
-      return absl::InvalidArgumentError("Column has the wrong number of rows");
-    }
-  }
-  return absl::OkStatus();
-}
-
 // Escapes a SQL column name for use in an INSERT statement. This function can
 // be used to work around the fact that column names cannot be dynamically bound
 // to a prepared statement.
@@ -297,8 +293,7 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
   return absl::OkStatus();
 }
 
-absl::Status SqliteAdapter::InsertRows(const std::vector<Tensor>& contents,
-                                       int start_row_index, int end_row_index,
+absl::Status SqliteAdapter::InsertRows(const RowSet& rows,
                                        absl::string_view insert_stmt) {
   sqlite3_stmt* stmt;
   FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
@@ -306,10 +301,10 @@ absl::Status SqliteAdapter::InsertRows(const std::vector<Tensor>& contents,
   StatementFinalizer finalizer(stmt);
 
   int ordinal = 1;
-  for (int row_num = start_row_index; row_num < end_row_index; ++row_num) {
-    for (int col_num = 0; col_num < contents.size(); ++col_num) {
-      FCP_RETURN_IF_ERROR(BindSqliteParameter(
-          stmt, ordinal, row_num, contents.at(col_num), result_handler_));
+  for (const auto& row : rows) {
+    for (int col_num = 0; col_num < row.GetColumnCount(); ++col_num) {
+      FCP_RETURN_IF_ERROR(
+          BindValue(stmt, ordinal, row, col_num, result_handler_));
       ordinal++;
     }
   }
@@ -320,22 +315,18 @@ absl::Status SqliteAdapter::InsertRows(const std::vector<Tensor>& contents,
   return absl::OkStatus();
 }
 
-absl::Status SqliteAdapter::AddTableContents(
-    const std::vector<Tensor>& contents, int num_rows) {
+absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
   if (!table_schema_.has_value()) {
     return absl::InvalidArgumentError(
         "`DefineTable` must be called before adding to the table contents.");
   }
-  if (num_rows == 0) {
-    return absl::OkStatus();
-  }
-  FCP_RETURN_IF_ERROR(ValidateInputColumns(contents, num_rows));
 
   // Insert each row into the table, using parameterized query syntax:
   // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ...), (?, ?, ...), ...;
-  std::vector<std::string> column_names(table_schema_->column_size());
+  std::vector<std::string> column_names;
+  column_names.reserve(table_schema_->column_size());
   for (int i = 0; i < table_schema_->column_size(); ++i) {
-    column_names[i] = table_schema_->column(i).name();
+    column_names.push_back(table_schema_->column(i).name());
   }
   std::string row_template = absl::StrFormat(
       "(%s)",
@@ -350,10 +341,11 @@ absl::Status SqliteAdapter::AddTableContents(
   int full_batch_size = kSqliteVariableLimit / column_names.size();
 
   std::string insert_stmt;
-  int current_row = 0;
+  size_t current_row = 0;
   int batch_size = 0;
-  while (current_row < num_rows) {
-    int next_batch_size = std::min(full_batch_size, num_rows - current_row);
+  while (current_row < rows.size()) {
+    int next_batch_size =
+        std::min<int>(full_batch_size, rows.size() - current_row);
     if (next_batch_size != batch_size) {
       batch_size = next_batch_size;
       insert_stmt = absl::StrCat(
@@ -361,8 +353,8 @@ absl::Status SqliteAdapter::AddTableContents(
           absl::StrJoin(
               std::vector<absl::string_view>(batch_size, row_template), ", "));
     }
-    FCP_RETURN_IF_ERROR(InsertRows(contents, current_row,
-                                   current_row + batch_size, insert_stmt));
+    FCP_RETURN_IF_ERROR(
+        InsertRows(rows.subspan(current_row, batch_size), insert_stmt));
     current_row += batch_size;
   }
 

@@ -75,6 +75,15 @@ EncryptSessionResult(
     const fcp::confidentialcompute::BlobMetadata& input_metadata,
     absl::string_view unencrypted_result,
     uint32_t output_access_policy_node_id);
-}  // namespace confidential_federated_compute::fed_sql
 
+// Creates a RowLocation for each row in `columns`. All columns must have the
+// same number of rows.
+// Helper function for creating RowLocations for the contents of a single
+// input. This will be used while custom DP units is still in development,
+// however, eventually all uses will group rows by DP unit.
+std::vector<confidential_federated_compute::sql::RowLocation>
+CreateRowLocationsForAllRows(
+    const std::vector<tensorflow_federated::aggregation::Tensor>& columns);
+
+}  // namespace confidential_federated_compute::fed_sql
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/row_set.h"
+#include "containers/sql/row_set.h"
 
 #include <cstdint>
 #include <string>
@@ -25,7 +25,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::sql {
 namespace {
 
 using ::tensorflow_federated::aggregation::CreateTestData;
@@ -164,4 +164,4 @@ TEST_F(RowSetTest, DereferenceInvalidRowDeathTest) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::sql

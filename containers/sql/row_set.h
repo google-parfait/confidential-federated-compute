@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_SET_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_SET_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -21,12 +21,12 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "containers/fed_sql/row_view.h"
+#include "containers/sql/row_view.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::sql {
 struct RowLocation {
   uint64_t dp_unit_hash;  // Hash of the DP unit identifiers.
   uint32_t input_index;   // Index into the primary Input storage
@@ -116,11 +116,18 @@ class RowSet {
   Iterator begin() const { return Iterator::Begin(locations_, storage_); }
   Iterator end() const { return Iterator::End(locations_, storage_); }
 
+  size_t size() const { return locations_.size(); }
+
+  RowSet subspan(size_t pos = 0,
+                 size_t count = absl::Span<const RowLocation>::npos) const {
+    return RowSet(locations_.subspan(pos, count), storage_);
+  }
+
  private:
   absl::Span<const RowLocation> locations_;
   absl::Span<const Input> storage_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::sql
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ROW_SET_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_

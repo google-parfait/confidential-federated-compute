@@ -251,6 +251,7 @@ cc_library(
         ":sensitive_columns",
         ":session_utils",
         "//containers:session",
+        "//containers/sql:row_set",
         "//containers/sql:sqlite_adapter",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -274,12 +275,12 @@ cc_library(
         ":inference_model",
         ":private_state",
         ":range_tracker",
-        ":row_set",
         ":sensitive_columns",
         ":session_utils",
         "//containers:big_endian",
         "//containers:crypto",
         "//containers:session",
+        "//containers/sql:row_set",
         "//containers/sql:sqlite_adapter",
         "@boringssl//:crypto",
         "@com_github_grpc_grpc//:grpc++",
@@ -449,59 +450,6 @@ cc_library(
     hdrs = ["private_state.h"],
     deps = [
         ":budget",
-    ],
-)
-
-cc_library(
-    name = "row_set",
-    hdrs = ["row_set.h"],
-    deps = [
-        ":row_view",
-        "@com_google_absl//absl/types:span",
-        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-    ],
-)
-
-cc_test(
-    name = "row_set_test",
-    size = "small",
-    srcs = ["row_set_test.cc"],
-    deps = [
-        ":row_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-    ],
-)
-
-cc_library(
-    name = "row_view",
-    srcs = ["row_view.cc"],
-    hdrs = ["row_view.h"],
-    deps = [
-        "@com_google_absl//absl/types:span",
-        "@federated-compute//fcp/base:base",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-    ],
-)
-
-cc_test(
-    name = "row_view_test",
-    size = "small",
-    srcs = ["row_view_test.cc"],
-    deps = [
-        ":row_view",
-        "//testing:matchers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
 
