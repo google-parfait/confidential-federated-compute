@@ -20,6 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "containers/sql/row_set.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -75,9 +76,7 @@ class SqliteAdapter {
   // The table must be created first via the most recent call to `DefineTable`,
   // and the column order of `contents` must match the schema specified for
   // `DefineTable`.
-  absl::Status AddTableContents(
-      const std::vector<tensorflow_federated::aggregation::Tensor>& contents,
-      int num_rows);
+  absl::Status AddTableContents(const RowSet& rows);
 
   // Evaluates the given SQL `query` statement, producing results matching the
   // provided `output_columns`.
@@ -93,15 +92,11 @@ class SqliteAdapter {
   explicit SqliteAdapter(ABSL_ATTRIBUTE_LIFETIME_BOUND sqlite3* db)
       : result_handler_(db), db_(db) {}
 
-  // Insert rows from `contents` from `start_row_index` (inclusive) to
-  // `end_row_index` (exclusive).
+  // Insert rows from `rows`.
   // `insert_stmt` should be of the form
   // "INSERT INTO <table name> (<col name 1>, <col name 2>, ...) VALUES (?, ?,
-  // ...), ..." and the columns should match `contents`, and the number of rows
-  // should match `end_row_index -  start_row_index`.
-  absl::Status InsertRows(
-      const std::vector<tensorflow_federated::aggregation::Tensor>& contents,
-      int start_row_index, int end_row_index, absl::string_view insert_stmt);
+  // ...), ..." and the columns should match those in `rows`.
+  absl::Status InsertRows(const RowSet& rows, absl::string_view insert_stmt);
 
   SqliteResultHandler result_handler_;
   sqlite3* db_;

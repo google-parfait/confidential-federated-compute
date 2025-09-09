@@ -27,10 +27,10 @@
 #include "containers/big_endian.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/private_state.h"
-#include "containers/fed_sql/row_set.h"
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
+#include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
@@ -50,6 +50,9 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
+using ::confidential_federated_compute::sql::Input;
+using ::confidential_federated_compute::sql::RowLocation;
+using ::confidential_federated_compute::sql::RowSet;
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -147,15 +150,11 @@ KmsFedSqlSession::KmsFedSqlSession(
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
 KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
-                                     std::vector<Tensor> contents) {
+                                     RowSet rows) {
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
-  if (!contents.empty()) {
-    int num_rows = contents.at(0).num_elements();
-    FCP_RETURN_IF_ERROR(
-        sqlite->AddTableContents(std::move(contents), num_rows));
-  }
+  FCP_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
   FCP_ASSIGN_OR_RETURN(
       std::vector<Tensor> result,
       sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
@@ -369,6 +368,7 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
                        "), blob id (high 8 bytes): ", blob_id_high64));
     }
   }
+  // TODO: Group rows by DP unit if DP parameters are configured.
   for (auto& uncommitted_input : uncommitted_inputs_) {
     // TODO: Once we switch to using DP time unit for budget buckets, we'll need
     // to use DP time units here instead of key ID.
@@ -378,11 +378,12 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
     std::unique_ptr<CheckpointParser> parser;
     // Execute the per-client SQL query if configured on each uncommitted blob.
     if (sql_configuration_.has_value()) {
-      // TODO: b/432091990 - Update ExecuteClientQuery to accept a row
-      // iterator instead of a vector of tensors.
+      absl::Span<Input> storage = absl::MakeSpan(&uncommitted_input, 1);
+      std::vector<RowLocation> row_locations =
+          CreateRowLocationsForAllRows(uncommitted_input.contents);
+      RowSet row_set(row_locations, storage);
       absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
-          ExecuteClientQuery(*sql_configuration_,
-                             std::move(uncommitted_input.contents));
+          ExecuteClientQuery(*sql_configuration_, row_set);
       if (!sql_result_parser.ok()) {
         // Ignore this blob, but continue processing other blobs.
         ignored_errors.push_back(sql_result_parser.status());

@@ -24,6 +24,7 @@
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
+#include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
@@ -99,10 +100,13 @@ FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
                        SqliteAdapter::Create());
   FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
   if (contents.size() > 0) {
-    int num_rows = contents.at(0).num_elements();
     FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-    FCP_RETURN_IF_ERROR(
-        sqlite->AddTableContents(std::move(contents), num_rows));
+    sql::Input input{.contents = std::move(contents)};
+    absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
+    std::vector<sql::RowLocation> row_locations =
+        CreateRowLocationsForAllRows(input.contents);
+    sql::RowSet row_set(row_locations, storage);
+    FCP_RETURN_IF_ERROR(sqlite->AddTableContents(row_set));
   }
   FCP_ASSIGN_OR_RETURN(
       std::vector<Tensor> result,
@@ -220,7 +224,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::FinalizeSession(
             "This may be because inputs were ignored due to an earlier error.");
       }
 
-      // Extract unecrypted checkpoint from the aggregator.
+      // Extract unencrypted checkpoint from the aggregator.
       // Using the scope below ensures that both CheckpointBuilder and Cord
       // are promptly deleted.
       std::string unencrypted_result;

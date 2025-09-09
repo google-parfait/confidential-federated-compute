@@ -27,6 +27,7 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
+using ::confidential_federated_compute::sql::RowLocation;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
@@ -111,4 +112,19 @@ absl::StatusOr<std::tuple<BlobMetadata, std::string>> EncryptSessionResult(
                                input_header.access_policy_sha256(),
                                output_access_policy_node_id);
 }
+
+// Creates a RowLocation for each row in the contents.
+std::vector<RowLocation> CreateRowLocationsForAllRows(
+    const std::vector<Tensor>& columns) {
+  if (columns.empty()) {
+    return {};
+  }
+  std::vector<RowLocation> locations;
+  locations.reserve(columns.at(0).num_elements());
+  for (uint32_t i = 0; i < columns.at(0).num_elements(); ++i) {
+    locations.push_back({.dp_unit_hash = 0, .input_index = 0, .row_index = i});
+  }
+  return locations;
+}
+
 }  // namespace confidential_federated_compute::fed_sql
