@@ -17,7 +17,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/crypto.h"
@@ -27,7 +29,6 @@
 
 namespace confidential_federated_compute::minimum_jax {
 
-// Not thread safe
 class SimpleSession final
     : public confidential_federated_compute::LegacySession {
  public:
@@ -40,7 +41,7 @@ class SimpleSession final
   // Adds a data blob from a given URI into the session and caches it.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
       const fcp::confidentialcompute::WriteRequest& write_request,
-      std::string unencrypted_data) override;
+      std::string unencrypted_data) override ABSL_LOCKS_EXCLUDED(mutex_);
   // No-op
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
       const fcp::confidentialcompute::CommitRequest& commit_request) override {
@@ -49,10 +50,12 @@ class SimpleSession final
   // Perform computation on all cached data.
   absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
       const fcp::confidentialcompute::FinalizeRequest& request,
-      const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+      const fcp::confidentialcompute::BlobMetadata& input_metadata) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  std::vector<std::string> data_;
+  std::vector<std::string> data_ ABSL_GUARDED_BY(mutex_);
+  absl::Mutex mutex_;
 };
 
 class SimpleConfidentialTransform final
