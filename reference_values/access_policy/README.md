@@ -31,3 +31,16 @@ Processing of Gboard data with TEE-hosted confidential federated computations
 will use differential privacy to produce anonymized results. We expect Gboard's
 use of confidential federated computations to evolve over time, and any changes
 to these details will be reflected here.
+
+## Private Compute Services
+
+[Private Compute Services](https://play.google.com/store/apps/details?id=com.google.android.as.oss)
+uses the values in
+[`private_compute_services.txtpb`](private_compute_services.txtpb) to validate
+access policy endorsements.
+
+Processing of Private Compute Services data with TEE-hosted confidential
+federated computations will use differential privacy to produce anonymized
+results. We expect Private Compute Services's use of confidential federated
+computations to evolve over time, and any changes to these details will be
+reflected here.
