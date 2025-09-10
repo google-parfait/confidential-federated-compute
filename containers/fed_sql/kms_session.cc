@@ -62,16 +62,20 @@ using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
+using ::fcp::confidentialcompute::CommitResponse;
+using ::fcp::confidentialcompute::ConfigureRequest;
+using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
-using ::fcp::confidentialcompute::FinalResultConfiguration;
+using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
@@ -199,21 +203,20 @@ KmsFedSqlSession::EncryptFinalResult(absl::string_view plaintext) {
   BlobMetadata metadata =
       CreateBlobMetadata(encrypted_message, associated_data);
 
-  FinalResultConfiguration final_result_configuration;
-  final_result_configuration.set_release_token(
+  FinalizeResponse finalize_response;
+  finalize_response.set_release_token(
       std::move(encrypted_message.release_token));
 
-  return EncryptedResult{
-      .ciphertext = std::move(encrypted_message.ciphertext),
-      .metadata = std::move(metadata),
-      .final_result_configuration = std::move(final_result_configuration)};
+  return EncryptedResult{.ciphertext = std::move(encrypted_message.ciphertext),
+                         .metadata = std::move(metadata),
+                         .finalize_response = std::move(finalize_response)};
 }
 
-absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
-    const WriteRequest& write_request, std::string unencrypted_data) {
+absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::Write(
+    WriteRequest request, std::string unencrypted_data, Context& context) {
   FedSqlContainerWriteConfiguration write_config;
-  if (!write_request.first_request_configuration().UnpackTo(&write_config)) {
-    return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+  if (!request.first_request_configuration().UnpackTo(&write_config)) {
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(
         "Failed to parse FedSqlContainerWriteConfiguration."));
   }
   if (!aggregator_) {
@@ -222,15 +225,15 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionWrite(
 
   switch (write_config.type()) {
     case AGGREGATION_TYPE_ACCUMULATE: {
-      return SessionAccumulate(write_request.first_request_metadata(),
-                               std::move(unencrypted_data));
+      return Accumulate(std::move(*request.mutable_first_request_metadata()),
+                        std::move(unencrypted_data));
     }
     case AGGREGATION_TYPE_MERGE: {
-      return SessionMerge(write_request.first_request_metadata(),
-                          std::move(unencrypted_data));
+      return Merge(std::move(*request.mutable_first_request_metadata()),
+                   std::move(unencrypted_data));
     }
     default:
-      return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+      return ToWriteFinishedResponse(absl::InvalidArgumentError(
           "AggCoreAggregationType must be specified."));
   }
 }
@@ -240,10 +243,9 @@ absl::Status PrependMessage(T message, const absl::Status& status) {
   return absl::Status(status.code(), absl::StrCat(message, status.message()));
 }
 
-absl::StatusOr<fcp::confidentialcompute::SessionResponse>
-KmsFedSqlSession::SessionAccumulate(
-    const fcp::confidentialcompute::BlobMetadata& metadata,
-    std::string unencrypted_data) {
+absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
+                             std::string unencrypted_data) {
   // TODO: Use
   // https://github.com/google-parfait/federated-compute/blob/main/fcp/base/scheduler.h
   // to asynchronously handle deserializing the checkpoint when it is
@@ -261,7 +263,7 @@ KmsFedSqlSession::SessionAccumulate(
   if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
                                        .kms_symmetric_key_associated_data()
                                        .record_header())) {
-    return ToSessionWriteFinishedResponse(
+    return ToWriteFinishedResponse(
         absl::InvalidArgumentError("Failed to parse blob header"));
   }
 
@@ -271,7 +273,7 @@ KmsFedSqlSession::SessionAccumulate(
   uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
   if (!private_state_->budget.HasRemainingBudget(blob_header.key_id(),
                                                  blob_id_high64)) {
-    return ToSessionWriteFinishedResponse(
+    return ToWriteFinishedResponse(
         absl::FailedPreconditionError("No budget remaining."));
   }
 
@@ -279,7 +281,7 @@ KmsFedSqlSession::SessionAccumulate(
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
   if (!parser.ok()) {
-    return ToSessionWriteFinishedResponse(PrependMessage(
+    return ToWriteFinishedResponse(PrependMessage(
         "Failed to deserialize checkpoint for AGGREGATION_TYPE_ACCUMULATE: ",
         parser.status()));
   }
@@ -296,20 +298,18 @@ KmsFedSqlSession::SessionAccumulate(
 
   auto [unused, inserted] = uncommitted_blob_ids_.insert(blob_id);
   if (!inserted) {
-    return ToSessionWriteFinishedResponse(
+    return ToWriteFinishedResponse(
         absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
   }
   uncommitted_inputs_.push_back(Input{.contents = std::move(contents),
                                       .blob_header = std::move(blob_header)});
 
-  return ToSessionWriteFinishedResponse(absl::OkStatus(),
-                                        metadata.total_size_bytes());
+  return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
 }
 
-absl::StatusOr<fcp::confidentialcompute::SessionResponse>
-KmsFedSqlSession::SessionMerge(
-    const fcp::confidentialcompute::BlobMetadata& metadata,
-    std::string unencrypted_data) {
+absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+KmsFedSqlSession::Merge(fcp::confidentialcompute::BlobMetadata metadata,
+                        std::string unencrypted_data) {
   //  Merges can be immediately processed.
   FCP_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
                        UnbundleRangeTracker(unencrypted_data));
@@ -322,7 +322,7 @@ KmsFedSqlSession::SessionMerge(
       CheckpointAggregator::Deserialize(&intrinsics_,
                                         std::move(unencrypted_data));
   if (!other.ok()) {
-    return ToSessionWriteFinishedResponse(PrependMessage(
+    return ToWriteFinishedResponse(PrependMessage(
         "Failed to deserialize checkpoint for AGGREGATION_TYPE_MERGE: ",
         other.status()));
   }
@@ -334,12 +334,11 @@ KmsFedSqlSession::SessionMerge(
     LOG(ERROR) << "CheckpointAggregator::MergeWith failed: " << merge_status;
     return merge_status;
   }
-  return ToSessionWriteFinishedResponse(absl::OkStatus(),
-                                        metadata.total_size_bytes());
+  return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
 }
 
-absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
-    const CommitRequest& commit_request) {
+absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
+    CommitRequest commit_request, Context& context) {
   // In case of an error with Accumulate, the session is terminated, since we
   // can't guarantee that the aggregator is in a valid state. If this changes,
   // consider changing this logic to no longer return an error.
@@ -414,11 +413,10 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
     }
   }
 
-  SessionResponse response =
-      ToSessionCommitResponse(absl::OkStatus(), uncommitted_inputs_.size(), {});
+  int num_committed = uncommitted_inputs_.size();
   uncommitted_inputs_.clear();
   uncommitted_blob_ids_.clear();
-  return response;
+  return ToCommitResponse(absl::OkStatus(), num_committed);
 }
 
 // Runs the requested finalization operation and write the uncompressed result
@@ -426,8 +424,8 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::SessionCommit(
 //
 // Any errors in HandleFinalize kill the stream, since the stream can no
 // longer be modified after the Finalize call.
-absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
-    const FinalizeRequest& request, const BlobMetadata& unused) {
+absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
+    FinalizeRequest request, BlobMetadata input_metadata, Context& context) {
   FedSqlContainerFinalizeConfiguration finalize_config;
   if (!request.configuration().UnpackTo(&finalize_config)) {
     return absl::InvalidArgumentError(
@@ -437,93 +435,91 @@ absl::StatusOr<SessionResponse> KmsFedSqlSession::FinalizeSession(
     return absl::FailedPreconditionError("The aggregator is already released.");
   }
 
-  std::string result;
-  BlobMetadata result_metadata;
-  std::optional<FinalResultConfiguration> final_result_configuration;
   switch (finalize_config.type()) {
     case fcp::confidentialcompute::FINALIZATION_TYPE_REPORT: {
-      // Update the private state
-      FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
-
-      if (!aggregator_->CanReport()) {
-        return absl::FailedPreconditionError(
-            "The aggregation can't be completed due to failed "
-            "preconditions.");
-      }
-      // Fail if there were no valid inputs, as this likely indicates some
-      // issue with configuration of the overall workload.
-      FCP_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
-                           aggregator_->GetNumCheckpointsAggregated());
-      if (num_checkpoints_aggregated < 1) {
-        return absl::InvalidArgumentError(
-            "The aggregation can't be successfully completed because no "
-            "inputs were aggregated.\n"
-            "This may be because inputs were ignored due to an earlier "
-            "error.");
-      }
-
-      // Extract unencrypted checkpoint from the aggregator.
-      // Using the scope below ensures that both CheckpointBuilder and Cord
-      // are promptly deleted.
-      absl::Cord checkpoint_cord;
-      {
-        FederatedComputeCheckpointBuilderFactory builder_factory;
-        std::unique_ptr<CheckpointBuilder> checkpoint_builder =
-            builder_factory.Create();
-        FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
-        aggregator_.reset();
-        FCP_ASSIGN_OR_RETURN(checkpoint_cord, checkpoint_builder->Build());
-      }
-
-      // Encrypt the final result.
-      FCP_ASSIGN_OR_RETURN(auto encrypted_result,
-                           EncryptFinalResult(checkpoint_cord.Flatten()));
-      result_metadata = std::move(encrypted_result.metadata);
-      result = std::move(encrypted_result.ciphertext);
-      final_result_configuration =
-          std::move(encrypted_result.final_result_configuration);
-      break;
+      return Report(context);
     }
     case FINALIZATION_TYPE_SERIALIZE: {
-      // Serialize the aggregator and bundle it with the range tracker.
-      FCP_ASSIGN_OR_RETURN(std::string serialized_data,
-                           std::move(*aggregator_).Serialize());
-      aggregator_.reset();
-      serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
-      // Encrypt the bundled blob.
-      FCP_ASSIGN_OR_RETURN(auto encrypted_result,
-                           EncryptIntermediateResult(serialized_data));
-      result_metadata = std::move(encrypted_result.metadata);
-      result = std::move(encrypted_result.ciphertext);
-      break;
+      return Serialize(context);
     }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
   }
-
-  SessionResponse response;
-  ReadResponse* read_response = response.mutable_read();
-  read_response->set_finish_read(true);
-  *(read_response->mutable_data()) = std::move(result);
-  *(read_response->mutable_first_response_metadata()) = result_metadata;
-  if (final_result_configuration.has_value()) {
-    google::protobuf::Any config;
-    config.PackFrom(std::move(final_result_configuration.value()));
-    *(read_response->mutable_first_response_configuration()) =
-        std::move(config);
-  }
-  return response;
 }
 
-absl::Status KmsFedSqlSession::ConfigureSession(
-    fcp::confidentialcompute::SessionRequest configure_request) {
-  if (!configure_request.configure().has_configuration()) {
-    return absl::InvalidArgumentError(
-        "`configure` must be set on SessionRequest.");
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::Serialize(Context& context) {
+  // Serialize the aggregator and bundle it with the range tracker.
+  FCP_ASSIGN_OR_RETURN(std::string serialized_data,
+                       std::move(*aggregator_).Serialize());
+  aggregator_.reset();
+  serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
+  // Encrypt the bundled blob.
+  FCP_ASSIGN_OR_RETURN(auto encrypted_result,
+                       EncryptIntermediateResult(serialized_data));
+
+  ReadResponse read_response;
+  *(read_response.mutable_data()) = std::move(encrypted_result.ciphertext);
+  *(read_response.mutable_first_response_metadata()) =
+      std::move(encrypted_result.metadata);
+  context.Emit(std::move(read_response));
+
+  return FinalizeResponse{};
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::Report(Context& context) {
+  // Update the private state
+  FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
+
+  if (!aggregator_->CanReport()) {
+    return absl::FailedPreconditionError(
+        "The aggregation can't be completed due to failed "
+        "preconditions.");
   }
+  // Fail if there were no valid inputs, as this likely indicates some
+  // issue with configuration of the overall workload.
+  FCP_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
+                       aggregator_->GetNumCheckpointsAggregated());
+  if (num_checkpoints_aggregated < 1) {
+    return absl::InvalidArgumentError(
+        "The aggregation can't be successfully completed because no "
+        "inputs were aggregated.\n"
+        "This may be because inputs were ignored due to an earlier "
+        "error.");
+  }
+
+  // Extract unencrypted checkpoint from the aggregator.
+  // Using the scope below ensures that both CheckpointBuilder and Cord
+  // are promptly deleted.
+  absl::Cord checkpoint_cord;
+  {
+    FederatedComputeCheckpointBuilderFactory builder_factory;
+    std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+        builder_factory.Create();
+    FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
+    aggregator_.reset();
+    FCP_ASSIGN_OR_RETURN(checkpoint_cord, checkpoint_builder->Build());
+  }
+
+  // Encrypt the final result.
+  FCP_ASSIGN_OR_RETURN(auto encrypted_result,
+                       EncryptFinalResult(checkpoint_cord.Flatten()));
+
+  ReadResponse read_response;
+  *(read_response.mutable_data()) = std::move(encrypted_result.ciphertext);
+  *(read_response.mutable_first_response_metadata()) =
+      std::move(encrypted_result.metadata);
+  context.Emit(std::move(read_response));
+
+  return std::move(*encrypted_result.finalize_response);
+}
+
+absl::StatusOr<ConfigureResponse> KmsFedSqlSession::Configure(
+    ConfigureRequest request, Context& context) {
   SqlQuery sql_query;
-  if (!configure_request.configure().configuration().UnpackTo(&sql_query)) {
+  if (!request.configuration().UnpackTo(&sql_query)) {
     return absl::InvalidArgumentError("SQL configuration cannot be unpacked.");
   }
   if (sql_query.database_schema().table_size() != 1) {
@@ -544,6 +540,6 @@ absl::Status KmsFedSqlSession::ConfigureSession(
                        std::move(sql_query.database_schema().table(0)),
                        std::move(sql_query.output_columns())});
 
-  return absl::OkStatus();
+  return ConfigureResponse{};
 }
 }  // namespace confidential_federated_compute::fed_sql

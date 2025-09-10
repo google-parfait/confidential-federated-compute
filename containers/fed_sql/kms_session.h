@@ -51,8 +51,7 @@ struct DpUnitParameters {
 // FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
 // thread-safe.
-class KmsFedSqlSession final
-    : public confidential_federated_compute::LegacySession {
+class KmsFedSqlSession final : public confidential_federated_compute::Session {
  public:
   KmsFedSqlSession(
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
@@ -68,8 +67,10 @@ class KmsFedSqlSession final
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle);
 
   // Configure the optional per-client SQL query.
-  absl::Status ConfigureSession(
-      fcp::confidentialcompute::SessionRequest configure_request) override;
+  absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
+      fcp::confidentialcompute::ConfigureRequest configure_request,
+      Context& context) override;
+
   // Incorporates an input into a session. In the case of a client upload,
   // the blob is queued to be eventually processed, but the processing may not
   // finish until SessionCommit is called. In the case of an intermediate
@@ -78,29 +79,39 @@ class KmsFedSqlSession final
   //
   // Returns an error if the aggcore state may be invalid and the session
   // needs to be shut down.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
-      const fcp::confidentialcompute::WriteRequest& write_request,
-      std::string unencrypted_data) override;
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
+      fcp::confidentialcompute::WriteRequest write_request,
+      std::string unencrypted_data, Context& context) override;
+
   // Run any session finalization logic and complete the session.
   // After finalization, the session state is no longer mutable.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
-      const fcp::confidentialcompute::FinalizeRequest& request,
-      const fcp::confidentialcompute::BlobMetadata& unused) override;
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
+      fcp::confidentialcompute::FinalizeRequest request,
+      fcp::confidentialcompute::BlobMetadata input_metadata,
+      Context& context) override;
+
   // Accumulates queued blobs into the session state.
   // Returns an error if the aggcore state may be invalid and the session needs
   // to be shut down.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
-      const fcp::confidentialcompute::CommitRequest& commit_request) override;
+  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
+      fcp::confidentialcompute::CommitRequest commit_request,
+      Context& context) override;
 
  private:
-  // Handles AGGREGATION_TYPE_ACCUMULATE type of SessionWrite.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionAccumulate(
-      const fcp::confidentialcompute::BlobMetadata& metadata,
+  // Handles AGGREGATION_TYPE_ACCUMULATE type of Write.
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Accumulate(
+      fcp::confidentialcompute::BlobMetadata metadata,
       std::string unencrypted_data);
-  // Handles AGGREGATION_TYPE_MERGE type of SessionWrite.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionMerge(
-      const fcp::confidentialcompute::BlobMetadata& metadata,
+  // Handles AGGREGATION_TYPE_MERGE type of Write.
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Merge(
+      fcp::confidentialcompute::BlobMetadata metadata,
       std::string unencrypted_data);
+  // Handles FINALIZATION_TYPE_SERIALIZE type of Finalize.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Serialize(
+      Context& context);
+  // Handles FINALIZATION_TYPE_REPORT type of Finalize.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Report(
+      Context& context);
 
   // Configuration of the per-client SQL query step.
   struct SqlConfiguration {
@@ -116,8 +127,7 @@ class KmsFedSqlSession final
     fcp::confidentialcompute::BlobMetadata metadata;
     // The configuration for the final result. This is not populated for
     // intermediate results.
-    std::optional<fcp::confidentialcompute::FinalResultConfiguration>
-        final_result_configuration;
+    std::optional<fcp::confidentialcompute::FinalizeResponse> finalize_response;
   };
 
   absl::StatusOr<
