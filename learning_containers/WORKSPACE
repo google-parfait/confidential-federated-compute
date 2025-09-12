@@ -123,6 +123,7 @@ http_archive(
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:protobuf.patch",
+        "//third_party/oak:session_binder.patch",
     ],
     strip_prefix = "oak-095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8",
     url = "https://github.com/project-oak/oak/archive/095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8.tar.gz",
