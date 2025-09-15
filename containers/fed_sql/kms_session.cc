@@ -34,6 +34,7 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
+#include "fcp/confidentialcompute/time_window_utilities.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "openssl/rand.h"
@@ -228,6 +229,19 @@ absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::Write(
 template <typename T>
 absl::Status PrependMessage(T message, const absl::Status& status) {
   return absl::Status(status.code(), absl::StrCat(message, status.message()));
+}
+
+absl::StatusOr<absl::CivilSecond> KmsFedSqlSession::ComputeDPTimeUnit(
+    const absl::CivilSecond start_civil_time) {
+  fcp::confidentialcompute::WindowingSchedule windowing_schedule =
+      dp_unit_parameters_->windowing_schedule;
+  if (!windowing_schedule.has_civil_time_window_schedule()) {
+    return absl::InvalidArgumentError(
+        "Windowing schedule must have civil time window schedule.");
+  }
+
+  return GetTimeWindowStart(windowing_schedule.civil_time_window_schedule(),
+                            start_civil_time);
 }
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
