@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
@@ -67,17 +68,9 @@ class FedSqlSession final
   }
 
  private:
-  // Configuration of the per-client SQL query step.
-  struct SqlConfiguration {
-    std::string query;
-    fcp::confidentialcompute::TableSchema input_schema;
-    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
-        output_columns;
-  };
-
   absl::StatusOr<
       std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
-  ExecuteClientQuery(
+  ExecuteInferenceAndClientQuery(
       const SqlConfiguration& configuration,
       tensorflow_federated::aggregation::CheckpointParser* parser);
 

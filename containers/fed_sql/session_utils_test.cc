@@ -23,6 +23,7 @@
 #include "absl/status/status_matchers.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
@@ -38,9 +39,13 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowLocation;
+using ::confidential_federated_compute::sql::RowSet;
+using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::AggVector;
@@ -239,6 +244,83 @@ TEST(CreateRowLocationsForAllRowsTest, MultipleColumnsReturnsCorrectLocations) {
   tensors.push_back(std::move(*tensor2));
   auto locations = CreateRowLocationsForAllRows(std::move(tensors));
   EXPECT_THAT(locations, ElementsAre(FieldsAre(0, 0, 0), FieldsAre(0, 0, 1)));
+}
+
+TEST(ExecuteClientQueryTest, SimpleQuerySucceeds) {
+  ASSERT_THAT(SqliteAdapter::Initialize(), IsOk());
+  SqlConfiguration config;
+  config.query = "SELECT key, val * 2 AS val FROM input";
+  config.input_schema = PARSE_TEXT_PROTO(R"pb(
+    name: "input"
+    column { name: "key" type: INT64 }
+    column { name: "val" type: INT64 }
+    create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
+  )pb");
+  TableSchema output_schema = PARSE_TEXT_PROTO(R"pb(
+    column { name: "key" type: INT64 }
+    column { name: "val" type: INT64 }
+  )pb");
+  config.output_columns.CopyFrom(output_schema.column());
+
+  std::vector<Tensor> columns;
+  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
+      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({1, 2}));
+  ASSERT_THAT(key_tensor, IsOk());
+  columns.push_back(std::move(*key_tensor));
+
+  absl::StatusOr<Tensor> val_tensor = Tensor::Create(
+      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({10, 20}));
+  ASSERT_THAT(val_tensor, IsOk());
+  columns.push_back(std::move(*val_tensor));
+
+  std::vector<RowLocation> locations = CreateRowLocationsForAllRows(columns);
+  std::vector<Input> inputs;
+  inputs.emplace_back();
+  inputs[0].contents = std::move(columns);
+  RowSet row_set(locations, inputs);
+
+  absl::StatusOr<std::vector<Tensor>> result_tensors =
+      ExecuteClientQuery(config, row_set);
+  ASSERT_THAT(result_tensors, IsOk());
+
+  EXPECT_THAT(
+      *result_tensors,
+      UnorderedElementsAre(
+          ::testing::AllOf(TensorHasName("key"),
+                           Int64TensorEq(std::vector<int64_t>{1, 2})),
+          ::testing::AllOf(TensorHasName("val"),
+                           Int64TensorEq(std::vector<int64_t>{20, 40}))));
+}
+
+TEST(ExecuteClientQueryTest, QueryOnNonexistentColumnFails) {
+  ASSERT_THAT(SqliteAdapter::Initialize(), IsOk());
+  SqlConfiguration config;
+  config.query = "SELECT non_existent_col FROM input";
+  config.input_schema = PARSE_TEXT_PROTO(R"pb(
+    name: "input"
+    column { name: "key" type: INT64 }
+    create_table_sql: "CREATE TABLE input (key INTEGER)"
+  )pb");
+  TableSchema output_schema = PARSE_TEXT_PROTO(R"pb(
+    column { name: "non_existent_col" type: INT64 }
+  )pb");
+  config.output_columns.CopyFrom(output_schema.column());
+
+  std::vector<Tensor> columns;
+  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
+      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({1, 2}));
+  ASSERT_THAT(key_tensor, IsOk());
+  columns.push_back(std::move(*key_tensor));
+
+  std::vector<RowLocation> locations = CreateRowLocationsForAllRows(columns);
+  std::vector<Input> inputs;
+  inputs.emplace_back();
+  inputs[0].contents = std::move(columns);
+  RowSet row_set(locations, inputs);
+
+  absl::StatusOr<std::vector<Tensor>> result =
+      ExecuteClientQuery(config, row_set);
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

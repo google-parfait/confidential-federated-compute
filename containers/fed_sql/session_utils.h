@@ -24,6 +24,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/configuration.pb.h"
@@ -81,9 +82,20 @@ EncryptSessionResult(
 // Helper function for creating RowLocations for the contents of a single
 // input. This will be used while custom DP units is still in development,
 // however, eventually all uses will group rows by DP unit.
-std::vector<confidential_federated_compute::sql::RowLocation>
-CreateRowLocationsForAllRows(
+std::vector<sql::RowLocation> CreateRowLocationsForAllRows(
     const std::vector<tensorflow_federated::aggregation::Tensor>& columns);
+
+// Configuration of the per-client SQL query step.
+struct SqlConfiguration {
+  std::string query;
+  fcp::confidentialcompute::TableSchema input_schema;
+  google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
+      output_columns;
+};
+
+// Executes the given SQL query on a set of rows.
+absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+ExecuteClientQuery(const SqlConfiguration& configuration, sql::RowSet rows);
 
 }  // namespace confidential_federated_compute::fed_sql
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_

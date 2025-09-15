@@ -113,13 +113,10 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Report(
       Context& context);
 
-  // Configuration of the per-client SQL query step.
-  struct SqlConfiguration {
-    std::string query;
-    fcp::confidentialcompute::TableSchema input_schema;
-    google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
-        output_columns;
-  };
+  // Commits rows, grouping by uncommitted sql::Input. Returns any ignored
+  // errors.
+  absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByInput(
+      const Interval<uint64_t>& range);
 
   // The encrypted intermediate or final result.
   struct EncryptedResult {
@@ -130,9 +127,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
     std::optional<fcp::confidentialcompute::FinalizeResponse> finalize_response;
   };
 
-  absl::StatusOr<
-      std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
-  ExecuteClientQuery(const SqlConfiguration& configuration, sql::RowSet rows);
   // Encrypts the intermediate result for this session.
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
       absl::string_view plaintext);

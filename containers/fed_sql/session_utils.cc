@@ -14,12 +14,19 @@
 
 #include "containers/fed_sql/session_utils.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/session_utils.h"
 #include "containers/sql/sqlite_adapter.h"
+#include "fcp/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -28,13 +35,17 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 using ::confidential_federated_compute::sql::RowLocation;
+using confidential_federated_compute::sql::RowSet;
+using confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::CheckpointParser;
+using tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::Tensor;
+using tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 }  // namespace
 
@@ -125,6 +136,16 @@ std::vector<RowLocation> CreateRowLocationsForAllRows(
     locations.push_back({.dp_unit_hash = 0, .input_index = 0, .row_index = i});
   }
   return locations;
+}
+
+absl::StatusOr<std::vector<Tensor>> ExecuteClientQuery(
+    const SqlConfiguration& configuration, RowSet rows) {
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
+                       SqliteAdapter::Create());
+  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
+  FCP_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
+  return sqlite->EvaluateQuery(configuration.query,
+                               configuration.output_columns);
 }
 
 }  // namespace confidential_federated_compute::fed_sql

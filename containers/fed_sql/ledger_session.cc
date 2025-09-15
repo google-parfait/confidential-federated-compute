@@ -87,8 +87,8 @@ FedSqlSession::FedSqlSession(
 };
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>>
-FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
-                                  CheckpointParser* parser) {
+FedSqlSession::ExecuteInferenceAndClientQuery(
+    const SqlConfiguration& configuration, CheckpointParser* parser) {
   FCP_ASSIGN_OR_RETURN(
       std::vector<Tensor> contents,
       Deserialize(configuration.input_schema, parser,
@@ -96,22 +96,15 @@ FedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
   if (inference_model_.HasModel()) {
     FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
-                       SqliteAdapter::Create());
-  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
-  if (contents.size() > 0) {
-    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-    sql::Input input{.contents = std::move(contents)};
-    absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
-    std::vector<sql::RowLocation> row_locations =
-        CreateRowLocationsForAllRows(input.contents);
-    sql::RowSet row_set(row_locations, storage);
-    FCP_RETURN_IF_ERROR(sqlite->AddTableContents(row_set));
-  }
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<Tensor> result,
-      sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
-  return std::make_unique<InMemoryCheckpointParser>(std::move(result));
+  FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
+  sql::Input input{.contents = std::move(contents)};
+  absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
+  std::vector<sql::RowLocation> row_locations =
+      CreateRowLocationsForAllRows(input.contents);
+  sql::RowSet row_set(row_locations, storage);
+  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> sql_result,
+                       ExecuteClientQuery(configuration, row_set));
+  return std::make_unique<InMemoryCheckpointParser>(std::move(sql_result));
 }
 
 absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
@@ -143,7 +136,7 @@ absl::StatusOr<SessionResponse> FedSqlSession::SessionWrite(
       }
       if (sql_configuration_ != std::nullopt) {
         absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
-            ExecuteClientQuery(*sql_configuration_, parser->get());
+            ExecuteInferenceAndClientQuery(*sql_configuration_, parser->get());
         if (!sql_result_parser.ok()) {
           return ToSessionWriteFinishedResponse(
               absl::Status(sql_result_parser.status().code(),
