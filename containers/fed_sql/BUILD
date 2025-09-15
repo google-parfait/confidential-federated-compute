@@ -295,6 +295,7 @@ cc_library(
         "@com_google_protobuf//:protobuf_lite",
         "@federated-compute//fcp/base:base",
         "@federated-compute//fcp/confidentialcompute:cose",
+        "@federated-compute//fcp/confidentialcompute:time_window_utilities",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:windowing_schedule_proto_cc",

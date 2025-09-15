@@ -140,6 +140,13 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<EncryptedResult> EncryptFinalResult(
       absl::string_view plaintext);
 
+  // Computes the start of the DP time unit for the given civil time, using the
+  // windowing schedule from the DP unit parameters.
+  // Returns an error if the windowing schedule does not have a
+  // civil time window schedule.
+  absl::StatusOr<absl::CivilSecond> ComputeDPTimeUnit(
+      absl::CivilSecond start_civil_time);
+
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
