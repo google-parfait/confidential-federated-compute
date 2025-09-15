@@ -14,7 +14,9 @@
 
 import base64
 from collections.abc import Callable
+import functools
 
+from fcp.confidentialcompute.python import compiler
 from fcp.confidentialcompute.python import program_input_provider
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
@@ -68,9 +70,16 @@ async def run_program(
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
   """
+  if worker_bns:
+    compiler_fn = functools.partial(
+        compiler.to_composed_tee_form,
+        num_client_workers=len(worker_bns) - 1,
+    )
+  else:
+    compiler_fn = compilers.compile_tf_to_call_dominant
   federated_language.framework.set_default_context(
       execution_context.TrustedContext(
-          compilers.compile_tf_to_call_dominant,
+          compiler_fn,
           execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
           outgoing_server_address,
           worker_bns,
