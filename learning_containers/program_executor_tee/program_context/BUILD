@@ -89,6 +89,7 @@ py_library(
         ":compilers",
         ":execution_context",
         ":release_manager",
+        "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated-compute//fcp/confidentialcompute/python:program_input_provider",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",

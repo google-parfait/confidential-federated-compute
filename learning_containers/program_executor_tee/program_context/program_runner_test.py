@@ -27,18 +27,11 @@ from program_executor_tee.program_context.cc import fake_service_bindings
 import tensorflow_federated as tff
 
 
-class ProgramRunnerIntegrationTest(unittest.IsolatedAsyncioTestCase):
-
-  async def test_run_program(self):
-    untrusted_root_port = portpicker.pick_unused_port()
-    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
-    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
-    server = fake_service_bindings.FakeServer(
-        untrusted_root_port, data_read_write_service, None
-    )
-    server.start()
-
-    program_string = """
+async def run_program(
+    untrusted_root_port: int,
+) -> list[list[data_read_write_pb2.WriteRequest]]:
+  """Runs a program with a fake untrusted root server."""
+  program_string = """
 import federated_language
 import numpy as np
 
@@ -61,46 +54,89 @@ async def trusted_program(input_provider, release_manager):
     await release_manager.release(result1, "result1")
     await release_manager.release(result2, "result2")
     """
+  await program_runner.run_program(
+      base64.b64encode(program_string.encode("utf-8")),
+      client_ids=[],
+      client_data_directory="client_data_dir",
+      model_id_to_zip_file={},
+      outgoing_server_address=f"[::1]:{untrusted_root_port}",
+      worker_bns=[],
+      serialized_reference_values=b"",
+      parse_read_response_fn=test_helpers.parse_read_response_fn,
+  )
 
-    await program_runner.run_program(
-        base64.b64encode(program_string.encode("utf-8")),
-        client_ids=[],
-        client_data_directory="client_data_dir",
-        model_id_to_zip_file={},
-        outgoing_server_address=f"[::1]:{untrusted_root_port}",
-        worker_bns=[],
-        serialized_reference_values=b"",
-        parse_read_response_fn=test_helpers.parse_read_response_fn,
-    )
+  value_3, _ = tff.framework.serialize_value(
+      3, federated_language.TensorType(np.int32)
+  )
+  expected_request_1 = data_read_write_pb2.WriteRequest(
+      first_request_metadata=confidential_transform_pb2.BlobMetadata(
+          unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
+              blob_id="result1".encode()
+          )
+      ),
+      commit=True,
+      data=value_3.SerializeToString(),
+  )
+  value_10, _ = tff.framework.serialize_value(
+      10, federated_language.TensorType(np.int32)
+  )
+  expected_request_2 = data_read_write_pb2.WriteRequest(
+      first_request_metadata=confidential_transform_pb2.BlobMetadata(
+          unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
+              blob_id="result2".encode()
+          )
+      ),
+      commit=True,
+      data=value_10.SerializeToString(),
+  )
 
-    value_3, _ = tff.framework.serialize_value(
-        3, federated_language.TensorType(np.int32)
-    )
-    expected_request_1 = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id="result1".encode()
-            )
-        ),
-        commit=True,
-        data=value_3.SerializeToString(),
-    )
-    value_10, _ = tff.framework.serialize_value(
-        10, federated_language.TensorType(np.int32)
-    )
-    expected_request_2 = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id="result2".encode()
-            )
-        ),
-        commit=True,
-        data=value_10.SerializeToString(),
-    )
+  return [[expected_request_1], [expected_request_2]]
 
+
+class ProgramRunnerIntegrationTest(unittest.IsolatedAsyncioTestCase):
+
+  async def test_run_program(self):
+    untrusted_root_port = portpicker.pick_unused_port()
+    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
+    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
+    server = fake_service_bindings.FakeServer(
+        untrusted_root_port, data_read_write_service, None
+    )
+    server.start()
+
+    write_requests = await run_program(untrusted_root_port)
     self.assertEquals(
-        data_read_write_service.get_write_call_args(),
-        [[expected_request_1], [expected_request_2]],
+        data_read_write_service.get_write_call_args(), write_requests
+    )
+
+    server.stop()
+
+  async def test_run_program_with_worker_bns(self):
+    untrusted_root_port = portpicker.pick_unused_port()
+    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
+
+    # Create 4 workers.
+    # The first one is the root worker, and the other 3 are child workers.
+    worker_bns = [
+        "bns_address_1",
+        "bns_address_2",
+        "bns_address_3",
+        "bns_address_4",
+    ]
+    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
+    computation_delegation_service = (
+        fake_service_bindings.FakeComputationDelegationService(worker_bns)
+    )
+    server = fake_service_bindings.FakeServer(
+        untrusted_root_port,
+        data_read_write_service,
+        computation_delegation_service,
+    )
+    server.start()
+
+    write_requests = await run_program(untrusted_root_port)
+    self.assertEquals(
+        data_read_write_service.get_write_call_args(), write_requests
     )
 
     server.stop()
