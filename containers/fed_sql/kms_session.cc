@@ -152,19 +152,6 @@ KmsFedSqlSession::KmsFedSqlSession(
   }
 };
 
-absl::StatusOr<std::unique_ptr<CheckpointParser>>
-KmsFedSqlSession::ExecuteClientQuery(const SqlConfiguration& configuration,
-                                     RowSet rows) {
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
-                       SqliteAdapter::Create());
-  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
-  FCP_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<Tensor> result,
-      sqlite->EvaluateQuery(configuration.query, configuration.output_columns));
-  return std::make_unique<InMemoryCheckpointParser>(std::move(result));
-}
-
 absl::StatusOr<KmsFedSqlSession::EncryptedResult>
 KmsFedSqlSession::EncryptIntermediateResult(absl::string_view plaintext) {
   // Use the first reencryption key for intermediate results.
@@ -337,24 +324,11 @@ KmsFedSqlSession::Merge(fcp::confidentialcompute::BlobMetadata metadata,
   return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
 }
 
-absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
-    CommitRequest commit_request, Context& context) {
-  // In case of an error with Accumulate, the session is terminated, since we
-  // can't guarantee that the aggregator is in a valid state. If this changes,
-  // consider changing this logic to no longer return an error.
-  FedSqlContainerCommitConfiguration commit_config;
-  if (!commit_request.configuration().UnpackTo(&commit_config)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse FedSqlContainerCommitConfiguration.");
-  }
-
-  Interval<uint64_t> range(commit_config.range().start(),
-                           commit_config.range().end());
-  absl::flat_hash_set<std::string> unique_key_ids;
+absl::StatusOr<std::vector<absl::Status>>
+KmsFedSqlSession::CommitRowsGroupingByInput(const Interval<uint64_t>& range) {
   std::vector<absl::Status> ignored_errors;
   // Iterate over uncommitted_blob_ids_ and check that they're in the specified
   // range.
-  // TODO: Update this to use partition keys instead of blob IDs.
   for (auto blob_id : uncommitted_blob_ids_) {
     // Use the high 64 bit of the blob_id to check whether the blob is
     // in the specified range.
@@ -367,13 +341,8 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
                        "), blob id (high 8 bytes): ", blob_id_high64));
     }
   }
-  // TODO: Group rows by DP unit if DP parameters are configured.
+
   for (auto& uncommitted_input : uncommitted_inputs_) {
-    // TODO: Once we switch to using DP time unit for budget buckets, we'll need
-    // to use DP time units here instead of key ID.
-    if (!uncommitted_input.blob_header.key_id().empty()) {
-      unique_key_ids.insert(uncommitted_input.blob_header.key_id());
-    }
     std::unique_ptr<CheckpointParser> parser;
     // Execute the per-client SQL query if configured on each uncommitted blob.
     if (sql_configuration_.has_value()) {
@@ -381,19 +350,23 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
       std::vector<RowLocation> row_locations =
           CreateRowLocationsForAllRows(uncommitted_input.contents);
       RowSet row_set(row_locations, storage);
-      absl::StatusOr<std::unique_ptr<CheckpointParser>> sql_result_parser =
+      absl::StatusOr<std::vector<Tensor>> sql_result =
           ExecuteClientQuery(*sql_configuration_, row_set);
-      if (!sql_result_parser.ok()) {
+      if (!sql_result.ok()) {
         // Ignore this blob, but continue processing other blobs.
-        ignored_errors.push_back(sql_result_parser.status());
+        ignored_errors.push_back(sql_result.status());
         continue;
       }
-      parser = std::move(*sql_result_parser);
+      parser =
+          std::make_unique<InMemoryCheckpointParser>(*std::move(sql_result));
     } else {
       parser = std::make_unique<InMemoryCheckpointParser>(
           std::move(uncommitted_input.contents));
     }
 
+    // In case of an error with Accumulate, the session is terminated, since we
+    // can't guarantee that the aggregator is in a valid state. If this changes,
+    // consider changing this logic to no longer return an error.
     absl::Status accumulate_status = aggregator_->Accumulate(*parser);
     if (!accumulate_status.ok()) {
       if (absl::IsNotFound(accumulate_status)) {
@@ -404,6 +377,31 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
       return accumulate_status;
     }
   }
+  return ignored_errors;
+}
+
+absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
+    CommitRequest commit_request, Context& context) {
+  FedSqlContainerCommitConfiguration commit_config;
+  if (!commit_request.configuration().UnpackTo(&commit_config)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse FedSqlContainerCommitConfiguration.");
+  }
+
+  Interval<uint64_t> range(commit_config.range().start(),
+                           commit_config.range().end());
+  absl::flat_hash_set<std::string> unique_key_ids;
+  for (auto& uncommitted_input : uncommitted_inputs_) {
+    // TODO: Once we switch to using DP time unit for budget buckets, we'll
+    // need to use DP time units here instead of key ID.
+    if (!uncommitted_input.blob_header.key_id().empty()) {
+      unique_key_ids.insert(uncommitted_input.blob_header.key_id());
+    }
+  }
+
+  // TODO: Commit rows by DP unit if DP parameters are configured.
+  FCP_ASSIGN_OR_RETURN(std::vector<absl::Status> ignored_errors,
+                       CommitRowsGroupingByInput(range));
 
   for (const auto& key_id : unique_key_ids) {
     if (!range_tracker_.AddRange(key_id, commit_config.range().start(),
