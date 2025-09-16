@@ -1249,13 +1249,9 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure)
       .WillOnce([](ConfigureRequest request, Session::Context& context) {
-        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
-                                             total_size_bytes: 3
-                                             compression_type:
-                                                 COMPRESSION_TYPE_NONE
-                                             unencrypted {}
-                                           }
-                                           data: "abc")pb"));
+        context.Emit(PARSE_TEXT_PROTO(
+            R"pb(first_response_configuration { type_url: "xyz" }
+                 data: "abc")pb"));
         return ConfigureResponse{};
       });
   service_->AddSession(std::move(mock_session));
@@ -1269,16 +1265,13 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
   CHECK(stream->Read(&read_response));
   CHECK(stream->Read(&configure_response));
 
-  EXPECT_THAT(read_response,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 3
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "abc"
-                               })pb"));
+  EXPECT_THAT(
+      read_response,
+      EqualsProto(R"pb(read {
+                         first_response_configuration { type_url: "xyz" }
+                         finish_read: true
+                         data: "abc"
+                       })pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
@@ -1287,13 +1280,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
   EXPECT_CALL(*mock_session, Write)
       .WillOnce([](WriteRequest request, std::string unencrypted_data,
                    Session::Context& context) {
-        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
-                                             total_size_bytes: 3
-                                             compression_type:
-                                                 COMPRESSION_TYPE_NONE
-                                             unencrypted {}
-                                           }
-                                           data: "abc")pb"));
+        context.Emit(PARSE_TEXT_PROTO(
+            R"pb(first_response_metadata {
+                   total_size_bytes: 3
+                   compression_type: COMPRESSION_TYPE_NONE
+                   unencrypted {}
+                 }
+                 first_response_configuration { type_url: "xyz" }
+                 data: "abc")pb"));
         return WriteFinishedResponse{};
       });
   service_->AddSession(std::move(mock_session));
@@ -1306,16 +1300,18 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
   CHECK(stream_->Read(&read_response));
   CHECK(stream_->Read(&write_response));
 
-  EXPECT_THAT(read_response,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 3
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "abc"
-                               })pb"));
+  EXPECT_THAT(
+      read_response,
+      EqualsProto(R"pb(read {
+                         first_response_metadata {
+                           total_size_bytes: 3
+                           compression_type: COMPRESSION_TYPE_NONE
+                           unencrypted {}
+                         }
+                         first_response_configuration { type_url: "xyz" }
+                         finish_read: true
+                         data: "abc"
+                       })pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
@@ -1323,13 +1319,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
   EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   EXPECT_CALL(*mock_session, Commit)
       .WillOnce([](CommitRequest request, Session::Context& context) {
-        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
-                                             total_size_bytes: 3
-                                             compression_type:
-                                                 COMPRESSION_TYPE_NONE
-                                             unencrypted {}
-                                           }
-                                           data: "abc")pb"));
+        context.Emit(PARSE_TEXT_PROTO(
+            R"pb(first_response_metadata {
+                   total_size_bytes: 3
+                   compression_type: COMPRESSION_TYPE_NONE
+                   unencrypted {}
+                 }
+                 first_response_configuration { type_url: "xyz" }
+                 data: "abc")pb"));
         return CommitResponse{};
       });
   service_->AddSession(std::move(mock_session));
@@ -1343,16 +1340,18 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
   CHECK(stream_->Read(&read_response));
   CHECK(stream_->Read(&commit_response));
 
-  EXPECT_THAT(read_response,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 3
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "abc"
-                               })pb"));
+  EXPECT_THAT(
+      read_response,
+      EqualsProto(R"pb(read {
+                         first_response_metadata {
+                           total_size_bytes: 3
+                           compression_type: COMPRESSION_TYPE_NONE
+                           unencrypted {}
+                         }
+                         first_response_configuration { type_url: "xyz" }
+                         finish_read: true
+                         data: "abc"
+                       })pb"));
 }
 
 TEST_F(InitializedConfidentialTransformServerBaseTest,
@@ -1362,20 +1361,22 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, Finalize)
       .WillOnce([](FinalizeRequest request, BlobMetadata unused,
                    Session::Context& context) {
-        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
-                                             total_size_bytes: 5
-                                             compression_type:
-                                                 COMPRESSION_TYPE_NONE
-                                             unencrypted {}
-                                           }
-                                           data: "first")pb"));
-        context.Emit(PARSE_TEXT_PROTO(R"pb(first_response_metadata {
-                                             total_size_bytes: 6
-                                             compression_type:
-                                                 COMPRESSION_TYPE_NONE
-                                             unencrypted {}
-                                           }
-                                           data: "second")pb"));
+        context.Emit(PARSE_TEXT_PROTO(
+            R"pb(first_response_metadata {
+                   total_size_bytes: 5
+                   compression_type: COMPRESSION_TYPE_NONE
+                   unencrypted {}
+                 }
+                 first_response_configuration { type_url: "abc" }
+                 data: "first")pb"));
+        context.Emit(PARSE_TEXT_PROTO(
+            R"pb(first_response_metadata {
+                   total_size_bytes: 6
+                   compression_type: COMPRESSION_TYPE_NONE
+                   unencrypted {}
+                 }
+                 first_response_configuration { type_url: "xyz" }
+                 data: "second")pb"));
         return FinalizeResponse{};
       });
   service_->AddSession(std::move(mock_session));
@@ -1390,26 +1391,30 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   CHECK(stream_->Read(&read_response2));
   CHECK(stream_->Read(&finalize_response));
 
-  EXPECT_THAT(read_response1,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 5
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "first"
-                               })pb"));
-  EXPECT_THAT(read_response2,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 6
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "second"
-                               })pb"));
+  EXPECT_THAT(
+      read_response1,
+      EqualsProto(R"pb(read {
+                         first_response_metadata {
+                           total_size_bytes: 5
+                           compression_type: COMPRESSION_TYPE_NONE
+                           unencrypted {}
+                         }
+                         first_response_configuration { type_url: "abc" }
+                         finish_read: true
+                         data: "first"
+                       })pb"));
+  EXPECT_THAT(
+      read_response2,
+      EqualsProto(R"pb(read {
+                         first_response_metadata {
+                           total_size_bytes: 6
+                           compression_type: COMPRESSION_TYPE_NONE
+                           unencrypted {}
+                         }
+                         first_response_configuration { type_url: "xyz" }
+                         finish_read: true
+                         data: "second"
+                       })pb"));
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
