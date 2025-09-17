@@ -33,6 +33,15 @@ struct RowLocation {
                           // vector.
   uint32_t row_index;     // Index of the row within the tensors of the
                           // Input.
+
+  // Sort by DP unit hash, then input index, then row index. First sorting by DP
+  // unit hash lets us group rows by DP unit so we can process them together.
+  // Secondarily grouping by input index and row index helps with memory
+  // locality as we iterate over rows.
+  bool operator<(const RowLocation& other) const {
+    return std::tie(dp_unit_hash, input_index, row_index) <
+           std::tie(other.dp_unit_hash, other.input_index, other.row_index);
+  }
 };
 
 // An input of Tensors, along with its metadata.
