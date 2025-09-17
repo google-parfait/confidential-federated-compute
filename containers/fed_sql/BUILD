@@ -248,6 +248,48 @@ cc_library(
 )
 
 cc_library(
+    name = "dp_unit",
+    srcs = ["dp_unit.cc"],
+    hdrs = ["dp_unit.h"],
+    deps = [
+        ":interval_set",
+        ":session_utils",
+        "//containers/sql:row_set",
+        "//containers/sql:sqlite_adapter",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@federated-compute//fcp/base:base",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+    ],
+)
+
+cc_test(
+    name = "dp_unit_test",
+    srcs = ["dp_unit_test.cc"],
+    deps = [
+        ":dp_unit",
+        ":session_utils",
+        "//containers/fed_sql/testing:test_utils",
+        "//containers/sql:row_set",
+        "//containers/sql:sqlite_adapter",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_library(
     name = "ledger_session",
     srcs = ["ledger_session.cc"],
     hdrs = ["ledger_session.h"],
