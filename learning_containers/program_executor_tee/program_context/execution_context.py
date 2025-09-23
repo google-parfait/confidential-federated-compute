@@ -36,11 +36,6 @@ import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
-TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = "program_executor_tee/program_context/cc/computation_runner_binary_tensorflow"
-XLA_COMPUTATION_RUNNER_BINARY_PATH = (
-    "program_executor_tee/program_context/cc/computation_runner_binary_xla"
-)
-
 # The default gRPC message size is 4 KiB. Increase it to 100 KiB.
 _MAX_GPRC_MESSAGE_SIZE = 100 * 1024 * 1024
 

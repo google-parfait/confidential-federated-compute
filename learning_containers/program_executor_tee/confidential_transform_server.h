@@ -14,6 +14,8 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_CONFIDENTIAL_TRANSFORM_SERVER_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_CONFIDENTIAL_TRANSFORM_SERVER_H_
 
+#include <pybind11/functional.h>
+
 #include <optional>
 #include <string>
 
@@ -42,10 +44,13 @@ class ProgramExecutorTeeSession final
       fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
           initialize_config,
       std::map<std::string, std::string> model_id_to_zip_file,
-      confidential_federated_compute::BlobDecryptor* blob_decryptor)
+      confidential_federated_compute::BlobDecryptor* blob_decryptor,
+      std::function<std::optional<pybind11::function>()>
+          get_program_initialize_fn)
       : initialize_config_(initialize_config),
         model_id_to_zip_file_(model_id_to_zip_file),
-        blob_decryptor_(blob_decryptor) {}
+        blob_decryptor_(blob_decryptor),
+        get_program_initialize_fn_(get_program_initialize_fn) {}
 
   // Configures a minimal session.
   absl::Status ConfigureSession(
@@ -70,12 +75,15 @@ class ProgramExecutorTeeSession final
       initialize_config_;
   // Map of model ids to zip files representing tff FunctionalModels.
   std::map<std::string, std::string> model_id_to_zip_file_;
-
+  // Blob decryptor.
   confidential_federated_compute::BlobDecryptor* blob_decryptor_;
+  // Function that generates the optional pybind function to call at the
+  // beginning of the program runner.
+  std::function<std::optional<pybind11::function>()> get_program_initialize_fn_;
 };
 
 // ConfidentialTransform service for program executor TEE.
-class ProgramExecutorTeeConfidentialTransform final
+class ProgramExecutorTeeConfidentialTransform
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   ProgramExecutorTeeConfidentialTransform(
@@ -96,10 +104,25 @@ class ProgramExecutorTeeConfidentialTransform final
   absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) override;
 
+  virtual std::optional<pybind11::function> GetProgramInitializeFn() {
+    return std::nullopt;
+  }
+
+  fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
+  GetInitializeConfig() {
+    return initialize_config_;
+  }
+
+  std::vector<std::string> GetWorkerBnsAddresses() {
+    return worker_bns_addresses_;
+  }
+
  private:
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+  // List of worker bns addresses.
+  std::vector<std::string> worker_bns_addresses_;
   // Map of model ids to zip files representing tff FunctionalModels.
   std::map<std::string, std::string> model_id_to_zip_file_;
   // Track the model_id of the current model passed to container through

@@ -22,9 +22,9 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "program_executor_tee/confidential_transform_server.h"
+#include "tf/program_executor_tee/confidential_transform_server.h"
 
-namespace confidential_federated_compute::program_executor_tee {
+namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
 namespace {
 
@@ -38,7 +38,7 @@ static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 void RunServer() {
   std::string server_address("[::]:8080");
 
-  ProgramExecutorTeeConfidentialTransform service(
+  TensorflowProgramExecutorTeeConfidentialTransform service(
       std::make_unique<oak::containers::sdk::InstanceSigningKeyHandle>());
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
@@ -46,7 +46,8 @@ void RunServer() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server = builder.BuildAndStart();
-  LOG(INFO) << "Program Executor Confidential Transform Server listening on "
+  LOG(INFO) << "Tensorflow Program Executor Confidential Transform Server "
+               "listening on "
             << server_address << "\n";
 
   CHECK_OK(OrchestratorClient().NotifyAppReady());
@@ -55,10 +56,10 @@ void RunServer() {
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::program_executor_tee
+}  // namespace confidential_federated_compute::tensorflow::program_executor_tee
 
 int main(int argc, char** argv) {
   setenv("PYTHONPATH", CPP_PYTHON_PATH, true);
-  confidential_federated_compute::program_executor_tee::RunServer();
+  confidential_federated_compute::tensorflow::program_executor_tee::RunServer();
   return 0;
 }

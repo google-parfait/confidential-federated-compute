@@ -57,6 +57,7 @@ using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
 
+template <typename T>
 class ProgramExecutorTeeTest : public Test {
  public:
   ProgramExecutorTeeTest() {
@@ -91,7 +92,7 @@ class ProgramExecutorTeeTest : public Test {
   ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
 
  protected:
-  ProgramExecutorTeeConfidentialTransform service_{std::make_unique<
+  T service_{std::make_unique<
       testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>()};
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
@@ -101,53 +102,54 @@ class ProgramExecutorTeeTest : public Test {
   std::unique_ptr<Server> fake_data_read_write_server_;
 };
 
-class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
+template <typename T>
+class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
  public:
-  void CreateSession(std::string program,
-                     std::vector<std::string> client_ids = {},
-                     std::string client_data_dir = "") {
+  void CreateSession(
+      std::string program, std::vector<std::string> client_ids = {},
+      std::string client_data_dir = "",
+      std::map<std::string, std::string> file_id_to_filepath = {}) {
     grpc::ClientContext configure_context;
 
-    StreamInitializeRequest first_request;
-    std::filesystem::path dir_path =
-        std::filesystem::path(__FILE__).remove_filename();
-    std::filesystem::path file_path = dir_path /= "testdata/model1.zip";
-    std::string model_path = file_path.string();
-    std::ifstream file(model_path);
-    CHECK(file.is_open());
-    auto file_size = std::filesystem::file_size(model_path);
-    std::string file_content(file_size, '\0');
-    file.read(file_content.data(), file_size);
-    first_request.mutable_write_configuration()->set_data(file_content);
-    ConfigurationMetadata* metadata =
-        first_request.mutable_write_configuration()
-            ->mutable_first_request_metadata();
-    metadata->set_configuration_id("model1");
-    metadata->set_total_size_bytes(file_size);
-    first_request.mutable_write_configuration()->set_commit(true);
-    file.close();
-
-    InitializeResponse response;
-    StreamInitializeRequest second_request;
+    std::vector<StreamInitializeRequest> requests;
+    for (const auto& [file_id, filepath] : file_id_to_filepath) {
+      StreamInitializeRequest request;
+      std::ifstream file(filepath);
+      CHECK(file.is_open());
+      auto file_size = std::filesystem::file_size(filepath);
+      std::string file_content(file_size, '\0');
+      file.read(file_content.data(), file_size);
+      request.mutable_write_configuration()->set_data(file_content);
+      ConfigurationMetadata* metadata = request.mutable_write_configuration()
+                                            ->mutable_first_request_metadata();
+      metadata->set_configuration_id(file_id);
+      metadata->set_total_size_bytes(file_size);
+      request.mutable_write_configuration()->set_commit(true);
+      file.close();
+      requests.push_back(std::move(request));
+    }
 
     ProgramExecutorTeeInitializeConfig config;
     config.set_program(absl::Base64Escape(program));
-    config.set_outgoing_server_address(data_read_write_server_address_);
+    config.set_outgoing_server_address(this->data_read_write_server_address_);
     config.set_attester_id("fake_attester");
     config.set_client_data_dir(client_data_dir);
     for (const std::string& client_id : client_ids) {
       config.add_client_ids(client_id);
     }
-
+    StreamInitializeRequest stream_initialize_request;
     InitializeRequest* initialize_request =
-        second_request.mutable_initialize_request();
+        stream_initialize_request.mutable_initialize_request();
     initialize_request->set_max_num_sessions(kMaxNumSessions);
     initialize_request->mutable_configuration()->PackFrom(config);
+    requests.push_back(std::move(stream_initialize_request));
 
+    InitializeResponse response;
     std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-        stub_->StreamInitialize(&configure_context, &response);
-    CHECK(writer->Write(first_request));
-    CHECK(writer->Write(second_request));
+        this->stub_->StreamInitialize(&configure_context, &response);
+    for (const StreamInitializeRequest& request : requests) {
+      writer->Write(request);
+    }
     CHECK(writer->WritesDone());
     CHECK(writer->Finish().ok());
 
@@ -157,7 +159,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest {
     SessionResponse session_response;
     session_request.mutable_configure()->set_chunk_size(1000);
 
-    stream_ = stub_->Session(&session_context_);
+    stream_ = this->stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
     CHECK(stream_->Read(&session_response));
     nonce_generator_ =

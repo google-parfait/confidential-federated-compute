@@ -41,8 +41,6 @@
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
-#include "program_executor_tee/program_context/cc/data_parser.h"
-#include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -52,32 +50,6 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Struct;
-
-PYBIND11_EMBEDDED_MODULE(data_parser, m) {
-  pybind11_protobuf::ImportNativeProtoCasters();
-
-  pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
-
-  pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<BlobDecryptor*>())
-      .def("parse_read_response_to_value",
-           [](DataParser& self,
-              const fcp::confidentialcompute::outgoing::ReadResponse&
-                  read_response,
-              const std::string& nonce, const std::string& key) {
-             auto result =
-                 self.ParseReadResponseToValue(read_response, nonce, key);
-             // TODO: It currently appears that using a TF>2.14 pip dependency
-             // currently prevents us from handling StatusOr via pybind. Try to
-             // avoid throwing a runtime error here once we no longer require
-             // the TF pip dependency.
-             if (!result.ok()) {
-               throw std::runtime_error("Failed to parse ReadResponse: " +
-                                        std::string(result.status().message()));
-             }
-             return *result;
-           });
-}
 
 absl::Status ProgramExecutorTeeSession::ConfigureSession(
     fcp::confidentialcompute::SessionRequest configure_request) {
@@ -116,23 +88,13 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
             "program_executor_tee.program_context.program_runner")
             .attr("run_program");
 
-    // Create a DataParser object bound to the BlobDecryptor pointer.
-    pybind11::object data_parser_instance =
-        pybind11::module::import("data_parser")
-            .attr("DataParser")(blob_decryptor_);
-
     // Schedule execution of the program as a Task.
     pybind11::object task =
         pybind11::module::import("asyncio").attr("ensure_future")(run_program(
+            get_program_initialize_fn_(),
             pybind11::bytes(initialize_config_.program()), client_ids,
             initialize_config_.client_data_dir(), model_id_to_zip_file_,
-            initialize_config_.outgoing_server_address(), worker_bns_addresses,
-            // Explicitly convert the serialized reference values to bytes.
-            // Otherwise, it will be converted to a Python str by default and
-            // cause parsing error.
-            pybind11::bytes(absl::Base64Escape(
-                initialize_config_.reference_values().SerializeAsString())),
-            data_parser_instance.attr("parse_read_response_to_value")));
+            initialize_config_.outgoing_server_address()));
 
     // Run the task in the event loop and get the result.
     pybind11::object loop =
@@ -157,6 +119,12 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
         "ProgramExecutorTeeInitializeConfig cannot be unpacked.");
   }
   initialize_config_ = std::move(config);
+
+  worker_bns_addresses_.reserve(
+      initialize_config_.worker_bns_addresses().size());
+  for (const auto& address : initialize_config_.worker_bns_addresses()) {
+    worker_bns_addresses_.push_back(address);
+  }
 
   Struct config_properties;
   (*config_properties.mutable_fields())["program"].set_string_value(
@@ -263,8 +231,15 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
   }
 
   FCP_ASSIGN_OR_RETURN(BlobDecryptor * blob_decryptor, GetBlobDecryptor());
+
+  auto get_program_initialize_fn =
+      [this]() -> std::optional<pybind11::function> {
+    return this->GetProgramInitializeFn();
+  };
+
   return std::make_unique<ProgramExecutorTeeSession>(
-      initialize_config_, model_id_to_zip_file_, blob_decryptor);
+      initialize_config_, model_id_to_zip_file_, blob_decryptor,
+      get_program_initialize_fn);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

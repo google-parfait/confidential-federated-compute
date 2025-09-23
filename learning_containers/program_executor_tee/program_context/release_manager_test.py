@@ -21,7 +21,7 @@ import federated_language
 import numpy as np
 import portpicker
 from program_executor_tee.program_context import release_manager
-from program_executor_tee.program_context.cc import fake_service_bindings
+from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 
 
@@ -30,8 +30,8 @@ class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
   async def test_release(self):
     untrusted_root_port = portpicker.pick_unused_port()
     self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
-    data_read_write_service = fake_service_bindings.FakeDataReadWriteService()
-    server = fake_service_bindings.FakeServer(
+    data_read_write_service = fake_service_bindings_jax.FakeDataReadWriteService()
+    server = fake_service_bindings_jax.FakeServer(
         untrusted_root_port, data_read_write_service, None
     )
     server.start()

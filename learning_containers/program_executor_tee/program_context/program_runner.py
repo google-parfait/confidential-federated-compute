@@ -14,16 +14,10 @@
 
 import base64
 from collections.abc import Callable
-import functools
+from typing import Optional
 
-from fcp.confidentialcompute.python import compiler
 from fcp.confidentialcompute.python import program_input_provider
-from fcp.protos.confidentialcompute import data_read_write_pb2
-import federated_language
-from program_executor_tee.program_context import compilers
-from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import release_manager
-from tensorflow_federated.proto.v0 import executor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
 # federated program to execute.
@@ -31,20 +25,18 @@ TRUSTED_PROGRAM_KEY = "trusted_program"
 
 
 async def run_program(
+    initialize_fn: Optional[Callable[[], None]],
     program: bytes,
     client_ids: list[str],
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
-    worker_bns: list[str] = [],
-    serialized_reference_values: bytes = b"",
-    parse_read_response_fn: Callable[
-        [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
-    ] = None,
 ):
   """Executes a federated program.
 
   Args:
+    initialize_fn: An optional initialization function to call prior to
+      executing the program.
     program: A base64-encoded bytestring that represents python code and
       contains a function named TRUSTED_PROGRAM_KEY that describes the federated
       program to execute. The TRUSTED_PROGRAM_KEY function should expect a
@@ -58,35 +50,12 @@ async def run_program(
     outgoing_server_address: The address at which the untrusted root server can
       be reached for data read/write requests and computation delegation
       requests.
-    worker_bns: A list of worker bns addresses.
-    serialized_reference_values: A base64-encoded bytestring containing a
-      serialized oak.attestation.v1.ReferenceValues proto that contains
-      reference values of the program worker binary to set up the client noise
-      sessions.
-    parse_read_response_fn: A function that takes a
-      data_read_write_pb2.ReadResponse, nonce, and key (from a FileInfo Data
-      pointer) and returns a tff Value proto.
 
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
   """
-  if worker_bns:
-    compiler_fn = functools.partial(
-        compiler.to_composed_tee_form,
-        num_client_workers=len(worker_bns) - 1,
-    )
-  else:
-    compiler_fn = compilers.compile_tf_to_call_dominant
-  federated_language.framework.set_default_context(
-      execution_context.TrustedContext(
-          compiler_fn,
-          execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
-          outgoing_server_address,
-          worker_bns,
-          serialized_reference_values,
-          parse_read_response_fn,
-      )
-  )
+  if initialize_fn is not None:
+    initialize_fn()
 
   # Decode the program, which must be provided as a base64-encoded bytestring.
   try:

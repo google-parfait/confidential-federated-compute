@@ -30,6 +30,7 @@
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "fcp/testing/parse_text_proto.h"
+#include "federated_language_jax/executor/xla_executor.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "google/protobuf/struct.pb.h"
@@ -71,12 +72,6 @@ constexpr absl::string_view kNoArgumentComputationPath =
     "program_worker/testing/no_argument_comp.txtpb";
 constexpr absl::string_view kNoArgumentComputationExpectedResultPath =
     "program_worker/testing/no_argument_comp_expected_result.txtpb";
-constexpr absl::string_view kServerDataCompPath =
-    "program_worker/testing/server_data_comp.txtpb";
-constexpr absl::string_view kServerDataPath =
-    "program_worker/testing/server_data.txtpb";
-constexpr absl::string_view kServerDataCompExpectedResultPath =
-    "program_worker/testing/server_data_comp_expected_result.txtpb";
 
 constexpr absl::string_view kFakeAttesterId = "fake_attester";
 constexpr absl::string_view kFakeEvent = "fake event";
@@ -127,10 +122,15 @@ SessionConfig* TestConfigAttestedNNClient() {
       .Build();
 }
 
+absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+CreateExecutor() {
+  return federated_language_jax::CreateXLAExecutor();
+}
+
 class FakeComputationDelegationServiceTest : public Test {
  public:
   FakeComputationDelegationServiceTest()
-      : fake_computation_delegation_service_(kWorkerBns) {
+      : fake_computation_delegation_service_(kWorkerBns, CreateExecutor) {
     const std::string server_address = "[::1]:";
 
     ServerBuilder computation_delegation_builder;
@@ -250,55 +250,7 @@ TEST_F(FakeComputationDelegationServiceTest,
   ASSERT_EQ(result.SerializeAsString(), expected_result->SerializeAsString());
 }
 
-TEST_F(FakeComputationDelegationServiceTest,
-       ExecuteServerDataCompOnSecondWorkerReturnsResult) {
-  std::string worker_bns = kWorkerBns[1];
-  auto client_session = CreateClientSessionAndDoHandshake(worker_bns);
-  ASSERT_TRUE(client_session.ok());
-
-  TffSessionConfig tff_comp_request;
-  auto function = LoadFileAsTffValue(kServerDataCompPath);
-  ASSERT_TRUE(function.ok());
-  auto arg = LoadFileAsTffValue(kServerDataPath, false);
-  ASSERT_TRUE(arg.ok());
-  *tff_comp_request.mutable_initial_arg() = *arg;
-  *tff_comp_request.mutable_function() = *function;
-  tff_comp_request.set_num_clients(3);
-  tff_comp_request.set_output_access_policy_node_id(1);
-  tff_comp_request.set_max_concurrent_computation_calls(1);
-  PlaintextMessage plaintext_comp_request;
-  plaintext_comp_request.set_plaintext(tff_comp_request.SerializeAsString());
-  ASSERT_TRUE((*client_session)->Write(plaintext_comp_request).ok());
-  absl::StatusOr<std::optional<SessionRequest>> comp_session_request =
-      (*client_session)->GetOutgoingMessage();
-  ASSERT_TRUE(comp_session_request.ok());
-
-  ComputationRequest comp_request;
-  comp_request.mutable_computation()->PackFrom(comp_session_request->value());
-  comp_request.set_worker_bns(worker_bns);
-  ComputationResponse comp_response;
-  {
-    grpc::ClientContext context;
-    auto comp_status = stub_->Execute(&context, comp_request, &comp_response);
-    ASSERT_TRUE(comp_status.ok());
-  }
-
-  SessionResponse comp_session_response;
-  ASSERT_TRUE(comp_response.result().UnpackTo(&comp_session_response));
-  ASSERT_TRUE(
-      (*client_session)->PutIncomingMessage(comp_session_response).ok());
-  auto decrypted_comp_response = (*client_session)->Read();
-  ASSERT_TRUE(decrypted_comp_response.ok());
-
-  Value result;
-  bool parse_success =
-      result.ParseFromString(decrypted_comp_response->value().plaintext());
-  ASSERT_TRUE(parse_success);
-  auto expected_result =
-      LoadFileAsTffValue(kServerDataCompExpectedResultPath, false);
-  ASSERT_TRUE(expected_result.ok());
-  ASSERT_EQ(result.SerializeAsString(), expected_result->SerializeAsString());
-}
+// TODO: Consider adding additional test cases involving arguments.
 
 }  // namespace
 

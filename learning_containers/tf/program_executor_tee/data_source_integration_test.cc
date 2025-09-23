@@ -17,27 +17,36 @@
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
+#include "tf/program_executor_tee/confidential_transform_server.h"
 
-namespace confidential_federated_compute::program_executor_tee {
+namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
 namespace {
 
+using ::confidential_federated_compute::program_executor_tee::
+    BuildClientCheckpointFromInts;
+using ::confidential_federated_compute::program_executor_tee::
+    ProgramExecutorTeeSessionTest;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 
-TEST_F(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
+TYPED_TEST_SUITE(
+    ProgramExecutorTeeSessionTest,
+    ::testing::Types<TensorflowProgramExecutorTeeConfidentialTransform>);
+
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
   std::vector<std::string> client_ids = {"client1", "client2", "client3",
                                          "client4"};
   std::string client_data_dir = "data_dir";
   std::string tensor_name = "output_tensor_name";
   for (int i = 0; i < client_ids.size(); i++) {
-    CHECK_OK(fake_data_read_write_service_.StorePlaintextMessage(
+    CHECK_OK(this->fake_data_read_write_service_.StorePlaintextMessage(
         client_data_dir + "/" + client_ids[i],
         BuildClientCheckpointFromInts({1 + i * 3, 2 + i * 3, 3 + i * 3},
                                       tensor_name)));
   }
 
-  CreateSession(R"(
+  this->CreateSession(R"(
 import collections
 import federated_language
 from federated_language.proto import computation_pb2
@@ -107,16 +116,16 @@ async def trusted_program(input_provider, release_manager):
   await release_manager.release(server_state['sum'], "resulting_sum")
   await release_manager.release(server_state['client_count'], "resulting_client_count")
   )",
-                client_ids, client_data_dir);
+                      client_ids, client_data_dir);
 
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_finalize();
 
-  ASSERT_TRUE(stream_->Write(session_request));
-  ASSERT_TRUE(stream_->Read(&session_response));
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto write_call_args = fake_data_read_write_service_.GetWriteCallArgs();
+  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
   ASSERT_EQ(write_call_args.size(), 2);
   ASSERT_EQ(write_call_args[0].size(), 1);
   auto sum_write_request = write_call_args[0][0];
@@ -144,4 +153,4 @@ async def trusted_program(input_provider, release_manager):
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::program_executor_tee
+}  // namespace confidential_federated_compute::tensorflow::program_executor_tee

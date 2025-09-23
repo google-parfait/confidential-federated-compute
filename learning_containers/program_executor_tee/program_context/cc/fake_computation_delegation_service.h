@@ -20,8 +20,10 @@
 #include "cc/oak_session/server_session.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
+#include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
+#include "tensorflow_federated/cc/core/impl/executors/executor.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -29,7 +31,11 @@ class FakeComputationDelegationService
     : public fcp::confidentialcompute::outgoing::ComputationDelegation::
           Service {
  public:
-  FakeComputationDelegationService(std::vector<std::string> worker_bns);
+  FakeComputationDelegationService(
+      std::vector<std::string> worker_bns,
+      std::function<
+          absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+          leaf_executor_factory);
 
   grpc::Status Execute(
       ::grpc::ServerContext* context,
@@ -46,6 +52,14 @@ class FakeComputationDelegationService
       const oak::session::v1::PlaintextMessage& plaintext_response,
       std::string worker_bns);
 
+  absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+  InitializeTffExecutor(
+      const ::fcp::confidentialcompute::TffSessionConfig& comp_request);
+
+  // Function for generating a leaf executor.
+  std::function<
+      absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+      leaf_executor_factory_;
   // A map from worker bns to the noise server session for the worker.
   absl::flat_hash_map<std::string, std::unique_ptr<oak::session::ServerSession>>
       server_sessions_;

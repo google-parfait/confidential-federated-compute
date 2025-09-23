@@ -25,6 +25,7 @@ cc_library(
     name = "computation_runner",
     srcs = ["computation_runner.cc"],
     hdrs = ["computation_runner.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":computation_delegation_lambda_runner",
         ":session_config",
@@ -54,21 +55,6 @@ cc_library(
 )
 
 cc_binary(
-    name = "computation_runner_binary_tensorflow",
-    srcs = ["computation_runner_main_tensorflow.cc"],
-    deps = [
-        ":computation_runner",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@oak//proto/attestation:reference_value_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
-    ],
-)
-
-cc_binary(
     name = "computation_runner_binary_xla",
     srcs = ["computation_runner_main_xla.cc"],
     deps = [
@@ -89,6 +75,7 @@ cc_library(
     name = "data_parser",
     srcs = ["data_parser.cc"],
     hdrs = ["data_parser.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -130,6 +117,7 @@ cc_library(
     name = "fake_data_read_write_service",
     srcs = ["fake_data_read_write_service.cc"],
     hdrs = ["fake_data_read_write_service.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -147,6 +135,7 @@ cc_library(
 cc_test(
     name = "fake_data_read_write_service_test",
     srcs = ["fake_data_read_write_service_test.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":fake_data_read_write_service",
         "@com_github_grpc_grpc//:grpc++",
@@ -168,6 +157,7 @@ cc_library(
     name = "generate_checkpoint",
     srcs = ["generate_checkpoint.cc"],
     hdrs = ["generate_checkpoint.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log:check",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
@@ -286,6 +276,7 @@ cc_library(
     name = "fake_computation_delegation_service",
     srcs = ["fake_computation_delegation_service.cc"],
     hdrs = ["fake_computation_delegation_service.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -313,14 +304,12 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
 cc_test(
     name = "fake_computation_delegation_service_test",
-    size = "small",
     srcs = ["fake_computation_delegation_service_test.cc"],
     data = [
         "//program_worker/testing:test_tff_values",
@@ -337,8 +326,11 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@federated-compute//fcp/testing:parse_text_proto",
+        "@federated_language_jax//federated_language_jax/executor:xla_executor",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@local_xla//xla/service:cpu_plugin",
+        "@local_xla//xla/stream_executor/host:host_platform",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
         "@oak//cc/ffi:error_bindings",
@@ -348,13 +340,25 @@ cc_test(
     ],
 )
 
-pybind_extension(
-    name = "fake_service_bindings",
-    srcs = ["fake_service_bindings.cc"],
+cc_library(
+    name = "fake_server",
+    hdrs = ["fake_server.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":fake_computation_delegation_service",
         ":fake_data_read_write_service",
         "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+pybind_extension(
+    name = "fake_service_bindings_jax",
+    srcs = ["fake_service_bindings_jax.cc"],
+    deps = [
+        ":fake_computation_delegation_service",
+        ":fake_data_read_write_service",
+        ":fake_server",
+        "@federated_language_jax//federated_language_jax/executor:xla_executor",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

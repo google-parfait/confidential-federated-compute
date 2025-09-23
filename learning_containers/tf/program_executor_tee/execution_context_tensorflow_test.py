@@ -20,11 +20,16 @@ from fcp.confidentialcompute.python import compiler
 import federated_language
 import numpy as np
 import portpicker
-from program_executor_tee.program_context import compilers
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import test_helpers
-from program_executor_tee.program_context.cc import fake_service_bindings
 import tensorflow_federated as tff
+from tf.program_executor_tee import compilers
+from tf.program_executor_tee import fake_service_bindings_tensorflow
+
+
+TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
+    "tf/program_executor_tee/computation_runner_binary_tensorflow"
+)
 
 
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
@@ -38,9 +43,9 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.worker_bns = []
     self.serialized_reference_values = b""
     self.data_read_write_service = (
-        fake_service_bindings.FakeDataReadWriteService()
+        fake_service_bindings_tensorflow.FakeDataReadWriteService()
     )
-    self.server = fake_service_bindings.FakeServer(
+    self.server = fake_service_bindings_tensorflow.FakeServer(
         self.untrusted_root_port, self.data_read_write_service, None
     )
     self.server.start()
@@ -52,7 +57,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     mock_compiler = unittest.mock.Mock()
     context = execution_context.TrustedContext(
         mock_compiler,
-        execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+        TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -91,7 +96,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
-            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -125,7 +130,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
-            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -181,7 +186,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
-            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -220,12 +225,14 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     ]
     self.serialized_reference_values = b""
     self.data_read_write_service = (
-        fake_service_bindings.FakeDataReadWriteService()
+        fake_service_bindings_tensorflow.FakeDataReadWriteService()
     )
     self.computation_delegation_service = (
-        fake_service_bindings.FakeComputationDelegationService(self.worker_bns)
+        fake_service_bindings_tensorflow.FakeComputationDelegationService(
+            self.worker_bns
+        )
     )
-    self.server = fake_service_bindings.FakeServer(
+    self.server = fake_service_bindings_tensorflow.FakeServer(
         self.untrusted_root_port,
         self.data_read_write_service,
         self.computation_delegation_service,
@@ -242,7 +249,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
-            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -279,7 +286,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
                 compiler.to_composed_tee_form,
                 num_client_workers=len(self.worker_bns) - 1,
             ),
-            execution_context.TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,

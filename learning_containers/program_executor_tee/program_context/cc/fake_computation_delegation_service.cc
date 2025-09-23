@@ -36,7 +36,6 @@
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
-#include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -102,31 +101,14 @@ SessionConfig* TestConfigAttestedNNServer() {
   return builder.Build();
 }
 
-absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
-InitializeTffExecutor(const TffSessionConfig& comp_request) {
-  int32_t max_concurrent_computation_calls =
-      comp_request.max_concurrent_computation_calls();
-  auto leaf_executor_fn = [max_concurrent_computation_calls]() {
-    return tensorflow_federated::CreateReferenceResolvingExecutor(
-        tensorflow_federated::CreateTensorFlowExecutor(
-            max_concurrent_computation_calls));
-  };
-  tensorflow_federated::CardinalityMap cardinality_map;
-  cardinality_map[tensorflow_federated::kClientsUri] =
-      comp_request.num_clients();
-  FCP_ASSIGN_OR_RETURN(
-      auto federating_executor,
-      tensorflow_federated::CreateFederatingExecutor(
-          /*server_child=*/leaf_executor_fn(),
-          /*client_child=*/leaf_executor_fn(), cardinality_map));
-  return tensorflow_federated::CreateReferenceResolvingExecutor(
-      federating_executor);
-}
-
 }  // namespace
 
 FakeComputationDelegationService::FakeComputationDelegationService(
-    std::vector<std::string> worker_bns) {
+    std::vector<std::string> worker_bns,
+    std::function<
+        absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+        leaf_executor_factory)
+    : leaf_executor_factory_(leaf_executor_factory) {
   for (const auto& worker_bns : worker_bns) {
     auto server_session = ServerSession::Create(TestConfigAttestedNNServer());
     CHECK_OK(server_session);
@@ -158,6 +140,27 @@ absl::StatusOr<SessionResponse> FakeComputationDelegationService::EncryptResult(
         "Could not generate SessionResponse for the request.");
   }
   return session_response.value();
+}
+
+absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+FakeComputationDelegationService::InitializeTffExecutor(
+    const TffSessionConfig& comp_request) {
+  auto leaf_executor_fn = [this]()
+      -> absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> {
+    FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory_());
+    return tensorflow_federated::CreateReferenceResolvingExecutor(executor);
+  };
+  tensorflow_federated::CardinalityMap cardinality_map;
+  cardinality_map[tensorflow_federated::kClientsUri] =
+      comp_request.num_clients();
+  FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_fn());
+  FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_fn());
+  FCP_ASSIGN_OR_RETURN(auto federating_executor,
+                       tensorflow_federated::CreateFederatingExecutor(
+                           /*server_child=*/server_child,
+                           /*client_child=*/client_child, cardinality_map));
+  return tensorflow_federated::CreateReferenceResolvingExecutor(
+      federating_executor);
 }
 
 Status FakeComputationDelegationService::Execute(

@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_oci//oci:defs.bzl", "oci_image")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
@@ -25,25 +21,13 @@ trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
         "//program_executor_tee/program_context:program_runner",
-        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
     ],
-    source_repo_names = [
-        "federated_language",
-        "federated-compute",
-        "org_tensorflow_federated",
-        "oak",
-    ],
-)
-
-filegroup(
-    name = "testdata",
-    srcs = glob(["testdata/*"]),
 )
 
 cc_library(
     name = "testing_base",
     hdrs = ["testing_base.h"],
-    data = [":testdata"],
+    visibility = ["//visibility:public"],
     deps = [
         ":confidential_transform_server",
         "//program_executor_tee/program_context/cc:fake_data_read_write_service",
@@ -65,10 +49,8 @@ cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
-    # Include py runfiles needed to execute the federated program.
-    data = [":trusted_program_py_runtime"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//program_executor_tee/program_context/cc:data_parser",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -91,7 +73,6 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@oak//cc/crypto:signing_key",
         "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
         "@rules_python//python/cc:current_py_cc_libs",
     ],
 )
@@ -116,90 +97,4 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "data_source_integration_test",
-    size = "medium",
-    srcs = ["data_source_integration_test.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_test(
-    name = "load_model_integration_test",
-    size = "medium",
-    srcs = ["load_model_integration_test.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_binary(
-    name = "main",
-    srcs = ["main.cc"],
-    local_defines = [
-        "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
-    ],
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":confidential_transform_server",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@oak//cc/containers/sdk:orchestrator_client",
-        "@oak//cc/containers/sdk:signing_key_handle",
-    ],
-)
-
-pkg_tar_runfiles(
-    name = "runfiles",
-    srcs = [":main"],
-    runfiles_prefix = "main.runfiles",
-)
-
-pkg_tar(
-    name = "tar",
-    srcs = [":runfiles"],
-)
-
-oci_image(
-    name = "oci_image",
-    # Use a base image that provides the same version of python we reference
-    # in the WORKSPACE file.
-    base = "@python_3_10_slim_bookworm",
-    # Set the workdir and entrypoint so that the main binary will be executed
-    # from within the runfiles directory. This ensures that the main binary
-    # will be able to find its runfiles properly.
-    entrypoint = ["program_executor_tee/main"],
-    tars = [":tar"],
-    workdir = "/main.runfiles/__main__/",
-)
-
-oci_runtime_bundle(
-    name = "oci_runtime_bundle",
-    image = ":oci_image",
-    visibility = ["//:__pkg__"],
-)
+# TODO: Add simple python and JAX container build rules.

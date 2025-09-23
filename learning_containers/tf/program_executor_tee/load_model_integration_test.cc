@@ -17,16 +17,24 @@
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
+#include "tf/program_executor_tee/confidential_transform_server.h"
 
-namespace confidential_federated_compute::program_executor_tee {
+namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
 namespace {
 
+using ::confidential_federated_compute::program_executor_tee::
+    ProgramExecutorTeeSessionTest;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 
-TEST_F(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
-  CreateSession(R"(
+TYPED_TEST_SUITE(
+    ProgramExecutorTeeSessionTest,
+    ::testing::Types<TensorflowProgramExecutorTeeConfidentialTransform>);
+
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
+  this->CreateSession(
+      R"(
 import tensorflow_federated as tff
 import tensorflow as tf
 import numpy as np
@@ -44,14 +52,17 @@ async def trusted_program(input_provider, release_manager):
   )
   state = learning_process.initialize()
   await release_manager.release(state, "result")
-  )");
+  )",
+      /*client_ids=*/{}, /*client_data_dir=*/"",
+      /*file_id_to_filepath=*/
+      {{"model1", "tf/program_executor_tee/testdata/model1.zip"}});
 
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_finalize();
 
-  ASSERT_TRUE(stream_->Write(session_request));
-  ASSERT_TRUE(stream_->Read(&session_response));
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
 
   auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
   expected_request.mutable_first_request_metadata()
@@ -59,7 +70,7 @@ async def trusted_program(input_provider, release_manager):
       ->set_blob_id("result");
   expected_request.set_commit(true);
 
-  auto write_call_args = fake_data_read_write_service_.GetWriteCallArgs();
+  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
   ASSERT_EQ(write_call_args.size(), 1);
   ASSERT_EQ(write_call_args[0].size(), 1);
   auto write_request = write_call_args[0][0];
@@ -76,4 +87,4 @@ async def trusted_program(input_provider, release_manager):
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::program_executor_tee
+}  // namespace confidential_federated_compute::tensorflow::program_executor_tee

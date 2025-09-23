@@ -20,7 +20,12 @@ from federated_language_jax.computation import jax_computation
 import portpicker
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import test_helpers
-from program_executor_tee.program_context.cc import fake_service_bindings
+from program_executor_tee.program_context.cc import fake_service_bindings_jax
+
+
+XLA_COMPUTATION_RUNNER_BINARY_PATH = (
+    "program_executor_tee/program_context/cc/computation_runner_binary_xla"
+)
 
 
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
@@ -34,9 +39,9 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.worker_bns = []
     self.serialized_reference_values = b""
     self.data_read_write_service = (
-        fake_service_bindings.FakeDataReadWriteService()
+        fake_service_bindings_jax.FakeDataReadWriteService()
     )
-    self.server = fake_service_bindings.FakeServer(
+    self.server = fake_service_bindings_jax.FakeServer(
         self.untrusted_root_port, self.data_read_write_service, None
     )
     self.server.start()
@@ -47,7 +52,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
   async def test_execution_context_jax_computation(self):
     context = execution_context.TrustedContext(
         lambda x: x,
-        execution_context.XLA_COMPUTATION_RUNNER_BINARY_PATH,
+        XLA_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
