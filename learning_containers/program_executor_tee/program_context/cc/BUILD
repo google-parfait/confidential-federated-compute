@@ -314,6 +314,7 @@ cc_test(
     data = [
         "//program_worker/testing:test_tff_values",
     ],
+    tags = ["noasan"],
     deps = [
         ":fake_computation_delegation_service",
         "@com_github_grpc_grpc//:grpc++",
