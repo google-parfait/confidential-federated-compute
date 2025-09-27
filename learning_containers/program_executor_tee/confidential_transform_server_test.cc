@@ -115,8 +115,10 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
 
   grpc::Status status = this->stream_->Finish();
   ASSERT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("SessionWrite is not supported"));
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Writing to a session is not supported in program executor TEE"));
 }
 
 }  // namespace

@@ -51,22 +51,31 @@ using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Struct;
 
-absl::Status ProgramExecutorTeeSession::ConfigureSession(
-    fcp::confidentialcompute::SessionRequest configure_request) {
-  return absl::OkStatus();
+absl::StatusOr<fcp::confidentialcompute::ConfigureResponse>
+ProgramExecutorTeeSession::Configure(
+    fcp::confidentialcompute::ConfigureRequest request, Context& context) {
+  return fcp::confidentialcompute::ConfigureResponse();
 }
 
-absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::SessionWrite(
-    const WriteRequest& write_request, std::string unencrypted_data) {
+absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+ProgramExecutorTeeSession::Write(fcp::confidentialcompute::WriteRequest request,
+                                 std::string unencrypted_data,
+                                 Context& context) {
   return absl::UnimplementedError(
-      "SessionWrite is not supported in program executor TEE.");
+      "Writing to a session is not supported in program executor TEE.");
 }
 
-absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
-    const FinalizeRequest& request, const BlobMetadata& input_metadata) {
-  SessionResponse response;
-  ReadResponse* read_response = response.mutable_read();
+absl::StatusOr<fcp::confidentialcompute::CommitResponse>
+ProgramExecutorTeeSession::Commit(
+    fcp::confidentialcompute::CommitRequest request, Context& context) {
+  return absl::UnimplementedError(
+      "Committing to a session is not supported in program executor TEE.");
+}
 
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+ProgramExecutorTeeSession::Finalize(
+    fcp::confidentialcompute::FinalizeRequest request,
+    fcp::confidentialcompute::BlobMetadata input_metadata, Context& context) {
   std::vector<std::string> client_ids;
   client_ids.reserve(initialize_config_.client_ids().size());
   for (const auto& client_id : initialize_config_.client_ids()) {
@@ -100,14 +109,10 @@ absl::StatusOr<SessionResponse> ProgramExecutorTeeSession::FinalizeSession(
     pybind11::object loop =
         pybind11::module::import("asyncio").attr("get_event_loop")();
     pybind11::object result = loop.attr("run_until_complete")(task);
-
-    read_response->set_finish_read(true);
   } catch (const std::exception& e) {
     LOG(INFO) << "Error executing federated program: " << e.what();
-    read_response->set_finish_read(false);
   }
-
-  return response;
+  return fcp::confidentialcompute::FinalizeResponse();
 }
 
 absl::StatusOr<google::protobuf::Struct>

@@ -147,8 +147,7 @@ async def trusted_program(input_provider, release_manager):
   ASSERT_THAT(released_value.array().int32_list().value(),
               ::testing::ElementsAreArray({8}));
 
-  ASSERT_TRUE(session_response.has_read());
-  ASSERT_TRUE(session_response.read().finish_read());
+  ASSERT_TRUE(session_response.has_finalize());
 }
 
 }  // namespace

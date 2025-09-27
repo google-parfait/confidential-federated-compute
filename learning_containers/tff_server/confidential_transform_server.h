@@ -38,7 +38,7 @@
 namespace confidential_federated_compute::tff_server {
 
 // TFF implementation of Session interface. Not threadsafe.
-class TffSession final : public confidential_federated_compute::Session {
+class TffSession final : public confidential_federated_compute::LegacySession {
  public:
   TffSession() {};
 

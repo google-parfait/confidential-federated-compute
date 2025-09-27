@@ -81,8 +81,7 @@ async def trusted_program(input_provider, release_manager):
   released_value.ParseFromString(write_request.data());
   ASSERT_EQ(released_value.struct_().element().size(), 5);
 
-  ASSERT_TRUE(session_response.has_read());
-  ASSERT_TRUE(session_response.read().finish_read());
+  ASSERT_TRUE(session_response.has_finalize());
 }
 
 }  // namespace

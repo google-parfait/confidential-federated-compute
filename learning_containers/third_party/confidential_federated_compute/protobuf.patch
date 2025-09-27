@@ -1,0 +1,42 @@
+diff --git containers/BUILD containers/BUILD
+index 9f757e6..cd37d1a 100644
+--- containers/BUILD
++++ containers/BUILD
+@@ -33,7 +33,7 @@ cc_library(
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_absl//absl/strings:str_format",
+-        "@com_google_protobuf//:struct_cc_proto",
++        "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/base",
+         "@federated-compute//fcp/base:compression",
+         "@federated-compute//fcp/base:status_converters",
+@@ -143,8 +143,7 @@ cc_test(
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:status_matchers",
+-        "@com_google_protobuf//:differencer",
+-        "@com_google_protobuf//:struct_cc_proto",
++        "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/base",
+         "@federated-compute//fcp/base:compression",
+         "@federated-compute//fcp/confidentialcompute:cose",
+@@ -176,8 +175,7 @@ cc_library(
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/synchronization",
+-        "@com_google_protobuf//:any_cc_proto",
+-        "@com_google_protobuf//:protobuf_lite",
++        "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/base",
+         "@federated-compute//fcp/base:status_converters",
+         "@federated-compute//fcp/confidentialcompute:nonce",
+@@ -206,7 +204,7 @@ cc_test(
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/status:status_matchers",
+         "@com_google_absl//absl/strings:str_format",
+-        "@com_google_protobuf//:protobuf_lite",
++        "@com_google_protobuf//:protobuf",
+         "@federated-compute//fcp/base:status_converters",
+         "@federated-compute//fcp/confidentialcompute:cose",
+         "@federated-compute//fcp/confidentialcompute:crypto",

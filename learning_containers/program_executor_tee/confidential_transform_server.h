@@ -53,30 +53,37 @@ class ProgramExecutorTeeSession final
         get_program_initialize_fn_(get_program_initialize_fn) {}
 
   // Configures a minimal session.
-  absl::Status ConfigureSession(
-      fcp::confidentialcompute::SessionRequest configure_request) override;
+  absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
+      fcp::confidentialcompute::ConfigureRequest request,
+      Context& context) override;
+
   // Not supported.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
-      const fcp::confidentialcompute::WriteRequest& write_request,
-      std::string unencrypted_data) override;
-  // Currently no action taken for commits.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
-      const fcp::confidentialcompute::CommitRequest& commit_request) override {
-    return ToSessionCommitResponse(absl::OkStatus());
-  }
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
+      fcp::confidentialcompute::WriteRequest request,
+      std::string unencrypted_data, Context& context) override;
+
+  // Not supported.
+  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
+      fcp::confidentialcompute::CommitRequest request,
+      Context& context) override;
+
   // Triggers program execution.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
-      const fcp::confidentialcompute::FinalizeRequest& request,
-      const fcp::confidentialcompute::BlobMetadata& input_metadata) override;
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
+      fcp::confidentialcompute::FinalizeRequest request,
+      fcp::confidentialcompute::BlobMetadata input_metadata,
+      Context& context) override;
 
  private:
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+
   // Map of model ids to zip files representing tff FunctionalModels.
   std::map<std::string, std::string> model_id_to_zip_file_;
+
   // Blob decryptor.
   confidential_federated_compute::BlobDecryptor* blob_decryptor_;
+
   // Function that generates the optional pybind function to call at the
   // beginning of the program runner.
   std::function<std::optional<pybind11::function>()> get_program_initialize_fn_;
@@ -121,13 +128,17 @@ class ProgramExecutorTeeConfidentialTransform
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config_;
+
   // List of worker bns addresses.
   std::vector<std::string> worker_bns_addresses_;
+
   // Map of model ids to zip files representing tff FunctionalModels.
   std::map<std::string, std::string> model_id_to_zip_file_;
+
   // Track the model_id of the current model passed to container through
   // `ReadWriteConfigurationRequest`.
   std::string current_model_id_;
+
   // Tracking zipped models passed into the container through
   // WriteConfigurationRequest.
   struct WriteConfigurationMetadata {

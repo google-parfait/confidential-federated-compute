@@ -46,13 +46,12 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute",
-    integrity = "sha256-YS8qO+3t5mwWekW+zBLOVjDY2vseaM3BFR3vdoYiaRs=",
+    integrity = "sha256-6o5OWJ6pnl1zDqQvq5hoPhILhXG/G2/dBn00lt2r3BU=",
     patches = [
-        "//third_party/confidential_federated_compute:containers.patch",
-        "//third_party/confidential_federated_compute:visibility.patch",
+        "//third_party/confidential_federated_compute:protobuf.patch",
     ],
-    strip_prefix = "confidential-federated-compute-9eb316481115d8402f5500a650ff44a8e7490327",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/9eb316481115d8402f5500a650ff44a8e7490327.tar.gz",
+    strip_prefix = "confidential-federated-compute-960b5b0c3f33e374ed902c42c835695b50f97b55",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/960b5b0c3f33e374ed902c42c835695b50f97b55.tar.gz",
 )
 
 http_archive(
@@ -113,7 +112,7 @@ git_repository(
     name = "libcppbor",
     build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-    patches = ["@confidential-federated-compute//third_party/libcppbor:libcppbor.patch"],
+    patches = ["//third_party/libcppbor:libcppbor.patch"],
     remote = "https://android.googlesource.com/platform/external/libcppbor",
 )
 
