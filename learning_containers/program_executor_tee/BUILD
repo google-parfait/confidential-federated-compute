@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
@@ -81,6 +81,7 @@ py_library(
     deps = [
         "//program_executor_tee/program_context:execution_context",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@org_tensorflow_federated//tensorflow_federated",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
 )
@@ -178,5 +179,45 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@federated-compute//fcp/testing:parse_text_proto",
         "@googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "program_worker_server",
+    srcs = ["program_worker_server.cc"],
+    hdrs = ["program_worker_server.h"],
+    deps = [
+        "//program_executor_tee/program_context/cc:noise_leaf_executor",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:server_session",
+    ],
+)
+
+cc_binary(
+    name = "worker_main_xla",
+    srcs = ["worker_main_xla.cc"],
+    tags = ["noasan"],
+    deps = [
+        ":program_worker_server",
+        "//program_executor_tee/program_context/cc:server_session_config",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@federated_language_jax//federated_language_jax/executor:xla_executor",
+        "@local_xla//xla/service:cpu_plugin",
+        "@local_xla//xla/stream_executor/host:host_platform",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
+        "@oak//proto/session:session_cc_proto",
     ],
 )

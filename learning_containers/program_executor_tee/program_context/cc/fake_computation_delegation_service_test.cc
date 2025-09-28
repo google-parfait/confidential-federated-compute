@@ -14,26 +14,16 @@
 
 #include "program_executor_tee/program_context/cc/fake_computation_delegation_service.h"
 
-#include <fstream>
 #include <memory>
 #include <string>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "cc/ffi/bytes_bindings.h"
 #include "cc/ffi/bytes_view.h"
-#include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
 #include "cc/oak_session/oak_session_bindings.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
-#include "fcp/protos/confidentialcompute/tff_config.pb.h"
-#include "fcp/testing/parse_text_proto.h"
 #include "federated_language_jax/executor/xla_executor.h"
-#include "gmock/gmock.h"
-#include "google/protobuf/repeated_ptr_field.h"
-#include "google/protobuf/struct.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -41,6 +31,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "program_executor_tee/proto/executor_wrapper.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -49,7 +40,6 @@ namespace {
 namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
-using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::outgoing::ComputationDelegation;
 using ::fcp::confidentialcompute::outgoing::ComputationRequest;
 using ::fcp::confidentialcompute::outgoing::ComputationResponse;
@@ -65,51 +55,13 @@ using ::oak::session::SessionConfigBuilder;
 using ::oak::session::v1::PlaintextMessage;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
-using ::tensorflow_federated::v0::Value;
 using ::testing::Test;
-
-constexpr absl::string_view kNoArgumentComputationPath =
-    "program_worker/testing/no_argument_comp.txtpb";
-constexpr absl::string_view kNoArgumentComputationExpectedResultPath =
-    "program_worker/testing/no_argument_comp_expected_result.txtpb";
 
 constexpr absl::string_view kFakeAttesterId = "fake_attester";
 constexpr absl::string_view kFakeEvent = "fake event";
 constexpr absl::string_view kFakePlatform = "fake platform";
-
+constexpr int kNumClients = 5;
 const std::vector<std::string> kWorkerBns = {"worker_1", "worker_2"};
-
-absl::StatusOr<Value> LoadFileAsTffValue(absl::string_view path,
-                                         bool is_computation = true) {
-  // Before creating the std::ifstream, convert the absl::string_view to
-  // std::string.
-  std::string path_str(path);
-  std::ifstream file_istream(path_str);
-  if (!file_istream) {
-    return absl::FailedPreconditionError("Error loading file: " + path_str);
-  }
-  std::stringstream file_stream;
-  file_stream << file_istream.rdbuf();
-  if (is_computation) {
-    federated_language::Computation computation;
-    if (!google::protobuf::TextFormat::ParseFromString(
-            std::move(file_stream.str()), &computation)) {
-      return absl::InvalidArgumentError(
-          "Error parsing TFF Computation from file.");
-    }
-    Value value;
-    *value.mutable_computation() = std::move(computation);
-    return value;
-  } else {
-    Value value;
-    if (!google::protobuf::TextFormat::ParseFromString(
-            std::move(file_stream.str()), &value)) {
-      return absl::InvalidArgumentError(
-          "Error parsing TFF Federated from file.");
-    }
-    return value;
-  }
-}
 
 SessionConfig* TestConfigAttestedNNClient() {
   auto verifier = bindings::new_fake_attestation_verifier(
@@ -203,26 +155,29 @@ TEST_F(FakeComputationDelegationServiceTest, OpenSessionForEachWorker) {
   }
 }
 
-TEST_F(FakeComputationDelegationServiceTest,
-       ExecuteNoArgumentComputationOnFirstWorkerReturnsResult) {
+TEST_F(FakeComputationDelegationServiceTest, ExecuteSuccess) {
   std::string worker_bns = kWorkerBns[0];
   auto client_session = CreateClientSessionAndDoHandshake(worker_bns);
   ASSERT_TRUE(client_session.ok());
 
-  TffSessionConfig tff_comp_request;
-  auto function = LoadFileAsTffValue(kNoArgumentComputationPath);
-  ASSERT_TRUE(function.ok());
-  *tff_comp_request.mutable_function() = *function;
-  tff_comp_request.set_num_clients(3);
-  tff_comp_request.set_output_access_policy_node_id(1);
-  tff_comp_request.set_max_concurrent_computation_calls(1);
-  PlaintextMessage plaintext_comp_request;
-  plaintext_comp_request.set_plaintext(tff_comp_request.SerializeAsString());
-  ASSERT_TRUE((*client_session)->Write(plaintext_comp_request).ok());
+  // Create a ExecutorGroupRequest for a GetExecutorRequest.
+  executor_wrapper::ExecutorGroupRequest request;
+  tensorflow_federated::v0::GetExecutorRequest* get_executor_request =
+      request.mutable_get_executor_request();
+  auto cardinalities = get_executor_request->mutable_cardinalities()->Add();
+  cardinalities->mutable_placement()->set_uri("clients");
+  cardinalities->set_cardinality(kNumClients);
+
+  // Interact with the client session to get the SessionRequest that wraps the
+  // ExecutorGroupRequest.
+  PlaintextMessage plaintext_request;
+  plaintext_request.set_plaintext(request.SerializeAsString());
+  ASSERT_TRUE((*client_session)->Write(plaintext_request).ok());
   absl::StatusOr<std::optional<SessionRequest>> comp_session_request =
       (*client_session)->GetOutgoingMessage();
   ASSERT_TRUE(comp_session_request.ok());
 
+  // Wrap the SessionRequest in a ComputationRequest and send it to the stub.
   ComputationRequest comp_request;
   comp_request.mutable_computation()->PackFrom(comp_session_request->value());
   comp_request.set_worker_bns(worker_bns);
@@ -232,7 +187,6 @@ TEST_F(FakeComputationDelegationServiceTest,
     auto comp_status = stub_->Execute(&context, comp_request, &comp_response);
     ASSERT_TRUE(comp_status.ok());
   }
-
   SessionResponse comp_session_response;
   ASSERT_TRUE(comp_response.result().UnpackTo(&comp_session_response));
   ASSERT_TRUE(
@@ -240,17 +194,13 @@ TEST_F(FakeComputationDelegationServiceTest,
   auto decrypted_comp_response = (*client_session)->Read();
   ASSERT_TRUE(decrypted_comp_response.ok());
 
-  Value result;
+  // Retrieve a ExecutorGroupResponse.
+  executor_wrapper::ExecutorGroupResponse response;
   bool parse_success =
-      result.ParseFromString(decrypted_comp_response->value().plaintext());
+      response.ParseFromString(decrypted_comp_response->value().plaintext());
   ASSERT_TRUE(parse_success);
-  auto expected_result =
-      LoadFileAsTffValue(kNoArgumentComputationExpectedResultPath, false);
-  ASSERT_TRUE(expected_result.ok());
-  ASSERT_EQ(result.SerializeAsString(), expected_result->SerializeAsString());
+  ASSERT_TRUE(response.has_get_executor_response());
 }
-
-// TODO: Consider adding additional test cases involving arguments.
 
 }  // namespace
 

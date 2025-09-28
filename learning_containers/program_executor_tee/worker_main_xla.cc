@@ -23,17 +23,18 @@
 #include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/config.h"
 #include "cc/oak_session/oak_session_bindings.h"
+#include "federated_language_jax/executor/xla_executor.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "program_worker/program_worker_server.h"
+#include "program_executor_tee/program_worker_server.h"
 #include "proto/session/session.pb.h"
 
 extern "C" {
 extern ::oak::session::SessionConfig* create_session_config();
 extern void init_tokio_runtime();
 }
-namespace confidential_federated_compute::program_worker {
+namespace confidential_federated_compute::program_executor_tee {
 
 namespace {
 
@@ -51,13 +52,18 @@ using ::oak::session::SessionConfigBuilder;
 // Increase gRPC message size limit to 2GB
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 
+absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+CreateExecutor() {
+  return federated_language_jax::CreateXLAExecutor();
+}
+
 void RunServer() {
   std::string server_address("[::]:8080");
 
   // Initialize the Rust runtime to create the session config.
   init_tokio_runtime();
   auto* session_config = create_session_config();
-  auto service = ProgramWorkerTee::Create(session_config);
+  auto service = ProgramWorkerTee::Create(session_config, CreateExecutor);
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
 
@@ -74,9 +80,9 @@ void RunServer() {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::program_worker
+}  // namespace confidential_federated_compute::program_executor_tee
 
 int main(int argc, char** argv) {
-  confidential_federated_compute::program_worker::RunServer();
+  confidential_federated_compute::program_executor_tee::RunServer();
   return 0;
 }

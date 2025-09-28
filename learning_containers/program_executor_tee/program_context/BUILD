@@ -48,7 +48,9 @@ py_test(
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax/computation:jax_computation",
+        "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
+        "@pypi//parameterized",
         "@pypi//portpicker",
     ],
 )

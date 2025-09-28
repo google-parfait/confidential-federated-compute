@@ -1,0 +1,45 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package executor_wrapper;
+
+import "tensorflow_federated/proto/v0/executor.proto";
+
+message ExecutorGroupRequest {
+  oneof request {
+    tensorflow_federated.v0.GetExecutorRequest get_executor_request = 1;
+    tensorflow_federated.v0.CreateValueRequest create_value_request = 2;
+    tensorflow_federated.v0.CreateCallRequest create_call_request = 3;
+    tensorflow_federated.v0.CreateStructRequest create_struct_request = 4;
+    tensorflow_federated.v0.CreateSelectionRequest create_selection_request = 5;
+    tensorflow_federated.v0.ComputeRequest compute_request = 6;
+    tensorflow_federated.v0.DisposeRequest dispose_request = 7;
+    tensorflow_federated.v0.DisposeExecutorRequest dispose_executor_request = 8;
+  }
+}
+
+message ExecutorGroupResponse {
+  oneof response {
+    tensorflow_federated.v0.GetExecutorResponse get_executor_response = 1;
+    tensorflow_federated.v0.CreateValueResponse create_value_response = 2;
+    tensorflow_federated.v0.CreateCallResponse create_call_response = 3;
+    tensorflow_federated.v0.CreateStructResponse create_struct_response = 4;
+    tensorflow_federated.v0.CreateSelectionResponse create_selection_response = 5;
+    tensorflow_federated.v0.ComputeResponse compute_response = 6;
+    tensorflow_federated.v0.DisposeResponse dispose_response = 7;
+    tensorflow_federated.v0.DisposeExecutorResponse dispose_executor_response = 8;
+  }
+}

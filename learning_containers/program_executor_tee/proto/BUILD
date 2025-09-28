@@ -12,10 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
 package(features = ["layering_check"])
 
-filegroup(
-    name = "test_tff_values",
-    srcs = glob(["*.txtpb"]),
-    visibility = ["//:__subpackages__"],
+proto_library(
+    name = "executor_wrapper_proto",
+    srcs = ["executor_wrapper.proto"],
+    deps = [
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_proto",
+    ],
+)
+
+# buildifier: disable=native-cc-proto
+cc_proto_library(
+    name = "executor_wrapper_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":executor_wrapper_proto"],
 )
