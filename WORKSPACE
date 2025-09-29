@@ -125,11 +125,11 @@ cc_library(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-7Q3qO2/n2oCuAV+W3VQa0CGmOtw4e0YI043d2jFEj58=",
+    integrity = "sha256-azXQxAbcAnhCSg0YBgMusfPjCaSXQ/vjOzSg8Unyk+M=",
     patches = ["//third_party/federated_compute:visibility.patch"],
     repo_mapping = {"@org_tensorflow": "@tf_proto_library"},
-    strip_prefix = "federated-compute-66fceba98ecfe5374c1e8a20bf6447d55e4ca1fa",
-    url = "https://github.com/google/federated-compute/archive/66fceba98ecfe5374c1e8a20bf6447d55e4ca1fa.tar.gz",
+    strip_prefix = "federated-compute-7e8f2f70693b3acc58001173580075a447909cda",
+    url = "https://github.com/google/federated-compute/archive/7e8f2f70693b3acc58001173580075a447909cda.tar.gz",
 )
 
 http_archive(
@@ -211,9 +211,9 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-D0Osnecy+TOS3dkNIU0t2BDvBX82vzFXpHUqgeczDqQ=",
-    strip_prefix = "tensorflow-federated-f3e41148a3ea633370edb67cabde0a62c9ee2403",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/f3e41148a3ea633370edb67cabde0a62c9ee2403.tar.gz",
+    integrity = "sha256-YN+DEExxvpmpw9Fb5WEjyfJSPrHMoJFnXM1A8c9Ag1w=",
+    strip_prefix = "tensorflow-federated-af3c0f4df85884f140ffb8b7b32153ef31109db4",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/af3c0f4df85884f140ffb8b7b32153ef31109db4.tar.gz",
 )
 
 http_archive(

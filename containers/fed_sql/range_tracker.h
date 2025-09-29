@@ -67,6 +67,9 @@ class RangeTracker {
   // This method returns false if there are any overlapping ranges.
   bool Merge(const RangeTracker& other);
 
+  // Sets the index of the partition that this RangeTracker is tracking.
+  void SetPartitionIndex(uint64_t index) { partition_index_ = index; }
+
   // Iteration support.
   const_iterator begin() const { return per_key_ranges_.begin(); }
   const_iterator end() const { return per_key_ranges_.end(); }
@@ -75,6 +78,9 @@ class RangeTracker {
   // Stores visited ranges of blobs organized by key_id of encryption key
   // used to encrypt a blob (the same key_id that is found in BlobHeader).
   InnerMap per_key_ranges_;
+
+  // The index of the partition that this RangeTracker is tracking.
+  uint64_t partition_index_ = 0;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined
