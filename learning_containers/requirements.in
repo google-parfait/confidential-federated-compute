@@ -1,28 +1,7 @@
-# The dependency versions in this file are chosen to be as close as possible to
-# those in the corresponding repos.
-
 absl-py~=1.0
 googleapis-common-protos==1.70.0
-numpy~=1.25
+numpy~=2.0
 portpicker~=1.6
-
-# Additional dependencies required for org_tensorflow_federated.
-attrs~=23.1
-dm-tree==0.1.8
-ml_dtypes>=0.2.0,==0.2.*
-protobuf~=4.21
-typing-extensions~=4.5
-
-# Additional dependencies required for org_tensorflow_federated.
-dp-accounting==0.4.3
-tensorflow>=2.14.0,==2.14.*
-tensorflow-privacy==0.9.0
-tensorflow-model-optimization==0.7.5
-tqdm~=4.64
-
-# Additional dependencies required for federated_language_jax.
-jax~=0.4.29
-jaxlib~=0.4.29
 
 # Additional dependencies required for com_google_fcp
 immutabledict==4.2.0

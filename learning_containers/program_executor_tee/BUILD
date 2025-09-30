@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_python//python:defs.bzl", "py_library")
 load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
@@ -20,7 +21,68 @@ package(features = ["layering_check"])
 trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
+        ":initialize_program_xla",
         "//program_executor_tee/program_context:program_runner",
+        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
+        "@federated_language//federated_language",
+        "@federated_language_jax//federated_language_jax",
+    ],
+    source_repo_names = [
+        "federated_language",
+        "federated_language_jax",
+        "federated-compute",
+        "org_tensorflow_federated",
+        "oak",
+    ],
+)
+
+cc_test(
+    name = "computation_integration_test",
+    srcs = ["computation_integration_test.cc"],
+    data = [
+        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
+    ],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_runtime"],
+    deps = [
+        ":confidential_transform_server_xla",
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "confidential_transform_server_xla",
+    srcs = ["confidential_transform_server_xla.cc"],
+    hdrs = ["confidential_transform_server_xla.h"],
+    data = [
+        ":trusted_program_py_runtime",
+    ],
+    deps = [
+        ":confidential_transform_server",
+        "//program_executor_tee/program_context/cc:data_parser",
+        "@com_google_absl//absl/strings",
+        "@oak//cc/crypto:signing_key",
+        "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+py_library(
+    name = "initialize_program_xla",
+    srcs = ["initialize_program_xla.py"],
+    deps = [
+        "//program_executor_tee/program_context:execution_context",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
 )
 
@@ -96,5 +158,3 @@ cc_test(
         "@googletest//:gtest",
     ],
 )
-
-# TODO: Add simple python and JAX container build rules.
