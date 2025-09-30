@@ -24,6 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/ledger_session.h"
 #include "containers/fed_sql/private_state.h"
@@ -237,16 +238,20 @@ absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
           tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
     double epsilon =
         fedsql_intrinsic.parameters.at(kEpsilonIndex).CastToScalar<double>();
-    if (config_constraints.epsilon() != epsilon) {
-      return absl::FailedPreconditionError(
-          "Epsilon value does not match the expected value.");
+    if (epsilon > config_constraints.epsilon()) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Epsilon value must be less than or equal to the "
+          "upper bound defined in the policy (epsilon: %f, policy: %f)",
+          epsilon, config_constraints.epsilon()));
     }
 
     double delta =
         fedsql_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
-    if (config_constraints.delta() != delta) {
-      return absl::FailedPreconditionError(
-          "Delta value does not match the expected value.");
+    if (delta > config_constraints.delta()) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Delta value must be less than or equal to the "
+          "upper bound defined in the policy (delta: %f, policy: %f)",
+          delta, config_constraints.delta()));
     }
   }
   return absl::OkStatus();

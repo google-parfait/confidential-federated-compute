@@ -618,9 +618,11 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsSuccess) {
   InitializeResponse response;
   request.mutable_configuration()->PackFrom(DefaultFedSqlDpContainerConfig());
 
+  // Epsilon and delta defined in `DefaultFedSqlDpContainerConfig` are less than
+  // the config_constraints below and so the request should succeed.
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
-    epsilon: 1.1
-    delta: 0.01
+    epsilon: 1.2
+    delta: 0.02
     intrinsic_uri: "fedsql_dp_group_by"
     access_budget { times: 5 }
   )pb");
@@ -766,7 +768,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
   request.mutable_configuration()->PackFrom(DefaultFedSqlDpContainerConfig());
 
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
-    epsilon: 1.2
+    epsilon: 0.8
     delta: 0.01
     intrinsic_uris: "fedsql_dp_group_by")pb");
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
@@ -784,7 +786,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidEpsilon) {
       WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
                              std::move(request)),
       StatusIs(absl::StatusCode::kFailedPrecondition,
-               HasSubstr("Epsilon value does not match the expected value.")));
+               HasSubstr("Epsilon value must be less than or equal to the "
+                         "upper bound defined in the policy ")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
@@ -795,7 +798,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
 
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
     epsilon: 1.1
-    delta: 2.3
+    delta: 0.001
     intrinsic_uris: "fedsql_dp_group_by")pb");
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
@@ -812,7 +815,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidDelta) {
       WriteInitializeRequest(stub_->StreamInitialize(&context, &response),
                              std::move(request)),
       StatusIs(absl::StatusCode::kFailedPrecondition,
-               HasSubstr("Delta value does not match the expected value.")));
+               HasSubstr("Delta value must be less than or equal to the "
+                         "upper bound defined in the policy ")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeWithKmsInvalidConfigConstraints) {
