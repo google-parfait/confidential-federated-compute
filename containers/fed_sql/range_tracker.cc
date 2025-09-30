@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 #include "fcp/base/monitoring.h"
@@ -57,6 +58,7 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(
           "Unexpected order of intervals in serialized RangeTracker state.");
     }
   }
+  range_tracker.partition_index_ = state.partition_index();
   return range_tracker;
 }
 
@@ -76,6 +78,7 @@ RangeTrackerState RangeTracker::Serialize() const {
       values->Add(interval.end());
     }
   }
+  state.set_partition_index(partition_index_);
   return state;
 }
 
@@ -85,6 +88,13 @@ bool RangeTracker::AddRange(const std::string& key, uint64_t start,
 }
 
 bool RangeTracker::Merge(const RangeTracker& other) {
+  if (partition_index_ != other.partition_index_) {
+    LOG(ERROR) << "Attempting to merge RangeTrackers with different partition "
+                  "indices: "
+               << partition_index_ << " and " << other.partition_index_;
+    return false;
+  }
+
   for (const auto& [key, interval_set] : other.per_key_ranges_) {
     if (!per_key_ranges_[key].Merge(interval_set)) {
       return false;

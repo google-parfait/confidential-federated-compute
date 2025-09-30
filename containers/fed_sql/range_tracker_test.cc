@@ -236,5 +236,68 @@ TEST(RangeTrackerTest, UnbundleIncompletePayload) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(RangeTrackerTest, SerializeWithPartitionIndex) {
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("baz", 3, 5));
+  EXPECT_TRUE(range_tracker.AddRange("foo", 4, 5));
+  EXPECT_TRUE(range_tracker.AddRange("bar", 0, 1));
+  EXPECT_TRUE(range_tracker.AddRange("baz", 8, 10));
+  range_tracker.SetPartitionIndex(123);
+
+  EXPECT_THAT(range_tracker.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" values: 1 values: 5 }
+                buckets { key: "bar" values: 0 values: 4 }
+                buckets { key: "baz" values: 3 values: 5 values: 8 values: 10 }
+                partition_index: 123
+              )pb"));
+}
+
+TEST(RangeTrackerTest, MergeSamePartitionIndex) {
+  RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 1 values: 5 }
+    buckets { key: "bar" values: 0 values: 4 }
+    partition_index: 123
+  )pb");
+  RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 7 values: 9 }
+    buckets { key: "baz" values: 1 values: 2 }
+    partition_index: 123
+  )pb");
+  auto range_tracker1 = RangeTracker::Parse(state1);
+  auto range_tracker2 = RangeTracker::Parse(state2);
+  EXPECT_THAT(range_tracker1, IsOk());
+  EXPECT_THAT(range_tracker2, IsOk());
+
+  EXPECT_TRUE(range_tracker1->Merge(*range_tracker2));
+  EXPECT_THAT(range_tracker1->Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" values: 1 values: 5 values: 7 values: 9 }
+                buckets { key: "bar" values: 0 values: 4 }
+                buckets { key: "baz" values: 1 values: 2 }
+                partition_index: 123
+              )pb"));
+}
+
+TEST(RangeTrackerTest, MergeDifferentPartitions) {
+  RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 1 values: 5 }
+    buckets { key: "bar" values: 0 values: 4 }
+    partition_index: 123
+  )pb");
+  RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 7 values: 9 }
+    buckets { key: "bar" values: 1 values: 2 }
+    partition_index: 456
+  )pb");
+  auto range_tracker1 = RangeTracker::Parse(state1);
+  auto range_tracker2 = RangeTracker::Parse(state2);
+  EXPECT_THAT(range_tracker1, IsOk());
+  EXPECT_THAT(range_tracker2, IsOk());
+  EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

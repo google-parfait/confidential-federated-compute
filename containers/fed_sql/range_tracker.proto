@@ -25,4 +25,7 @@ message RangeTrackerState {
         repeated fixed64 values = 2;
     }
     repeated Bucket buckets = 1;
+
+    // The index of the partition that this RangeTracker is tracking.
+    uint64 partition_index = 2;
 }

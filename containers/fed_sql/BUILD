@@ -436,6 +436,7 @@ cc_library(
         ":interval_set",
         ":range_tracker_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//src/google/protobuf/io",
         "@federated-compute//fcp/base:base",
