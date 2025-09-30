@@ -61,6 +61,8 @@ using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 
+constexpr size_t kMaxPromptSize = 3072;
+
 // Apply a regex matching to the given text. Returns only the first match. If
 // no match is found, returns the original text.
 std::string RegexMatch(const std::string& text, const std::regex& regex) {
@@ -131,10 +133,14 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
   KVCache kv_cache(gemma->Config(), gemma->Inference(),
                    gemma_model.ctx_->allocator);
 
-  const std::vector<int> tokens = gcpp::WrapAndTokenize(
+  std::vector<int> tokens = gcpp::WrapAndTokenize(
       gemma->Tokenizer(), gemma->ChatTemplate(), gemma->Config().wrapping,
       generated, combined_prompt);
-  const size_t prompt_size = tokens.size();
+  size_t prompt_size = tokens.size();
+  if (prompt_size > kMaxPromptSize) {
+    tokens.resize(kMaxPromptSize);
+    prompt_size = kMaxPromptSize;
+  }
   std::stringstream output_stream;
   auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
                           int token, float) {
