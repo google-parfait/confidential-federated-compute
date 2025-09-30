@@ -296,7 +296,7 @@ py_repositories()
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
+    python_version = "3.12",  # Keep in sync with repo env set in .bazelrc
 )
 
 load("@python//:defs.bzl", "interpreter")
@@ -340,7 +340,7 @@ python_init_repositories(
     ],
     local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
-        "3.10": "@org_tensorflow//:requirements_lock_3_10.txt",
+        "3.12": "@org_tensorflow//:requirements_lock_3_12.txt",
     },
 )
 

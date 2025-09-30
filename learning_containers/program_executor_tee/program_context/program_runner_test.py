@@ -79,7 +79,7 @@ async def trusted_program(input_provider, release_manager):
         outgoing_server_address=f"[::1]:{untrusted_root_port}",
     )
 
-    self.assertEquals(
+    self.assertEqual(
         data_read_write_service.get_write_call_args(),
         [[expected_request_1], [expected_request_2]],
     )

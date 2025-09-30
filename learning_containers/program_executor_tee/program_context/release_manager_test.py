@@ -53,7 +53,7 @@ class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
         commit=True,
         data=serialized_value.SerializeToString(),
     )
-    self.assertEquals(
+    self.assertEqual(
         data_read_write_service.get_write_call_args(), [[expected_request]]
     )
     server.stop()
