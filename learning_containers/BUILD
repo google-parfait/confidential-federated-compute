@@ -18,16 +18,18 @@ load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 package(features = ["layering_check"])
 
-# This rule adds a convenient way to update the requirements file.
 compile_pip_requirements(
     name = "requirements",
-    timeout = "long",
-    extra_args = [
-        "--allow-unsafe",
-        "--resolver=backtracking",
+    srcs = [
+        "//:requirements.in",
+        "@federated_language//:requirements.in",
+        "@federated_language_jax//:requirements.in",
     ],
-    requirements_in = "requirements.in",
-    requirements_txt = "requirements_lock.txt",
+    extra_args = [
+        "--no-annotate",
+        "--strip-extras",
+    ],
+    requirements_txt = "//:requirements_lock.txt",
 )
 
 # All release (i.e. production) binaries, along with their names in the

@@ -16,8 +16,12 @@ import base64
 from collections.abc import Callable
 from typing import Optional
 
-from fcp.confidentialcompute.python import program_input_provider
 from program_executor_tee.program_context import release_manager
+
+try:
+  from fcp.confidentialcompute.python import program_input_provider  # pylint: disable=g-import-not-at-top
+except AttributeError:
+  program_input_provider = None
 
 # The name of the function in the customer-provided python code that wraps the
 # federated program to execute.
@@ -73,9 +77,12 @@ async def run_program(
     )
   trusted_program = program_namespace[TRUSTED_PROGRAM_KEY]
 
-  input_provider = program_input_provider.ProgramInputProvider(
-      client_ids, client_data_directory, model_id_to_zip_file
-  )
+  if program_input_provider is not None:
+    input_provider = program_input_provider.ProgramInputProvider(
+        client_ids, client_data_directory, model_id_to_zip_file
+    )
+  else:
+    input_provider = None
   initialized_release_manager = release_manager.ReleaseManager(
       outgoing_server_address
   )

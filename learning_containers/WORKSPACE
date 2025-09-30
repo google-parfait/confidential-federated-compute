@@ -71,7 +71,6 @@ http_archive(
 http_archive(
     name = "federated_language",
     patches = [
-        "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
         "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
         "//third_party/federated_language:python_toolchain.patch",
         "//third_party/federated_language:structure_visibility.patch",
@@ -151,7 +150,6 @@ http_archive(
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
         "//third_party/org_tensorflow_federated:package.patch",
-        "//third_party/org_tensorflow_federated:vizier.patch",
     ],
     strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",

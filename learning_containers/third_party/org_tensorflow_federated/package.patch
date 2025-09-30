@@ -1,30 +1,68 @@
-# Update the Python package to contain the appropriate dependencies.
-#
-# This patch was created manually.
+# Update the Python package:
+#   * Adds the appropriate Python dependencies.
+#   * Removes the TensorFlow-related dependencies.
+#   * Removes the TensorFlow-related imports.
 
 diff --git tensorflow_federated/BUILD tensorflow_federated/BUILD
-index 0704e191f..2ec0991db 100644
+index 0704e191f..f7c2ba693 100644
 --- tensorflow_federated/BUILD
 +++ tensorflow_federated/BUILD
-@@ -23,6 +23,21 @@ py_library(
-         "//tensorflow_federated/python/learning",
-         "//tensorflow_federated/python/program",
-         "//tensorflow_federated/python/simulation",
+@@ -13,16 +13,18 @@ py_library(
+     visibility = ["//visibility:public"],
+     deps = [
+         ":version",
+-        "//tensorflow_federated/python/aggregators",
+-        "//tensorflow_federated/python/analytics",
+-        "//tensorflow_federated/python/common_libs:structure",
+-        "//tensorflow_federated/python/core/backends",
+-        "//tensorflow_federated/python/core/environments/tensorflow",
+         "//tensorflow_federated/python/core/framework",
+         "//tensorflow_federated/python/core/templates",
+-        "//tensorflow_federated/python/learning",
+-        "//tensorflow_federated/python/program",
+-        "//tensorflow_federated/python/simulation",
 +        "@federated_language//federated_language",
 +        "@pypi//absl_py",
 +        "@pypi//attrs",
 +        "@pypi//cachetools",
 +        "@pypi//dm_tree",
++        "@pypi//googleapis_common_protos",
 +        "@pypi//ml_dtypes",
 +        "@pypi//numpy",
 +        "@pypi//portpicker",
-+        "@pypi//scipy",
-+        "@pypi//tensorflow_model_optimization",
-+        "@pypi//tensorflow_privacy",
-+        "@pypi//tqdm",
 +        "@pypi//typing_extensions",
-+        "@pypi//tensorflow",
-+        "@pypi//googleapis_common_protos",
      ],
  )
 
+diff --git tensorflow_federated/__init__.py tensorflow_federated/__init__.py
+index e3c73099f..00b1eb390 100644
+--- tensorflow_federated/__init__.py
++++ tensorflow_federated/__init__.py
+@@ -16,26 +16,14 @@
+ import sys
+
+ # pylint: disable=g-bad-import-order,g-importing-member
+-from tensorflow_federated.python import aggregators
+-from tensorflow_federated.python import analytics
+-from tensorflow_federated.python import learning
+-from tensorflow_federated.python import program
+-from tensorflow_federated.python import simulation
+-from tensorflow_federated.python.common_libs import structure
+-from tensorflow_federated.python.core import backends
+ from tensorflow_federated.python.core import framework
+ from tensorflow_federated.python.core import templates
+-from tensorflow_federated.python.core.environments import tensorflow
+ from tensorflow_federated.version import __version__
+ # pylint: enable=g-bad-import-order,g-importing-member
+
+ if sys.version_info < (3, 9):
+   raise RuntimeError('TFF only supports Python versions 3.9 or later.')
+
+-# Initialize a default execution context. This is implicitly executed the
+-# first time a module in the `core` package is imported.
+-backends.native.set_sync_local_cpp_execution_context()
+-
+ # Remove packages that are not part of the public API but are picked up due to
+ # the directory structure. The python import statements above implicitly add
+ # these to locals().
+(END)
