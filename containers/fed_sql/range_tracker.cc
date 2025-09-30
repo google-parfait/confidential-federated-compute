@@ -103,7 +103,7 @@ bool RangeTracker::Merge(const RangeTracker& other) {
   return true;
 }
 
-std::string BundleRangeTracker(const std::string& blob,
+std::string BundleRangeTracker(std::string blob,
                                const RangeTracker& range_tracker) {
   std::string buffer;
   google::protobuf::io::StringOutputStream stream(&buffer);

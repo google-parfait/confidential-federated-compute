@@ -62,6 +62,7 @@ using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
@@ -345,6 +346,13 @@ class KmsFedSqlSessionWriteTest : public Test {
     });
   }
 
+  void ExpectReadResponses(std::vector<ReadResponse>& read_responses) {
+    EXPECT_CALL(context_, Emit).WillRepeatedly([&](ReadResponse response) {
+      read_responses.push_back(std::move(response));
+      return true;
+    });
+  }
+
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
   std::unique_ptr<MessageDecryptor> message_decryptor_;
@@ -441,6 +449,82 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
+  // Create data with two different keys.
+  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {2});
+  std::string data2 = BuildFedSqlGroupByCheckpoint({1003}, {2});
+
+  // Write inputs to the container.
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(data1, 1, "key_foo");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(data2, 2, "key_bar");
+
+  auto write_result1 = session_->Write(write_request1, data1, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(data1.size()));
+  auto write_result2 = session_->Write(write_request2, data2, context_);
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->status().code(), Code::OK)
+      << write_result2->status().message();
+  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(data2.size()));
+
+  // Commit the inputs.
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->status().code(), Code::OK)
+      << commit_response->status().message();
+  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 2);
+
+  // Partition the result into 2 partitions.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_PARTITION
+    num_partitions: 2
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  std::vector<ReadResponse> read_responses;
+  ExpectReadResponses(read_responses);
+  ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
+  EXPECT_EQ(read_responses.size(), 2);
+
+  // Verify the partitoned results.
+  for (int i = 1; i < read_responses.size(); i++) {
+    auto& read_response = read_responses[i];
+    auto actual_metadata = read_response.first_response_metadata();
+    ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+    ASSERT_EQ(actual_metadata.compression_type(),
+              BlobMetadata::COMPRESSION_TYPE_NONE);
+    ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
+    auto result_data = Decrypt(actual_metadata, read_response.data());
+    auto range_tracker = UnbundleRangeTracker(result_data);
+    ASSERT_THAT(*range_tracker,
+                UnorderedElementsAre(
+                    Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
+                    Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
+    EXPECT_EQ(range_tracker->GetPartitionIndex(), i);
+    auto config = read_response.first_response_configuration();
+    FedSqlContainerPartitionedOutputConfiguration partition_config;
+    ASSERT_TRUE(config.UnpackTo(&partition_config));
+    EXPECT_EQ(partition_config.partition_index(), i);
+  }
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {

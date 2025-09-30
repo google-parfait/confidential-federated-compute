@@ -68,7 +68,9 @@ using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -454,6 +456,9 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
     case FINALIZATION_TYPE_SERIALIZE: {
       return Serialize(context);
     }
+    case FINALIZATION_TYPE_PARTITION: {
+      return Partition(context, finalize_config.num_partitions());
+    }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
@@ -466,16 +471,50 @@ KmsFedSqlSession::Serialize(Context& context) {
   FCP_ASSIGN_OR_RETURN(std::string serialized_data,
                        std::move(*aggregator_).Serialize());
   aggregator_.reset();
-  serialized_data = BundleRangeTracker(serialized_data, range_tracker_);
+  std::string bundled_data =
+      BundleRangeTracker(std::move(serialized_data), range_tracker_);
   // Encrypt the bundled blob.
   FCP_ASSIGN_OR_RETURN(auto encrypted_result,
-                       EncryptIntermediateResult(serialized_data));
+                       EncryptIntermediateResult(bundled_data));
 
   ReadResponse read_response;
   *(read_response.mutable_data()) = std::move(encrypted_result.ciphertext);
   *(read_response.mutable_first_response_metadata()) =
       std::move(encrypted_result.metadata);
   context.Emit(std::move(read_response));
+
+  return FinalizeResponse{};
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::Partition(Context& context, uint64_t num_partitions) {
+  if (num_partitions == 0) {
+    return absl::InvalidArgumentError(
+        "Number of partitions must be greater than zero.");
+  }
+
+  FCP_ASSIGN_OR_RETURN(std::vector<std::string> partitions,
+                       std::move(*aggregator_).Partition(num_partitions));
+  aggregator_.reset();
+  CHECK(partitions.size() == num_partitions);
+  for (int i = 0; i < num_partitions; ++i) {
+    range_tracker_.SetPartitionIndex(i);
+    std::string bundled_partition =
+        BundleRangeTracker(std::move(partitions[i]), range_tracker_);
+    FCP_ASSIGN_OR_RETURN(auto encrypted_result,
+                         EncryptIntermediateResult(bundled_partition));
+    ReadResponse read_response;
+    *read_response.mutable_data() = std::move(encrypted_result.ciphertext);
+    *read_response.mutable_first_response_metadata() =
+        std::move(encrypted_result.metadata);
+    FedSqlContainerPartitionedOutputConfiguration partition_config;
+    partition_config.set_partition_index(i);
+    ::google::protobuf::Any read_response_config;
+    read_response_config.PackFrom(partition_config);
+    *read_response.mutable_first_response_configuration() =
+        std::move(read_response_config);
+    context.Emit(std::move(read_response));
+  }
 
   return FinalizeResponse{};
 }

@@ -69,6 +69,8 @@ class RangeTracker {
 
   // Sets the index of the partition that this RangeTracker is tracking.
   void SetPartitionIndex(uint64_t index) { partition_index_ = index; }
+  // Returns the index of the partition that this RangeTracker is tracking.
+  uint64_t GetPartitionIndex() const { return partition_index_; }
 
   // Iteration support.
   const_iterator begin() const { return per_key_ranges_.begin(); }
@@ -85,7 +87,7 @@ class RangeTracker {
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined
 // blob.
-std::string BundleRangeTracker(const std::string& blob,
+std::string BundleRangeTracker(std::string blob,
                                const RangeTracker& range_tracker);
 
 // Extracts serialized RangeTracker from a blob and replaces the blob in place.

@@ -109,6 +109,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Handles FINALIZATION_TYPE_SERIALIZE type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Serialize(
       Context& context);
+  // Handles FINALIZATION_TYPE_PARTITION type of Finalize.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Partition(
+      Context& context, uint64_t num_partitions);
   // Handles FINALIZATION_TYPE_REPORT type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Report(
       Context& context);
