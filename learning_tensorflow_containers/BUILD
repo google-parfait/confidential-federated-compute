@@ -34,7 +34,7 @@ compile_pip_requirements(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "//program_worker:oci_runtime_bundle.tar": "program_worker/container.tar",
+    "tensorflow_program_executor_tee:oci_runtime_bundle.tar": "tensorflow_program_executor_tee/container.tar",
     # keep-sorted end
 }
 

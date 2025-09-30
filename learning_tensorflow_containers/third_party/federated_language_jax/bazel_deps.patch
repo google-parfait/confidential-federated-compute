@@ -1,0 +1,129 @@
+# Update computation visibility:
+#
+# ```
+# buildozer 'replace deps @eigen//:eigen @eigen_archive//:eigen3' //...:*
+# buildozer 'replace deps @federated_language_jax_pypi//federated_language @federated_language//federated_language' //...:*
+# ```
+
+diff --git federated_language_jax/backend/BUILD federated_language_jax/backend/BUILD
+index 2eea2bc..5694e15 100644
+--- federated_language_jax/backend/BUILD
++++ federated_language_jax/backend/BUILD
+@@ -39,7 +39,7 @@ py_library(
+     deps = [
+         "//federated_language_jax/computation:jax_computation",
+         "//federated_language_jax/executor:executor_factory",
+-        "@federated_language_jax_pypi//federated_language",
++        "@federated_language//federated_language",
+     ],
+ )
+
+@@ -49,8 +49,8 @@ py_test(
+     deps = [
+         ":execution_contexts",
+         "//federated_language_jax/computation:jax_computation",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//numpy",
+     ],
+ )
+diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
+index 774efd2..e116f04 100644
+--- federated_language_jax/computation/BUILD
++++ federated_language_jax/computation/BUILD
+@@ -35,8 +35,8 @@ py_library(
+     srcs = ["jax_computation.py"],
+     deps = [
+         ":jax_serialization",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//dm_tree",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -47,8 +47,8 @@ py_test(
+     srcs = ["jax_computation_test.py"],
+     deps = [
+         ":jax_computation",
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//ml_dtypes",
+         "@federated_language_jax_pypi//numpy",
+@@ -58,7 +58,7 @@ py_test(
+ py_library(
+     name = "jax_computation_context",
+     srcs = ["jax_computation_context.py"],
+-    deps = ["@federated_language_jax_pypi//federated_language"],
++    deps = ["@federated_language//federated_language"],
+ )
+
+ py_test(
+@@ -78,8 +78,8 @@ py_library(
+     deps = [
+         ":jax_computation_context",
+         ":xla_serialization",
++        "@federated_language//federated_language",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -90,9 +90,9 @@ py_test(
+     srcs = ["jax_serialization_test.py"],
+     deps = [
+         ":jax_serialization",
++        "@federated_language//federated_language",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+     ],
+@@ -102,8 +102,8 @@ py_library(
+     name = "xla_serialization",
+     srcs = ["xla_serialization.py"],
+     deps = [
++        "@federated_language//federated_language",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//protobuf",
+         "@xla//xla/python:xla_client",
+     ],
+@@ -114,9 +114,9 @@ py_test(
+     srcs = ["xla_serialization_test.py"],
+     deps = [
+         ":xla_serialization",
++        "@federated_language//federated_language",
+         "@federated_language//federated_language/proto:computation_py_pb2",
+         "@federated_language_jax_pypi//absl_py",
+-        "@federated_language_jax_pypi//federated_language",
+         "@federated_language_jax_pypi//jax",
+         "@federated_language_jax_pypi//numpy",
+         "@federated_language_jax_pypi//protobuf",
+diff --git federated_language_jax/executor/BUILD federated_language_jax/executor/BUILD
+index 4c3306b..439a479 100644
+--- federated_language_jax/executor/BUILD
++++ federated_language_jax/executor/BUILD
+@@ -40,9 +40,9 @@ py_library(
+     srcs = ["executor_factory.py"],
+     data = ["@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor_bindings"],
+     deps = [
++        "@federated_language//federated_language",
+         "@federated_language_jax_pypi//absl_py",
+         "@federated_language_jax_pypi//cachetools",
+-        "@federated_language_jax_pypi//federated_language",
+         "@org_tensorflow_federated//tensorflow_federated/python/core/impl/executors:cpp_to_python_executor",
+     ],
+ )
+@@ -209,7 +209,7 @@ cc_test(
+         ":xla_utils",
+         "@abseil-cpp//absl/status",
+         "@abseil-cpp//absl/status:statusor",
+-        "@eigen",
++        "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",

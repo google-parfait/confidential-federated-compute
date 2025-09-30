@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@confidential-federated-compute-learning//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
+load("@confidential-federated-compute-learning//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
-load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
 
@@ -36,12 +36,12 @@ cc_binary(
     name = "computation_runner_binary_tensorflow",
     srcs = ["computation_runner_main_tensorflow.cc"],
     deps = [
-        "//program_executor_tee/program_context/cc:computation_runner",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:computation_runner",
         "@oak//proto/attestation:reference_value_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
     ],
@@ -51,9 +51,9 @@ pybind_extension(
     name = "fake_service_bindings_tensorflow",
     srcs = ["fake_service_bindings_tensorflow.cc"],
     deps = [
-        "//program_executor_tee/program_context/cc:fake_computation_delegation_service",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:fake_server",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:fake_computation_delegation_service",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:fake_server",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
@@ -67,8 +67,8 @@ py_test(
     deps = [
         ":compilers",
         ":fake_service_bindings_tensorflow",
-        "//program_executor_tee/program_context:execution_context",
-        "//program_executor_tee/program_context:test_helpers",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context:execution_context",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context:test_helpers",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
@@ -83,7 +83,7 @@ py_library(
     srcs = ["initialize_program_tensorflow.py"],
     deps = [
         ":compilers",
-        "//program_executor_tee/program_context:execution_context",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context:execution_context",
         "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
@@ -93,11 +93,12 @@ py_library(
 trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
-        "//program_executor_tee/program_context:program_runner",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
         "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
     ],
     source_repo_names = [
+        "confidential-federated-compute-learning",
         "federated_language",
         "federated-compute",
         "org_tensorflow_federated",
@@ -114,9 +115,9 @@ cc_library(
         ":trusted_program_py_runtime",
     ],
     deps = [
-        "//program_executor_tee:confidential_transform_server",
-        "//program_executor_tee/program_context/cc:data_parser",
         "@com_google_absl//absl/strings",
+        "@confidential-federated-compute-learning//program_executor_tee:confidential_transform_server",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:data_parser",
         "@oak//cc/crypto:signing_key",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
@@ -135,9 +136,9 @@ cc_test(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
-        "//program_executor_tee:testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@confidential-federated-compute-learning//program_executor_tee:testing_base",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:generate_checkpoint",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
@@ -162,9 +163,9 @@ cc_test(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
-        "//program_executor_tee:testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@confidential-federated-compute-learning//program_executor_tee:testing_base",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@confidential-federated-compute-learning//program_executor_tee/program_context/cc:generate_checkpoint",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
@@ -208,7 +209,7 @@ oci_image(
     # Set the workdir and entrypoint so that the main binary will be executed
     # from within the runfiles directory. This ensures that the main binary
     # will be able to find its runfiles properly.
-    entrypoint = ["program_executor_tee/main"],
+    entrypoint = ["tensorflow_program_executor_tee/main"],
     tars = [":tar"],
     workdir = "/main.runfiles/__main__/",
 )

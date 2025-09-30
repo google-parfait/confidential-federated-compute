@@ -22,7 +22,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "tf/program_executor_tee/confidential_transform_server.h"
+#include "tensorflow_program_executor_tee/confidential_transform_server.h"
 
 namespace confidential_federated_compute::tensorflow::program_executor_tee {
 

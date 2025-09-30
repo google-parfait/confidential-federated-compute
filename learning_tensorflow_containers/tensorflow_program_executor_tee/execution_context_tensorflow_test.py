@@ -23,12 +23,12 @@ import portpicker
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import test_helpers
 import tensorflow_federated as tff
-from tf.program_executor_tee import compilers
-from tf.program_executor_tee import fake_service_bindings_tensorflow
+from tensorflow_program_executor_tee import compilers
+from tensorflow_program_executor_tee import fake_service_bindings_tensorflow
 
 
 TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
-    "tf/program_executor_tee/computation_runner_binary_tensorflow"
+    "tensorflow_program_executor_tee/computation_runner_binary_tensorflow"
 )
 
 

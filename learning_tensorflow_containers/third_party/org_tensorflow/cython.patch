@@ -1,0 +1,7 @@
+diff --git third_party/cython.BUILD third_party/cython.BUILD
+index ce9283e2a4..3f32ad76ae 100644
+--- third_party/cython.BUILD
++++ third_party/cython.BUILD
+@@ -2,0 +3,2 @@
++load("@rules_python//python:defs.bzl", "py_binary")
++

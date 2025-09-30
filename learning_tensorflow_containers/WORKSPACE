@@ -1,0 +1,496 @@
+# Copyright 2023 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+################################################################################
+# Directly managed dependencies
+################################################################################
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive
+http_archive(
+    name = "boringssl",
+    integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
+    strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
+    url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
+)
+
+http_archive(
+    name = "com_github_grpc_grpc",
+    patches = [
+        "//third_party/grpc:noexcept.patch",
+    ],
+    sha256 = "7f42363711eb483a0501239fd5522467b31d8fe98d70d7867c6ca7b52440d828",
+    strip_prefix = "grpc-1.51.0",
+    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.51.0.tar.gz",
+)
+
+http_archive(
+    name = "com_google_absl",
+    integrity = "sha256-AyBYaFZnTRawt6TUr7IhUb3HmEkLt/KV7d2PamK0b+o=",
+    strip_prefix = "abseil-cpp-fb3621f4f897824c0dbe0615fa94543df6192f30",
+    url = "https://github.com/abseil/abseil-cpp/archive/fb3621f4f897824c0dbe0615fa94543df6192f30.tar.gz",
+)
+
+http_archive(
+    name = "confidential-federated-compute",
+    integrity = "sha256-lGfmv4lJrhL437oep856ZHzmGtp+i06a/X7iUVFwwzs=",
+    patches = [
+        "//third_party/confidential_federated_compute:protobuf.patch",
+    ],
+    strip_prefix = "confidential-federated-compute-957a8ceb7deb03da150bc7c5feec9282fb8533ed",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/957a8ceb7deb03da150bc7c5feec9282fb8533ed.tar.gz",
+)
+
+http_archive(
+    name = "confidential-federated-compute-learning",
+    integrity = "sha256-lGfmv4lJrhL437oep856ZHzmGtp+i06a/X7iUVFwwzs=",
+    strip_prefix = "confidential-federated-compute-957a8ceb7deb03da150bc7c5feec9282fb8533ed/learning_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/957a8ceb7deb03da150bc7c5feec9282fb8533ed.tar.gz",
+)
+
+http_archive(
+    name = "federated-compute",
+    integrity = "sha256-t1/ANyZajzPZrROf8u+0uPM3OhI9FZvpf5FQ4UBrAxs=",
+    patches = [
+        "//third_party/federated_compute:executors.patch",
+        "//third_party/federated_compute:libcppbor.patch",
+        "//third_party/federated_compute:testing.patch",
+        "//third_party/federated_compute:visibility.patch",
+    ],
+    repo_mapping = {"@com_google_googletest": "@googletest"},
+    strip_prefix = "federated-compute-e9ea585583ce17ddd5f8f6f1c4f399a4e2785fc4",
+    url = "https://github.com/google/federated-compute/archive/e9ea585583ce17ddd5f8f6f1c4f399a4e2785fc4.tar.gz",
+)
+
+http_archive(
+    name = "federated_language",
+    patches = [
+        "@org_tensorflow_federated//third_party/federated_language:numpy.patch",
+        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
+        "//third_party/federated_language:python_toolchain.patch",
+        "//third_party/federated_language:structure_visibility.patch",
+    ],
+    repo_mapping = {
+        "@federated_language_pypi": "@pypi",
+        "@protobuf": "@com_google_protobuf",
+    },
+    sha256 = "dd767b67d054d8ab14e62a16edad376e25610f2edc5b78ccf41b473ded5662d4",
+    strip_prefix = "federated-language-0.5.2",
+    url = "https://github.com/google-parfait/federated-language/archive/refs/tags/v0.5.2.tar.gz",
+)
+
+http_archive(
+    name = "federated_language_jax",
+    integrity = "sha256-5oBoGmiDAkODZ07Ed5g9g4tEEW1s3p/+DMHUafhJPUU=",
+    patches = [
+        "//third_party/federated_language_jax:bazel_deps.patch",
+        "//third_party/federated_language_jax:computation_visibility.patch",
+    ],
+    repo_mapping = {
+        "@abseil-cpp": "@com_google_absl",
+        "@federated_language_jax_pypi": "@pypi",
+        "@xla": "@local_xla",
+    },
+    strip_prefix = "federated-language-jax-9714a6865d0f73df405fc2847668543dec0e5539",
+    url = "https://github.com/google-parfait/federated-language-jax/archive/9714a6865d0f73df405fc2847668543dec0e5539.tar.gz",
+)
+
+http_archive(
+    name = "googletest",
+    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
+    strip_prefix = "googletest-1.14.0",
+    url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
+)
+
+git_repository(
+    name = "libcppbor",
+    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
+    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
+    patches = ["//third_party/libcppbor:libcppbor.patch"],
+    remote = "https://android.googlesource.com/platform/external/libcppbor",
+)
+
+http_archive(
+    name = "oak",
+    integrity = "sha256-3lE5QG44/fGkOZiu/hTnnChAZ0qCmT28o+3pr1qJGac=",
+    patches = [
+        "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:protobuf.patch",
+        "//third_party/oak:session_binder.patch",
+    ],
+    strip_prefix = "oak-095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8",
+    url = "https://github.com/project-oak/oak/archive/095fcbd12bcc78231e2ebc62d36a4ee5fa2560e8.tar.gz",
+)
+
+http_archive(
+    name = "org_tensorflow",
+    integrity = "sha256-Bo7a/OKqz8vHYud/dQbnEucByjNWbvTn0ynKLOrA1fk=",
+    patches = [
+        "//third_party/org_tensorflow:cython.patch",
+        "//third_party/org_tensorflow:internal_visibility.patch",
+        "//third_party/org_tensorflow:protobuf.patch",
+        "//third_party/org_tensorflow:zlib.patch",
+    ],
+    repo_mapping = {
+        "@com_google_googletest": "@googletest",
+    },
+    strip_prefix = "tensorflow-2b8e118d2975975fad52c2a53bc30bcdb429ba49",
+    url = "https://github.com/tensorflow/tensorflow/archive/2b8e118d2975975fad52c2a53bc30bcdb429ba49.tar.gz",
+)
+
+http_archive(
+    name = "org_tensorflow_federated",
+    integrity = "sha256-D6LGKBzoe+gELpS8yqVw8Ph9fWLlyeDbSZfv9Kvm4Hw=",
+    patches = [
+        "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
+        "//third_party/org_tensorflow_federated:bazel_deps.patch",
+        "//third_party/org_tensorflow_federated:package.patch",
+        "//third_party/org_tensorflow_federated:vizier.patch",
+    ],
+    strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
+)
+
+# Required by `pybind11_bazel`.
+http_archive(
+    name = "pybind11",
+    build_file = "@pybind11_bazel//:pybind11-BUILD.bazel",
+    sha256 = "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20",
+    strip_prefix = "pybind11-2.13.6",
+    url = "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
+)
+
+http_archive(
+    name = "pybind11_bazel",
+    sha256 = "cae680670bfa6e82703c03f2a3c995408cdcbf43616d7bdd198ef45d3c327731",
+    strip_prefix = "pybind11_bazel-2.13.6",
+    url = "https://github.com/pybind/pybind11_bazel/archive/refs/tags/v2.13.6.tar.gz",
+)
+
+http_archive(
+    name = "rules_cc",
+    patch_args = ["-p1"],
+    patches = [
+        # Patch rules_cc to be compatible with the older version of protobuf we use.
+        "@rules_rust//rust/private/3rdparty:rules_cc.patch",
+    ],
+    sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
+    strip_prefix = "rules_cc-0.0.17",
+    url = "https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz",
+)
+
+http_archive(
+    name = "rules_oci",
+    patches = [
+        "//third_party/rules_oci:zot_rbe.patch",
+    ],
+    sha256 = "4a276e9566c03491649eef63f27c2816cc222f41ccdebd97d2c5159e84917c3b",
+    strip_prefix = "rules_oci-1.7.4",
+    url = "https://github.com/bazel-contrib/rules_oci/releases/download/v1.7.4/rules_oci-v1.7.4.tar.gz",
+)
+
+http_archive(
+    name = "rules_proto",
+    sha256 = "6fb6767d1bef535310547e03247f7518b03487740c11b6c6adb7952033fe1295",
+    strip_prefix = "rules_proto-6.0.2",
+    url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
+)
+
+http_archive(
+    name = "rules_python",
+    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
+    strip_prefix = "rules_python-0.40.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+)
+
+http_archive(
+    name = "rules_rust",
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
+)
+
+http_archive(
+    name = "rules_rust_bindgen",
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    strip_prefix = "extensions/bindgen",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
+)
+
+http_archive(
+    name = "sysroot",
+    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>.
+    # To make this lookup easier, we use `sha256` instead of `integrity`.
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
+)
+
+http_archive(
+    name = "toolchains_llvm",
+    sha256 = "fded02569617d24551a0ad09c0750dc53a3097237157b828a245681f0ae739f8",
+    strip_prefix = "toolchains_llvm-v1.4.0",
+    url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.4.0/toolchains_llvm-v1.4.0.tar.gz",
+)
+
+# TensorFlow pins an old version of upb that's compatible with their old
+# version of gRPC, but not with the newer version we use. Pin the version that
+# would be added by gRPC 1.50.0.
+http_archive(
+    name = "upb",
+    sha256 = "017a7e8e4e842d01dba5dc8aa316323eee080cd1b75986a7d1f94d87220e6502",
+    strip_prefix = "upb-e4635f223e7d36dfbea3b722a4ca4807a7e882e2",
+    urls = [
+        "https://storage.googleapis.com/grpc-bazel-mirror/github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
+        "https://github.com/protocolbuffers/upb/archive/e4635f223e7d36dfbea3b722a4ca4807a7e882e2.tar.gz",
+    ],
+)
+# go/keep-sorted end
+
+################################################################################
+# Stubbed out dependencies
+################################################################################
+
+load("@confidential-federated-compute//:stub_repo.bzl", "stub_repo")
+
+# go/keep-sorted start block=yes newline_separated=yes
+stub_repo(
+    name = "com_github_grpc_grpc_kotlin",
+    rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
+)
+
+stub_repo(
+    name = "io_grpc_grpc_java",
+    rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
+)
+
+stub_repo(
+    name = "rules_java",
+    rules = {"java:defs.bzl": [
+        "java_binary",
+        "java_library",
+        "java_lite_proto_library",
+        "java_proto_library",
+        "java_test",
+    ]},
+)
+# go/keep-sorted end
+
+################################################################################
+# Transitive dependencies managed via macros
+################################################################################
+
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies")
+
+rules_rust_dependencies()
+
+# Call py_repositories() first so rules_python can setup any state
+# subsequent things might need. See
+# https://github.com/bazelbuild/rules_python/issues/1560
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
+
+py_repositories()
+
+python_register_toolchains(
+    name = "python",
+    ignore_root_user_error = True,
+    python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
+)
+
+load("@python//:defs.bzl", "interpreter")
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+pip_parse(
+    name = "pypi",
+    python_interpreter_target = interpreter,
+    requirements_lock = "//:requirements_lock.txt",
+)
+
+load("@pypi//:requirements.bzl", "install_deps")
+
+install_deps()
+
+# The following is copied from TensorFlow's own WORKSPACE, see
+# https://github.com/tensorflow/tensorflow/blob/v2.19.0-rc0/WORKSPACE#L68
+load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
+
+tf_workspace3()
+
+load("@org_tensorflow//tensorflow:workspace2.bzl", "tf_workspace2")
+
+tf_workspace2()
+
+load("@org_tensorflow//tensorflow:workspace1.bzl", "tf_workspace1")
+
+tf_workspace1()
+
+load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
+
+tf_workspace0()
+
+load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
+
+python_init_repositories(
+    local_wheel_dist_folder = "dist",
+    local_wheel_inclusion_list = [
+        "tensorflow*",
+        "tf_nightly*",
+    ],
+    local_wheel_workspaces = ["//:WORKSPACE"],
+    requirements = {
+        "3.10": "@org_tensorflow//:requirements_lock_3_10.txt",
+    },
+)
+
+load(
+    "@local_xla//third_party/py:python_repo.bzl",
+    "python_repository",
+)
+
+python_repository(name = "python_version_repo")
+
+load(
+    "@local_xla//third_party/py:python_wheel.bzl",
+    "python_wheel_version_suffix_repository",
+)
+
+python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
+
+load(
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "cuda_json_init_repository",
+)
+
+cuda_json_init_repository()
+
+load(
+    "@cuda_redist_json//:distributions.bzl",
+    "CUDA_REDISTRIBUTIONS",
+    "CUDNN_REDISTRIBUTIONS",
+)
+load(
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "cuda_redist_init_repositories",
+    "cudnn_redist_init_repository",
+)
+
+cuda_redist_init_repositories(
+    cuda_redistributions = CUDA_REDISTRIBUTIONS,
+)
+
+cudnn_redist_init_repository(
+    cudnn_redistributions = CUDNN_REDISTRIBUTIONS,
+)
+
+load(
+    "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "cuda_configure",
+)
+
+cuda_configure(name = "local_config_cuda")
+
+load(
+    "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "nccl_redist_init_repository",
+)
+
+nccl_redist_init_repository()
+
+load(
+    "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
+    "nccl_configure",
+)
+
+nccl_configure(name = "local_config_nccl")
+
+load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
+
+rules_proto_dependencies()
+
+load("@rules_proto//proto:setup.bzl", "rules_proto_setup")
+
+rules_proto_setup()
+
+load("@rules_proto//proto:toolchains.bzl", "rules_proto_toolchains")
+
+rules_proto_toolchains()
+
+load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
+
+oak_toolchain_repositories()
+
+load("@oak//bazel/crates:patched_crates.bzl", "load_patched_crates")
+
+load_patched_crates()
+
+load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
+
+setup_rust_dependencies()
+
+load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
+
+create_oak_crate_repositories()
+
+load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
+
+load_oak_crate_repositories()
+
+load("@rules_oci//oci:dependencies.bzl", "rules_oci_dependencies")
+
+rules_oci_dependencies()
+
+load("@rules_oci//oci:repositories.bzl", "LATEST_CRANE_VERSION", "LATEST_ZOT_VERSION", "oci_register_toolchains")
+
+oci_register_toolchains(
+    name = "oci",
+    crane_version = LATEST_CRANE_VERSION,
+    zot_version = LATEST_ZOT_VERSION,
+)
+
+load("@rules_oci//oci:pull.bzl", "oci_pull")
+
+oci_pull(
+    name = "distroless_cc_debian12",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+
+oci_pull(
+    name = "python_3_10_slim_bookworm",
+    digest = "sha256:9dd6774a1276178f94b0cc1fb1f0edd980825d0ea7634847af9940b1b6273c13",
+    image = "python",
+    platforms = ["linux/amd64"],
+)
+
+load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
+
+bazel_toolchain_dependencies()
+
+load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
+
+llvm_toolchain(
+    name = "llvm_toolchain",
+    # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
+    # https://github.com/llvm/llvm-project/issues/51620
+    llvm_version = "14.0.0",
+    # Using the PyPi tensorflow package requires using libstdc++ to ensure the
+    # right C++ ABI.
+    stdlib = {"linux-x86_64": "stdc++"},
+    sysroot = {"linux-x86_64": "@sysroot"},
+)
+
+load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
+
+llvm_register_toolchains()

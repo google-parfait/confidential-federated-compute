@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "tf/program_executor_tee/confidential_transform_server.h"
+#include "tensorflow_program_executor_tee/confidential_transform_server.h"
 
 #include <pybind11/embed.h>
 #include <pybind11/functional.h>
@@ -63,7 +63,7 @@ TensorflowProgramExecutorTeeConfidentialTransform::GetProgramInitializeFn() {
           .attr("DataParser")(*GetBlobDecryptor());
 
   return pybind11::module::import(
-             "tf.program_executor_tee.initialize_program_tensorflow")
+             "tensorflow_program_executor_tee.initialize_program_tensorflow")
       .attr("get_program_initialize_fn")(
           initialize_config.outgoing_server_address(), GetWorkerBnsAddresses(),
           pybind11::bytes(absl::Base64Escape(

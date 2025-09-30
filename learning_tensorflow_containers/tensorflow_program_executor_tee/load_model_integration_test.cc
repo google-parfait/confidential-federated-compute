@@ -17,7 +17,7 @@
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
-#include "tf/program_executor_tee/confidential_transform_server.h"
+#include "tensorflow_program_executor_tee/confidential_transform_server.h"
 
 namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
@@ -55,7 +55,7 @@ async def trusted_program(input_provider, release_manager):
   )",
       /*client_ids=*/{}, /*client_data_dir=*/"",
       /*file_id_to_filepath=*/
-      {{"model1", "tf/program_executor_tee/testdata/model1.zip"}});
+      {{"model1", "tensorflow_program_executor_tee/testdata/model1.zip"}});
 
   SessionRequest session_request;
   SessionResponse session_response;

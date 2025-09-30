@@ -1,0 +1,30 @@
+# Update the Python package to contain the appropriate dependencies.
+#
+# This patch was created manually.
+
+diff --git tensorflow_federated/BUILD tensorflow_federated/BUILD
+index 0704e191f..2ec0991db 100644
+--- tensorflow_federated/BUILD
++++ tensorflow_federated/BUILD
+@@ -23,6 +23,21 @@ py_library(
+         "//tensorflow_federated/python/learning",
+         "//tensorflow_federated/python/program",
+         "//tensorflow_federated/python/simulation",
++        "@federated_language//federated_language",
++        "@pypi//absl_py",
++        "@pypi//attrs",
++        "@pypi//cachetools",
++        "@pypi//dm_tree",
++        "@pypi//ml_dtypes",
++        "@pypi//numpy",
++        "@pypi//portpicker",
++        "@pypi//scipy",
++        "@pypi//tensorflow_model_optimization",
++        "@pypi//tensorflow_privacy",
++        "@pypi//tqdm",
++        "@pypi//typing_extensions",
++        "@pypi//tensorflow",
++        "@pypi//googleapis_common_protos",
+     ],
+ )
+

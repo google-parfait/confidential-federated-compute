@@ -1,0 +1,18 @@
+# Update computation visibility:
+#
+# ```
+# buildozer 'add visibility "//visibility:public"' //federated_language_jax/computation:jax_computation
+# ```
+
+diff --git federated_language_jax/computation/BUILD federated_language_jax/computation/BUILD
+index e116f04..0eab13c 100644
+--- federated_language_jax/computation/BUILD
++++ federated_language_jax/computation/BUILD
+@@ -33,6 +33,7 @@ py_library(
+ py_library(
+     name = "jax_computation",
+     srcs = ["jax_computation.py"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":jax_serialization",
+         "@federated_language//federated_language",
