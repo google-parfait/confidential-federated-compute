@@ -1,5 +1,6 @@
 absl-py~=1.0
 googleapis-common-protos==1.70.0
+jax-privacy @ git+https://github.com/google-deepmind/jax_privacy@v1.0.0
 numpy~=2.0
 portpicker~=1.6
 

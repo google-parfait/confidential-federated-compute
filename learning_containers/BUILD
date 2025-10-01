@@ -20,6 +20,7 @@ package(features = ["layering_check"])
 
 compile_pip_requirements(
     name = "requirements",
+    timeout = "long",
     srcs = [
         "//:requirements.in",
         "@federated_language//:requirements.in",
