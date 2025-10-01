@@ -26,6 +26,7 @@ trusted_py_runtime(
         "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax",
+        "@pypi//jax_privacy",
     ],
     source_repo_names = [
         "federated_language",
@@ -63,9 +64,7 @@ cc_library(
     name = "confidential_transform_server_xla",
     srcs = ["confidential_transform_server_xla.cc"],
     hdrs = ["confidential_transform_server_xla.h"],
-    data = [
-        ":trusted_program_py_runtime",
-    ],
+    data = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
         "//program_executor_tee/program_context/cc:data_parser",
@@ -83,6 +82,29 @@ py_library(
         "//program_executor_tee/program_context:execution_context",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
+    ],
+)
+
+cc_test(
+    name = "jax_privacy_integration_test",
+    srcs = ["jax_privacy_integration_test.cc"],
+    data = [
+        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
+    ],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_runtime"],
+    deps = [
+        ":confidential_transform_server_xla",
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
 
