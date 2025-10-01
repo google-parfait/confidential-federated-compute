@@ -211,9 +211,9 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-YN+DEExxvpmpw9Fb5WEjyfJSPrHMoJFnXM1A8c9Ag1w=",
-    strip_prefix = "tensorflow-federated-af3c0f4df85884f140ffb8b7b32153ef31109db4",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/af3c0f4df85884f140ffb8b7b32153ef31109db4.tar.gz",
+    integrity = "sha256-M+7JVjkt+axFnSuJyxYTGSvZreePUDv2BUTlEjiFJVE=",
+    strip_prefix = "tensorflow-federated-ca7ae6096a9ffd741d9814bae09e9c3fff13eab2",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/ca7ae6096a9ffd741d9814bae09e9c3fff13eab2.tar.gz",
 )
 
 http_archive(
