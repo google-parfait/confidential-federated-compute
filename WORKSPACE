@@ -125,11 +125,11 @@ cc_library(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-mzxcFFiiCAziC5PsueapjHtwSslxqGhyDdntx1xpylo=",
+    integrity = "sha256-IaAtI/01ZX5ZTB9B3yZvmT4F+jgj95OCgtTo8+3GiPA=",
     patches = ["//third_party/federated_compute:visibility.patch"],
     repo_mapping = {"@org_tensorflow": "@tf_proto_library"},
-    strip_prefix = "federated-compute-e9a56cc6e33f0cbb12cb6b4ed8fbfa432bb428a0",
-    url = "https://github.com/google/federated-compute/archive/e9a56cc6e33f0cbb12cb6b4ed8fbfa432bb428a0.tar.gz",
+    strip_prefix = "federated-compute-9c1d6a31c5b4f4201f99674a2bbd5d6a70837227",
+    url = "https://github.com/google/federated-compute/archive/9c1d6a31c5b4f4201f99674a2bbd5d6a70837227.tar.gz",
 )
 
 http_archive(

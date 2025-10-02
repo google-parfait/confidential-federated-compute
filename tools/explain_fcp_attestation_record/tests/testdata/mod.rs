@@ -38,6 +38,7 @@ pub fn record_with_empty_access_policy() -> AttestationVerificationRecord {
         attestation_evidence: Some(evidence),
         attestation_endorsements: None,
         data_access_policy: Some(DataAccessPolicy { ..Default::default() }),
+        ..Default::default()
     }
 }
 
