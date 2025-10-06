@@ -24,6 +24,7 @@ cargo_build_script(
         "@federated-compute//fcp/protos/confidentialcompute:payload_transparency.proto",
         "@federated-compute//fcp/protos/confidentialcompute:verification_record.proto",
         "@oak//proto:digest.proto",
+        "@oak//proto:validity.proto",
         "@oak//proto:variant.proto",
         "@oak//proto/attestation:endorsement.proto",
         "@oak//proto/attestation:eventlog.proto",

@@ -32,6 +32,7 @@ cargo_build_script(
         "@com_google_protobuf//:well_known_type_protos",
         "@federated-compute//fcp/protos/confidentialcompute:ledger.proto",
         "@oak//proto:digest.proto",
+        "@oak//proto:validity.proto",
         "@oak//proto:variant.proto",
         "@oak//proto/attestation:endorsement.proto",
         "@oak//proto/attestation:eventlog.proto",
