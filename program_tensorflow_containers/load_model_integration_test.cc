@@ -11,13 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "confidential_transform_server.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "program_executor_tee/program_context/cc/fake_data_read_write_service.h"
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
-#include "tensorflow_program_executor_tee/confidential_transform_server.h"
 
 namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
@@ -55,7 +55,7 @@ async def trusted_program(input_provider, release_manager):
   )",
       /*client_ids=*/{}, /*client_data_dir=*/"",
       /*file_id_to_filepath=*/
-      {{"model1", "tensorflow_program_executor_tee/testdata/model1.zip"}});
+      {{"model1", "testdata/model1.zip"}});
 
   SessionRequest session_request;
   SessionResponse session_response;

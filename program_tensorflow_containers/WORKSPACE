@@ -55,8 +55,9 @@ http_archive(
 )
 
 http_archive(
-    name = "confidential-federated-compute-learning",
+    name = "confidential-federated-compute-program",
     integrity = "sha256-lGfmv4lJrhL437oep856ZHzmGtp+i06a/X7iUVFwwzs=",
+    # TODO: update strip_prefix to use 'program_containers' when the version is next updated.
     strip_prefix = "confidential-federated-compute-957a8ceb7deb03da150bc7c5feec9282fb8533ed/learning_containers",
     url = "https://github.com/google-parfait/confidential-federated-compute/archive/957a8ceb7deb03da150bc7c5feec9282fb8533ed.tar.gz",
 )

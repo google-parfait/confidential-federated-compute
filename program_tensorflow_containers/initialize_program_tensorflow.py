@@ -1,16 +1,16 @@
 from collections.abc import Callable
 import functools
 
+import compilers
 from fcp.confidentialcompute.python import compiler
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
 from program_executor_tee.program_context import execution_context
 from tensorflow_federated.proto.v0 import executor_pb2
-from tensorflow_program_executor_tee import compilers
 
 
 TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
-    "tensorflow_program_executor_tee/computation_runner_binary_tensorflow"
+    "computation_runner_binary_tensorflow"
 )
 
 

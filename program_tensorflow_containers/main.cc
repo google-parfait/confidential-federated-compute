@@ -19,10 +19,10 @@
 #include "absl/log/log.h"
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
+#include "confidential_transform_server.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "tensorflow_program_executor_tee/confidential_transform_server.h"
 
 namespace confidential_federated_compute::tensorflow::program_executor_tee {
 

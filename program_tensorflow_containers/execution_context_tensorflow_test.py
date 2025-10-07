@@ -16,6 +16,8 @@ import functools
 import unittest
 
 from absl.testing import absltest
+import compilers
+import fake_service_bindings_tensorflow
 from fcp.confidentialcompute.python import compiler
 import federated_language
 import numpy as np
@@ -23,12 +25,10 @@ import portpicker
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context import test_helpers
 import tensorflow_federated as tff
-from tensorflow_program_executor_tee import compilers
-from tensorflow_program_executor_tee import fake_service_bindings_tensorflow
 
 
 TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
-    "tensorflow_program_executor_tee/computation_runner_binary_tensorflow"
+    "computation_runner_binary_tensorflow"
 )
 
 
