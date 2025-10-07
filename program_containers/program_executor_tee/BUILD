@@ -12,121 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_library")
+load("//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
 load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 
 package(features = ["layering_check"])
 
+###############################################################################
+# Basic root
+###############################################################################
+
 trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
-        ":initialize_program_xla",
         "//program_executor_tee/program_context:program_runner",
-        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
-        "@federated_language//federated_language",
-        "@federated_language_jax//federated_language_jax",
-        "@pypi//jax_privacy",
     ],
     source_repo_names = [
         "federated_language",
-        "federated_language_jax",
         "federated-compute",
         "org_tensorflow_federated",
         "oak",
-    ],
-)
-
-cc_test(
-    name = "computation_integration_test",
-    srcs = ["computation_integration_test.cc"],
-    data = [
-        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
-    ],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":confidential_transform_server_xla",
-        ":testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_library(
-    name = "confidential_transform_server_xla",
-    srcs = ["confidential_transform_server_xla.cc"],
-    hdrs = ["confidential_transform_server_xla.h"],
-    data = [":trusted_program_py_runtime"],
-    deps = [
-        ":confidential_transform_server",
-        "//program_executor_tee/program_context/cc:data_parser",
-        "@com_google_absl//absl/strings",
-        "@oak//cc/crypto:signing_key",
-        "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
-)
-
-py_library(
-    name = "initialize_program_xla",
-    srcs = ["initialize_program_xla.py"],
-    deps = [
-        "//program_executor_tee/program_context:execution_context",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@org_tensorflow_federated//tensorflow_federated",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-    ],
-)
-
-cc_test(
-    name = "jax_privacy_integration_test",
-    srcs = ["jax_privacy_integration_test.cc"],
-    data = [
-        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
-    ],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":confidential_transform_server_xla",
-        ":testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_library(
-    name = "testing_base",
-    hdrs = ["testing_base.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":confidential_transform_server",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@confidential-federated-compute//containers:crypto",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
     ],
 )
 
@@ -134,6 +43,7 @@ cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
+    data = [":trusted_program_py_runtime"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
@@ -162,6 +72,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "testing_base",
+    hdrs = ["testing_base.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":confidential_transform_server",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@confidential-federated-compute//containers:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "confidential_transform_server_test",
     size = "medium",
@@ -179,8 +110,205 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@federated-compute//fcp/testing:parse_text_proto",
         "@googletest//:gtest",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
+
+cc_binary(
+    name = "root_main_basic",
+    srcs = ["root_main_basic.cc"],
+    local_defines = [
+        "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
+    ],
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_runtime"],
+    deps = [
+        ":confidential_transform_server",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
+    ],
+)
+
+pkg_tar_runfiles(
+    name = "root_basic_runfiles",
+    srcs = [":root_main_basic"],
+    runfiles_prefix = "root_main_basic.runfiles",
+)
+
+pkg_tar(
+    name = "root_basic_tar",
+    srcs = [":root_basic_runfiles"],
+)
+
+oci_image(
+    name = "root_basic_oci_image",
+    # Use a base image that provides the same version of python we reference
+    # in the WORKSPACE file.
+    base = "@python_3_12_slim_bookworm",
+    # Set the workdir and entrypoint so that the main binary will be executed
+    # from within the runfiles directory. This ensures that the main binary
+    # will be able to find its runfiles properly.
+    entrypoint = ["program_executor_tee/root_main_basic"],
+    tars = [":root_basic_tar"],
+    workdir = "/root_main_basic.runfiles/__main__/",
+)
+
+oci_runtime_bundle(
+    name = "root_basic_oci_runtime_bundle",
+    image = ":root_basic_oci_image",
+    visibility = ["//:__pkg__"],
+)
+
+###############################################################################
+# XLA root
+###############################################################################
+
+py_library(
+    name = "initialize_program_xla",
+    srcs = ["initialize_program_xla.py"],
+    deps = [
+        "//program_executor_tee/program_context:execution_context",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
+    ],
+)
+
+trusted_py_runtime(
+    name = "trusted_program_py_xla_runtime",
+    py_deps = [
+        ":initialize_program_xla",
+        "//program_executor_tee/program_context:program_runner",
+        "@federated_language_jax//federated_language_jax",
+        "@pypi//jax_privacy",
+    ],
+    source_repo_names = [
+        "federated_language",
+        "federated_language_jax",
+        "federated-compute",
+        "org_tensorflow_federated",
+        "oak",
+    ],
+)
+
+cc_library(
+    name = "confidential_transform_server_xla",
+    srcs = ["confidential_transform_server_xla.cc"],
+    hdrs = ["confidential_transform_server_xla.h"],
+    data = [":trusted_program_py_xla_runtime"],
+    deps = [
+        ":confidential_transform_server",
+        "//program_executor_tee/program_context/cc:data_parser",
+        "@com_google_absl//absl/strings",
+        "@oak//cc/crypto:signing_key",
+        "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+cc_test(
+    name = "computation_integration_test",
+    srcs = ["computation_integration_test.cc"],
+    data = [
+        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
+    ],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_xla_runtime"],
+    deps = [
+        ":confidential_transform_server_xla",
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "jax_privacy_integration_test",
+    srcs = ["jax_privacy_integration_test.cc"],
+    data = [
+        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
+    ],
+    env = {
+        "PYTHONPATH": "$(PYTHONPATH)",
+        "PYTHONHOME": "$(PYTHONHOME)",
+    },
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_xla_runtime"],
+    deps = [
+        ":confidential_transform_server_xla",
+        ":testing_base",
+        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_binary(
+    name = "root_main_xla",
+    srcs = ["root_main_xla.cc"],
+    data = [
+        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
+    ],
+    local_defines = [
+        "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
+    ],
+    tags = ["noasan"],
+    toolchains = [":trusted_program_py_xla_runtime"],
+    deps = [
+        ":confidential_transform_server_xla",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
+    ],
+)
+
+pkg_tar_runfiles(
+    name = "root_xla_runfiles",
+    srcs = [":root_main_xla"],
+    runfiles_prefix = "root_main_xla.runfiles",
+)
+
+pkg_tar(
+    name = "root_xla_tar",
+    srcs = [":root_xla_runfiles"],
+)
+
+oci_image(
+    name = "root_xla_oci_image",
+    # Use a base image that provides the same version of python we reference
+    # in the WORKSPACE file.
+    base = "@python_3_12_slim_bookworm",
+    # Set the workdir and entrypoint so that the main binary will be executed
+    # from within the runfiles directory. This ensures that the main binary
+    # will be able to find its runfiles properly.
+    entrypoint = ["program_executor_tee/root_main_xla"],
+    tars = [":root_xla_tar"],
+    workdir = "/root_main_xla.runfiles/__main__/",
+)
+
+oci_runtime_bundle(
+    name = "root_xla_oci_runtime_bundle",
+    image = ":root_xla_oci_image",
+    visibility = ["//:__pkg__"],
+)
+
+###############################################################################
+# Basic worker
+###############################################################################
 
 cc_library(
     name = "program_worker_server",
@@ -199,6 +327,10 @@ cc_library(
         "@oak//cc/oak_session:server_session",
     ],
 )
+
+###############################################################################
+# XLA worker
+###############################################################################
 
 cc_binary(
     name = "worker_main_xla",
@@ -221,4 +353,28 @@ cc_binary(
         "@oak//cc/oak_session:oak_session_bindings",
         "@oak//proto/session:session_cc_proto",
     ],
+)
+
+pkg_tar_runfiles(
+    name = "worker_xla_runfiles",
+    srcs = [":worker_main_xla"],
+    runfiles_prefix = "worker_main_xla.runfiles",
+)
+
+pkg_tar(
+    name = "worker_xla_tar",
+    srcs = [":worker_xla_runfiles"],
+)
+
+oci_image(
+    name = "worker_xla_oci_image",
+    base = "@distroless_cc_debian12",
+    entrypoint = ["/main"],
+    tars = [":worker_xla_tar"],
+)
+
+oci_runtime_bundle(
+    name = "worker_xla_oci_runtime_bundle",
+    image = ":worker_xla_oci_image",
+    visibility = ["//:__pkg__"],
 )

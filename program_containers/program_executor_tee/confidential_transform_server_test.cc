@@ -19,6 +19,7 @@
 #include "gmock/gmock.h"
 #include "grpcpp/client_context.h"
 #include "program_executor_tee/testing_base.h"
+#include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -119,6 +120,34 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
       status.error_message(),
       HasSubstr(
           "Writing to a session is not supported in program executor TEE"));
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
+  this->CreateSession(R"(
+async def trusted_program(input_provider, release_manager):
+  result = 1+2+3
+  await release_manager.release(result, "result")
+  )");
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
+  ASSERT_EQ(write_call_args.size(), 1);
+  ASSERT_EQ(write_call_args[0].size(), 1);
+  auto write_request = write_call_args[0][0];
+  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
+            "result");
+  ASSERT_TRUE(write_request.commit());
+  tensorflow_federated::v0::Value released_value;
+  released_value.ParseFromString(write_request.data());
+  ASSERT_THAT(released_value.array().int32_list().value(),
+              ::testing::ElementsAreArray({6}));
+
+  ASSERT_TRUE(session_response.has_finalize());
 }
 
 }  // namespace
