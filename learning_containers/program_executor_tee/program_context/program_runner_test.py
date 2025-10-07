@@ -31,7 +31,9 @@ class ProgramRunnerTest(unittest.IsolatedAsyncioTestCase):
   async def test_run_program(self):
     untrusted_root_port = portpicker.pick_unused_port()
     self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
-    data_read_write_service = fake_service_bindings_jax.FakeDataReadWriteService()
+    data_read_write_service = (
+        fake_service_bindings_jax.FakeDataReadWriteService()
+    )
     server = fake_service_bindings_jax.FakeServer(
         untrusted_root_port, data_read_write_service, None
     )

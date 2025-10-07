@@ -1,0 +1,20 @@
+diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
+index ec09dc818..046229198 100644
+--- tensorflow_federated/cc/core/impl/executors/BUILD
++++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -366,6 +366,7 @@ cc_library(
+     name = "executor_service",
+     srcs = ["executor_service.cc"],
+     hdrs = ["executor_service.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":cardinalities",
+         ":executor",
+@@ -796,6 +797,7 @@ cc_library(
+     name = "streaming_remote_executor",
+     srcs = ["streaming_remote_executor.cc"],
+     hdrs = ["streaming_remote_executor.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":cardinalities",
+         ":executor",

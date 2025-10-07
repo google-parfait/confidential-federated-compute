@@ -32,9 +32,12 @@
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
-#include "program_executor_tee/program_context/cc/computation_delegation_lambda_runner.h"
+#include "program_executor_tee/program_context/cc/noise_executor_stub.h"
+#include "tensorflow_federated/cc/core/impl/executors/composing_executor.h"
+#include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
+#include "tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -55,6 +58,12 @@ using ::oak::session::AttestationType;
 using ::oak::session::HandshakeType;
 using ::oak::session::SessionConfig;
 using ::oak::session::SessionConfigBuilder;
+using ::tensorflow_federated::CardinalityMap;
+using ::tensorflow_federated::ComposingChild;
+using ::tensorflow_federated::CreateFederatingExecutor;
+using ::tensorflow_federated::CreateReferenceResolvingExecutor;
+using ::tensorflow_federated::CreateStreamingRemoteExecutor;
+using ::tensorflow_federated::Executor;
 
 constexpr absl::string_view kFakeAttesterId = "fake_attester";
 constexpr absl::string_view kFakeEvent = "fake event";
@@ -87,47 +96,29 @@ absl::StatusOr<SessionConfig*> GetClientSessionConfig(
   }
 }
 
-std::vector<int> GetNumClientsPerWorker(int num_clients, int num_workers) {
-  // Distribute the clients across the child executors. Each child executor
-  // should get the same number of clients, with the exception of the last child
-  // executor, which may get fewer clients if the number of clients is not
-  // evenly divisible by the number of child executors.
-  int clients_per_worker =
-      std::ceil(static_cast<float>(num_clients) / num_workers);
-  std::vector<int> result(num_workers, clients_per_worker);
-  int extra_clients = (clients_per_worker * num_workers) - num_clients;
-  if (extra_clients > 0) {
-    result[num_workers - 1] -= extra_clients;
-  }
-  return result;
-}
-
 // Creates a non-distributed TFF execution stack.
-absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> CreateExecutor(
-    std::function<
-        absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+absl::StatusOr<std::shared_ptr<Executor>> CreateExecutor(
+    std::function<absl::StatusOr<std::shared_ptr<Executor>>()>
         leaf_executor_factory,
     int num_clients) {
-  auto leaf_executor_fn = [leaf_executor_factory]()
-      -> absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> {
+  auto leaf_executor_fn =
+      [leaf_executor_factory]() -> absl::StatusOr<std::shared_ptr<Executor>> {
     FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory());
-    return tensorflow_federated::CreateReferenceResolvingExecutor(executor);
+    return CreateReferenceResolvingExecutor(executor);
   };
-  tensorflow_federated::CardinalityMap cardinality_map;
+  CardinalityMap cardinality_map;
   cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
   FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_fn());
   FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_fn());
-  FCP_ASSIGN_OR_RETURN(auto federating_executor,
-                       tensorflow_federated::CreateFederatingExecutor(
-                           server_child, client_child, cardinality_map));
-  return tensorflow_federated::CreateReferenceResolvingExecutor(
-      federating_executor);
+  FCP_ASSIGN_OR_RETURN(
+      auto federating_executor,
+      CreateFederatingExecutor(server_child, client_child, cardinality_map));
+  return CreateReferenceResolvingExecutor(federating_executor);
 }
 
 // Executes comp(arg) on the provided TFF execution stack.
 absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
-    std::shared_ptr<tensorflow_federated::Executor> executor,
-    tensorflow_federated::v0::Value comp,
+    std::shared_ptr<Executor> executor, tensorflow_federated::v0::Value comp,
     std::optional<tensorflow_federated::v0::Value> arg) {
   FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId fn_handle,
                        executor->CreateValue(comp));
@@ -150,8 +141,7 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
 }  // namespace
 
 ComputationRunner::ComputationRunner(
-    std::function<
-        absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+    std::function<absl::StatusOr<std::shared_ptr<Executor>>()>
         leaf_executor_factory,
     std::vector<std::string> worker_bns,
     std::string serialized_reference_values,
@@ -179,44 +169,38 @@ ComputationRunner::ComputationRunner(
 }
 
 // Creates a distributed TFF execution stack.
-absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
+absl::StatusOr<std::shared_ptr<Executor>>
 ComputationRunner::CreateDistributedExecutor(int num_clients) {
   if (worker_bns_.size() < 2) {
     return absl::InvalidArgumentError(
         "worker_bns must have at least 2 entries.");
   }
-  // Create a lambda runner for the first worker. This is used to create the
-  // server executor.
-  auto server_lambda_runner =
-      std::make_shared<ComputationDelegationLambdaRunner>(
-          noise_client_sessions_[0].get());
-  auto server_executor = CreateTeeExecutor(server_lambda_runner, num_clients);
-  // Create lambda runners for the remaining workers. These are used to create
-  // the child executors.
-  int num_workers = worker_bns_.size() - 1;
-  std::vector<tensorflow_federated::ComposingChild> composing_children;
-  composing_children.reserve(num_workers);
-  std::vector<int> num_clients_per_child_worker =
-      GetNumClientsPerWorker(num_clients, num_workers);
-  for (size_t i = 1; i < worker_bns_.size(); ++i) {
-    auto child_lambda_runner =
-        std::make_shared<ComputationDelegationLambdaRunner>(
-            noise_client_sessions_[i].get());
-    int num_clients_current_worker = num_clients_per_child_worker[i - 1];
-    auto child_executor =
-        CreateTeeExecutor(child_lambda_runner, num_clients_current_worker);
-    tensorflow_federated::CardinalityMap cardinality_map;
-    cardinality_map[tensorflow_federated::kClientsUri] =
-        num_clients_current_worker;
-    FCP_ASSIGN_OR_RETURN(auto composing_child,
-                         tensorflow_federated::ComposingChild::Make(
-                             std::move(child_executor), cardinality_map));
-    composing_children.push_back(composing_child);
+
+  std::vector<ComposingChild> client_executors;
+  int remaining_clients = num_clients;
+  int num_clients_values_per_executor =
+      std::ceil(static_cast<float>(num_clients) / (worker_bns_.size() - 1));
+  for (int i = 0; i < worker_bns_.size() - 1; i++) {
+    int clients_for_executor =
+        std::min(num_clients_values_per_executor, remaining_clients);
+    CardinalityMap cardinality_map;
+    cardinality_map[tensorflow_federated::kClientsUri] = clients_for_executor;
+    client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
+        CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
+                                          noise_client_sessions_[i].get()),
+                                      cardinality_map),
+        cardinality_map)));
+    remaining_clients -= clients_for_executor;
   }
-  auto composing_executor =
-      CreateComposingTeeExecutor(server_executor, composing_children);
-  return tensorflow_federated::CreateReferenceResolvingExecutor(
-      composing_executor);
+
+  CardinalityMap cardinality_map;
+  cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
+  std::shared_ptr<Executor> server_executor = CreateStreamingRemoteExecutor(
+      std::make_unique<NoiseExecutorStub>(noise_client_sessions_.back().get()),
+      cardinality_map);
+
+  return CreateReferenceResolvingExecutor(
+      CreateComposingExecutor(server_executor, client_executors));
 }
 
 grpc::Status ComputationRunner::Execute(
@@ -231,7 +215,7 @@ grpc::Status ComputationRunner::Execute(
   }
 
   // Create executor stack.
-  absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> executor =
+  absl::StatusOr<std::shared_ptr<Executor>> executor =
       worker_bns_.empty()
           ? CreateExecutor(leaf_executor_factory_,
                            session_request.num_clients())

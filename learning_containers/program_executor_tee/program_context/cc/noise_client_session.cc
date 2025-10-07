@@ -74,8 +74,6 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   // any actual computation request.
   if (!client_session_->IsOpen()) {
     FCP_RETURN_IF_ERROR(OpenSession());
-  } else {
-    LOG(INFO) << "Session is already open for worker: " << worker_bns_;
   }
   FCP_ASSIGN_OR_RETURN(auto session_request, EncryptRequest(plaintext_request));
   ComputationRequest request;

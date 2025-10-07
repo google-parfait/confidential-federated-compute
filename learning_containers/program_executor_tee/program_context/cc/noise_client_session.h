@@ -30,8 +30,7 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
-// Interface for a noise client session that delegates computation requests to a
-// worker.
+// Interface for a noise client session that delegates requests to a worker.
 class NoiseClientSessionInterface {
  public:
   virtual ~NoiseClientSessionInterface() = default;
@@ -55,8 +54,8 @@ class NoiseClientSession : public NoiseClientSessionInterface {
         new NoiseClientSession(worker_bns, std::move(client_session), stub));
   }
 
-  // Delegates the computation request (serialized as a PlaintextMessage) to the
-  // worker, and returns the decrypted response.
+  // Delegates the request (serialized as a PlaintextMessage) to the worker, and
+  // returns the decrypted response.
   absl::StatusOr<oak::session::v1::PlaintextMessage> DelegateComputation(
       const oak::session::v1::PlaintextMessage& plaintext_request) override;
 
