@@ -186,6 +186,7 @@ cc_library(
     name = "program_worker_server",
     srcs = ["program_worker_server.cc"],
     hdrs = ["program_worker_server.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//program_executor_tee/program_context/cc:noise_leaf_executor",
         "@com_github_grpc_grpc//:grpc++",

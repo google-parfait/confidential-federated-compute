@@ -128,7 +128,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.assertEqual(result, 10)
 
-  async def test_execution_contest_arg(self):
+  async def test_execution_context_arg(self):
     with federated_language.framework.get_context_stack().install(self.context):
       client_data_type = federated_language.FederatedType(
           np.int32, federated_language.CLIENTS
@@ -147,7 +147,12 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       self.assertEqual(result_1, 6)
       self.assertEqual(result_2, 10)
 
-  async def test_execution_contest_data_pointer_arg(self):
+      # Change the cardinality of the inputs.
+      result_1, result_2 = my_comp([1, 2, 3, 4], 10)
+      self.assertEqual(result_1, 10)
+      self.assertEqual(result_2, 10)
+
+  async def test_execution_context_data_pointer_arg(self):
     with federated_language.framework.get_context_stack().install(self.context):
       client_data_type = federated_language.FederatedType(
           np.int32, federated_language.CLIENTS

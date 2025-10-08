@@ -194,6 +194,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",

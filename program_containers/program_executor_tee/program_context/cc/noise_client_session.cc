@@ -70,6 +70,7 @@ absl::Status NoiseClientSession::OpenSession() {
 
 absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
     const PlaintextMessage& plaintext_request) {
+  absl::MutexLock lock(&mutex_);
   // Open the session if it is not already open. This is needed before sending
   // any actual computation request.
   if (!client_session_->IsOpen()) {

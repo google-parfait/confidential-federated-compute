@@ -21,6 +21,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
 #include "fcp/base/monitoring.h"
@@ -82,6 +83,7 @@ class NoiseClientSession : public NoiseClientSessionInterface {
   std::unique_ptr<oak::session::ClientSession> client_session_;
   fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
       stub_;
+  absl::Mutex mutex_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee
