@@ -75,9 +75,9 @@ std::string RegexMatch(const std::string& text, const std::regex& regex) {
 
 }  // namespace
 
-void InferenceModel::BuildGemmaModel(
-    const SessionGemmaConfiguration& gemma_config) {
-  GemmaModel& gemma_model = std::get<GemmaModel>(model_);
+void InferenceModel::BuildGemmaCppModel(
+    const SessionGemmaCppConfiguration& gemma_config) {
+  GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
   LoaderArgs loader_args(gemma_config.tokenizer_path,
                          gemma_config.model_weight_path);
   InferenceArgs inference_args;
@@ -94,17 +94,14 @@ absl::Status InferenceModel::BuildModel(
   switch (inference_configuration.initialize_configuration
               .model_init_config_case()) {
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
-      const GemmaConfiguration& gemma_config =
-          inference_configuration.initialize_configuration.inference_config()
-              .gemma_config();
       if (!inference_configuration.gemma_configuration.has_value()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Missing session Gemma configuration"));
       }
-      SessionGemmaConfiguration session_gemma_config =
+      SessionGemmaCppConfiguration session_gemma_config =
           inference_configuration.gemma_configuration.value();
-      model_.emplace<GemmaModel>();
-      BuildGemmaModel(session_gemma_config);
+      model_.emplace<GemmaCppModel>();
+      BuildGemmaCppModel(session_gemma_config);
       break;
     }
     default:
@@ -117,7 +114,7 @@ absl::Status InferenceModel::BuildModel(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
+absl::StatusOr<std::string> InferenceModel::RunGemmaCppInference(
     const std::string& prompt, const absl::string_view& column_value,
     const std::string& column_name) {
   std::string combined_prompt(prompt);
@@ -128,7 +125,7 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaInference(
   }
 
   size_t generated = 0;
-  GemmaModel& gemma_model = std::get<GemmaModel>(model_);
+  GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
   Gemma* gemma = gemma_model.gemma_.get();
   KVCache kv_cache(gemma->Config(), gemma->Inference(),
                    gemma_model.ctx_->allocator);
@@ -216,18 +213,14 @@ absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
     }
     for (const auto& input_value : input_column.AsSpan<absl::string_view>()) {
       std::string output_string;
-      ModelType model_type = GetModelType();
-      switch (model_type) {
-        case ModelType::kGemma: {
-          FCP_ASSIGN_OR_RETURN(
-              output_string,
-              RunGemmaInference(inference_task.prompt().prompt_template(),
-                                input_value, input_column_name));
-          break;
-        }
-        default:
-          return absl::UnimplementedError(
-              absl::StrCat("Unsupported model type: ", model_type));
+      if (std::holds_alternative<GemmaCppModel>(model_)) {
+        FCP_ASSIGN_OR_RETURN(
+            output_string,
+            RunGemmaCppInference(inference_task.prompt().prompt_template(),
+                                 input_value, input_column_name));
+      } else {
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported inference model type."));
       }
       if (regex) {
         output_string = RegexMatch(output_string, *regex);
@@ -255,12 +248,8 @@ absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
   return absl::OkStatus();
 }
 
-ModelType InferenceModel::GetModelType() const {
-  return static_cast<ModelType>(model_.index());
-}
-
 bool InferenceModel::HasModel() const {
-  return GetModelType() != ModelType::kNone;
+  return !std::holds_alternative<NoModel>(model_);
 }
 
 const std::optional<SessionInferenceConfiguration>&

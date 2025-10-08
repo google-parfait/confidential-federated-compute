@@ -26,7 +26,8 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-struct SessionGemmaConfiguration {
+// Session configuration for running inference using gemma.cpp engine.
+struct SessionGemmaCppConfiguration {
   std::string tokenizer_path;
   std::string model_weight_path;
 };
@@ -35,12 +36,9 @@ struct SessionGemmaConfiguration {
 struct SessionInferenceConfiguration {
   fcp::confidentialcompute::InferenceInitializeConfiguration
       initialize_configuration;
-  std::optional<SessionGemmaConfiguration> gemma_configuration;
+  std::optional<SessionGemmaCppConfiguration> gemma_configuration;
 };
-enum class ModelType : int {
-  kNone = 0,
-  kGemma = 1,
-};
+
 // An LLM model that can be invoked to run inference before the per-client query
 // step.
 class InferenceModel {
@@ -55,23 +53,23 @@ class InferenceModel {
 
  private:
   struct NoModel {};
-  struct GemmaModel {
+  struct GemmaCppModel {
     std::unique_ptr<::gcpp::Gemma> gemma_;
     std::unique_ptr<::gcpp::MatMulEnv> env_;
     std::unique_ptr<::gcpp::ThreadingContext> ctx_;
   };
 
-  // Builds a Gemma model from the given Gemma config.
-  // This function assumes that the model_ is already a GemmaModel.
-  virtual void BuildGemmaModel(const SessionGemmaConfiguration& gemma_config);
+  // Builds a gemma.cpp compatible model from the given Gemma config.
+  // This function assumes that the model_ is already a GemmaCppModel.
+  virtual void BuildGemmaCppModel(
+      const SessionGemmaCppConfiguration& gemma_config);
 
-  virtual absl::StatusOr<std::string> RunGemmaInference(
+  virtual absl::StatusOr<std::string> RunGemmaCppInference(
       const std::string& prompt, const absl::string_view& column_value,
       const std::string& column_name);
-  ModelType GetModelType() const;
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::variant<NoModel, GemmaModel> model_;
+  std::variant<NoModel, GemmaCppModel> model_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

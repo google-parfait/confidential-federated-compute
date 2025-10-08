@@ -25,9 +25,9 @@ namespace confidential_federated_compute::fed_sql::testing {
 
 class MockInferenceModel : public InferenceModel {
  public:
-  MOCK_METHOD(void, BuildGemmaModel,
-              (const SessionGemmaConfiguration& gemma_config), (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaInference,
+  MOCK_METHOD(void, BuildGemmaCppModel,
+              (const SessionGemmaCppConfiguration& gemma_config), (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaCppInference,
               (const std::string& prompt, const absl::string_view& column_value,
                const std::string& column_name),
               (override));
