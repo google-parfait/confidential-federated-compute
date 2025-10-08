@@ -31,12 +31,19 @@ struct SessionGemmaCppConfiguration {
   std::string tokenizer_path;
   std::string model_weight_path;
 };
+
+// Session configuration for running inference using llama.cpp engine.
+struct SessionLlamaCppConfiguration {
+  std::string model_weight_path;
+};
+
 // Configuration of the per-client inference step, occurring before the
 // per-client query step.
 struct SessionInferenceConfiguration {
   fcp::confidentialcompute::InferenceInitializeConfiguration
       initialize_configuration;
   std::optional<SessionGemmaCppConfiguration> gemma_configuration;
+  std::optional<SessionLlamaCppConfiguration> llama_configuration;
 };
 
 // An LLM model that can be invoked to run inference before the per-client query

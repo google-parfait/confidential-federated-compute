@@ -55,6 +55,7 @@ using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
+using ::fcp::confidentialcompute::LlamaCppInitializeConfiguration;
 using ::google::protobuf::Struct;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
@@ -306,7 +307,7 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
               gemma_init_config.tokenizer_configuration_id()) ==
           write_configuration_map_.end()) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Expected Gemma tokenizer configuration id ",
+            absl::StrCat("Expected gemma.cpp tokenizer configuration id ",
                          gemma_init_config.tokenizer_configuration_id(),
                          " is missing in WriteConfigurationRequest."));
       }
@@ -314,7 +315,7 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
               gemma_init_config.model_weight_configuration_id()) ==
           write_configuration_map_.end()) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Expected Gemma model weight configuration id ",
+            absl::StrCat("Expected gemma.cpp weight configuration id ",
                          gemma_init_config.model_weight_configuration_id(),
                          " is missing in WriteConfigurationRequest."));
       }
@@ -329,6 +330,29 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
                                        .model_weight_configuration_id()]
               .file_path;
       inference_configuration_->gemma_configuration = std::move(gemma_config);
+      break;
+    }
+    case InferenceInitializeConfiguration::kLlamaCppInitConfig: {
+      const LlamaCppInitializeConfiguration& llama_init_config =
+          inference_configuration_->initialize_configuration
+              .llama_cpp_init_config();
+      if (write_configuration_map_.find(
+              llama_init_config.model_weight_configuration_id()) ==
+          write_configuration_map_.end()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected llama.cpp weight configuration id ",
+                         llama_init_config.model_weight_configuration_id(),
+                         " is missing in WriteConfigurationRequest."));
+      }
+
+      SessionLlamaCppConfiguration llama_config;
+
+      llama_config.model_weight_path =
+          write_configuration_map_[llama_init_config
+                                       .model_weight_configuration_id()]
+              .file_path;
+
+      inference_configuration_->llama_configuration = std::move(llama_config);
       break;
     }
     default:
