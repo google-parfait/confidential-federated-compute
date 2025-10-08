@@ -44,3 +44,14 @@ federated computations will use differential privacy to produce anonymized
 results. We expect Private Compute Services's use of confidential federated
 computations to evolve over time, and any changes to these details will be
 reflected here.
+
+## Recorder
+
+[Recorder](https://play.google.com/store/apps/details?id=com.google.android.apps.recorder)
+uses the values in [`recorder.txtpb`](recorder.txtpb) to validate access policy
+endorsements.
+
+Processing of Recorder data with TEE-hosted confidential federated computations
+will use differential privacy to produce anonymized results. We expect
+Recorder's use of confidential federated computations to evolve over time, and
+any changes to these details will be reflected here.
