@@ -319,7 +319,7 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
                          " is missing in WriteConfigurationRequest."));
       }
       // Populate inference_configuration_.gemma_configuration.
-      SessionGemmaConfiguration gemma_config;
+      SessionGemmaCppConfiguration gemma_config;
       gemma_config.tokenizer_path =
           write_configuration_map_[gemma_init_config
                                        .tokenizer_configuration_id()]
