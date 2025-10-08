@@ -84,7 +84,6 @@ py_test(
         ":fake_service_bindings_tensorflow",
         "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
         "@confidential-federated-compute-program//program_executor_tee/program_context:test_helpers",
-        "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
@@ -99,7 +98,6 @@ py_library(
     deps = [
         ":compilers",
         "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
-        "@federated-compute//fcp/confidentialcompute/python:compiler",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
@@ -202,6 +200,27 @@ cc_binary(
         "@com_google_absl//absl/log:check",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
+    ],
+)
+
+cc_binary(
+    name = "worker_main_tensorflow",
+    srcs = ["worker_main_tensorflow.cc"],
+    tags = ["noasan"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@confidential-federated-compute-program//program_executor_tee:program_worker_server",
+        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:server_session_config",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/ffi:bytes_bindings",
+        "@oak//cc/ffi:bytes_view",
+        "@oak//cc/ffi:error_bindings",
+        "@oak//cc/oak_session:config",
+        "@oak//cc/oak_session:oak_session_bindings",
+        "@oak//proto/session:session_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
     ],
 )
 

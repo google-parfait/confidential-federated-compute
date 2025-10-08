@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import unittest
 
 from absl.testing import absltest
 import compilers
 import fake_service_bindings_tensorflow
-from fcp.confidentialcompute.python import compiler
 import federated_language
 import numpy as np
 import portpicker
@@ -215,14 +213,8 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         self.untrusted_root_port, "Failed to pick an unused port."
     )
     self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
-
-    # Create 4 workers. The first worker is the server, and the other 3 are child workers.
-    self.worker_bns = [
-        "bns_address_1",
-        "bns_address_2",
-        "bns_address_3",
-        "bns_address_4",
-    ]
+    self.num_workers = 3
+    self.worker_bns = [f"bns_address_{i}" for i in range(self.num_workers)]
     self.serialized_reference_values = b""
     self.data_read_write_service = (
         fake_service_bindings_tensorflow.FakeDataReadWriteService()
@@ -245,10 +237,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
   async def test_execution_context(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
-            functools.partial(
-                compiler.to_composed_tee_form,
-                num_client_workers=len(self.worker_bns) - 1,
-            ),
+            compilers.compile_tf_to_call_dominant,
             TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
@@ -264,28 +253,30 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
         np.int32, federated_language.SERVER
     )
 
+    @tff.tensorflow.computation(np.int32)
+    def double(value):
+      return value * 2
+
     @federated_language.federated_computation(
         [client_data_type, server_state_type]
     )
     def my_comp(client_data, server_state):
+      client_data = federated_language.federated_map(double, client_data)
       return federated_language.federated_sum(client_data), server_state
 
     result_1, result_2 = my_comp([1, 2], 10)
-    self.assertEqual(result_1, 3)
+    self.assertEqual(result_1, 6)
     self.assertEqual(result_2, 10)
 
     # Change the cardinality of the inputs.
     result_1, result_2 = my_comp([1, 2, 3, 4], 10)
-    self.assertEqual(result_1, 10)
+    self.assertEqual(result_1, 20)
     self.assertEqual(result_2, 10)
 
   async def test_execution_context_data_pointer_arg(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
-            functools.partial(
-                compiler.to_composed_tee_form,
-                num_client_workers=len(self.worker_bns) - 1,
-            ),
+            compilers.compile_tf_to_call_dominant,
             TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
