@@ -1,5 +1,6 @@
 registry
 toolchains/sysroot
+containers/gcp_prototype
 containers/minimum_jax
 containers/minimum_llama_cpp
 containers/minimum_rules_cuda
