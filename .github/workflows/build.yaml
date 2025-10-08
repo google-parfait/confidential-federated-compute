@@ -25,7 +25,8 @@ jobs:
       matrix:
         module-root:
           - .
-          - learning_containers
+          - program_containers
+          - program_tensorflow_containers
 
     steps:
       - name: Checkout
