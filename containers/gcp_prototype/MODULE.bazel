@@ -18,21 +18,44 @@ module(
     compatibility_level = 1,
 )
 
-bazel_dep(name = "rules_cc", version = "0.1.1")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+bazel_dep(name = "abseil-cpp", version = "20250814.0")
+bazel_dep(name = "rules_cc", version = "0.2.0")
+bazel_dep(name = "rules_distroless", version = "0.5.1")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_python", version = "1.5.3")
+bazel_dep(name = "rules_pkg", version = "1.1.0")
 bazel_dep(name = "toolchains_llvm", version = "1.4.0")
-bazel_dep(
-    name = "rules_distroless",
-    version = "0.5.1",
+
+http_archive(
+    name = "sysroot",
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
-bazel_dep(
-    name = "rules_oci",
-    version = "2.2.6",
+
+# Set up cc toolchain
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    # clang version lower than 19.1.0 requires libtinfo.so.5 when building CUDA
+    llvm_version = "19.1.0",
+    stdlib = {"linux-x86_64": "stdc++"},
 )
-bazel_dep(
-    name = "rules_python",
-    version = "1.5.3",
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
 )
-bazel_dep(
-    name = "rules_pkg",
-    version = "1.1.0",
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
 )
+use_repo(oci, "distroless_cc_debian12_base")
