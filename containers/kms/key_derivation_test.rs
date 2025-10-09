@@ -22,8 +22,8 @@ use coset::{
 };
 use googletest::prelude::*;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, ACCESS_POLICY_SHA256_CLAIM,
-    HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, get_derived_key_id,
+    ACCESS_POLICY_SHA256_CLAIM, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
 };
 use oak_proto_rust::oak::crypto::v1::Signature;
 
@@ -265,4 +265,12 @@ fn public_and_private_keys_are_paired() {
             .open(&sender_context.seal(b"plaintext", b"aad"), b"aad"),
         some(eq(b"plaintext")),
     );
+}
+
+#[googletest::test]
+fn get_derived_key_id_concats_prefix_and_info() {
+    // Up to the first 4 bytes of the info field should be used.
+    expect_that!(get_derived_key_id(b"prefix", b""), eq(b"prefix"));
+    expect_that!(get_derived_key_id(b"prefix", b"suf"), eq(b"prefixsuf"));
+    expect_that!(get_derived_key_id(b"prefix", b"suffix"), eq(b"prefixsuff"));
 }

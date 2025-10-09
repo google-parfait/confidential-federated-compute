@@ -476,6 +476,7 @@ async fn register_pipeline_invocation_success() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234, 5678],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response =
         kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
@@ -526,6 +527,7 @@ async fn register_pipeline_invocation_with_invalid_policies() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234, 5678],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response =
         kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
@@ -535,6 +537,143 @@ async fn register_pipeline_invocation_with_invalid_policies() {
             property!(Status.code(), eq(Code::InvalidArgument)),
             displays_as(contains_substring("invalid pipeline policies")),
         ))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn register_pipeline_invocation_with_keys_in_response() {
+    let now = Arc::new(AtomicI64::new(0));
+    let kms = KeyManagementService::new(FakeStorageClient::new(now.clone()), FakeSigner {});
+
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies1 = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    }
+    .encode_to_vec();
+    // Create a second AuthorizedLogicalPipelinePolicies message to ensure that
+    // multiple messages are handled correctly.
+    let logical_pipeline_policies2 = AuthorizedLogicalPipelinePolicies {
+        pipelines: [
+            ("test".into(), LogicalPipelinePolicy { instances: vec![variant_policy.clone()] }),
+            ("other".into(), LogicalPipelinePolicy::default()),
+        ]
+        .into(),
+        ..Default::default()
+    }
+    .encode_to_vec();
+
+    // Add three keys to keyset 123, one of which expires before the pipeline
+    // invocation intermediates. Add one key to keyset 456, and none to keyset
+    // 789. Save the key ids for use later.
+    let intermediates_exp = 100;
+    let mut key_ids = Vec::new();
+    for (keyset_id, exp) in [(123, 90), (123, 100), (123, 110), (456, 120)] {
+        now.fetch_add(1, Ordering::Relaxed); // Avoid ambiguous creation times.
+        let request = RotateKeysetRequest {
+            keyset_id,
+            ttl: Some(Duration { seconds: exp - now.load(Ordering::Relaxed), nanos: 0 }),
+        };
+        kms.rotate_keyset(request.into_request()).await.expect("rotate_keyset failed");
+        if exp >= intermediates_exp {
+            let request = DeriveKeysRequest {
+                keyset_id,
+                authorized_logical_pipeline_policies_hashes: vec![
+                    Sha256::hash(&logical_pipeline_policies1).into(),
+                    Sha256::hash(&logical_pipeline_policies2).into(),
+                ],
+            };
+            let response =
+                kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
+            key_ids.append(
+                &mut response
+                    .into_inner()
+                    .public_keys
+                    .iter()
+                    .map(|key| CoseSign1::from_slice(key).unwrap())
+                    .map(|cwt| {
+                        ClaimsSet::from_slice(&cwt.payload.unwrap())
+                            .unwrap()
+                            .rest
+                            .into_iter()
+                            .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
+                            .and_then(|(_, value)| value.into_bytes().ok())
+                            .unwrap()
+                    })
+                    .map(|cose_key| CoseKey::from_slice(&cose_key).unwrap().key_id)
+                    .collect(),
+            );
+        }
+    }
+    assert_that!(key_ids, len(eq(6)));
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration {
+            seconds: intermediates_exp - now.load(Ordering::Relaxed),
+            nanos: 0,
+        }),
+        keyset_ids: vec![123, 456, 789],
+        authorized_logical_pipeline_policies: vec![
+            logical_pipeline_policies1,
+            logical_pipeline_policies2,
+        ],
+        include_keys_in_response: true,
+    };
+    let response =
+        kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
+    expect_that!(
+        response,
+        ok(matches_pattern!(RegisterPipelineInvocationResponse {
+            keys: unordered_elements_are![
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[0].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(2) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+                }),
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[1].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(2) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+                }),
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[2].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(3) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+                }),
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[3].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(3) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+                }),
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[4].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(4) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                }),
+                matches_pattern!(Key {
+                    key_id: eq(key_ids[5].clone()),
+                    created: some(matches_pattern!(Timestamp { seconds: eq(4) })),
+                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                }),
+            ]
+        }))
     );
 }
 
@@ -573,6 +712,7 @@ async fn authorize_confidential_transform_success() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(request.into_request())
@@ -627,6 +767,7 @@ async fn authorize_confidential_transform_success() {
             authorized_logical_pipeline_policies_hashes: elements_are![eq(Sha256::hash(
                 &logical_pipeline_policies.encode_to_vec()
             ))],
+            omitted_decryption_key_ids: empty(),
         }))
     );
 }
@@ -666,6 +807,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
     // 789. Save the encryption keys for use later.
     let intermediates_exp = 100;
     let mut encryption_keys = Vec::new();
+    let mut omitted_key_ids = Vec::new();
     for (keyset_id, exp) in [(123, 90), (123, 100), (123, 110), (456, 120)] {
         now.fetch_add(1, Ordering::Relaxed); // Avoid ambiguous creation times.
         let request = RotateKeysetRequest {
@@ -673,26 +815,28 @@ async fn authorize_confidential_transform_with_keyset_keys() {
             ttl: Some(Duration { seconds: exp - now.load(Ordering::Relaxed), nanos: 0 }),
         };
         kms.rotate_keyset(request.into_request()).await.expect("rotate_keyset failed");
+
+        let request = DeriveKeysRequest {
+            keyset_id,
+            authorized_logical_pipeline_policies_hashes: vec![Sha256::hash(
+                &logical_pipeline_policies,
+            )
+            .into()],
+        };
+        let response = kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
+        let cwt =
+            CoseSign1::from_slice(response.into_inner().public_keys.first().unwrap()).unwrap();
+        let cose_key = ClaimsSet::from_slice(&cwt.payload.unwrap())
+            .unwrap()
+            .rest
+            .into_iter()
+            .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
+            .and_then(|(_, value)| value.into_bytes().ok())
+            .unwrap();
         if exp >= intermediates_exp {
-            let request = DeriveKeysRequest {
-                keyset_id,
-                authorized_logical_pipeline_policies_hashes: vec![Sha256::hash(
-                    &logical_pipeline_policies,
-                )
-                .into()],
-            };
-            let response =
-                kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
-            let cwt =
-                CoseSign1::from_slice(response.into_inner().public_keys.first().unwrap()).unwrap();
-            let cose_key = ClaimsSet::from_slice(&cwt.payload.unwrap())
-                .unwrap()
-                .rest
-                .into_iter()
-                .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
-                .and_then(|(_, value)| value.into_bytes().ok())
-                .unwrap();
             encryption_keys.push((CoseKey::from_slice(&cose_key).unwrap().key_id, cose_key));
+        } else {
+            omitted_key_ids.push(CoseKey::from_slice(&cose_key).unwrap().key_id);
         }
     }
 
@@ -705,6 +849,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         }),
         keyset_ids: vec![123, 456, 789],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.clone()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(request.into_request())
@@ -724,7 +869,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .expect("authorize_confidential_transform failed")
         .into_inner();
 
-    let (_, plaintext, _) = ServerEncryptor::decrypt_async(
+    let (_, plaintext, associated_data) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap().convert().unwrap(),
         &get_test_encryption_key_handle(),
     )
@@ -757,6 +902,14 @@ async fn authorize_confidential_transform_with_keyset_keys() {
     for (key_id, key) in encryption_keys {
         verify_hpke_keypair(decryption_keys.get(&key_id).unwrap(), &key).and_log_failure();
     }
+
+    // The AssociatedData should contain the id of the omitted decryption key.
+    let associated_data = AssociatedData::decode(associated_data.as_slice())
+        .expect("failed to decode AssociatedData");
+    assert_that!(
+        associated_data,
+        matches_pattern!(AssociatedData { omitted_decryption_key_ids: eq(omitted_key_ids) })
+    );
 }
 
 #[googletest::test]
@@ -793,6 +946,7 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(request.into_request())
@@ -872,6 +1026,7 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(request.into_request())
@@ -1061,6 +1216,7 @@ async fn authorize_confidential_transform_without_authorization() {
         intermediates_ttl: Some(Duration { seconds: 100, nanos: 0 }),
         keyset_ids: vec![1234],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(request.into_request())
@@ -1134,6 +1290,7 @@ where
         intermediates_ttl: Some(intermediates_ttl),
         keyset_ids,
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        include_keys_in_response: false,
     };
     let response = kms
         .register_pipeline_invocation(register_invocation_request.into_request())
