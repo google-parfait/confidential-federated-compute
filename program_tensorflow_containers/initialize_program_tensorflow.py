@@ -1,8 +1,6 @@
 from collections.abc import Callable
-import functools
 
 import compilers
-from fcp.confidentialcompute.python import compiler
 from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
 from program_executor_tee.program_context import execution_context
@@ -22,17 +20,11 @@ def get_program_initialize_fn(
         [data_read_write_pb2.ReadResponse, str, str], executor_pb2.Value
     ] = None,
 ):
+
   def initialize():
-    if worker_bns:
-      compiler_fn = functools.partial(
-          compiler.to_composed_tee_form,
-          num_client_workers=len(worker_bns) - 1,
-      )
-    else:
-      compiler_fn = compilers.compile_tf_to_call_dominant
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
-            compiler_fn,
+            compilers.compile_tf_to_call_dominant,
             TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             outgoing_server_address,
             worker_bns,

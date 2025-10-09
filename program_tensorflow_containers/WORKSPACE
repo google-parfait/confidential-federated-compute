@@ -56,10 +56,9 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-lGfmv4lJrhL437oep856ZHzmGtp+i06a/X7iUVFwwzs=",
-    # TODO: update strip_prefix to use 'program_containers' when the version is next updated.
-    strip_prefix = "confidential-federated-compute-957a8ceb7deb03da150bc7c5feec9282fb8533ed/learning_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/957a8ceb7deb03da150bc7c5feec9282fb8533ed.tar.gz",
+    integrity = "sha256-OWo3irhsOaYKgjrXzRRAyRpFI907Q7quFYxwOWgLaM0=",
+    strip_prefix = "confidential-federated-compute-fbf63ef166659b21d8402c5b2ff80cb497980e52/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/fbf63ef166659b21d8402c5b2ff80cb497980e52.tar.gz",
 )
 
 http_archive(
@@ -160,6 +159,7 @@ http_archive(
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
         "//third_party/org_tensorflow_federated:package.patch",
         "//third_party/org_tensorflow_federated:vizier.patch",
+        "@confidential-federated-compute-program//third_party/org_tensorflow_federated:executor.patch",
     ],
     strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
