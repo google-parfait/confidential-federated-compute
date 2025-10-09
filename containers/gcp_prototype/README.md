@@ -6,12 +6,6 @@ How to build and upload:
 
 ```
 bazelisk run :tarball
-docker build -t gcp_prototype_with_port .
-```
-
-2. Tag and push the image to GCP:
-
-```
-docker tag gcp_prototype_with_port:latest us-docker.pkg.dev/$PROJECT/$REPO/gcp_prototype:latest
+docker tag gcp_prototype:latest us-docker.pkg.dev/$PROJECT/$REPO/gcp_prototype:latest
 docker push us-docker.pkg.dev/$PROJECT/$REPO/gcp_prototype:latest
 ```

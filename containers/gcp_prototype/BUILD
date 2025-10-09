@@ -34,6 +34,7 @@ oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
+    exposed_ports = ["8000/tcp"],
     tars = [
         # Install the main cc binary
         ":main_tar",
