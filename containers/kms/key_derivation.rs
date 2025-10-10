@@ -146,10 +146,7 @@ fn build_cose_key(
     let key_op = if public { iana::KeyOperation::Encrypt } else { iana::KeyOperation::Decrypt };
     CoseKey {
         kty: KeyType::Assigned(iana::KeyType::OKP),
-        // Use the key_id + the first 4 bytes of the info field key as a
-        // likely-unique key id. Including the key_id allows the resulting key
-        // to be mapped back to the original keyset key.
-        key_id: [key_id, &info[0..min(4, info.len())]].concat(),
+        key_id: get_derived_key_id(key_id, info),
         alg: Some(Algorithm::PrivateUse(alg)),
         key_ops: [KeyOperation::Assigned(key_op)].into(),
         params: vec![
@@ -190,4 +187,12 @@ async fn build_cwt<S: Signer>(claims: ClaimsSet, signer: &S) -> anyhow::Result<V
         .to_vec()
         .map_err(anyhow::Error::msg)
         .context("failed to encode CWT")
+}
+
+/// Returns the key id for a derived key.
+pub fn get_derived_key_id(key_id: &[u8], info: &[u8]) -> Vec<u8> {
+    // Use the key_id + the first 4 bytes of the info field key as a
+    // likely-unique key id. Including the key_id allows the resulting key to be
+    // mapped back to the original keyset key.
+    [key_id, &info[0..min(4, info.len())]].concat()
 }

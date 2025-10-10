@@ -23,7 +23,8 @@ use coset::{
 };
 use hashbrown::HashMap;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, HPKE_BASE_X25519_SHA256_AES128GCM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, get_derived_key_id,
+    HPKE_BASE_X25519_SHA256_AES128GCM,
 };
 use kms_proto::fcp::confidentialcompute::{
     authorize_confidential_transform_response, key_management_service_server, keyset,
@@ -186,15 +187,16 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
         StorageKey::LogicalPipelineState { id }
     }
 
-    /// Derives a transform's decryption keys (`src_node_ids`) and result
-    /// encryption keys (`dst_node_ids`).
+    /// Derives a transform's decryption keys (`src_node_ids`), result
+    /// encryption keys (`dst_node_ids`), and the ids of decryption keys that
+    /// were omitted because they expire before the pipeline invocation.
     async fn derive_transform_keys(
         &self,
         state: &PipelineInvocationStateValue,
         state_expiration: &Option<Timestamp>,
         src_node_ids: &[u32],
         dst_node_ids: &[u32],
-    ) -> anyhow::Result<(Vec<Vec<u8>>, Vec<Vec<u8>>)> {
+    ) -> anyhow::Result<(Vec<Vec<u8>>, Vec<Vec<u8>>, Vec<Vec<u8>>)> {
         let intermediates_key = state
             .intermediates_key
             .as_ref()
@@ -213,6 +215,7 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
         .context("failed to derive decryption keys")?;
         // If the transform reads from initial uploads (src 0), then we need to
         // provide non-intermediate keys.
+        let mut omitted_decryption_key_ids = Vec::new();
         if src_node_ids.contains(&0) {
             let ranges = state
                 .keyset_ids
@@ -227,16 +230,20 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
                 .collect();
             let response = self.storage_client.read(ReadRequest { ranges }).await?;
             for entry in response.entries {
-                // Skip entries that expire before the pipeline invocation
-                // expires.
-                if Self::timestamp_lt(&entry.expiration, state_expiration) {
-                    continue;
-                }
-
                 let key_id = match entry.key.as_slice().try_into() {
                     Ok(StorageKey::KeysetKey { key_id, .. }) => key_id,
                     _ => unreachable!(),
                 };
+
+                // Skip entries that expire before the pipeline invocation
+                // expires.
+                if Self::timestamp_lt(&entry.expiration, state_expiration) {
+                    for hash in &state.authorized_logical_pipeline_policies_hashes {
+                        omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
+                    }
+                    continue;
+                }
+
                 let key = match KeysetKeyValue::decode(entry.value.as_slice()) {
                     Ok(key) => key,
                     Err(err) => {
@@ -265,7 +272,7 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
         )
         .context("failed to derive result encryption keys")?;
 
-        Ok((decryption_keys, result_encryption_keys))
+        Ok((decryption_keys, result_encryption_keys, omitted_decryption_key_ids))
     }
 
     /// A partial ordering on Option<Timestamp> that treats None as the largest
@@ -575,17 +582,18 @@ where
         .context(Code::InvalidArgument)
         .map_err(Self::convert_error)?;
 
+        let authorized_logical_pipeline_policies_hashes: Vec<Vec<u8>> = request
+            .authorized_logical_pipeline_policies
+            .into_iter()
+            .map(|policy| Sha256::hash(policy.as_slice()).into())
+            .collect();
+
         // Create a future that writes the pipeline invocation state to storage.
         // We don't worry about retring on collision because the probability is
         // so low.
         let write_invocation_state_fut = async {
             let id = rand::random();
             let ttl = request.intermediates_ttl.unwrap_or_default();
-            let authorized_logical_pipeline_policies_hashes = request
-                .authorized_logical_pipeline_policies
-                .into_iter()
-                .map(|policy| Sha256::hash(policy.as_slice()).into())
-                .collect();
             let value = PipelineInvocationStateValue {
                 logical_pipeline_name: request.logical_pipeline_name.clone(),
                 pipeline_variant_policy_hash: Sha256::hash(&request.pipeline_variant_policy).into(),
@@ -594,8 +602,9 @@ where
                     algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
                     ttl: Some(ttl),
                 }),
-                keyset_ids: request.keyset_ids,
-                authorized_logical_pipeline_policies_hashes,
+                keyset_ids: request.keyset_ids.clone(),
+                authorized_logical_pipeline_policies_hashes:
+                    authorized_logical_pipeline_policies_hashes.clone(),
             };
             self.storage_client
                 .update(UpdateRequest {
@@ -629,11 +638,82 @@ where
             }
         };
 
-        let (invocation_id, logical_pipeline_state) =
+        let (invocation_id, logical_pipeline_state): (Vec<u8>, _) =
             tokio::try_join!(write_invocation_state_fut, logical_pipeline_state_fut)?;
+
+        // If requested, collect information about the keys to which the
+        // pipeline will have access. This requires a separate storage read and
+        // several earlier variables to be cloned, so it should be removed once
+        // pipelines no longer use this option.
+        let keys = if request.include_keys_in_response {
+            // Read the pipeline invocation state (to get the expiration time)
+            // and the keys in each keyset.
+            let ranges = std::iter::once(
+                Self::create_range(
+                    StorageKey::PipelineInvocationState {
+                        id: invocation_id.as_slice().try_into().unwrap(),
+                    },
+                    None,
+                )
+                .unwrap(),
+            )
+            .chain(request.keyset_ids.iter().cloned().map(|keyset_id| {
+                Self::create_range(
+                    StorageKey::KeysetKey { keyset_id, key_id: MIN_KEYSET_KEY_ID },
+                    Some(StorageKey::KeysetKey { keyset_id, key_id: MAX_KEYSET_KEY_ID }),
+                )
+                .unwrap()
+            }))
+            .collect();
+            let response = self
+                .storage_client
+                .read(ReadRequest { ranges })
+                .await
+                .map_err(Self::convert_error)?;
+
+            let state_expiration = response
+                .entries
+                .iter()
+                .find_map(|entry| match entry.key.as_slice().try_into() {
+                    Ok(StorageKey::PipelineInvocationState { .. }) => Some(Ok(entry.expiration)),
+                    _ => None,
+                })
+                .unwrap_or_else(|| Err(tonic::Status::internal("pipeline invocation not found")))?;
+
+            response
+                .entries
+                .iter()
+                // Omit keys that will expire before the pipeline invocation state.
+                .filter(|entry| !Self::timestamp_lt(&entry.expiration, &state_expiration))
+                // Convert entries to keyset::Key objects.
+                .filter_map(|entry| {
+                    let key_id = match entry.key.as_slice().try_into() {
+                        Ok(StorageKey::KeysetKey { key_id, .. }) => Some(key_id),
+                        _ => None,
+                    }?;
+                    // Skip keys that cannot be decoded.
+                    let value = KeysetKeyValue::decode(entry.value.as_slice()).ok()?;
+                    Some(keyset::Key {
+                        key_id: key_id.into(),
+                        created: Some(Self::get_creation_time(&value.ttl, &entry.expiration)),
+                        expiration: entry.expiration,
+                    })
+                })
+                // Derive keys for each authorized logical pipeline policy.
+                .flat_map(|key| {
+                    authorized_logical_pipeline_policies_hashes.iter().map(move |hash| {
+                        keyset::Key { key_id: get_derived_key_id(&key.key_id, hash), ..key.clone() }
+                    })
+                })
+                .collect()
+        } else {
+            Vec::with_capacity(0)
+        };
+
         Ok(Response::new(RegisterPipelineInvocationResponse {
             invocation_id,
             logical_pipeline_state,
+            keys,
         }))
     }
 
@@ -701,7 +781,7 @@ where
         .map_err(Self::convert_error)?;
 
         // Generate the transform's encryption and decryption keys.
-        let (decryption_keys, result_encryption_keys) = self
+        let (decryption_keys, result_encryption_keys, omitted_decryption_key_ids) = self
             .derive_transform_keys(
                 &state,
                 &state_expiration,
@@ -721,6 +801,7 @@ where
             config_constraints: authorized_transform.config_constraints,
             authorized_logical_pipeline_policies_hashes: state
                 .authorized_logical_pipeline_policies_hashes,
+            omitted_decryption_key_ids,
         };
         let encrypted_message =
             ClientEncryptor::create(&authorized_transform.encryption_public_key)
