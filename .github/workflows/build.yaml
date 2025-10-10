@@ -25,7 +25,6 @@ jobs:
       matrix:
         module-root:
           - .
-          - program_containers
           - program_tensorflow_containers
 
     steps:
