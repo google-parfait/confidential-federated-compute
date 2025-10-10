@@ -37,7 +37,9 @@ compile_pip_requirements(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    # TODO: Add a python-only root container, XLA root container, and XLA worker container here.
+    "//program_executor_tee:root_basic_oci_runtime_bundle.tar": "program_executor_root_basic/container.tar",
+    "//program_executor_tee:root_xla_oci_runtime_bundle.tar": "program_executor_root_xla/container.tar",
+    "//program_executor_tee:worker_xla_oci_runtime_bundle.tar": "program_executor_worker_xla/container.tar",
     # keep-sorted end
 }
 
