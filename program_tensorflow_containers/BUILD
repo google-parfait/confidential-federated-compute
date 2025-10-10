@@ -243,7 +243,7 @@ oci_image(
     # Set the workdir and entrypoint so that the main binary will be executed
     # from within the runfiles directory. This ensures that the main binary
     # will be able to find its runfiles properly.
-    entrypoint = ["main"],
+    entrypoint = ["./main"],
     tars = [":tar"],
     workdir = "/main.runfiles/__main__/",
 )
@@ -254,11 +254,40 @@ oci_runtime_bundle(
     visibility = ["//:__pkg__"],
 )
 
+pkg_tar_runfiles(
+    name = "worker_runfiles",
+    srcs = [":worker_main_tensorflow"],
+    runfiles_prefix = "worker_main_tensorflow.runfiles",
+)
+
+pkg_tar(
+    name = "worker_tar",
+    srcs = [":worker_runfiles"],
+)
+
+oci_image(
+    name = "worker_oci_image",
+    base = "@distroless_cc_debian12",
+    # Set the workdir and entrypoint so that the main binary will be executed
+    # from within the runfiles directory. This ensures that the main binary
+    # will be able to find its runfiles properly.
+    entrypoint = ["./worker_main_tensorflow"],
+    tars = [":worker_tar"],
+    workdir = "/worker_main_tensorflow.runfiles/__main__/",
+)
+
+oci_runtime_bundle(
+    name = "worker_oci_runtime_bundle",
+    image = ":worker_oci_image",
+    visibility = ["//:__pkg__"],
+)
+
 # All release (i.e. production) binaries, along with their names in the
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "oci_runtime_bundle.tar": "container.tar",
+    "oci_runtime_bundle.tar": "program_executor_root_tensorflow/container.tar",
+    "worker_oci_runtime_bundle.tar": "program_executor_worker_tensorflow/container.tar",
     # keep-sorted end
 }
 
