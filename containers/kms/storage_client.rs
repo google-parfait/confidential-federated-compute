@@ -34,6 +34,7 @@ use storage_proto::confidential_federated_compute::kms::{
 use tokio::{
     select,
     sync::{mpsc, oneshot},
+    time::timeout,
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::task::AbortOnDropHandle;
@@ -180,7 +181,14 @@ impl<InitFn: Fn() -> UpdateRequest + 'static> MessageSender<InitFn> {
     /// return an error if/when the server closes the stream or a protocol error
     /// occurs.
     async fn run_session(&mut self) -> Result<()> {
-        let (mut session, server_tx, mut responses) = self.initialize_session().await?;
+        // Initialize the session. To address occasional hangs during this step
+        // (cause not yet determined; b/448186987), we use a timeout. If the
+        // deadline is reached, `run_session()` will fail and be re-invoked by
+        // `run()`.
+        let (mut session, server_tx, mut responses) =
+            timeout(std::time::Duration::from_secs(60), self.initialize_session())
+                .await
+                .context("initialization failed")??;
         loop {
             select! {
                 // Forward requests from the (local) mpsc channel to the server.
