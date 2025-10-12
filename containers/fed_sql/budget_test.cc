@@ -55,6 +55,11 @@ TEST(BudgetTest, Parse) {
       UnorderedElementsAre(
           Pair("foo", CreateBudgetInfo(5)), Pair("bar", CreateBudgetInfo(2)),
           Pair("partial", CreateBudgetInfo(0, Interval<uint64_t>(10, 20)))));
+  auto keys = budget.GetKeys();
+  EXPECT_THAT(keys.size(), 3);
+  EXPECT_TRUE(keys.contains("foo"));
+  EXPECT_TRUE(keys.contains("bar"));
+  EXPECT_TRUE(keys.contains("partial"));
 }
 
 TEST(BudgetTest, Serialize) {
@@ -201,17 +206,22 @@ TEST(BudgetTest, UpdateParsedBudget) {
       consumed_range_end: 4
     }
     buckets { key: "bar" budget: 2 }
+    buckets { key: "expired_key1" budget: 2 }
   )pb");
 
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
   // The set of buckets in the range tracker isn't the same.
+  // Add some extra expired keys to the range tracker.
   RangeTracker range_tracker;
+  range_tracker.SetExpiredKeys({"expired_key1", "expired_key2"});
   EXPECT_TRUE(range_tracker.AddRange("bar", 1, 5));
   EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
-  // The first bucket remains unchanged, the second bucket is updated, and
-  // the third bucket is set to the default budget and then updated.
+  // The "foo" bucket remains unchanged.
+  // The "bar" bucket is updated.
+  // The "baz" bucket is set to the default budget and then updated.
+  // The "expired_key" bucket is removed.
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "foo"

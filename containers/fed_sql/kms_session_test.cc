@@ -151,7 +151,7 @@ KmsFedSqlSession CreateDefaultSession() {
       "sensitive_values_key",
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
-      "reencryption_policy_hash", CreatePrivateState("", 1),
+      "reencryption_policy_hash", CreatePrivateState("", 1), {},
       mock_signing_key_handle);
 }
 
@@ -292,8 +292,7 @@ class KmsFedSqlSessionWriteTest : public Test {
                                  report_public_private_key_pair.first},
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-
-        mock_signing_key_handle_);
+        absl::flat_hash_set<std::string>(), mock_signing_key_handle_);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1054,8 +1053,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
                                  report_public_private_key_pair_.first},
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-
-        mock_signing_key_handle_);
+        absl::flat_hash_set<std::string>(), mock_signing_key_handle_);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"

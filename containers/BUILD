@@ -180,6 +180,7 @@ cc_library(
         "@com_google_protobuf//:protobuf_lite",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:nonce",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "containers/fed_sql/interval_set.h"
@@ -72,6 +73,15 @@ class RangeTracker {
   // Returns the index of the partition that this RangeTracker is tracking.
   uint64_t GetPartitionIndex() const { return partition_index_; }
 
+  // Gets the expired keys for this RangeTracker.
+  absl::flat_hash_set<std::string> GetExpiredKeys() const {
+    return expired_keys_;
+  }
+  // Sets the expired keys for this RangeTracker.
+  void SetExpiredKeys(const absl::flat_hash_set<std::string>& expired_keys) {
+    expired_keys_ = expired_keys;
+  }
+
   // Iteration support.
   const_iterator begin() const { return per_key_ranges_.begin(); }
   const_iterator end() const { return per_key_ranges_.end(); }
@@ -83,6 +93,9 @@ class RangeTracker {
 
   // The index of the partition that this RangeTracker is tracking.
   uint64_t partition_index_ = 0;
+
+  // Keys that have already expired and must be removed from the budget.
+  absl::flat_hash_set<std::string> expired_keys_;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined

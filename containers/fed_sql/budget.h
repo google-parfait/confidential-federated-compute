@@ -20,6 +20,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/range_tracker.h"
@@ -133,6 +134,9 @@ class Budget {
 
   // Update the budget by applying the data collected in the RangeTracker.
   absl::Status UpdateBudget(const RangeTracker& range_tracker);
+
+  // Gets all the keys in the budget.
+  absl::flat_hash_set<std::string> GetKeys() const;
 
   // Iteration support.
   const_iterator begin() const { return per_key_budgets_.begin(); }

@@ -30,6 +30,7 @@
 #include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -40,6 +41,7 @@ namespace confidential_federated_compute {
 
 using ::fcp::base::ToGrpcStatus;
 using ::fcp::confidential_compute::NonceChecker;
+using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -201,6 +203,11 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
                associated_data.authorized_logical_pipeline_policies_hashes()) {
             authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
           }
+          FCP_RETURN_IF_ERROR(SetActiveKeyIds(
+              {protected_response.decryption_keys().begin(),
+               protected_response.decryption_keys().end()},
+              {associated_data.omitted_decryption_key_ids().begin(),
+               associated_data.omitted_decryption_key_ids().end()}));
           // Pick any of the authorized_logical_pipeline_policies_hashes as the
           // reencryption_policy_hash. For convenience, we pick the first one.
           FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
@@ -271,6 +278,25 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
   if (!kms_enabled_) {
     FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
                          blob_decryptor->GetPublicKey());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ConfidentialTransformBase::SetActiveKeyIds(
+    const std::vector<absl::string_view>& decryption_keys,
+    const std::vector<absl::string_view>& omitted_key_ids) {
+  for (const auto& decryption_key : decryption_keys) {
+    absl::StatusOr<OkpKey> key = OkpKey::Decode(decryption_key);
+    if (!key.ok()) {
+      LOG(WARNING) << "Skipping invalid decryption key: " << key.status();
+      continue;
+    }
+    active_key_ids_.insert(key->key_id);
+  }
+  // The omitted_key_ids are still active but just not used for decryption by
+  // this container.
+  for (const auto& key_id : omitted_key_ids) {
+    active_key_ids_.insert(std::string(key_id));
   }
   return absl::OkStatus();
 }

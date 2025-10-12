@@ -260,11 +260,15 @@ TEST(RangeTrackerTest, MergeSamePartitionIndex) {
     buckets { key: "foo" values: 1 values: 5 }
     buckets { key: "bar" values: 0 values: 4 }
     partition_index: 123
+    expired_keys: "expired_key1"
+    expired_keys: "expired_key2"
   )pb");
   RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 7 values: 9 }
     buckets { key: "baz" values: 1 values: 2 }
     partition_index: 123
+    expired_keys: "expired_key2"
+    expired_keys: "expired_key1"
   )pb");
   auto range_tracker1 = RangeTracker::Parse(state1);
   auto range_tracker2 = RangeTracker::Parse(state2);
@@ -278,6 +282,8 @@ TEST(RangeTrackerTest, MergeSamePartitionIndex) {
                 buckets { key: "bar" values: 0 values: 4 }
                 buckets { key: "baz" values: 1 values: 2 }
                 partition_index: 123
+                expired_keys: "expired_key1"
+                expired_keys: "expired_key2"
               )pb"));
 }
 
@@ -297,6 +303,48 @@ TEST(RangeTrackerTest, MergeDifferentPartitions) {
   EXPECT_THAT(range_tracker1, IsOk());
   EXPECT_THAT(range_tracker2, IsOk());
   EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+}
+
+TEST(RangeTrackerTest, MergeDifferentExpiredKeys) {
+  RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 1 values: 5 }
+    buckets { key: "bar" values: 0 values: 4 }
+    partition_index: 123
+    expired_keys: "expired_key1"
+  )pb");
+  RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" values: 7 values: 9 }
+    buckets { key: "bar" values: 1 values: 2 }
+    partition_index: 123
+    expired_keys: "expired_key2"
+  )pb");
+  auto range_tracker1 = RangeTracker::Parse(state1);
+  auto range_tracker2 = RangeTracker::Parse(state2);
+  EXPECT_THAT(range_tracker1, IsOk());
+  EXPECT_THAT(range_tracker2, IsOk());
+  EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+}
+
+TEST(RangeTrackerTest, ExpiredKeys) {
+  RangeTracker range_tracker;
+  range_tracker.SetExpiredKeys({"expired_key1", "expired_key2"});
+  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
+  EXPECT_TRUE(range_tracker.AddRange("bar", 0, 3));
+
+  RangeTrackerState serialized_state = range_tracker.Serialize();
+  EXPECT_THAT(serialized_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" values: 1 values: 4 }
+                buckets { key: "bar" values: 0 values: 3 }
+                expired_keys: "expired_key1"
+                expired_keys: "expired_key2"
+              )pb"));
+
+  RangeTracker parsed_range_tracker =
+      RangeTracker::Parse(serialized_state).value();
+  auto expired_keys = parsed_range_tracker.GetExpiredKeys();
+  EXPECT_THAT(expired_keys.size(), 2);
+  EXPECT_TRUE(expired_keys.contains("expired_key1"));
+  EXPECT_TRUE(expired_keys.contains("expired_key2"));
 }
 
 }  // namespace

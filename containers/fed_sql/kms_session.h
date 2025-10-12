@@ -64,6 +64,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::vector<std::string> reencryption_keys,
       absl::string_view reencryption_policy_hash,
       std::shared_ptr<PrivateState> private_state,
+      const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle);
 
   // Configure the optional per-client SQL query.
