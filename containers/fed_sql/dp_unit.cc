@@ -59,7 +59,8 @@ DpUnitProcessor::CommitRowsGroupingByDpUnit(
     absl::Span<const RowLocation> dp_unit_span(&*it,
                                                std::distance(it, end_of_range));
     it = end_of_range;  // Move to the next DP unit.
-    RowSet row_set(dp_unit_span, uncommitted_inputs);
+    FCP_ASSIGN_OR_RETURN(RowSet row_set,
+                         RowSet::Create(dp_unit_span, uncommitted_inputs));
     absl::StatusOr<std::vector<Tensor>> sql_result =
         ExecuteClientQuery(sql_configuration_, row_set);
     // Errors from the SQL query itself (eg. division by zero, invalid column

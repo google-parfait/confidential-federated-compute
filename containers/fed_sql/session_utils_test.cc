@@ -263,13 +263,14 @@ TEST(ExecuteClientQueryTest, SimpleQuerySucceeds) {
   config.output_columns.CopyFrom(output_schema.column());
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
-      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({1, 2}));
+  absl::StatusOr<Tensor> key_tensor =
+      Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                     CreateTestData<int64_t>({1, 2}), "key");
   ASSERT_THAT(key_tensor, IsOk());
   columns.push_back(std::move(*key_tensor));
-
-  absl::StatusOr<Tensor> val_tensor = Tensor::Create(
-      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({10, 20}));
+  absl::StatusOr<Tensor> val_tensor =
+      Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                     CreateTestData<int64_t>({10, 20}), "val");
   ASSERT_THAT(val_tensor, IsOk());
   columns.push_back(std::move(*val_tensor));
 
@@ -277,10 +278,11 @@ TEST(ExecuteClientQueryTest, SimpleQuerySucceeds) {
   std::vector<Input> inputs;
   inputs.emplace_back();
   inputs[0].contents = std::move(columns);
-  RowSet row_set(locations, inputs);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, inputs);
+  ASSERT_THAT(row_set, IsOk());
 
   absl::StatusOr<std::vector<Tensor>> result_tensors =
-      ExecuteClientQuery(config, row_set);
+      ExecuteClientQuery(config, *std::move(row_set));
   ASSERT_THAT(result_tensors, IsOk());
 
   EXPECT_THAT(
@@ -307,8 +309,9 @@ TEST(ExecuteClientQueryTest, QueryOnNonexistentColumnFails) {
   config.output_columns.CopyFrom(output_schema.column());
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> key_tensor = Tensor::Create(
-      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({1, 2}));
+  absl::StatusOr<Tensor> key_tensor =
+      Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                     CreateTestData<int64_t>({1, 2}), "key");
   ASSERT_THAT(key_tensor, IsOk());
   columns.push_back(std::move(*key_tensor));
 
@@ -316,10 +319,11 @@ TEST(ExecuteClientQueryTest, QueryOnNonexistentColumnFails) {
   std::vector<Input> inputs;
   inputs.emplace_back();
   inputs[0].contents = std::move(columns);
-  RowSet row_set(locations, inputs);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, inputs);
+  ASSERT_THAT(row_set, IsOk());
 
   absl::StatusOr<std::vector<Tensor>> result =
-      ExecuteClientQuery(config, row_set);
+      ExecuteClientQuery(config, *std::move(row_set));
   EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

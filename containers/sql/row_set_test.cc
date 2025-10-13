@@ -41,24 +41,27 @@ class RowSetTest : public ::testing::Test {
     // Create two Input objects for testing.
     // Input 1 has 2 rows and 2 columns (int64_t, string).
     Input input1;
-    input1.contents.push_back(*Tensor::Create(
-        DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({1, 2})));
     input1.contents.push_back(
-        *Tensor::Create(DataType::DT_STRING, TensorShape({2}),
-                        CreateTestData<absl::string_view>({"foo", "bar"})));
+        *Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                        CreateTestData<int64_t>({1, 2}), "int_col"));
+    input1.contents.push_back(*Tensor::Create(
+        DataType::DT_STRING, TensorShape({2}),
+        CreateTestData<absl::string_view>({"foo", "bar"}), "string_col"));
 
     // Input 2 has 3 rows and 2 columns (int64_t, string).
     Input input2;
     input2.contents.push_back(
         *Tensor::Create(DataType::DT_INT64, TensorShape({3}),
-                        CreateTestData<int64_t>({3, 4, 5})));
+                        CreateTestData<int64_t>({3, 4, 5}), "int_col"));
     input2.contents.push_back(*Tensor::Create(
         DataType::DT_STRING, TensorShape({3}),
-        CreateTestData<absl::string_view>({"baz", "qux", "quux"})));
+        CreateTestData<absl::string_view>({"baz", "qux", "quux"}),
+        "string_col"));
 
     inputs_.push_back(std::move(input1));
     inputs_.push_back(std::move(input2));
   }
+
   std::vector<std::vector<std::string>> CollectRows(const RowSet& set) {
     std::vector<std::vector<std::string>> result;
     for (const RowView& row : set) {
@@ -87,27 +90,31 @@ class RowSetTest : public ::testing::Test {
 
 TEST_F(RowSetTest, EmptySet) {
   std::vector<RowLocation> locations;
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set), IsEmpty());
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set), IsEmpty());
 }
 
 TEST_F(RowSetTest, SingleRowFromFirstInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1}};
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set), ElementsAre(ElementsAre("2", "bar")));
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("2", "bar")));
 }
 
 TEST_F(RowSetTest, SingleRowFromSecondInput) {
   std::vector<RowLocation> locations = {{.input_index = 1, .row_index = 2}};
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set), ElementsAre(ElementsAre("5", "quux")));
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("5", "quux")));
 }
 
 TEST_F(RowSetTest, MultipleRowsFromSingleInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set),
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("1", "foo"), ElementsAre("2", "bar")));
 }
 
@@ -115,8 +122,9 @@ TEST_F(RowSetTest, MultipleRowsFromMultipleInputs) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1},
                                         {.input_index = 1, .row_index = 0},
                                         {.input_index = 1, .row_index = 2}};
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set),
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("2", "bar"), ElementsAre("3", "baz"),
                           ElementsAre("5", "quux")));
 }
@@ -127,19 +135,34 @@ TEST_F(RowSetTest, NonSequentialAccess) {
   std::vector<RowLocation> locations = {{.input_index = 1, .row_index = 2},
                                         {.input_index = 0, .row_index = 0},
                                         {.input_index = 1, .row_index = 1}};
-  RowSet set(locations, inputs_);
-  EXPECT_THAT(CollectRows(set),
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("5", "quux"), ElementsAre("1", "foo"),
                           ElementsAre("4", "qux")));
+}
+
+TEST_F(RowSetTest, CreateFailsWithDifferentColumnNames) {
+  // Modify the second input to have a different column name.
+  inputs_[1].contents[1] =
+      *Tensor::Create(DataType::DT_STRING, TensorShape({3}),
+                      CreateTestData<absl::string_view>({"baz", "qux", "quux"}),
+                      "different_string_col");
+
+  std::vector<RowLocation> locations;
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_FALSE(set.ok());
+  EXPECT_EQ(set.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(RowSetTest, IteratorEquality) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
-  RowSet set(locations, inputs_);
-  auto it1 = set.begin();
-  auto it2 = set.begin();
-  auto end = set.end();
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  auto it1 = set->begin();
+  auto it2 = set->begin();
+  auto end = set->end();
 
   EXPECT_TRUE(it1 == it2);
   EXPECT_FALSE(it1 == end);
@@ -156,10 +179,29 @@ TEST_F(RowSetTest, IteratorEquality) {
   EXPECT_TRUE(it1 == end);
 }
 
+TEST_F(RowSetTest, GetColumnNames) {
+  std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  auto column_names = set->GetColumnNames();
+  ASSERT_TRUE(column_names.ok());
+  EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
+}
+
+TEST_F(RowSetTest, GetColumnNamesForEmptySet) {
+  std::vector<RowLocation> locations;
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  auto column_names = set->GetColumnNames();
+  ASSERT_TRUE(column_names.ok());
+  EXPECT_THAT(*column_names, IsEmpty());
+}
+
 TEST_F(RowSetTest, DereferenceInvalidRowDeathTest) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 2}};
-  RowSet set(locations, inputs_);
-  auto it = set.begin();
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  auto it = set->begin();
   EXPECT_DEATH(*it, "Check failed");
 }
 

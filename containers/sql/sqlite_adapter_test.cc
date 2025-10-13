@@ -192,7 +192,10 @@ TEST_F(AddTableContentsTest, BasicUsage) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(3), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(3);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 }
 
 TEST_F(AddTableContentsTest, ColumnNameEscaping) {
@@ -213,7 +216,10 @@ TEST_F(AddTableContentsTest, ColumnNameEscaping) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(3), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(3);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 }
 
 TEST_F(AddTableContentsTest, CalledBeforeDefineTable) {
@@ -224,9 +230,11 @@ TEST_F(AddTableContentsTest, CalledBeforeDefineTable) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  RowSet row_set(CreateRowLocations(1), storage);
+  std::vector<RowLocation> locations = CreateRowLocations(1);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
 
-  absl::Status result_status = sqlite_->AddTableContents(row_set);
+  absl::Status result_status = sqlite_->AddTableContents(*std::move(row_set));
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
   ASSERT_THAT(result_status.message(),
               HasSubstr("`DefineTable` must be called before"));
@@ -241,7 +249,10 @@ TEST_F(AddTableContentsTest, ZeroRows) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(0), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(0);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 }
 
 // Converts a potentially sparse tensor to a flat vector of tensor values.
@@ -276,8 +287,10 @@ TEST_F(AddTableContentsTest, BatchedInserts) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(
-      sqlite_->AddTableContents(RowSet(CreateRowLocations(num_rows), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(num_rows);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 
   // Verify the data was inserted correctly
   std::string output_col_name = "int_vals";
@@ -299,7 +312,9 @@ TEST_F(AddTableContentsTest, EmptyContents) {
   CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
   std::vector<Input> storage;
   storage.emplace_back();  // One input with no tensors.
-  CHECK_OK(sqlite_->AddTableContents(RowSet({}, storage)));
+  absl::StatusOr<RowSet> row_set = RowSet::Create({}, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 }
 
 class EvaluateQueryTest : public AddTableContentsTest {
@@ -439,7 +454,10 @@ TEST_F(EvaluateQueryTest, ResultsFromTable) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(1), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(1);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -467,8 +485,10 @@ TEST_F(EvaluateQueryTest, MultipleAddTableContents) {
     std::vector<Input> storage;
     storage.emplace_back();
     storage.back().contents = std::move(contents.value());
-    CHECK_OK(sqlite_->AddTableContents(
-        RowSet(CreateRowLocations(num_rows), storage)));
+    std::vector<RowLocation> locations = CreateRowLocations(num_rows);
+    absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+    CHECK_OK(row_set);
+    CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
   }
 
   std::string output_col_name = "n";
@@ -493,7 +513,10 @@ TEST_F(EvaluateQueryTest, MultipleResultRows) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(2), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(2);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -521,7 +544,10 @@ TEST_F(EvaluateQueryTest, MultipleColumns) {
   std::vector<Input> storage;
   storage.emplace_back();
   storage.back().contents = std::move(contents.value());
-  CHECK_OK(sqlite_->AddTableContents(RowSet(CreateRowLocations(1), storage)));
+  std::vector<RowLocation> locations = CreateRowLocations(1);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  CHECK_OK(row_set);
+  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
 
   std::string int_output_col_name = "int_vals";
   std::string str_output_col_name = "str_vals";

@@ -224,6 +224,7 @@ cc_library(
     name = "session_utils",
     srcs = ["session_utils.cc"],
     hdrs = ["session_utils.h"],
+    visibility = ["//containers/sql:__subpackages__"],
     deps = [
         ":inference_model",
         "//containers:crypto",

@@ -101,7 +101,8 @@ FedSqlSession::ExecuteInferenceAndClientQuery(
   absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
   std::vector<sql::RowLocation> row_locations =
       CreateRowLocationsForAllRows(input.contents);
-  sql::RowSet row_set(row_locations, storage);
+  FCP_ASSIGN_OR_RETURN(sql::RowSet row_set,
+                       sql::RowSet::Create(row_locations, storage));
   FCP_ASSIGN_OR_RETURN(std::vector<Tensor> sql_result,
                        ExecuteClientQuery(configuration, row_set));
   return std::make_unique<InMemoryCheckpointParser>(std::move(sql_result));

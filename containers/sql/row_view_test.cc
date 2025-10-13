@@ -30,6 +30,8 @@
 namespace confidential_federated_compute::sql {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
@@ -42,26 +44,28 @@ class RowViewTest : public ::testing::Test {
  protected:
   void SetUp() override {
     columns_.push_back(*Tensor::Create(DataType::DT_INT32, TensorShape({3}),
-                                       CreateTestData<int32_t>({1, 2, 3})));
+                                       CreateTestData<int32_t>({1, 2, 3}),
+                                       "col_int32"));
     columns_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({3}),
-                                       CreateTestData<int64_t>({4, 5, 6})));
-    columns_.push_back(
-        *Tensor::Create(DataType::DT_FLOAT, TensorShape({3}),
-                        CreateTestData<float>({1.1f, 2.2f, 3.3f})));
-    columns_.push_back(
-        *Tensor::Create(DataType::DT_DOUBLE, TensorShape({3}),
-                        CreateTestData<double>({4.4, 5.5, 6.6})));
+                                       CreateTestData<int64_t>({4, 5, 6}),
+                                       "col_int64"));
+    columns_.push_back(*Tensor::Create(
+        DataType::DT_FLOAT, TensorShape({3}),
+        CreateTestData<float>({1.1f, 2.2f, 3.3f}), "col_float"));
+    columns_.push_back(*Tensor::Create(DataType::DT_DOUBLE, TensorShape({3}),
+                                       CreateTestData<double>({4.4, 5.5, 6.6}),
+                                       "col_double"));
     columns_.push_back(*Tensor::Create(
         DataType::DT_STRING, TensorShape({3}),
-        CreateTestData<absl::string_view>({"foo", "bar", "baz"})));
+        CreateTestData<absl::string_view>({"foo", "bar", "baz"}),
+        "col_string"));
   }
 
   std::vector<Tensor> columns_;
 };
 
 TEST_F(RowViewTest, CreateSuccess) {
-  auto row_view = RowView::Create(columns_, 0);
-  ASSERT_TRUE(row_view.ok());
+  ASSERT_THAT(RowView::Create(columns_, 0), IsOk());
 }
 
 TEST_F(RowViewTest, CreateWithEmptyColumnsFails) {
@@ -73,7 +77,7 @@ TEST_F(RowViewTest, CreateWithEmptyColumnsFails) {
 TEST_F(RowViewTest, CreateWithColumnWithNoRowsFails) {
   std::vector<Tensor> columns;
   columns.push_back(*Tensor::Create(DataType::DT_INT32, TensorShape({0}),
-                                    CreateTestData<int32_t>({})));
+                                    CreateTestData<int32_t>({}), "col_int32"));
   EXPECT_THAT(RowView::Create(columns, 0),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }

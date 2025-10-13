@@ -16,6 +16,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -25,7 +27,9 @@
 namespace confidential_federated_compute::sql {
 
 // A non-owning view of a single row, which is composed of elements from
-// multiple columns (Tensors).
+// multiple columns (Tensors). Access to elements is done by index, and the
+// elements are returned in the order of the `absl::Span<Tensor>` passed to
+// `Create`.
 class RowView {
  public:
   static absl::StatusOr<RowView> Create(
@@ -37,7 +41,7 @@ class RowView {
     return columns_[column_index].dtype();
   }
 
-  // Returns the value of a cell in the row.
+  // Returns the value of an element in the row.
   template <typename T>
   T GetValue(int column_index) const {
     const auto& column = columns_[column_index];
@@ -50,7 +54,7 @@ class RowView {
  private:
   RowView(absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
           uint32_t row_index)
-      : columns_(columns), row_index_(row_index) {};
+      : columns_(std::move(columns)), row_index_(row_index) {}
 
   absl::Span<const tensorflow_federated::aggregation::Tensor> columns_;
   uint32_t row_index_;
