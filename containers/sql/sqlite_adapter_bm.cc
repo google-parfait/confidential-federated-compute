@@ -22,6 +22,8 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "benchmark/benchmark.h"
+#include "containers/fed_sql/session_utils.h"
+#include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -36,6 +38,7 @@ namespace confidential_federated_compute::sql {
 
 namespace {
 
+using ::confidential_federated_compute::fed_sql::CreateRowLocationsForAllRows;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::DataType;
@@ -107,12 +110,14 @@ absl::StatusOr<std::vector<Tensor>> CreateTableContents(
   FCP_ASSIGN_OR_RETURN(Tensor int_tensor,
                        Tensor::Create(DataType::DT_INT64,
                                       {static_cast<int64_t>(int_vals.size())},
-                                      CreateTestData<int64_t>(int_vals)));
+                                      CreateTestData<int64_t>(int_vals),
+                                      std::string(int_col_name)));
 
   FCP_ASSIGN_OR_RETURN(Tensor str_tensor,
                        Tensor::Create(DataType::DT_STRING,
                                       {static_cast<int64_t>(str_vals.size())},
-                                      CreateStringTestData(str_vals)));
+                                      CreateStringTestData(str_vals),
+                                      std::string(str_col_name)));
 
   contents.push_back(std::move(int_tensor));
   contents.push_back(std::move(str_tensor));
@@ -134,8 +139,15 @@ BENCHMARK_DEFINE_F(SqliteAdapterBenchmark, BM_AddTableContents)
   CHECK_OK(contents);
   CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
 
+  std::vector<Input> storage;
+  storage.emplace_back();
+  storage.back().contents = std::move(contents.value());
+  std::vector<RowLocation> locations =
+      CreateRowLocationsForAllRows(storage.back().contents);
+  RowSet row_set(locations, storage);
+
   for (auto _ : state) {
-    CHECK_OK(sqlite_->AddTableContents(contents.value(), num_rows));
+    CHECK_OK(sqlite_->AddTableContents(row_set));
   }
 }
 

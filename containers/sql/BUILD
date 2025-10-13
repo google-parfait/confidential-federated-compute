@@ -73,7 +73,9 @@ cc_test(
     srcs = ["sqlite_adapter_bm.cc"],
     tags = ["manual"],
     deps = [
+        ":row_set",
         ":sqlite_adapter",
+        "//containers/fed_sql:session_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
@@ -92,10 +94,14 @@ cc_test(
 
 cc_library(
     name = "row_set",
+    srcs = ["row_set.cc"],
     hdrs = ["row_set.h"],
     deps = [
         ":row_view",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@federated-compute//fcp/base:base",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
     ],

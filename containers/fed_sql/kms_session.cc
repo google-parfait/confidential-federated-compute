@@ -365,7 +365,8 @@ KmsFedSqlSession::CommitRowsGroupingByInput(const Interval<uint64_t>& range) {
       absl::Span<Input> storage = absl::MakeSpan(&uncommitted_input, 1);
       std::vector<RowLocation> row_locations =
           CreateRowLocationsForAllRows(uncommitted_input.contents);
-      RowSet row_set(row_locations, storage);
+      FCP_ASSIGN_OR_RETURN(RowSet row_set,
+                           RowSet::Create(row_locations, storage));
       absl::StatusOr<std::vector<Tensor>> sql_result =
           ExecuteClientQuery(*sql_configuration_, row_set);
       if (!sql_result.ok()) {

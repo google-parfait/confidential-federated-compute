@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "containers/sql/row_view.h"
 #include "fcp/base/monitoring.h"
@@ -48,6 +49,7 @@ struct RowLocation {
 struct Input {
   std::vector<tensorflow_federated::aggregation::Tensor> contents;
   fcp::confidentialcompute::BlobHeader blob_header;
+  mutable absl::optional<std::vector<std::string>> column_names_;
 
   Input() = default;
   Input(Input&&) = default;
@@ -56,12 +58,15 @@ struct Input {
   Input(const Input&) = delete;
   Input& operator=(const Input&) = delete;
 
+  std::vector<std::string> GetColumnNames() const;
+
   absl::StatusOr<RowView> GetRow(uint32_t row_index) const {
     return RowView::Create(contents, row_index);
   }
 };
 
-// A non-owning view of a set of rows from a collection of inputs.
+// A non-owning view of a set of rows from a collection of inputs. All Inputs
+// must hold the same set of column names in the same order.
 class RowSet {
  public:
   class Iterator {
@@ -118,9 +123,8 @@ class RowSet {
     absl::Span<const Input> all_inputs_;
   };
 
-  RowSet(absl::Span<const RowLocation> locations,
-         absl::Span<const Input> storage)
-      : locations_(locations), storage_(storage) {}
+  static absl::StatusOr<RowSet> Create(absl::Span<const RowLocation> locations,
+                                       absl::Span<const Input> storage);
 
   Iterator begin() const { return Iterator::Begin(locations_, storage_); }
   Iterator end() const { return Iterator::End(locations_, storage_); }
@@ -132,7 +136,13 @@ class RowSet {
     return RowSet(locations_.subspan(pos, count), storage_);
   }
 
+  absl::StatusOr<std::vector<std::string>> GetColumnNames() const;
+
  private:
+  RowSet(absl::Span<const RowLocation> locations,
+         absl::Span<const Input> storage)
+      : locations_(locations), storage_(storage) {}
+
   absl::Span<const RowLocation> locations_;
   absl::Span<const Input> storage_;
 };

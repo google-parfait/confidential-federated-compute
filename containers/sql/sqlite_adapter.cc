@@ -321,17 +321,17 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
         "`DefineTable` must be called before adding to the table contents.");
   }
 
+  if (rows.size() == 0) {
+    return absl::OkStatus();
+  }
+
   // Insert each row into the table, using parameterized query syntax:
   // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ...), (?, ?, ...), ...;
-  std::vector<std::string> column_names;
-  column_names.reserve(table_schema_->column_size());
-  for (int i = 0; i < table_schema_->column_size(); ++i) {
-    column_names.push_back(table_schema_->column(i).name());
-  }
+  FCP_ASSIGN_OR_RETURN(std::vector<std::string> column_names,
+                       rows.GetColumnNames());
   std::string row_template = absl::StrFormat(
       "(%s)",
-      absl::StrJoin(std::vector<std::string>(table_schema_->column_size(), "?"),
-                    ", "));
+      absl::StrJoin(std::vector<std::string>(column_names.size(), "?"), ", "));
   std::string insert_stmt_prefix =
       absl::StrFormat("INSERT INTO %s (%s) VALUES ", table_schema_->name(),
                       absl::StrJoin(column_names, ", ", &EscapeSqlColumnName));
