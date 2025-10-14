@@ -1,0 +1,68 @@
+# Copyright 2025 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "3384eb1c30762704fbe38e440204e114154086c8fc8a8c2e3e28441028c019a8",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/1.0.0/platforms-1.0.0.tar.gz",
+        "https://github.com/bazelbuild/platforms/releases/download/1.0.0/platforms-1.0.0.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "rules_rust",
+    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz"],
+)
+
+http_archive(
+    name = "oak",
+    integrity = "sha256-ZEZ+qDfHWNivUm3z9LkWG5q2F6udbjij8GTgUFmIl/k=",
+    strip_prefix = "oak-0beb0de86a546df46365cf4caef3ac8065e304e9",
+    url = "https://github.com/project-oak/oak/archive/0beb0de86a546df46365cf4caef3ac8065e304e9.tar.gz",
+)
+
+http_archive(
+    name = "aspect_bazel_lib",
+    sha256 = "0758ace949a93f709230a8e08ef35c5f0aacae2ff5d219b27da1d21d8233a709",
+    strip_prefix = "bazel-lib-3.0.0-rc.0",
+    url = "https://github.com/bazel-contrib/bazel-lib/releases/download/v3.0.0-rc.0/bazel-lib-v3.0.0-rc.0.tar.gz",
+)
+
+load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
+
+oak_toolchain_repositories()
+
+load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
+
+setup_rust_dependencies()
+
+load("@oak//bazel/rust:stdlibs.bzl", "setup_rebuilt_rust_stdlibs")
+
+setup_rebuilt_rust_stdlibs()
+
+load("@oak//bazel/crates:patched_crates.bzl", "load_patched_crates")
+
+load_patched_crates()
+
+load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
+
+create_oak_crate_repositories()
+
+load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
+
+load_oak_crate_repositories()
