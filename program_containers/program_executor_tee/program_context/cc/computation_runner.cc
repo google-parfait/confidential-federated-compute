@@ -148,9 +148,12 @@ ComputationRunner::ComputationRunner(
     std::string outgoing_server_address)
     : leaf_executor_factory_(leaf_executor_factory), worker_bns_(worker_bns) {
   if (!worker_bns_.empty()) {
+    grpc::ChannelArguments args;
+    args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
+    args.SetMaxReceiveMessageSize(kMaxGrpcMessageSize);
     stub_ = fcp::confidentialcompute::outgoing::ComputationDelegation::NewStub(
-        grpc::CreateChannel(outgoing_server_address,
-                            grpc::InsecureChannelCredentials()));
+        grpc::CreateCustomChannel(outgoing_server_address,
+                                  grpc::InsecureChannelCredentials(), args));
     noise_client_sessions_.reserve(worker_bns_.size());
     for (const auto& worker_bns : worker_bns_) {
       // Create a noise client session for each worker and open the session.

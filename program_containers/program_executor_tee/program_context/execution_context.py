@@ -36,7 +36,7 @@ import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
 
-# The default gRPC message size is 4 KiB. Increase it to 100 KiB.
+# The default gRPC message size is 4 MB. Increase it to 100 MB.
 _MAX_GPRC_MESSAGE_SIZE = 100 * 1024 * 1024
 
 

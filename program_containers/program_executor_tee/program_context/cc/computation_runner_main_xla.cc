@@ -34,9 +34,6 @@ ABSL_FLAG(std::string, serialized_reference_values, "",
           "The serialized reference values of the program worker for setting "
           "up the client noise session.");
 
-// The default gRPC message size is 4 KiB. Increase it to 100 KiB.
-constexpr int kMaxGrpcMessageSize = 100 * 1024 * 1024;
-
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
   return federated_language_jax::CreateXLAExecutor();
@@ -47,8 +44,11 @@ int main(int argc, char* argv[]) {
   const std::string server_address =
       absl::StrCat("[::1]:", absl::GetFlag(FLAGS_computatation_runner_port));
   grpc::ServerBuilder builder;
-  builder.SetMaxReceiveMessageSize(kMaxGrpcMessageSize);
-  builder.SetMaxSendMessageSize(kMaxGrpcMessageSize);
+  builder.SetMaxReceiveMessageSize(
+      confidential_federated_compute::program_executor_tee::
+          kMaxGrpcMessageSize);
+  builder.SetMaxSendMessageSize(confidential_federated_compute::
+                                    program_executor_tee::kMaxGrpcMessageSize);
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
 
   // Decode and parse the serialized reference values. This is needed because

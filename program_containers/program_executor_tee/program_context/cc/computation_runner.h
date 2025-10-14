@@ -28,6 +28,9 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
+// The default gRPC message size is 4 MB. Increase it to 100 MB.
+inline constexpr int kMaxGrpcMessageSize = 100 * 1024 * 1024;
+
 // Stateful helper class for executing TFF computations.
 class ComputationRunner : public fcp::confidentialcompute::outgoing::
                               ComputationDelegation::Service {
