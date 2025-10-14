@@ -28,4 +28,7 @@ message RangeTrackerState {
 
     // The index of the partition that this RangeTracker is tracking.
     uint64 partition_index = 2;
+
+    // Keys that have expired and should be removed from the budget.
+    repeated bytes expired_keys = 3;
 }

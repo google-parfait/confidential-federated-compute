@@ -163,6 +163,7 @@ cc_test(
         ":budget_cc_proto",
         ":confidential_transform_server",
         ":inference_model",
+        "//containers:big_endian",
         "//containers:crypto",
         "//containers:crypto_test_utils",
         "//containers/fed_sql/testing:mocks",
@@ -438,6 +439,7 @@ cc_library(
         ":interval_set",
         ":range_tracker_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//src/google/protobuf/io",
@@ -478,6 +480,7 @@ cc_library(
         ":budget_cc_proto",
         ":range_tracker",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
     ],
 )

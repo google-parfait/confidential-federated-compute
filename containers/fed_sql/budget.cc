@@ -72,6 +72,14 @@ BudgetState Budget::Serialize() const {
   return state;
 }
 
+absl::flat_hash_set<std::string> Budget::GetKeys() const {
+  absl::flat_hash_set<std::string> keys;
+  for (const auto& [key, _] : per_key_budgets_) {
+    keys.insert(key);
+  }
+  return keys;
+}
+
 bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
   auto it = per_key_budgets_.find(key);
 
@@ -187,6 +195,12 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
       budget_info.consumed_range.reset();
     }
   }
+
+  // Remove any expired keys from the budget.
+  for (const auto& expired_key : range_tracker.GetExpiredKeys()) {
+    per_key_budgets_.erase(expired_key);
+  }
+
   return absl::OkStatus();
 }
 

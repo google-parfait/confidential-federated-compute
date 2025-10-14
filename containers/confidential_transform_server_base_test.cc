@@ -169,6 +169,10 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
     session_ = std::move(session);
   };
 
+  absl::flat_hash_set<std::string> GetActiveKeyIds() const {
+    return ConfidentialTransformBase::GetActiveKeyIds();
+  }
+
  protected:
   absl::StatusOr<google::protobuf::Struct> InitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) {
@@ -1451,6 +1455,7 @@ class InitializedConfidentialTransformServerBaseTestWithKms
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         "policy_hash");
+    associated_data.add_omitted_decryption_key_ids("omitted_key_id");
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -1471,6 +1476,10 @@ class InitializedConfidentialTransformServerBaseTestWithKms
     CHECK(writer->Write(request));
     CHECK(writer->WritesDone());
     CHECK(writer->Finish().ok());
+    auto key_ids = service_->GetActiveKeyIds();
+    CHECK_EQ(key_ids.size(), 2);
+    CHECK(key_ids.contains(kKeyId));
+    CHECK(key_ids.contains("omitted_key_id"));
   }
 
  protected:

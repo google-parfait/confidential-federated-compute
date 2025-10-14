@@ -135,6 +135,7 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::vector<std::string> reencryption_keys,
     absl::string_view reencryption_policy_hash,
     std::shared_ptr<PrivateState> private_state,
+    const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
@@ -148,6 +149,7 @@ KmsFedSqlSession::KmsFedSqlSession(
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+  range_tracker_.SetExpiredKeys(expired_key_ids);
   // TODO: b/427333608 - Switch to the shared model once the Gemma.cpp engine is
   // updated.
   if (inference_configuration.has_value()) {

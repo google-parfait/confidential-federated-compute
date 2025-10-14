@@ -513,7 +513,23 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
     file.read(private_state.data(), size);
     private_state_ = std::make_shared<PrivateState>(std::move(private_state),
                                                     num_access_times);
-    return private_state_->budget.Parse(*private_state_->initial_state);
+    FCP_RETURN_IF_ERROR(
+        private_state_->budget.Parse(*private_state_->initial_state));
+    // Compute the expired key ids.
+    //
+    // The `active_key_ids` are the keys that are authorized by KMS. The
+    // `persisted_budget_keys` are the keys that have been
+    // already persisted in the budget. If any key in the
+    // `persisted_budget_keys` is not in the `active_key_ids`, it means that key
+    // has expired.
+    auto persisted_budget_keys = private_state_->budget.GetKeys();
+    auto active_keys = GetActiveKeyIds();
+    for (const auto& key : persisted_budget_keys) {
+      if (!active_keys.contains(key)) {
+        expired_key_ids_.insert(key);
+      }
+    }
+    return absl::OkStatus();
   } else {
     private_state_ =
         std::make_shared<PrivateState>(std::nullopt, num_access_times);
@@ -548,7 +564,7 @@ FedSqlConfidentialTransform::CreateSession() {
     return std::make_unique<KmsFedSqlSession>(
         std::move(aggregator), *intrinsics, inference_configuration_,
         dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
-        reencryption_policy_hash_.value(), private_state_,
+        reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
         GetOakSigningKeyHandle());
   } else {
     return std::make_unique<FedSqlSession>(

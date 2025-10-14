@@ -27,6 +27,7 @@
 #include "absl/strings/str_format.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
+#include "containers/big_endian.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
@@ -74,6 +75,7 @@ using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::NonceAndCounter;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidential_compute::OkpCwt;
+using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::AggCoreAggregationType;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
@@ -86,6 +88,7 @@ using ::fcp::confidentialcompute::ConfigurationMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::DatabaseSchema;
+using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
@@ -1984,6 +1987,7 @@ class InitializedFedSqlServerKmsTest : public FedSqlServerTest {
     associated_data.mutable_config_constraints()->PackFrom(config_constraints);
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         allowed_policy_hash_);
+    associated_data.add_omitted_decryption_key_ids("foo");
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -1992,7 +1996,11 @@ class InitializedFedSqlServerKmsTest : public FedSqlServerTest {
     *request.mutable_protected_response() = encrypted_request;
 
     auto writer = stub_->StreamInitialize(&context, &response);
-    EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+    BudgetState budget_state =
+        PARSE_TEXT_PROTO(R"pb(buckets { key: "expired_key" budget: 3 }
+                              buckets { key: "foo" budget: 3 })pb");
+    EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
+                                          budget_state.SerializeAsString()));
     EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
                 IsOk());
 
@@ -2064,6 +2072,73 @@ TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestSuccess) {
   ASSERT_EQ(response.write().status().code(), Code::OK)
       << response.write().status().message();
   ASSERT_EQ(response.write().committed_size_bytes(), ciphertext.size());
+}
+
+TEST_F(InitializedFedSqlServerKmsTest, RemoveExpiredKeysFromBudget) {
+  std::string message = BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0});
+  BlobHeader header;
+  header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256(allowed_policy_hash_);
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(message, header.SerializeAsString());
+
+  // Write a blob encrypted with `key_id_`.
+  SessionRequest request1;
+  WriteRequest* write_request = request1.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response1;
+  ASSERT_TRUE(stream_->Write(request1));
+  ASSERT_TRUE(stream_->Read(&response1));
+  ASSERT_TRUE(response1.has_write());
+
+  // Commit the range.
+  SessionRequest request2;
+  SessionResponse response2;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  request2.mutable_commit()->mutable_configuration()->PackFrom(commit_config);
+  ASSERT_TRUE(stream_->Write(request2));
+  ASSERT_TRUE(stream_->Read(&response2));
+  ASSERT_TRUE(response2.has_commit());
+
+  // Finalize the session which should remove `expired_key` from the budget.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse read_response;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream_->Write(finalize_request));
+  ASSERT_TRUE(stream_->Read(&read_response));
+  ASSERT_TRUE(read_response.has_read());
+  ASSERT_TRUE(stream_->Read(&finalize_response));
+  ASSERT_TRUE(finalize_response.has_finalize());
+
+  absl::StatusOr<ReleaseToken> release_token =
+      ReleaseToken::Decode(finalize_response.finalize().release_token());
+  ASSERT_THAT(release_token, IsOk());
+  BudgetState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(release_token->dst_state.value()));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets {
+                  key: "key_id"
+                  budget: 4
+                  consumed_range_start: 1
+                  consumed_range_end: 3
+                }
+                buckets { key: "foo" budget: 3 }
+              )pb"));
 }
 
 TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestNoKmsAssociatedData) {

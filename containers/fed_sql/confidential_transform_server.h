@@ -20,6 +20,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -112,6 +113,8 @@ class FedSqlConfidentialTransform final
   std::optional<std::string> reencryption_policy_hash_;
   // Initial private state shared between all sessions.
   std::shared_ptr<PrivateState> private_state_;
+  // Key ids that have already expired and must be removed from the budget.
+  absl::flat_hash_set<std::string> expired_key_ids_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

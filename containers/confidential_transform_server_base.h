@@ -104,6 +104,11 @@ class ConfidentialTransformBase
     return authorized_logical_pipeline_policies_hashes_;
   }
 
+  // Returns the active key ids for this container.
+  absl::flat_hash_set<std::string> GetActiveKeyIds() const {
+    return active_key_ids_;
+  }
+
   // Returns a pointer to the BlobDecryptor.
   absl::StatusOr<confidential_federated_compute::BlobDecryptor*>
   GetBlobDecryptor();
@@ -129,6 +134,10 @@ class ConfidentialTransformBase
       std::optional<fcp::confidential_compute::NonceChecker>& nonce_checker,
       SessionStream* stream, Session::Context& context);
 
+  absl::Status SetActiveKeyIds(
+      const std::vector<absl::string_view>& decryption_keys,
+      const std::vector<absl::string_view>& omitted_key_ids);
+
   absl::Mutex mutex_;
   // The mutex is used to protect the optional wrapping blob_decryptor_ and
   // session_tracker_ to ensure they are initialized, but the BlobDecryptor and
@@ -144,6 +153,8 @@ class ConfidentialTransformBase
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
   absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
+  // Tracks the keys ids that are still active i.e. not expired.
+  absl::flat_hash_set<std::string> active_key_ids_;
 };
 
 }  // namespace confidential_federated_compute

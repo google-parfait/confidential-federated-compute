@@ -58,6 +58,8 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(
           "Unexpected order of intervals in serialized RangeTracker state.");
     }
   }
+  range_tracker.expired_keys_.insert(state.expired_keys().begin(),
+                                     state.expired_keys().end());
   range_tracker.partition_index_ = state.partition_index();
   return range_tracker;
 }
@@ -78,12 +80,19 @@ RangeTrackerState RangeTracker::Serialize() const {
       values->Add(interval.end());
     }
   }
+
+  for (const auto& key : expired_keys_) {
+    state.add_expired_keys(key);
+  }
+
   state.set_partition_index(partition_index_);
   return state;
 }
 
 bool RangeTracker::AddRange(const std::string& key, uint64_t start,
                             uint64_t end) {
+  // Key must not be expired.
+  CHECK(!expired_keys_.contains(key)) << "Found an expired key " << key;
   return per_key_ranges_[key].Add(Interval(start, end));
 }
 
@@ -92,6 +101,11 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     LOG(ERROR) << "Attempting to merge RangeTrackers with different partition "
                   "indices: "
                << partition_index_ << " and " << other.partition_index_;
+    return false;
+  }
+
+  if (expired_keys_ != other.expired_keys_) {
+    LOG(ERROR) << "Expired keys for RangeTracker are not identical";
     return false;
   }
 
