@@ -188,9 +188,18 @@ TEST_F(RowSetTest, GetColumnNames) {
   EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
 }
 
-TEST_F(RowSetTest, GetColumnNamesForEmptySet) {
+TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyLocations) {
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_TRUE(set.ok());
+  auto column_names = set->GetColumnNames();
+  ASSERT_TRUE(column_names.ok());
+  EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
+}
+
+TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyStorage) {
+  std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
   ASSERT_TRUE(set.ok());
   auto column_names = set->GetColumnNames();
   ASSERT_TRUE(column_names.ok());
