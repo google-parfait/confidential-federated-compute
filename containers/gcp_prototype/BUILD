@@ -14,14 +14,36 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
-
-#load("@rules_oci//oci:defs.bzl", "oci_push")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
+# The gRPC server that will run in the container
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
-    deps = [],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@oak//cc/oak_session:server_session",
+        "@oak//proto/services:session_v1_service_cc_grpc",
+    ],
+)
+
+# A local gRPC client for testing the server
+cc_binary(
+    name = "test_client",
+    srcs = ["test_client.cc"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@oak//cc/oak_session:client_session",
+        "@oak//proto/services:session_v1_service_cc_grpc",
+    ],
 )
 
 pkg_tar(
