@@ -51,7 +51,7 @@ absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
 }
 
 absl::StatusOr<std::vector<std::string>> RowSet::GetColumnNames() const {
-  if (locations_.empty()) {
+  if (storage_.empty()) {
     return std::vector<std::string>();
   }
   return storage_[0].GetColumnNames();
