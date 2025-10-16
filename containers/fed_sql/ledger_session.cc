@@ -97,10 +97,11 @@ FedSqlSession::ExecuteInferenceAndClientQuery(
     FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
   }
   FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-  sql::Input input{.contents = std::move(contents)};
+  FCP_ASSIGN_OR_RETURN(sql::Input input,
+                       sql::Input::CreateFromTensors(std::move(contents), {}));
   absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
   std::vector<sql::RowLocation> row_locations =
-      CreateRowLocationsForAllRows(input.contents);
+      CreateRowLocationsForAllRows(input.GetRowCount());
   FCP_ASSIGN_OR_RETURN(sql::RowSet row_set,
                        sql::RowSet::Create(row_locations, storage));
   FCP_ASSIGN_OR_RETURN(std::vector<Tensor> sql_result,

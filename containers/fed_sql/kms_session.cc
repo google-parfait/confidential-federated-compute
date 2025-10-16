@@ -30,6 +30,7 @@
 #include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
+#include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
@@ -306,8 +307,15 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     return ToWriteFinishedResponse(
         absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
   }
-  uncommitted_inputs_.push_back(Input{.contents = std::move(contents),
-                                      .blob_header = std::move(blob_header)});
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents), blob_header);
+  if (!input.ok()) {
+    return ToWriteFinishedResponse(PrependMessage(
+        "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
+        input.status()));
+  }
+
+  uncommitted_inputs_.push_back(std::move(*input));
 
   return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
 }
@@ -343,7 +351,8 @@ KmsFedSqlSession::Merge(fcp::confidentialcompute::BlobMetadata metadata,
 }
 
 absl::StatusOr<std::vector<absl::Status>>
-KmsFedSqlSession::CommitRowsGroupingByInput(const Interval<uint64_t>& range) {
+KmsFedSqlSession::CommitRowsGroupingByInput(
+    std::vector<Input>&& uncommitted_inputs, const Interval<uint64_t>& range) {
   std::vector<absl::Status> ignored_errors;
   // Iterate over uncommitted_blob_ids_ and check that they're in the specified
   // range.
@@ -360,13 +369,13 @@ KmsFedSqlSession::CommitRowsGroupingByInput(const Interval<uint64_t>& range) {
     }
   }
 
-  for (auto& uncommitted_input : uncommitted_inputs_) {
+  for (auto& uncommitted_input : uncommitted_inputs) {
     std::unique_ptr<CheckpointParser> parser;
     // Execute the per-client SQL query if configured on each uncommitted blob.
     if (sql_configuration_.has_value()) {
       absl::Span<Input> storage = absl::MakeSpan(&uncommitted_input, 1);
       std::vector<RowLocation> row_locations =
-          CreateRowLocationsForAllRows(uncommitted_input.contents);
+          CreateRowLocationsForAllRows(uncommitted_input.GetRowCount());
       FCP_ASSIGN_OR_RETURN(RowSet row_set,
                            RowSet::Create(row_locations, storage));
       absl::StatusOr<std::vector<Tensor>> sql_result =
@@ -380,7 +389,7 @@ KmsFedSqlSession::CommitRowsGroupingByInput(const Interval<uint64_t>& range) {
           std::make_unique<InMemoryCheckpointParser>(*std::move(sql_result));
     } else {
       parser = std::make_unique<InMemoryCheckpointParser>(
-          std::move(uncommitted_input.contents));
+          std::move(uncommitted_input).MoveToTensors());
     }
 
     // In case of an error with Accumulate, the session is terminated, since we
@@ -413,14 +422,16 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   for (auto& uncommitted_input : uncommitted_inputs_) {
     // TODO: Once we switch to using DP time unit for budget buckets, we'll
     // need to use DP time units here instead of key ID.
-    if (!uncommitted_input.blob_header.key_id().empty()) {
-      unique_key_ids.insert(uncommitted_input.blob_header.key_id());
+    if (!uncommitted_input.blob_header().key_id().empty()) {
+      unique_key_ids.insert(uncommitted_input.blob_header().key_id());
     }
   }
 
+  int num_committed = uncommitted_inputs_.size();
   // TODO: Commit rows by DP unit if DP parameters are configured.
-  FCP_ASSIGN_OR_RETURN(std::vector<absl::Status> ignored_errors,
-                       CommitRowsGroupingByInput(range));
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<absl::Status> ignored_errors,
+      CommitRowsGroupingByInput(std::move(uncommitted_inputs_), range));
 
   for (const auto& key_id : unique_key_ids) {
     if (!range_tracker_.AddRange(key_id, commit_config.range().start(),
@@ -430,7 +441,6 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
     }
   }
 
-  int num_committed = uncommitted_inputs_.size();
   uncommitted_inputs_.clear();
   uncommitted_blob_ids_.clear();
   return ToCommitResponse(absl::OkStatus(), num_committed);

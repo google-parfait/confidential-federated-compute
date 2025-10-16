@@ -65,12 +65,12 @@ class RowViewTest : public ::testing::Test {
 };
 
 TEST_F(RowViewTest, CreateSuccess) {
-  ASSERT_THAT(RowView::Create(columns_, 0), IsOk());
+  ASSERT_THAT(RowView::CreateFromTensors(columns_, 0), IsOk());
 }
 
 TEST_F(RowViewTest, CreateWithEmptyColumnsFails) {
   std::vector<Tensor> empty_columns;
-  EXPECT_THAT(RowView::Create(empty_columns, 0),
+  EXPECT_THAT(RowView::CreateFromTensors(empty_columns, 0),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -78,13 +78,13 @@ TEST_F(RowViewTest, CreateWithColumnWithNoRowsFails) {
   std::vector<Tensor> columns;
   columns.push_back(*Tensor::Create(DataType::DT_INT32, TensorShape({0}),
                                     CreateTestData<int32_t>({}), "col_int32"));
-  EXPECT_THAT(RowView::Create(columns, 0),
+  EXPECT_THAT(RowView::CreateFromTensors(columns, 0),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(RowViewTest, GetValue) {
-  auto row_view = RowView::Create(columns_, 1);
-  ASSERT_TRUE(row_view.ok());
+  auto row_view = RowView::CreateFromTensors(columns_, 1);
+  ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
   EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
   EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
@@ -93,14 +93,14 @@ TEST_F(RowViewTest, GetValue) {
 }
 
 TEST_F(RowViewTest, GetColumnCount) {
-  auto row_view = RowView::Create(columns_, 0);
-  ASSERT_TRUE(row_view.ok());
+  auto row_view = RowView::CreateFromTensors(columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetColumnCount(), Eq(5));
 }
 
 TEST_F(RowViewTest, GetColumnType) {
-  auto row_view = RowView::Create(columns_, 0);
-  ASSERT_TRUE(row_view.ok());
+  auto row_view = RowView::CreateFromTensors(columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetColumnType(0), Eq(DataType::DT_INT32));
   EXPECT_THAT(row_view->GetColumnType(1), Eq(DataType::DT_INT64));
   EXPECT_THAT(row_view->GetColumnType(2), Eq(DataType::DT_FLOAT));
@@ -109,14 +109,14 @@ TEST_F(RowViewTest, GetColumnType) {
 }
 
 TEST_F(RowViewTest, MismatchedTypeDeathTest) {
-  auto row_view = RowView::Create(columns_, 0);
-  ASSERT_TRUE(row_view.ok());
+  auto row_view = RowView::CreateFromTensors(columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
   EXPECT_DEATH(row_view->GetValue<absl::string_view>(0),
                "Incompatible tensor dtype");
 }
 
 TEST_F(RowViewTest, RowIndexOutOfBounds) {
-  EXPECT_THAT(RowView::Create(columns_, 3),
+  EXPECT_THAT(RowView::CreateFromTensors(columns_, 3),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

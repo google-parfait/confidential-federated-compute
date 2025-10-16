@@ -1,0 +1,108 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
+
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "absl/types/variant.h"
+#include "containers/sql/row_view.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+
+namespace confidential_federated_compute::sql {
+
+// Represents the contents of a single SQL table, which may be backed by
+// different underlying storage types (e.g., Tensors, Messages). This class uses
+// absl::variant to abstract the specific storage mechanism.
+class Input {
+ public:
+  static absl::StatusOr<Input> CreateFromTensors(
+      std::vector<tensorflow_federated::aggregation::Tensor> contents,
+      fcp::confidentialcompute::BlobHeader blob_header);
+
+  Input(Input&&) = default;
+  Input& operator=(Input&&) = default;
+
+  Input(const Input&) = delete;
+  Input& operator=(const Input&) = delete;
+
+  absl::Span<const std::string> GetColumnNames() const;
+
+  absl::StatusOr<RowView> GetRow(uint32_t row_index) const;
+
+  size_t GetRowCount() const;
+
+  const fcp::confidentialcompute::BlobHeader& blob_header() const {
+    return blob_header_;
+  }
+
+  std::vector<tensorflow_federated::aggregation::Tensor> MoveToTensors() &&;
+
+ private:
+  // Type trait to check if a type T conforms to the input contents interface.
+  template <typename T, typename = void>
+  struct has_input_contents_interface : std::false_type {};
+
+  template <typename T>
+  struct has_input_contents_interface<
+      T, std::void_t<decltype(std::declval<const T&>().GetRowCount()),
+                     decltype(std::declval<const T&>().GetRow(0)),
+                     decltype(std::declval<T&&>().MoveToTensors())>>
+      : std::true_type {};
+
+  // Input contents backed by Tensors.
+  class TensorContents {
+   public:
+    TensorContents(
+        std::vector<tensorflow_federated::aggregation::Tensor> contents)
+        : contents_(std::move(contents)) {}
+
+    std::vector<tensorflow_federated::aggregation::Tensor> MoveToTensors() && {
+      return std::move(contents_);
+    }
+
+    absl::StatusOr<RowView> GetRow(uint32_t row_index) const {
+      return RowView::CreateFromTensors(contents_, row_index);
+    }
+
+    size_t GetRowCount() const;
+
+   private:
+    std::vector<tensorflow_federated::aggregation::Tensor> contents_;
+  };
+
+  static_assert(has_input_contents_interface<TensorContents>::value,
+                "TensorContents does not conform to the input interface.");
+
+  // TODO: add a MessageInput.
+  using ContentsVariant = absl::variant<TensorContents>;
+
+  Input(ContentsVariant contents,
+        fcp::confidentialcompute::BlobHeader blob_header,
+        std::vector<std::string> column_names);
+
+  ContentsVariant contents_;
+  fcp::confidentialcompute::BlobHeader blob_header_;
+  std::vector<std::string> column_names_;
+};
+
+}  // namespace confidential_federated_compute::sql
+
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_

@@ -13,9 +13,21 @@
 // limitations under the License.
 #include "containers/sql/row_view.h"
 
+#include "absl/status/status.h"
+#include "fcp/base/monitoring.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+
 namespace confidential_federated_compute::sql {
 
-absl::StatusOr<RowView> RowView::Create(
+absl::StatusOr<RowView> RowView::CreateFromTensors(
+    absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
+    uint32_t row_index) {
+  FCP_ASSIGN_OR_RETURN(TensorRowView tensor_row_view,
+                       TensorRowView::Create(columns, row_index));
+  return RowView(std::move(tensor_row_view));
+}
+
+absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
     absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
     uint32_t row_index) {
   if (columns.empty()) {
@@ -28,6 +40,7 @@ absl::StatusOr<RowView> RowView::Create(
     return absl::InvalidArgumentError("Row index is out of bounds.");
   }
 
-  return RowView(columns, row_index);
+  return TensorRowView(columns, row_index);
 }
+
 }  // namespace confidential_federated_compute::sql

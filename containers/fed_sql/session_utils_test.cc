@@ -205,45 +205,14 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
                   StringTensorEq(std::vector<absl::string_view>{"abc"})));
 }
 
-TEST(CreateRowLocationsForAllRowsTest, EmptyColumnsVectorReturnsEmpty) {
-  EXPECT_THAT(CreateRowLocationsForAllRows({}), ::testing::IsEmpty());
+TEST(CreateRowLocationsForAllRowsTest, ZeroRowsReturnsEmpty) {
+  EXPECT_THAT(CreateRowLocationsForAllRows(0), ::testing::IsEmpty());
 }
 
-TEST(CreateRowLocationsForAllRowsTest, ColumnsWithZeroRowsReturnsEmpty) {
-  absl::StatusOr<Tensor> tensor = Tensor::Create(
-      DataType::DT_INT64, TensorShape({0}), CreateTestData<int64_t>({}));
-  ASSERT_THAT(tensor, IsOk());
-  std::vector<Tensor> tensors;
-  tensors.push_back(std::move(*tensor));
-  EXPECT_THAT(CreateRowLocationsForAllRows(std::move(tensors)),
-              ::testing::IsEmpty());
-}
-
-TEST(CreateRowLocationsForAllRowsTest, SingleColumnReturnsCorrectLocations) {
-  absl::StatusOr<Tensor> tensor =
-      Tensor::Create(DataType::DT_INT64, TensorShape({3}),
-                     CreateTestData<int64_t>({10, 20, 30}));
-  ASSERT_THAT(tensor, IsOk());
-  std::vector<Tensor> tensors;
-  tensors.push_back(std::move(*tensor));
-  auto locations = CreateRowLocationsForAllRows(std::move(tensors));
+TEST(CreateRowLocationsForAllRowsTest, ReturnsCorrectLocations) {
+  auto locations = CreateRowLocationsForAllRows(3);
   EXPECT_THAT(locations, ElementsAre(FieldsAre(0, 0, 0), FieldsAre(0, 0, 1),
                                      FieldsAre(0, 0, 2)));
-}
-
-TEST(CreateRowLocationsForAllRowsTest, MultipleColumnsReturnsCorrectLocations) {
-  absl::StatusOr<Tensor> tensor1 = Tensor::Create(
-      DataType::DT_INT64, TensorShape({2}), CreateTestData<int64_t>({10, 20}));
-  ASSERT_THAT(tensor1, IsOk());
-  absl::StatusOr<Tensor> tensor2 =
-      Tensor::Create(DataType::DT_STRING, TensorShape({2}),
-                     CreateTestData<absl::string_view>({"a", "b"}));
-  ASSERT_THAT(tensor2, IsOk());
-  std::vector<Tensor> tensors;
-  tensors.push_back(std::move(*tensor1));
-  tensors.push_back(std::move(*tensor2));
-  auto locations = CreateRowLocationsForAllRows(std::move(tensors));
-  EXPECT_THAT(locations, ElementsAre(FieldsAre(0, 0, 0), FieldsAre(0, 0, 1)));
 }
 
 TEST(ExecuteClientQueryTest, SimpleQuerySucceeds) {
@@ -274,10 +243,13 @@ TEST(ExecuteClientQueryTest, SimpleQuerySucceeds) {
   ASSERT_THAT(val_tensor, IsOk());
   columns.push_back(std::move(*val_tensor));
 
-  std::vector<RowLocation> locations = CreateRowLocationsForAllRows(columns);
   std::vector<Input> inputs;
-  inputs.emplace_back();
-  inputs[0].contents = std::move(columns);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), {});
+  ASSERT_THAT(input, IsOk());
+  inputs.push_back(std::move(*input));
+  std::vector<RowLocation> locations =
+      CreateRowLocationsForAllRows(inputs[0].GetRowCount());
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, inputs);
   ASSERT_THAT(row_set, IsOk());
 
@@ -315,10 +287,14 @@ TEST(ExecuteClientQueryTest, QueryOnNonexistentColumnFails) {
   ASSERT_THAT(key_tensor, IsOk());
   columns.push_back(std::move(*key_tensor));
 
-  std::vector<RowLocation> locations = CreateRowLocationsForAllRows(columns);
   std::vector<Input> inputs;
-  inputs.emplace_back();
-  inputs[0].contents = std::move(columns);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), {});
+  ASSERT_THAT(input, IsOk());
+  inputs.push_back(std::move(*input));
+
+  std::vector<RowLocation> locations =
+      CreateRowLocationsForAllRows(inputs[0].GetRowCount());
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, inputs);
   ASSERT_THAT(row_set, IsOk());
 

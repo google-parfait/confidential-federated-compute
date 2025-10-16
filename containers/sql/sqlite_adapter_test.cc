@@ -20,6 +20,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "containers/sql/input.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
@@ -112,20 +113,22 @@ TableSchema CreateInputTableSchema(absl::string_view table_name = "t",
 }
 
 TEST(MultipleThreadsTest, ConcurrentDefineTable) {
-  CHECK_OK(SqliteAdapter::Initialize());
+  ASSERT_THAT(SqliteAdapter::Initialize(), IsOk());
   std::thread thread1([]() {
     absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
         SqliteAdapter::Create();
-    CHECK_OK(create_status);
+    ASSERT_THAT(create_status, IsOk());
     std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
-    CHECK_OK(adapter->DefineTable(CreateInputTableSchema("table_1")));
+    ASSERT_THAT(adapter->DefineTable(CreateInputTableSchema("table_1")),
+                IsOk());
   });
   std::thread thread2([]() {
     absl::StatusOr<std::unique_ptr<SqliteAdapter>> create_status =
         SqliteAdapter::Create();
-    CHECK_OK(create_status);
+    ASSERT_THAT(create_status, IsOk());
     std::unique_ptr<SqliteAdapter> adapter = std::move(create_status.value());
-    CHECK_OK(adapter->DefineTable(CreateInputTableSchema("table_2")));
+    ASSERT_THAT(adapter->DefineTable(CreateInputTableSchema("table_2")),
+                IsOk());
   });
   thread1.join();
   thread2.join();
@@ -184,18 +187,20 @@ class AddTableContentsTest : public SqliteAdapterTest {
 };
 
 TEST_F(AddTableContentsTest, BasicUsage) {
-  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({1, 2, 3}, {"a", "b", "c"});
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(3);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 }
 
 TEST_F(AddTableContentsTest, ColumnNameEscaping) {
@@ -207,32 +212,36 @@ TEST_F(AddTableContentsTest, ColumnNameEscaping) {
       "CREATE TABLE t ('![]^''\";/int_vals' INTEGER, '![]^''\";/str_vals' "
       "TEXT)");
 
-  CHECK_OK(sqlite_->DefineTable(schema));
+  ASSERT_THAT(sqlite_->DefineTable(schema), IsOk());
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({1, 2, 3}, {"a", "b", "c"}, schema.column(0).name(),
                           schema.column(1).name());
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(3);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 }
 
 TEST_F(AddTableContentsTest, CalledBeforeDefineTable) {
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({1}, {"a"});
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(1);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
+  ASSERT_THAT(row_set, IsOk());
 
   absl::Status result_status = sqlite_->AddTableContents(*std::move(row_set));
   ASSERT_TRUE(absl::IsInvalidArgument(result_status));
@@ -241,18 +250,20 @@ TEST_F(AddTableContentsTest, CalledBeforeDefineTable) {
 }
 
 TEST_F(AddTableContentsTest, ZeroRows) {
-  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
   absl::StatusOr<std::vector<Tensor>> contents = CreateTableContents({}, {});
   TableSchema schema = CreateInputTableSchema();
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(0);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 }
 
 // Converts a potentially sparse tensor to a flat vector of tensor values.
@@ -269,7 +280,7 @@ std::vector<T> TensorValuesToVector(const Tensor& arg) {
 }
 
 TEST_F(AddTableContentsTest, BatchedInserts) {
-  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
   // Add enough rows to trigger batching.
   int num_rows = SqliteAdapter::kSqliteVariableLimit * 2 + 1;
   std::vector<int64_t> int_vals(num_rows);
@@ -282,15 +293,17 @@ TEST_F(AddTableContentsTest, BatchedInserts) {
 
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents(int_vals, str_vals);
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(num_rows);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 
   // Verify the data was inserted correctly
   std::string output_col_name = "int_vals";
@@ -308,20 +321,11 @@ TEST_F(AddTableContentsTest, BatchedInserts) {
   EXPECT_THAT(TensorValuesToVector<int64_t>(result[0]), ContainerEq(int_vals));
 }
 
-TEST_F(AddTableContentsTest, EmptyContents) {
-  CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
-  std::vector<Input> storage;
-  storage.emplace_back();  // One input with no tensors.
-  absl::StatusOr<RowSet> row_set = RowSet::Create({}, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
-}
-
 class EvaluateQueryTest : public AddTableContentsTest {
  protected:
   void SetUp() override {
     AddTableContentsTest::SetUp();
-    CHECK_OK(sqlite_->DefineTable(CreateInputTableSchema()));
+    ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
   }
 };
 
@@ -449,15 +453,17 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
 TEST_F(EvaluateQueryTest, ResultsFromTable) {
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({42}, {"a"});
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(1);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -480,15 +486,17 @@ TEST_F(EvaluateQueryTest, MultipleAddTableContents) {
   for (int i = 0; i < kNumSetContents; ++i) {
     absl::StatusOr<std::vector<Tensor>> contents =
         CreateTableContents({1, 2, 3}, {"a", "b", "c"});
-    CHECK_OK(contents);
+    ASSERT_THAT(contents, IsOk());
 
+    absl::StatusOr<Input> input =
+        Input::CreateFromTensors(std::move(contents.value()), {});
+    ASSERT_THAT(input, IsOk());
     std::vector<Input> storage;
-    storage.emplace_back();
-    storage.back().contents = std::move(contents.value());
+    storage.push_back(*std::move(input));
     std::vector<RowLocation> locations = CreateRowLocations(num_rows);
     absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-    CHECK_OK(row_set);
-    CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+    ASSERT_THAT(row_set, IsOk());
+    ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
   }
 
   std::string output_col_name = "n";
@@ -509,14 +517,16 @@ TEST_F(EvaluateQueryTest, MultipleAddTableContents) {
 TEST_F(EvaluateQueryTest, MultipleResultRows) {
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({3, 2}, {"a", "b"});
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(2);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 
   std::string output_col_name = "int_vals";
   TableSchema output_schema;
@@ -539,15 +549,17 @@ TEST_F(EvaluateQueryTest, MultipleResultRows) {
 TEST_F(EvaluateQueryTest, MultipleColumns) {
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({1}, {"a"});
-  CHECK_OK(contents);
+  ASSERT_THAT(contents, IsOk());
 
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
   std::vector<Input> storage;
-  storage.emplace_back();
-  storage.back().contents = std::move(contents.value());
+  storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(1);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
-  CHECK_OK(row_set);
-  CHECK_OK(sqlite_->AddTableContents(*std::move(row_set)));
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
 
   std::string int_output_col_name = "int_vals";
   std::string str_output_col_name = "str_vals";
