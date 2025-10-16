@@ -49,6 +49,7 @@ cc_test(
     size = "small",
     srcs = ["sqlite_adapter_test.cc"],
     deps = [
+        ":input",
         ":sqlite_adapter",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -93,17 +94,50 @@ cc_test(
 )
 
 cc_library(
-    name = "row_set",
-    srcs = ["row_set.cc"],
-    hdrs = ["row_set.h"],
+    name = "input",
+    srcs = ["input.cc"],
+    hdrs = ["input.h"],
     deps = [
         ":row_view",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@federated-compute//fcp/base:base",
+        "@com_google_absl//absl/types:variant",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+    ],
+)
+
+cc_test(
+    name = "input_test",
+    size = "small",
+    srcs = ["input_test.cc"],
+    deps = [
+        ":input",
+        ":row_view",
+        "//testing:matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
+
+cc_library(
+    name = "row_set",
+    srcs = ["row_set.cc"],
+    hdrs = ["row_set.h"],
+    deps = [
+        ":input",
+        ":row_view",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@federated-compute//fcp/base",
     ],
 )
 
@@ -112,7 +146,9 @@ cc_test(
     size = "small",
     srcs = ["row_set_test.cc"],
     deps = [
+        ":input",
         ":row_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@googletest//:gtest",
@@ -127,6 +163,7 @@ cc_library(
     srcs = ["row_view.cc"],
     hdrs = ["row_view.h"],
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@federated-compute//fcp/base:base",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",

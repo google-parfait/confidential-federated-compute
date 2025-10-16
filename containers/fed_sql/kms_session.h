@@ -120,6 +120,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Commits rows, grouping by uncommitted sql::Input. Returns any ignored
   // errors.
   absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByInput(
+      std::vector<sql::Input>&& uncommitted_inputs,
       const Interval<uint64_t>& range);
 
   // The encrypted intermediate or final result.

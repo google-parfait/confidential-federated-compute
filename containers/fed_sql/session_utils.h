@@ -82,8 +82,7 @@ EncryptSessionResult(
 // Helper function for creating RowLocations for the contents of a single
 // input. This will be used while custom DP units is still in development,
 // however, eventually all uses will group rows by DP unit.
-std::vector<sql::RowLocation> CreateRowLocationsForAllRows(
-    const std::vector<tensorflow_federated::aggregation::Tensor>& columns);
+std::vector<sql::RowLocation> CreateRowLocationsForAllRows(size_t num_rows);
 
 // Configuration of the per-client SQL query step.
 struct SqlConfiguration {

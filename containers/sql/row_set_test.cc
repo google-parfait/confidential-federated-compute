@@ -19,6 +19,10 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "containers/sql/input.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
@@ -28,6 +32,7 @@
 namespace confidential_federated_compute::sql {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -35,31 +40,43 @@ using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
-class RowSetTest : public ::testing::Test {
+class TensorRowSetTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Create two Input objects for testing.
     // Input 1 has 2 rows and 2 columns (int64_t, string).
-    Input input1;
-    input1.contents.push_back(
-        *Tensor::Create(DataType::DT_INT64, TensorShape({2}),
-                        CreateTestData<int64_t>({1, 2}), "int_col"));
-    input1.contents.push_back(*Tensor::Create(
+    std::vector<Tensor> contents1;
+    auto t1_1 = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                               CreateTestData<int64_t>({1, 2}), "int_col");
+    CHECK_OK(t1_1);
+    contents1.push_back(*std::move(t1_1));
+    auto t1_2 = Tensor::Create(
         DataType::DT_STRING, TensorShape({2}),
-        CreateTestData<absl::string_view>({"foo", "bar"}), "string_col"));
+        CreateTestData<absl::string_view>({"foo", "bar"}), "string_col");
+    CHECK_OK(t1_2);
+    contents1.push_back(*std::move(t1_2));
+    absl::StatusOr<Input> input1 =
+        Input::CreateFromTensors(std::move(contents1), {});
+    CHECK_OK(input1);
 
     // Input 2 has 3 rows and 2 columns (int64_t, string).
-    Input input2;
-    input2.contents.push_back(
-        *Tensor::Create(DataType::DT_INT64, TensorShape({3}),
-                        CreateTestData<int64_t>({3, 4, 5}), "int_col"));
-    input2.contents.push_back(*Tensor::Create(
+    std::vector<Tensor> contents2;
+    auto t2_1 = Tensor::Create(DataType::DT_INT64, TensorShape({3}),
+                               CreateTestData<int64_t>({3, 4, 5}), "int_col");
+    CHECK_OK(t2_1);
+    contents2.push_back(*std::move(t2_1));
+    auto t2_2 = Tensor::Create(
         DataType::DT_STRING, TensorShape({3}),
         CreateTestData<absl::string_view>({"baz", "qux", "quux"}),
-        "string_col"));
+        "string_col");
+    CHECK_OK(t2_2);
+    contents2.push_back(*std::move(t2_2));
+    absl::StatusOr<Input> input2 =
+        Input::CreateFromTensors(std::move(contents2), {});
+    CHECK_OK(input2);
 
-    inputs_.push_back(std::move(input1));
-    inputs_.push_back(std::move(input2));
+    inputs_.push_back(*std::move(input1));
+    inputs_.push_back(*std::move(input2));
   }
 
   std::vector<std::vector<std::string>> CollectRows(const RowSet& set) {
@@ -88,28 +105,28 @@ class RowSetTest : public ::testing::Test {
   std::vector<Input> inputs_;
 };
 
-TEST_F(RowSetTest, EmptySet) {
+TEST_F(TensorRowSetTest, EmptySet) {
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());
   EXPECT_THAT(CollectRows(*set), IsEmpty());
 }
 
-TEST_F(RowSetTest, SingleRowFromFirstInput) {
+TEST_F(TensorRowSetTest, SingleRowFromFirstInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());
   EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("2", "bar")));
 }
 
-TEST_F(RowSetTest, SingleRowFromSecondInput) {
+TEST_F(TensorRowSetTest, SingleRowFromSecondInput) {
   std::vector<RowLocation> locations = {{.input_index = 1, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());
   EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("5", "quux")));
 }
 
-TEST_F(RowSetTest, MultipleRowsFromSingleInput) {
+TEST_F(TensorRowSetTest, MultipleRowsFromSingleInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
@@ -118,7 +135,7 @@ TEST_F(RowSetTest, MultipleRowsFromSingleInput) {
               ElementsAre(ElementsAre("1", "foo"), ElementsAre("2", "bar")));
 }
 
-TEST_F(RowSetTest, MultipleRowsFromMultipleInputs) {
+TEST_F(TensorRowSetTest, MultipleRowsFromMultipleInputs) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1},
                                         {.input_index = 1, .row_index = 0},
                                         {.input_index = 1, .row_index = 2}};
@@ -129,7 +146,7 @@ TEST_F(RowSetTest, MultipleRowsFromMultipleInputs) {
                           ElementsAre("5", "quux")));
 }
 
-TEST_F(RowSetTest, NonSequentialAccess) {
+TEST_F(TensorRowSetTest, NonSequentialAccess) {
   // Access rows in a non-sequential order to test that the iterator
   // correctly follows the locations vector.
   std::vector<RowLocation> locations = {{.input_index = 1, .row_index = 2},
@@ -142,20 +159,38 @@ TEST_F(RowSetTest, NonSequentialAccess) {
                           ElementsAre("4", "qux")));
 }
 
-TEST_F(RowSetTest, CreateFailsWithDifferentColumnNames) {
-  // Modify the second input to have a different column name.
-  inputs_[1].contents[1] =
-      *Tensor::Create(DataType::DT_STRING, TensorShape({3}),
-                      CreateTestData<absl::string_view>({"baz", "qux", "quux"}),
-                      "different_string_col");
+TEST_F(TensorRowSetTest, CreateFailsWithDifferentColumnNames) {
+  // Create two Input objects that have different column names.
+  std::vector<Tensor> contents1;
+  auto t1 = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                           CreateTestData<int64_t>({1, 2}), "int_col");
+  ASSERT_THAT(t1, IsOk());
+  contents1.push_back(*std::move(t1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(std::move(contents1), {});
+  ASSERT_THAT(input1, IsOk());
+
+  std::vector<Tensor> contents2;
+  auto t2 = Tensor::Create(
+      DataType::DT_STRING, TensorShape({3}),
+      CreateTestData<absl::string_view>({"baz", "qux", "quux"}), "string_col");
+  ASSERT_THAT(t2, IsOk());
+  contents2.push_back(*std::move(t2));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(std::move(contents2), {});
+  ASSERT_THAT(input2, IsOk());
+
+  std::vector<Input> inputs;
+  inputs.push_back(*std::move(input1));
+  inputs.push_back(*std::move(input2));
 
   std::vector<RowLocation> locations;
-  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs);
   ASSERT_FALSE(set.ok());
   EXPECT_EQ(set.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
-TEST_F(RowSetTest, IteratorEquality) {
+TEST_F(TensorRowSetTest, IteratorEquality) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
@@ -179,7 +214,7 @@ TEST_F(RowSetTest, IteratorEquality) {
   EXPECT_TRUE(it1 == end);
 }
 
-TEST_F(RowSetTest, GetColumnNames) {
+TEST_F(TensorRowSetTest, GetColumnNames) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());
@@ -188,7 +223,7 @@ TEST_F(RowSetTest, GetColumnNames) {
   EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
 }
 
-TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyLocations) {
+TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyLocations) {
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());
@@ -197,7 +232,7 @@ TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyLocations) {
   EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
 }
 
-TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyStorage) {
+TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyStorage) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
   ASSERT_TRUE(set.ok());
@@ -206,7 +241,7 @@ TEST_F(RowSetTest, GetColumnNamesForSetWithEmptyStorage) {
   EXPECT_THAT(*column_names, IsEmpty());
 }
 
-TEST_F(RowSetTest, DereferenceInvalidRowDeathTest) {
+TEST_F(TensorRowSetTest, DereferenceInvalidRowDeathTest) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_TRUE(set.ok());

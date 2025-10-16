@@ -124,15 +124,14 @@ absl::StatusOr<std::tuple<BlobMetadata, std::string>> EncryptSessionResult(
                                output_access_policy_node_id);
 }
 
-// Creates a RowLocation for each row in the contents.
-std::vector<RowLocation> CreateRowLocationsForAllRows(
-    const std::vector<Tensor>& columns) {
-  if (columns.empty()) {
+// Creates a RowLocation for each row in an input that contains `num_rows`.
+std::vector<RowLocation> CreateRowLocationsForAllRows(size_t num_rows) {
+  if (num_rows == 0) {
     return {};
   }
   std::vector<RowLocation> locations;
-  locations.reserve(columns.at(0).num_elements());
-  for (uint32_t i = 0; i < columns.at(0).num_elements(); ++i) {
+  locations.reserve(num_rows);
+  for (uint32_t i = 0; i < num_rows; ++i) {
     locations.push_back({.dp_unit_hash = 0, .input_index = 0, .row_index = i});
   }
   return locations;

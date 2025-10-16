@@ -20,6 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "gmock/gmock.h"
@@ -95,7 +96,7 @@ class DpUnitTest : public ::testing::Test {
     absl::StatusOr<std::unique_ptr<CheckpointAggregator>> aggregator =
         CheckpointAggregator::Create(DefaultConfiguration());
     CHECK_OK(aggregator.status());
-    aggregator_ = std::move(*aggregator);
+    aggregator_ = *std::move(aggregator);
 
     // SUM(val) + 1 so we can tell how many times the query was run.
     sql_config_.query =
@@ -138,21 +139,27 @@ TEST_F(DpUnitTest, Success) {
   std::string checkpoint1 =
       testing::BuildFedSqlGroupByCheckpoint({1, 2, 1}, {100, 200, 300});
   auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  CHECK_OK(parser1.status());
+  ASSERT_THAT(parser1, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors1 =
       Deserialize(sql_config_.input_schema, parser1->get());
-  CHECK_OK(tensors1.status());
+  ASSERT_THAT(tensors1, IsOk());
   std::string checkpoint2 =
       testing::BuildFedSqlGroupByCheckpoint({1, 3}, {400, 500});
   auto parser2 = parser_factory.Create(absl::Cord(checkpoint2));
-  CHECK_OK(parser2.status());
+  ASSERT_THAT(parser2, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors2 =
       Deserialize(sql_config_.input_schema, parser2->get());
-  CHECK_OK(tensors2.status());
+  ASSERT_THAT(tensors2, IsOk());
 
   std::vector<Input> uncommitted_inputs;
-  uncommitted_inputs.push_back({.contents = *std::move(tensors1)});
-  uncommitted_inputs.push_back({.contents = *std::move(tensors2)});
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {});
+  ASSERT_THAT(input1, IsOk());
+  uncommitted_inputs.push_back(*std::move(input1));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(*std::move(tensors2), {});
+  ASSERT_THAT(input2, IsOk());
+  uncommitted_inputs.push_back(*std::move(input2));
 
   // For each DP unit, we run the SQL query `SELECT key, SUM(val) + 1 AS val
   // FROM input GROUP BY key` on its subset of rows. DP Unit 1 corresponds to:
@@ -241,13 +248,16 @@ TEST_F(DpUnitTest, PartialSqlError) {
   std::string checkpoint1 =
       testing::BuildFedSqlGroupByCheckpoint({1, 2}, {1, 0});
   auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  CHECK_OK(parser1.status());
+  ASSERT_THAT(parser1, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors1 =
       Deserialize(sql_config_.input_schema, parser1->get());
-  CHECK_OK(tensors1.status());
+  ASSERT_THAT(tensors1, IsOk());
 
   std::vector<Input> uncommitted_inputs;
-  uncommitted_inputs.push_back({.contents = *std::move(tensors1)});
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {});
+  ASSERT_THAT(input1, IsOk());
+  uncommitted_inputs.push_back(*std::move(input1));
   // Query will cause division by zero for DP unit 2.
   sql_config_.query = "SELECT key, 1 / val AS val FROM input";
 
@@ -292,13 +302,16 @@ TEST_F(DpUnitTest, SqlError) {
   std::string checkpoint1 =
       testing::BuildFedSqlGroupByCheckpoint({1, 2}, {100, 200});
   auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  CHECK_OK(parser1.status());
+  ASSERT_THAT(parser1, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors1 =
       Deserialize(sql_config_.input_schema, parser1->get());
-  CHECK_OK(tensors1.status());
+  ASSERT_THAT(tensors1, IsOk());
 
   std::vector<Input> uncommitted_inputs;
-  uncommitted_inputs.push_back({.contents = *std::move(tensors1)});
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {});
+  ASSERT_THAT(input1, IsOk());
+  uncommitted_inputs.push_back(*std::move(input1));
 
   std::vector<RowLocation> row_dp_unit_index;
   // DP Unit 1 has row (1, 100).
@@ -327,13 +340,16 @@ TEST_F(DpUnitTest, AccumulateError) {
   FederatedComputeCheckpointParserFactory parser_factory;
   std::string checkpoint1 = testing::BuildFedSqlGroupByCheckpoint({1}, {100});
   auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  CHECK_OK(parser1.status());
+  ASSERT_THAT(parser1, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors1 =
       Deserialize(sql_config_.input_schema, parser1->get());
-  CHECK_OK(tensors1.status());
+  ASSERT_THAT(tensors1, IsOk());
 
   std::vector<Input> uncommitted_inputs;
-  uncommitted_inputs.push_back({.contents = *std::move(tensors1)});
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {});
+  ASSERT_THAT(input1, IsOk());
+  uncommitted_inputs.push_back(*std::move(input1));
 
   std::vector<RowLocation> row_dp_unit_index;
   row_dp_unit_index.push_back(

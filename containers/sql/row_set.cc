@@ -19,21 +19,12 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "fcp/base/monitoring.h"
+#include "absl/types/span.h"
+#include "containers/sql/input.h"
 
 namespace confidential_federated_compute::sql {
-
-std::vector<std::string> Input::GetColumnNames() const {
-  if (!column_names_.has_value()) {
-    std::vector<std::string> names;
-    for (const auto& column : contents) {
-      names.push_back(column.name());
-    }
-    column_names_ = std::move(names);
-  }
-  return *column_names_;
-}
 
 absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
                                       absl::Span<const Input> storage) {
@@ -50,9 +41,9 @@ absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
   return RowSet(locations, storage);
 }
 
-absl::StatusOr<std::vector<std::string>> RowSet::GetColumnNames() const {
+absl::StatusOr<absl::Span<const std::string>> RowSet::GetColumnNames() const {
   if (storage_.empty()) {
-    return std::vector<std::string>();
+    return absl::Span<const std::string>();
   }
   return storage_[0].GetColumnNames();
 }

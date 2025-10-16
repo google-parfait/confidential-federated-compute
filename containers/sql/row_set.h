@@ -17,15 +17,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "containers/sql/input.h"
 #include "containers/sql/row_view.h"
 #include "fcp/base/monitoring.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql {
 struct RowLocation {
@@ -42,26 +42,6 @@ struct RowLocation {
   bool operator<(const RowLocation& other) const {
     return std::tie(dp_unit_hash, input_index, row_index) <
            std::tie(other.dp_unit_hash, other.input_index, other.row_index);
-  }
-};
-
-// An input of Tensors, along with its metadata.
-struct Input {
-  std::vector<tensorflow_federated::aggregation::Tensor> contents;
-  fcp::confidentialcompute::BlobHeader blob_header;
-  mutable absl::optional<std::vector<std::string>> column_names_;
-
-  Input() = default;
-  Input(Input&&) = default;
-  Input& operator=(Input&&) = default;
-
-  Input(const Input&) = delete;
-  Input& operator=(const Input&) = delete;
-
-  std::vector<std::string> GetColumnNames() const;
-
-  absl::StatusOr<RowView> GetRow(uint32_t row_index) const {
-    return RowView::Create(contents, row_index);
   }
 };
 
@@ -136,7 +116,7 @@ class RowSet {
     return RowSet(locations_.subspan(pos, count), storage_);
   }
 
-  absl::StatusOr<std::vector<std::string>> GetColumnNames() const;
+  absl::StatusOr<absl::Span<const std::string>> GetColumnNames() const;
 
  private:
   RowSet(absl::Span<const RowLocation> locations,
