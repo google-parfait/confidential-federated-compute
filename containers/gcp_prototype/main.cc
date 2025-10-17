@@ -13,98 +13,132 @@
 // limitations under the License.
 
 #include <iostream>
+#include <memory>
 #include <string>
-#include <cstring>
-#include <sstream>
-#include <ctime>
-#include <iomanip>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <chrono> // Required for std::chrono
-#include <arpa/inet.h> // Required for inet_addr
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
+#include "cc/oak_session/server_session.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
+#include "proto/services/session_v1_service.grpc.pb.h"
+
+using ::oak::services::OakSessionV1Service;
+using ::oak::session::AttestationType;
+using ::oak::session::HandshakeType;
+using ::oak::session::ServerSession;
+using ::oak::session::SessionConfig;
+using ::oak::session::SessionConfigBuilder;
+using ::oak::session::v1::SessionRequest;
+using ::oak::session::v1::SessionResponse;
 
 const int PORT = 8000;
-const int BUFFER_SIZE = 1024;
 
-// --- Helper Function to get Current Time ---
-std::string get_current_time_utc() {
-    auto now = std::chrono::system_clock::now();
-    auto in_time_t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream time_ss;
-    time_ss << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d %H:%M:%S UTC");
-    return time_ss.str();
+// Helper function to pull all available messages from the session and send
+// them.
+void PumpOutgoingMessages(
+    ServerSession* session,
+    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
+  while (true) {
+    auto response = session->GetOutgoingMessage();
+    if (!response.ok()) {
+      if (response.status().code() != absl::StatusCode::kInternal) {
+        LOG(FATAL) << "Failed to get outgoing message: " << response.status();
+      }
+      // kInternal means the session is waiting for more input, so we stop.
+      break;
+    }
+    if (!response->has_value()) {
+      // No more messages to send for now.
+      break;
+    }
+    LOG(INFO) << "Oak -> gRPC: " << (*response)->DebugString();
+    if (!stream->Write(**response)) {
+      LOG(ERROR) << "Failed to write to stream.";
+      break;
+    }
+  }
 }
 
-int main() {
-    // --- Create Socket ---
-    // AF_INET for IPv4, SOCK_STREAM for TCP
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == -1) {
-        std::cerr << "Failed to create socket" << std::endl;
-        return 1;
-    }
+class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
+ public:
+  grpc::Status Stream(grpc::ServerContext* context,
+                      grpc::ServerReaderWriter<SessionResponse, SessionRequest>*
+                          stream) override {
+    LOG(INFO) << "gRPC stream started. Initializing Oak ServerSession.";
 
-    // --- Prepare the sockaddr_in structure ---
-    sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    // THIS IS THE CRITICAL CHANGE: Bind to 0.0.0.0 instead of the default.
-    // This ensures the server accepts connections from outside the container.
-    server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
-    server_addr.sin_port = htons(PORT);
+    SessionConfigBuilder server_builder(AttestationType::kSelfUnidirectional,
+                                        HandshakeType::kNoiseNN);
+    SessionConfig* server_config = server_builder.Build();
+    absl::StatusOr<std::unique_ptr<ServerSession>> server_session_or =
+        ServerSession::Create(server_config);
+    CHECK_OK(server_session_or.status());
+    auto& server_session = *server_session_or;
 
-    // --- Bind the socket to the address and port ---
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        std::cerr << "Bind failed" << std::endl;
-        close(server_fd);
-        return 1;
-    }
-
-    // --- Listen for incoming connections ---
-    if (listen(server_fd, 3) < 0) {
-        std::cerr << "Listen failed" << std::endl;
-        close(server_fd);
-        return 1;
-    }
-
-    std::cout << "Server starting: Listening on port " << PORT << "..." << std::endl;
-
-    // --- Main Accept Loop ---
+    // The main server loop.
     while (true) {
-        sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        int new_socket = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+      // Step 1: Wait for a message from the client.
+      SessionRequest request;
+      if (!stream->Read(&request)) {
+        LOG(INFO) << "Client closed the stream.";
+        break;
+      }
+      LOG(INFO) << "gRPC -> Oak: " << request.DebugString();
+      CHECK_OK(server_session->PutIncomingMessage(request));
 
-        if (new_socket < 0) {
-            std::cerr << "Accept failed" << std::endl;
-            continue; // Continue to the next iteration
+      // Step 2: Send back any resulting messages.
+      PumpOutgoingMessages(server_session.get(), stream);
+
+      // Step 3 & 4: Try to read a decrypted message. If we can't, loop back.
+      auto decrypted_message = server_session->ReadToRustBytes();
+      if (!decrypted_message.ok()) {
+        if (decrypted_message.status().code() != absl::StatusCode::kInternal) {
+          LOG(FATAL) << "Failed to read from session: "
+                     << decrypted_message.status();
         }
+        // kInternal means the session is not open yet, so we continue.
+        continue;
+      }
 
-        // --- Read Request (Simplified) ---
-        char buffer[BUFFER_SIZE] = {0};
-        read(new_socket, buffer, BUFFER_SIZE);
-        std::string request(buffer);
+      if (!decrypted_message->has_value()) {
+        // No application message available yet, loop back to wait for more
+        // from the client.
+        continue;
+      }
 
-        // --- Construct HTTP Response ---
-        std::string time_str = get_current_time_utc();
-        std::string body = "Hellooo from Confidential Space! The time is: " + time_str + "\n";
-        
-        std::stringstream http_response;
-        http_response << "HTTP/1.1 200 OK\r\n";
-        http_response << "Content-Type: text/plain\r\n";
-        http_response << "Content-Length: " << body.length() << "\r\n";
-        http_response << "\r\n";
-        http_response << body;
-        
-        // --- Send Response ---
-        std::string response_str = http_response.str();
-        send(new_socket, response_str.c_str(), response_str.length(), 0);
-        
-        // --- Close the client socket ---
-        close(new_socket);
+      // Step 5: We got a message! Process it and send a reply.
+      LOG(INFO) << "Server decrypted message: "
+                << static_cast<std::string>(decrypted_message->value());
+
+      LOG(INFO) << "Server encrypting and sending reply.";
+      CHECK_OK(server_session->Write("Server says hi back!"));
+
+      // Loop back to Step 2 to ensure the encrypted reply is sent.
+      PumpOutgoingMessages(server_session.get(), stream);
     }
 
-    // --- Close the server socket (unreachable in this loop) ---
-    close(server_fd);
-    return 0;
+    LOG(INFO) << "gRPC stream finished.";
+    return grpc::Status::OK;
+  }
+};
+
+void RunServer() {
+  std::string server_address = absl::StrFormat("0.0.0.0:%d", PORT);
+  OakSessionV1ServiceImpl service;
+
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+
+  std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+  LOG(INFO) << "Server listening on " << server_address;
+  server->Wait();
+}
+
+int main(int argc, char** argv) {
+  RunServer();
+  return 0;
 }
