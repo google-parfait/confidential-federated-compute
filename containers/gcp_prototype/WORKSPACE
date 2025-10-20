@@ -31,9 +31,9 @@ http_archive(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-ZEZ+qDfHWNivUm3z9LkWG5q2F6udbjij8GTgUFmIl/k=",
-    strip_prefix = "oak-0beb0de86a546df46365cf4caef3ac8065e304e9",
-    url = "https://github.com/project-oak/oak/archive/0beb0de86a546df46365cf4caef3ac8065e304e9.tar.gz",
+    integrity = "sha256-i++zX9TBAkug1aNRqhSr7XehvGPiVNFqBh5tjW0BqxM=",
+    strip_prefix = "oak-17274a5b6915de28385de27a765ded561debff8f",
+    url = "https://github.com/project-oak/oak/archive/17274a5b6915de28385de27a765ded561debff8f.tar.gz",
 )
 
 http_archive(
