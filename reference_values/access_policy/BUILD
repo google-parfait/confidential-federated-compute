@@ -21,12 +21,32 @@ build_test(
     name = "access_policy_build_test",
     targets = [
         ":gboard",
+        ":private_compute_services",
+        ":recorder",
     ],
 )
 
 proto_data(
     name = "gboard",
     src = "gboard.txtpb",
+    proto_deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:access_policy_endorsement_options_proto",
+    ],
+    proto_name = "fcp.confidentialcompute.AccessPolicyEndorsementOptions",
+)
+
+proto_data(
+    name = "private_compute_services",
+    src = "private_compute_services.txtpb",
+    proto_deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:access_policy_endorsement_options_proto",
+    ],
+    proto_name = "fcp.confidentialcompute.AccessPolicyEndorsementOptions",
+)
+
+proto_data(
+    name = "recorder",
+    src = "recorder.txtpb",
     proto_deps = [
         "@federated-compute//fcp/protos/confidentialcompute:access_policy_endorsement_options_proto",
     ],
