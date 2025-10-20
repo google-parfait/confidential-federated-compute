@@ -692,5 +692,80 @@ TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
               HasSubstr("Model must be initialized before running inference."));
 }
 
+TEST(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
+  MockInferenceModel inference_model;
+  ON_CALL(inference_model, BuildGemmaCppModel)
+      .WillByDefault(Invoke(
+          [&inference_model](const SessionGemmaCppConfiguration& gemma_config) {
+            const auto& config =
+                inference_model.GetInferenceConfiguration()
+                    ->initialize_configuration.inference_config();
+            EXPECT_EQ(config.runtime_config().seq_len(), 10000);
+          }));
+  ON_CALL(inference_model, RunGemmaCppInference)
+      .WillByDefault(Invoke([&inference_model](
+                                const std::string& prompt,
+                                const absl::string_view& column_value,
+                                const std::string& column_name) {
+        const auto& config = inference_model.GetInferenceConfiguration()
+                                 ->initialize_configuration.inference_config();
+        EXPECT_EQ(config.runtime_config().max_prompt_size(), 100);
+        EXPECT_EQ(config.runtime_config().max_generated_tokens(), 50);
+
+        std::string output_str(column_value);
+        std::reverse(output_str.begin(), output_str.end());
+        return absl::StrCat(prompt, "---", output_str);
+      }));
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_name: "transcript"
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      runtime_config {
+        seq_len: 10000
+        max_prompt_size: 100
+        max_generated_tokens: 50
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  std::initializer_list<absl::string_view> transcript_values = {"one", "two",
+                                                                "three"};
+  absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(transcript_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+
+  columns.push_back(std::move(*transcript_tensor));
+
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
+  ASSERT_EQ(columns.size(), 1);
+  ASSERT_EQ(columns.at(0).name(), "topic");
+  ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(0).AsSpan<absl::string_view>(),
+              UnorderedElementsAre("Hello, {{transcript}}---eno",
+                                   "Hello, {{transcript}}---owt",
+                                   "Hello, {{transcript}}---eerht"));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

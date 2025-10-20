@@ -46,13 +46,13 @@ using ::fcp::confidentialcompute::GEMMA_SFP;
 using ::fcp::confidentialcompute::GEMMA_TINY;
 using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
+using ::fcp::confidentialcompute::RuntimeConfig;
 using ::gcpp::Gemma;
 using ::gcpp::InferenceArgs;
 using ::gcpp::KVCache;
 using ::gcpp::LoaderArgs;
 using ::gcpp::MatMulEnv;
 using ::gcpp::PromptWrapping;
-using ::gcpp::RuntimeConfig;
 using ::gcpp::ThreadingArgs;
 using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
@@ -81,6 +81,13 @@ void InferenceModel::BuildGemmaCppModel(
   LoaderArgs loader_args(gemma_config.tokenizer_path,
                          gemma_config.model_weight_path);
   InferenceArgs inference_args;
+  size_t seq_len =
+      inference_configuration_->initialize_configuration.inference_config()
+          .runtime_config()
+          .seq_len();
+  if (seq_len > 0) {
+    inference_args.seq_len = seq_len;
+  }
   ThreadingArgs threading_args;
   gemma_model.ctx_ = std::make_unique<ThreadingContext>(threading_args);
   gemma_model.gemma_ =
@@ -129,9 +136,13 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaCppInference(
   Gemma* gemma = gemma_model.gemma_.get();
   KVCache kv_cache(gemma->Config(), gemma->Inference(),
                    gemma_model.ctx_->allocator);
-
-  if (combined_prompt.size() > kMaxPromptSize) {
-    combined_prompt.resize(kMaxPromptSize);
+  RuntimeConfig inference_runtime_config =
+      inference_configuration_->initialize_configuration.inference_config()
+          .runtime_config();
+  size_t max_prompt_size =
+      inference_runtime_config.max_prompt_size() > 0 ?: kMaxPromptSize;
+  if (combined_prompt.size() > max_prompt_size) {
+    combined_prompt.resize(max_prompt_size);
   }
   const std::vector<int> tokens = gcpp::WrapAndTokenize(
       gemma->Tokenizer(), gemma->ChatTemplate(), gemma->Config().wrapping,
@@ -152,8 +163,10 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaCppInference(
   std::mt19937 gen;
   std::random_device rd;
   gen.seed(rd());
-  RuntimeConfig runtime_config = {
-      .max_generated_tokens = 1024,
+  size_t max_generated_tokens =
+      inference_runtime_config.max_generated_tokens() > 0 ?: 1024;
+  ::gcpp::RuntimeConfig runtime_config = {
+      .max_generated_tokens = max_generated_tokens,
       .temperature = 1.0,
       .gen = &gen,
       .verbosity = 0,
