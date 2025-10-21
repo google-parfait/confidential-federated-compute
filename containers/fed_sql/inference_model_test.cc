@@ -711,6 +711,7 @@ TEST(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
                                  ->initialize_configuration.inference_config();
         EXPECT_EQ(config.runtime_config().max_prompt_size(), 100);
         EXPECT_EQ(config.runtime_config().max_generated_tokens(), 50);
+        EXPECT_EQ(config.runtime_config().temperature_diff(), -0.5);
 
         std::string output_str(column_value);
         std::reverse(output_str.begin(), output_str.end());
@@ -731,6 +732,7 @@ TEST(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
         seq_len: 10000
         max_prompt_size: 100
         max_generated_tokens: 50
+        temperature_diff: -0.5
       }
       gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }

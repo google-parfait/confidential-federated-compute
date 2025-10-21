@@ -165,9 +165,10 @@ absl::StatusOr<std::string> InferenceModel::RunGemmaCppInference(
   gen.seed(rd());
   size_t max_generated_tokens =
       inference_runtime_config.max_generated_tokens() > 0 ?: 1024;
+  float temperature = 1.0 + inference_runtime_config.temperature_diff();
   ::gcpp::RuntimeConfig runtime_config = {
       .max_generated_tokens = max_generated_tokens,
-      .temperature = 1.0,
+      .temperature = temperature,
       .gen = &gen,
       .verbosity = 0,
       .stream_token = stream_token,
