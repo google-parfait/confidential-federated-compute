@@ -17,18 +17,47 @@ load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 
-# C++ library for fetching attestation
+# C++ library for HTTP client utilities
+cc_library(
+    name = "http_client",
+    srcs = ["http_client.cc"],
+    hdrs = ["http_client.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@curl",  # Depends on curl
+    ],
+)
+
+# Attestation providers
 cc_library(
     name = "attestation_cc",
     srcs = ["attestation.cc"],
     hdrs = ["attestation.h"],
     deps = [
+        ":http_client",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@curl",
-        "@nlohmann_json//:json",
+    ],
+)
+
+# Shared session utilities (message pumping, handshake)
+cc_library(
+    name = "session_utils",
+    srcs = ["session_utils.cc"],
+    hdrs = ["session_utils.h"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@oak//cc/oak_session:client_session",
+        "@oak//cc/oak_session:server_session",
+        "@oak//proto/services:session_v1_service_cc_grpc",
     ],
 )
 
@@ -60,6 +89,7 @@ cc_binary(
     deps = [
         ":server_session_config_cc",
         ":attestation_cc",
+        ":session_utils",  # Added dependency
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
@@ -75,12 +105,27 @@ cc_binary(
     ],
 )
 
+# C++ library for JSON utilities
+cc_library(
+    name = "json_util",
+    srcs = ["json_util.cc"],
+    hdrs = ["json_util.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@nlohmann_json//:json",  # Depends on nlohmann::json
+    ],
+)
+
 # C++ library for the client-side verifier implementation
 cc_library(
     name = "verifier_cc",
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
     deps = [
+        ":http_client",
+        ":json_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -103,9 +148,6 @@ cc_library(
         "@com_google_tink//tink/jwt:jwt_validator",
         "@com_google_tink//tink/jwt:verified_jwt",
         "@com_google_tink//tink/util:statusor",  # For crypto::tink::util::StatusOr
-
-        # HTTP Client and JSON
-        "@curl",
         "@nlohmann_json//:json",  # Needed for nested claims parsing
     ],
 )
@@ -137,6 +179,7 @@ cc_binary(
     srcs = ["test_client.cc"],
     deps = [
         ":client_session_config_cc",
+        ":session_utils",  # Added dependency
         ":verifier_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/flags:flag",  # For the new flag
@@ -158,6 +201,7 @@ pkg_tar(
 oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
+    cmd = ["--attestation_provider=ita"],
     entrypoint = ["/main"],
     exposed_ports = ["8000/tcp"],
     tars = [

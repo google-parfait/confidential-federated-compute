@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Header for the helper function to fetch attestation tokens from the
-// GCP Confidential Space agent.
-
 #ifndef ATTESTATION_H
 #define ATTESTATION_H
 
+#include <memory>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -26,19 +24,40 @@
 namespace gcp_prototype {
 
 /**
- * @brief Fetches an OIDC attestation token from the local Confidential Space
- * agent.
- *
- * Sends an HTTP POST request over a Unix domain socket to the agent's token
- * endpoint (`/v1/token`). The request includes the specified audience
- * ("oak_session_noise_v1") and the provided nonce (which should be the
- * Base64-encoded public key).
- *
- * @param nonce The Base64-encoded nonce to include in the token request.
- * @return On success, the raw JWT attestation token string. On failure, an
- * error status explaining the issue (e.g., curl error, HTTP error from agent).
+ * @brief Abstract interface for fetching a signed attestation token from the
+ * Confidential Space agent.
  */
-absl::StatusOr<std::string> GetAttestationToken(absl::string_view nonce);
+class AttestationTokenProvider {
+ public:
+  virtual ~AttestationTokenProvider() = default;
+
+  /**
+   * @brief Fetches an attestation token, incorporating the provided nonce.
+   *
+   * @param nonce A high-entropy string (typically a Base64-encoded public key)
+   * to be bound to the attestation token to prevent replay attacks.
+   * @return The raw JWT token string on success, or an error status.
+   */
+  virtual absl::StatusOr<std::string> GetAttestationToken(
+      absl::string_view nonce) = 0;
+};
+
+/**
+ * @brief Enumeration of supported attestation authorities.
+ */
+enum class ProviderType {
+  kGca,  // Google Cloud Attestation (Uses OIDC token type).
+  kIta,  // Intel Trust Authority (Uses PRINCIPAL_TAGS token type).
+};
+
+/**
+ * @brief Factory function to create a configured AttestationTokenProvider.
+ *
+ * @param type The desired provider authority.
+ * @return An initialized provider instance ready to fetch tokens.
+ */
+std::unique_ptr<AttestationTokenProvider> CreateTokenProvider(
+    ProviderType type);
 
 }  // namespace gcp_prototype
 
