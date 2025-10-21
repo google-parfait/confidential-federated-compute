@@ -388,8 +388,14 @@ KmsFedSqlSession::CommitRowsGroupingByInput(
       parser =
           std::make_unique<InMemoryCheckpointParser>(*std::move(sql_result));
     } else {
-      parser = std::make_unique<InMemoryCheckpointParser>(
-          std::move(uncommitted_input).MoveToTensors());
+      absl::StatusOr<std::vector<Tensor>> tensors =
+          std::move(uncommitted_input).MoveToTensors();
+      if (!tensors.ok()) {
+        // Ignore this blob, but continue processing other blobs.
+        ignored_errors.push_back(tensors.status());
+        continue;
+      }
+      parser = std::make_unique<InMemoryCheckpointParser>(*std::move(tensors));
     }
 
     // In case of an error with Accumulate, the session is terminated, since we
@@ -422,8 +428,8 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   for (auto& uncommitted_input : uncommitted_inputs_) {
     // TODO: Once we switch to using DP time unit for budget buckets, we'll
     // need to use DP time units here instead of key ID.
-    if (!uncommitted_input.blob_header().key_id().empty()) {
-      unique_key_ids.insert(uncommitted_input.blob_header().key_id());
+    if (!uncommitted_input.GetBlobHeader().key_id().empty()) {
+      unique_key_ids.insert(uncommitted_input.GetBlobHeader().key_id());
     }
   }
 

@@ -37,6 +37,20 @@ class Input {
       std::vector<tensorflow_federated::aggregation::Tensor> contents,
       fcp::confidentialcompute::BlobHeader blob_header);
 
+  // Creates an Input from a list of Messages and a list of system column
+  // Tensors.
+  //
+  // Each row is composed of a single Message at index i in `messages` and the
+  // element held at index i in each system column Tensor. Each field in the
+  // Message corresponds to a column in the SQL table.
+  //
+  // Each system column Tensor must be a 1-dimensional Tensor with the same
+  // number of elements (rows) as the number of messages.
+  static absl::StatusOr<Input> CreateFromMessages(
+      std::vector<std::unique_ptr<google::protobuf::Message>> messages,
+      std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
+      fcp::confidentialcompute::BlobHeader blob_header);
+
   Input(Input&&) = default;
   Input& operator=(Input&&) = default;
 
@@ -49,11 +63,12 @@ class Input {
 
   size_t GetRowCount() const;
 
-  const fcp::confidentialcompute::BlobHeader& blob_header() const {
+  const fcp::confidentialcompute::BlobHeader& GetBlobHeader() const {
     return blob_header_;
   }
 
-  std::vector<tensorflow_federated::aggregation::Tensor> MoveToTensors() &&;
+  absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+  MoveToTensors() &&;
 
  private:
   // Type trait to check if a type T conforms to the input contents interface.
@@ -64,7 +79,7 @@ class Input {
   struct has_input_contents_interface<
       T, std::void_t<decltype(std::declval<const T&>().GetRowCount()),
                      decltype(std::declval<const T&>().GetRow(0)),
-                     decltype(std::declval<T&&>().MoveToTensors())>>
+                     decltype(std::declval<T&&>().MoveToTensors({}))>>
       : std::true_type {};
 
   // Input contents backed by Tensors.
@@ -74,7 +89,8 @@ class Input {
         std::vector<tensorflow_federated::aggregation::Tensor> contents)
         : contents_(std::move(contents)) {}
 
-    std::vector<tensorflow_federated::aggregation::Tensor> MoveToTensors() && {
+    absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+    MoveToTensors(absl::Span<const std::string> column_names) && {
       return std::move(contents_);
     }
 
@@ -91,8 +107,33 @@ class Input {
   static_assert(has_input_contents_interface<TensorContents>::value,
                 "TensorContents does not conform to the input interface.");
 
-  // TODO: add a MessageInput.
-  using ContentsVariant = absl::variant<TensorContents>;
+  // Input contents backed by Message rows and Tensor system columns.
+  class MessageContents {
+   public:
+    MessageContents(
+        std::vector<std::unique_ptr<google::protobuf::Message>> messages,
+        std::vector<tensorflow_federated::aggregation::Tensor> system_columns)
+        : messages_(std::move(messages)),
+          system_columns_(std::move(system_columns)) {}
+
+    // Unfortunately, this method copies the underlying Message data, since the
+    // reflection API doesn't support moving the data out of a Message.
+    absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+    MoveToTensors(absl::Span<const std::string> column_names) &&;
+
+    absl::StatusOr<RowView> GetRow(uint32_t row_index) const;
+
+    size_t GetRowCount() const { return messages_.size(); };
+
+   private:
+    std::vector<std::unique_ptr<google::protobuf::Message>> messages_;
+    std::vector<tensorflow_federated::aggregation::Tensor> system_columns_;
+  };
+
+  static_assert(has_input_contents_interface<MessageContents>::value,
+                "MessageContents does not conform to the input interface.");
+
+  using ContentsVariant = absl::variant<TensorContents, MessageContents>;
 
   Input(ContentsVariant contents,
         fcp::confidentialcompute::BlobHeader blob_header,

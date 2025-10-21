@@ -24,15 +24,28 @@
 #include "absl/status/status_matchers.h"
 #include "containers/sql/input.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
+#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::sql {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FieldDescriptorProto;
+using ::google::protobuf::FileDescriptor;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -108,21 +121,21 @@ class TensorRowSetTest : public ::testing::Test {
 TEST_F(TensorRowSetTest, EmptySet) {
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set), IsEmpty());
 }
 
 TEST_F(TensorRowSetTest, SingleRowFromFirstInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("2", "bar")));
 }
 
 TEST_F(TensorRowSetTest, SingleRowFromSecondInput) {
   std::vector<RowLocation> locations = {{.input_index = 1, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set), ElementsAre(ElementsAre("5", "quux")));
 }
 
@@ -130,7 +143,7 @@ TEST_F(TensorRowSetTest, MultipleRowsFromSingleInput) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("1", "foo"), ElementsAre("2", "bar")));
 }
@@ -140,7 +153,7 @@ TEST_F(TensorRowSetTest, MultipleRowsFromMultipleInputs) {
                                         {.input_index = 1, .row_index = 0},
                                         {.input_index = 1, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("2", "bar"), ElementsAre("3", "baz"),
                           ElementsAre("5", "quux")));
@@ -153,7 +166,7 @@ TEST_F(TensorRowSetTest, NonSequentialAccess) {
                                         {.input_index = 0, .row_index = 0},
                                         {.input_index = 1, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   EXPECT_THAT(CollectRows(*set),
               ElementsAre(ElementsAre("5", "quux"), ElementsAre("1", "foo"),
                           ElementsAre("4", "qux")));
@@ -186,15 +199,14 @@ TEST_F(TensorRowSetTest, CreateFailsWithDifferentColumnNames) {
 
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs);
-  ASSERT_FALSE(set.ok());
-  EXPECT_EQ(set.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(set, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(TensorRowSetTest, IteratorEquality) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0},
                                         {.input_index = 0, .row_index = 1}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   auto it1 = set->begin();
   auto it2 = set->begin();
   auto end = set->end();
@@ -217,36 +229,140 @@ TEST_F(TensorRowSetTest, IteratorEquality) {
 TEST_F(TensorRowSetTest, GetColumnNames) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_TRUE(column_names.ok());
+  ASSERT_THAT(column_names, IsOk());
   EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
 }
 
 TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyLocations) {
   std::vector<RowLocation> locations;
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_TRUE(column_names.ok());
+  ASSERT_THAT(column_names, IsOk());
   EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
 }
 
 TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyStorage) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_TRUE(column_names.ok());
+  ASSERT_THAT(column_names, IsOk());
   EXPECT_THAT(*column_names, IsEmpty());
 }
 
 TEST_F(TensorRowSetTest, DereferenceInvalidRowDeathTest) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_TRUE(set.ok());
+  ASSERT_THAT(set, IsOk());
   auto it = set->begin();
   EXPECT_DEATH(*it, "Check failed");
+}
+
+class MessageRowSetTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+      name: "test.proto"
+      package: "confidential_federated_compute.sql"
+      message_type {
+        name: "TestMessage"
+        field { name: "col1" number: 1 type: TYPE_INT32 label: LABEL_OPTIONAL }
+        field { name: "col2" number: 5 type: TYPE_STRING label: LABEL_OPTIONAL }
+      }
+    )pb");
+    pool_ = std::make_unique<DescriptorPool>();
+    const google::protobuf::FileDescriptor* file_descriptor =
+        pool_->BuildFile(file_proto);
+    ASSERT_NE(file_descriptor, nullptr);
+
+    const Descriptor* descriptor =
+        file_descriptor->FindMessageTypeByName("TestMessage");
+    ASSERT_NE(descriptor, nullptr);
+    factory_ = std::make_unique<DynamicMessageFactory>(pool_.get());
+
+    std::vector<std::unique_ptr<Message>> messages1;
+    messages1.push_back(CreateMessage(descriptor, 1, "foo"));
+    messages1.push_back(CreateMessage(descriptor, 11, "bar"));
+    std::vector<Tensor> system_columns1;
+    auto system_col1 = Tensor::Create(
+        DataType::DT_STRING, TensorShape({2}),
+        CreateTestData<absl::string_view>({"baz", "qux"}), "system_col");
+    CHECK_OK(system_col1);
+    system_columns1.push_back(*std::move(system_col1));
+    absl::StatusOr<Input> input1 = Input::CreateFromMessages(
+        std::move(messages1), std::move(system_columns1), {});
+    CHECK_OK(input1);
+
+    std::vector<std::unique_ptr<Message>> messages2;
+    messages2.push_back(CreateMessage(descriptor, 111, "baz"));
+    std::vector<Tensor> system_columns2;
+    auto event_time_tensor2 = Tensor::Create(
+        DataType::DT_STRING, TensorShape({1}),
+        CreateTestData<absl::string_view>({"fizz"}), "system_col");
+    CHECK_OK(event_time_tensor2);
+    system_columns2.push_back(*std::move(event_time_tensor2));
+    absl::StatusOr<Input> input2 = Input::CreateFromMessages(
+        std::move(messages2), std::move(system_columns2), {});
+    CHECK_OK(input2);
+
+    inputs_.push_back(*std::move(input1));
+    inputs_.push_back(*std::move(input2));
+  }
+
+  std::unique_ptr<Message> CreateMessage(const Descriptor* descriptor,
+                                         int32_t int32_val,
+                                         std::string string_val) {
+    std::unique_ptr<Message> message =
+        std::unique_ptr<Message>(factory_->GetPrototype(descriptor)->New());
+
+    const Reflection* reflection = message->GetReflection();
+    reflection->SetInt32(message.get(), descriptor->FindFieldByName("col1"),
+                         int32_val);
+    reflection->SetString(message.get(), descriptor->FindFieldByName("col2"),
+                          string_val);
+    return message;
+  }
+
+  std::unique_ptr<DescriptorPool> pool_;
+  std::unique_ptr<DynamicMessageFactory> factory_;
+  std::vector<Input> inputs_;
+
+ protected:
+  std::vector<std::vector<std::string>> CollectRows(const RowSet& set) {
+    std::vector<std::vector<std::string>> result;
+    for (const RowView& row : set) {
+      std::vector<std::string> row_strings;
+      for (int i = 0; i < row.GetColumnCount(); ++i) {
+        switch (row.GetColumnType(i)) {
+          case DataType::DT_INT32:
+            row_strings.push_back(std::to_string(row.GetValue<int32_t>(i)));
+            break;
+          case DataType::DT_STRING:
+            row_strings.push_back(
+                std::string(row.GetValue<absl::string_view>(i)));
+            break;
+          default:
+            // All types used in this test are handled above.
+            break;
+        }
+      }
+      result.push_back(row_strings);
+    }
+    return result;
+  }
+};
+
+TEST_F(MessageRowSetTest, BasicUsage) {
+  std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 1},
+                                        {.input_index = 1, .row_index = 0}};
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
+  ASSERT_THAT(set, IsOk());
+  EXPECT_THAT(CollectRows(*set),
+              ElementsAre(ElementsAre("11", "bar", "qux"),
+                          ElementsAre("111", "baz", "fizz")));
 }
 
 }  // namespace

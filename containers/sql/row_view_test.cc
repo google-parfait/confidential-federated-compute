@@ -18,14 +18,19 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "testing/matchers.h"
+#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::sql {
 namespace {
@@ -33,6 +38,14 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FieldDescriptorProto;
+using ::google::protobuf::FileDescriptor;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -43,22 +56,31 @@ using ::testing::IsEmpty;
 class RowViewTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    columns_.push_back(*Tensor::Create(DataType::DT_INT32, TensorShape({3}),
-                                       CreateTestData<int32_t>({1, 2, 3}),
-                                       "col_int32"));
-    columns_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({3}),
-                                       CreateTestData<int64_t>({4, 5, 6}),
-                                       "col_int64"));
-    columns_.push_back(*Tensor::Create(
-        DataType::DT_FLOAT, TensorShape({3}),
-        CreateTestData<float>({1.1f, 2.2f, 3.3f}), "col_float"));
-    columns_.push_back(*Tensor::Create(DataType::DT_DOUBLE, TensorShape({3}),
-                                       CreateTestData<double>({4.4, 5.5, 6.6}),
-                                       "col_double"));
-    columns_.push_back(*Tensor::Create(
+    absl::StatusOr<Tensor> t1 =
+        Tensor::Create(DataType::DT_INT32, TensorShape({3}),
+                       CreateTestData<int32_t>({1, 2, 3}), "col_int32");
+    CHECK_OK(t1);
+    columns_.push_back(*std::move(t1));
+    absl::StatusOr<Tensor> t2 =
+        Tensor::Create(DataType::DT_INT64, TensorShape({3}),
+                       CreateTestData<int64_t>({4, 5, 6}), "col_int64");
+    CHECK_OK(t2);
+    columns_.push_back(*std::move(t2));
+    absl::StatusOr<Tensor> t3 =
+        Tensor::Create(DataType::DT_FLOAT, TensorShape({3}),
+                       CreateTestData<float>({1.1f, 2.2f, 3.3f}), "col_float");
+    CHECK_OK(t3);
+    columns_.push_back(*std::move(t3));
+    absl::StatusOr<Tensor> t4 =
+        Tensor::Create(DataType::DT_DOUBLE, TensorShape({3}),
+                       CreateTestData<double>({4.4, 5.5, 6.6}), "col_double");
+    CHECK_OK(t4);
+    columns_.push_back(*std::move(t4));
+    absl::StatusOr<Tensor> t5 = Tensor::Create(
         DataType::DT_STRING, TensorShape({3}),
-        CreateTestData<absl::string_view>({"foo", "bar", "baz"}),
-        "col_string"));
+        CreateTestData<absl::string_view>({"foo", "bar", "baz"}), "col_string");
+    CHECK_OK(t5);
+    columns_.push_back(*std::move(t5));
   }
 
   std::vector<Tensor> columns_;
@@ -76,8 +98,11 @@ TEST_F(RowViewTest, CreateWithEmptyColumnsFails) {
 
 TEST_F(RowViewTest, CreateWithColumnWithNoRowsFails) {
   std::vector<Tensor> columns;
-  columns.push_back(*Tensor::Create(DataType::DT_INT32, TensorShape({0}),
-                                    CreateTestData<int32_t>({}), "col_int32"));
+  absl::StatusOr<Tensor> t =
+      Tensor::Create(DataType::DT_INT32, TensorShape({0}),
+                     CreateTestData<int32_t>({}), "col_int32");
+  ASSERT_THAT(t, IsOk());
+  columns.push_back(*std::move(t));
   EXPECT_THAT(RowView::CreateFromTensors(columns, 0),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -118,6 +143,156 @@ TEST_F(RowViewTest, MismatchedTypeDeathTest) {
 TEST_F(RowViewTest, RowIndexOutOfBounds) {
   EXPECT_THAT(RowView::CreateFromTensors(columns_, 3),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+class MessageRowViewTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+      name: "test.proto"
+      package: "confidential_federated_compute.sql"
+      message_type {
+        name: "TestMessage"
+        field { name: "col1" number: 1 type: TYPE_INT32 label: LABEL_OPTIONAL }
+        field { name: "col2" number: 2 type: TYPE_INT64 label: LABEL_OPTIONAL }
+        field { name: "col3" number: 3 type: TYPE_FLOAT label: LABEL_OPTIONAL }
+        field { name: "col4" number: 4 type: TYPE_DOUBLE label: LABEL_OPTIONAL }
+        field { name: "col5" number: 5 type: TYPE_STRING label: LABEL_OPTIONAL }
+      }
+    )pb");
+    pool_ = std::make_unique<DescriptorPool>();
+    const google::protobuf::FileDescriptor* file_descriptor =
+        pool_->BuildFile(file_proto);
+    ASSERT_NE(file_descriptor, nullptr);
+
+    const Descriptor* descriptor =
+        file_descriptor->FindMessageTypeByName("TestMessage");
+    ASSERT_NE(descriptor, nullptr);
+
+    factory_ = std::make_unique<DynamicMessageFactory>(pool_.get());
+    message_ =
+        std::unique_ptr<Message>(factory_->GetPrototype(descriptor)->New());
+
+    const Reflection* reflection = message_->GetReflection();
+    reflection->SetInt32(message_.get(), descriptor->FindFieldByName("col1"),
+                         2);
+    reflection->SetInt64(message_.get(), descriptor->FindFieldByName("col2"),
+                         5);
+    reflection->SetFloat(message_.get(), descriptor->FindFieldByName("col3"),
+                         2.2f);
+    reflection->SetDouble(message_.get(), descriptor->FindFieldByName("col4"),
+                          5.5);
+    reflection->SetString(message_.get(), descriptor->FindFieldByName("col5"),
+                          "bar");
+    absl::StatusOr<Tensor> t1 = Tensor::Create(
+        DataType::DT_STRING, TensorShape({2}),
+        CreateTestData<absl::string_view>({"baz", "qux"}), "system_col1");
+    CHECK_OK(t1);
+    system_columns_.push_back(*std::move(t1));
+    absl::StatusOr<Tensor> t2 =
+        Tensor::Create(DataType::DT_INT32, TensorShape({2}),
+                       CreateTestData<int32_t>({123, 456}), "system_col2");
+    CHECK_OK(t2);
+    system_columns_.push_back(*std::move(t2));
+  }
+
+  std::unique_ptr<DescriptorPool> pool_;
+  std::unique_ptr<DynamicMessageFactory> factory_;
+  std::unique_ptr<Message> message_;
+  std::vector<Tensor> system_columns_;
+};
+
+TEST_F(MessageRowViewTest, CreateFromMessageSuccess) {
+  ASSERT_THAT(RowView::CreateFromMessage(message_.get(), system_columns_, 0),
+              IsOk());
+}
+
+TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
+  EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
+  EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
+  EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("baz"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(123));
+}
+
+TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 1);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
+  EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
+  EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
+  EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("qux"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(456));
+}
+
+TEST_F(MessageRowViewTest, GetColumnCount) {
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_THAT(row_view->GetColumnCount(), Eq(7));
+}
+
+TEST_F(MessageRowViewTest, GetColumnType) {
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_THAT(row_view->GetColumnType(0), Eq(DataType::DT_INT32));
+  EXPECT_THAT(row_view->GetColumnType(1), Eq(DataType::DT_INT64));
+  EXPECT_THAT(row_view->GetColumnType(2), Eq(DataType::DT_FLOAT));
+  EXPECT_THAT(row_view->GetColumnType(3), Eq(DataType::DT_DOUBLE));
+  EXPECT_THAT(row_view->GetColumnType(4), Eq(DataType::DT_STRING));
+  EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_STRING));
+  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_INT32));
+}
+
+TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_DEATH(row_view->GetValue<absl::string_view>(0), "but expected string");
+}
+
+TEST_F(MessageRowViewTest, CordCtypeDeathTest) {
+  const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+    name: "test_cord.proto"
+    package: "confidential_federated_compute.sql"
+    message_type {
+      name: "TestCordMessage"
+      field {
+        name: "cord_field"
+        number: 1
+        type: TYPE_STRING
+        label: LABEL_OPTIONAL
+        options { ctype: CORD }
+      }
+    }
+  )pb");
+  const FileDescriptor* file_descriptor = pool_->BuildFile(file_proto);
+  ASSERT_NE(file_descriptor, nullptr);
+
+  const Descriptor* descriptor =
+      file_descriptor->FindMessageTypeByName("TestCordMessage");
+  ASSERT_NE(descriptor, nullptr);
+
+  std::unique_ptr<Message> message =
+      std::unique_ptr<Message>(factory_->GetPrototype(descriptor)->New());
+
+  const Reflection* reflection = message->GetReflection();
+  reflection->SetString(
+      message.get(), descriptor->FindFieldByName("cord_field"), "some value");
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message.get(), {}, 0);
+  ASSERT_THAT(row_view, IsOk());
+  EXPECT_DEATH(row_view->GetValue<absl::string_view>(0),
+               "has unsupported ctype");
 }
 
 }  // namespace

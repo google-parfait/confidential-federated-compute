@@ -16,12 +16,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "fcp/base/monitoring.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql {
@@ -35,6 +40,18 @@ class RowView {
   // by index, in the order of the `columns` span.
   static absl::StatusOr<RowView> CreateFromTensors(
       absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
+      uint32_t row_index);
+
+  // Creates a RowView from a Message, a list of system columns, and a row
+  // index.
+  // The row index identifies the row within the system columns.
+  // A RowView created this way will provide access to the elements of the
+  // row by index, in the order of the message's field numbers followed by the
+  // system columns in order of the `system_columns` span.
+  static absl::StatusOr<RowView> CreateFromMessage(
+      const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
+      absl::Span<const tensorflow_federated::aggregation::Tensor>
+          system_columns,
       uint32_t row_index);
 
   // Returns the data type of a column.
@@ -110,14 +127,125 @@ class RowView {
   static_assert(has_row_view_interface<TensorRowView>::value,
                 "TensorRowView does not conform to the RowView interface.");
 
-  //  TODO: add a MessageRowView.
-  using RowViewVariant = absl::variant<TensorRowView>;
+  // A RowView backed by a Message and a list of system columns.
+  class MessageRowView {
+   public:
+    explicit MessageRowView(
+        const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
+        absl::Span<const tensorflow_federated::aggregation::Tensor>
+            system_columns,
+        uint32_t row_index);
+
+    tensorflow_federated::aggregation::DataType GetColumnType(
+        int column_index) const;
+
+    template <typename T>
+    T GetValue(int column_index) const;
+
+    size_t GetColumnCount() const;
+
+   private:
+    size_t GetSystemColumnIndex(int column_index) const;
+
+    template <typename T>
+    T GetMessageValue(const google::protobuf::FieldDescriptor* field) const;
+
+    tensorflow_federated::aggregation::DataType GetMessageColumnType(
+        int column_index) const;
+
+    const google::protobuf::Message* message_;
+    const google::protobuf::Reflection* reflection_;
+    const google::protobuf::Descriptor* descriptor_;
+    absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns_;
+    // The index of the row within the system columns.
+    uint32_t row_index_;
+  };
+
+  static_assert(has_row_view_interface<MessageRowView>::value,
+                "MessageRowView does not conform to the RowView interface.");
+
+  using RowViewVariant = absl::variant<TensorRowView, MessageRowView>;
 
   explicit RowView(RowViewVariant row_view_variant)
       : row_view_variant_(std::move(row_view_variant)) {}
 
   RowViewVariant row_view_variant_;
 };
+
+template <typename T>
+T RowView::MessageRowView::GetMessageValue(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
+}
+
+template <>
+inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_CHECK(field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_INT32)
+      << "Field " << field->name() << " has type " << field->cpp_type_name()
+      << " but expected int32";
+  return reflection_->GetInt32(*message_, field);
+}
+
+template <>
+inline int64_t RowView::MessageRowView::GetMessageValue<int64_t>(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_CHECK(field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_INT64)
+      << "Field " << field->name() << " has type " << field->cpp_type_name()
+      << " but expected int64";
+  return reflection_->GetInt64(*message_, field);
+}
+
+template <>
+inline float RowView::MessageRowView::GetMessageValue<float>(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_CHECK(field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_FLOAT)
+      << "Field " << field->name() << " has type " << field->cpp_type_name()
+      << " but expected float";
+  return reflection_->GetFloat(*message_, field);
+}
+
+template <>
+inline double RowView::MessageRowView::GetMessageValue<double>(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_CHECK(field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE)
+      << "Field " << field->name() << " has type " << field->cpp_type_name()
+      << " but expected double";
+  return reflection_->GetDouble(*message_, field);
+}
+
+template <>
+inline absl::string_view
+RowView::MessageRowView::GetMessageValue<absl::string_view>(
+    const google::protobuf::FieldDescriptor* field) const {
+  FCP_CHECK(field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_STRING)
+      << "Field " << field->name() << " has type " << field->cpp_type_name()
+      << " but expected string";
+  FCP_CHECK(field->options().ctype() == google::protobuf::FieldOptions::STRING)
+      << "Field " << field->name() << " has unsupported ctype "
+      << field->options().ctype();
+  // GetStringReference copies the field into `unused` if the field is
+  // not stored as a string (e.g. it's stored as absl::Cord). Since we check
+  // that ctype == STRING, `unused` won't be used and GetStringReference
+  // will return a reference to the underlying field.
+  std::string unused;
+  return reflection_->GetStringReference(*message_, field, &unused);
+}
+
+template <typename T>
+T RowView::MessageRowView::GetValue(int column_index) const {
+  if (column_index < descriptor_->field_count()) {
+    return GetMessageValue<T>(descriptor_->field(column_index));
+  }
+  // This will CHECK-fail if T does not match the column's dtype.
+  return system_columns_[GetSystemColumnIndex(column_index)].AsSpan<T>().at(
+      row_index_);
+}
 
 }  // namespace confidential_federated_compute::sql
 
