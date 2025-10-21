@@ -25,9 +25,13 @@
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::sql {
 
@@ -40,6 +44,13 @@ using ::fcp::client::ExampleQueryResult_VectorData_StringValues;
 using ::fcp::client::ExampleQueryResult_VectorData_Values;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FieldDescriptorProto;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
 using ::tensorflow_federated::aggregation::AggVector;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
@@ -51,6 +62,47 @@ using ::testing::ContainerEq;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Test;
+
+class MessageHelper {
+ public:
+  MessageHelper() {
+    const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+      name: "test.proto"
+      package: "confidential_federated_compute.sql"
+      message_type {
+        name: "TestMessage"
+        field {
+          name: "int_vals"
+          number: 1
+          type: TYPE_INT64
+          label: LABEL_OPTIONAL
+        }
+      }
+    )pb");
+    const google::protobuf::FileDescriptor* file_descriptor =
+        pool_.BuildFile(file_proto);
+    CHECK_NE(file_descriptor, nullptr);
+
+    descriptor_ = file_descriptor->FindMessageTypeByName("TestMessage");
+    CHECK_NE(descriptor_, nullptr);
+
+    prototype_ = factory_.GetPrototype(descriptor_);
+  }
+
+  std::unique_ptr<Message> CreateMessage(int64_t val1) {
+    std::unique_ptr<Message> message(prototype_->New());
+    const Reflection* reflection = message->GetReflection();
+    reflection->SetInt64(message.get(),
+                         descriptor_->FindFieldByName("int_vals"), val1);
+    return message;
+  }
+
+ private:
+  DescriptorPool pool_;
+  DynamicMessageFactory factory_{&pool_};
+  const Descriptor* descriptor_;
+  const Message* prototype_;
+};
 
 // Creates test tensor data based on a vector<T>.
 template <typename T>
@@ -186,7 +238,7 @@ class AddTableContentsTest : public SqliteAdapterTest {
   }
 };
 
-TEST_F(AddTableContentsTest, BasicUsage) {
+TEST_F(AddTableContentsTest, TensorBasicUsage) {
   ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({1, 2, 3}, {"a", "b", "c"});
@@ -198,6 +250,31 @@ TEST_F(AddTableContentsTest, BasicUsage) {
   std::vector<Input> storage;
   storage.push_back(*std::move(input));
   std::vector<RowLocation> locations = CreateRowLocations(3);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
+}
+
+TEST_F(AddTableContentsTest, MessageDataBasicUsage) {
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
+  std::vector<std::unique_ptr<Message>> messages;
+  MessageHelper message_helper;
+  messages.push_back(message_helper.CreateMessage(1));
+  messages.push_back(message_helper.CreateMessage(2));
+
+  std::vector<Tensor> system_columns;
+  absl::StatusOr<Tensor> event_time_tensor =
+      Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                     CreateTestData<absl::string_view>({"a", "b"}), "str_vals");
+  ASSERT_THAT(event_time_tensor, IsOk());
+  system_columns.push_back(*std::move(event_time_tensor));
+
+  std::vector<Input> storage;
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages), std::move(system_columns), {});
+  ASSERT_THAT(input, IsOk());
+  storage.push_back(*std::move(input));
+  std::vector<RowLocation> locations = CreateRowLocations(2);
   absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
   ASSERT_THAT(row_set, IsOk());
   ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
@@ -450,7 +527,7 @@ TEST_F(EvaluateQueryTest, EmptyResults) {
   ASSERT_EQ(result.at(0).num_elements(), 0);
 }
 
-TEST_F(EvaluateQueryTest, ResultsFromTable) {
+TEST_F(EvaluateQueryTest, TensorContentsResultsFromTable) {
   absl::StatusOr<std::vector<Tensor>> contents =
       CreateTableContents({42}, {"a"});
   ASSERT_THAT(contents, IsOk());
@@ -478,6 +555,46 @@ TEST_F(EvaluateQueryTest, ResultsFromTable) {
   ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
   ASSERT_EQ(result.at(0).num_elements(), 1);
   ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(0), 42);
+}
+
+TEST_F(EvaluateQueryTest, MessageContentsResultsFromTable) {
+  std::vector<std::unique_ptr<Message>> messages;
+  MessageHelper message_helper;
+  messages.push_back(message_helper.CreateMessage(42));
+  messages.push_back(message_helper.CreateMessage(24));
+
+  std::vector<Tensor> system_columns;
+  absl::StatusOr<Tensor> str_vals_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({2}),
+      CreateTestData<absl::string_view>({"foo", "bar"}), "str_vals");
+  ASSERT_THAT(str_vals_tensor, IsOk());
+  system_columns.push_back(*std::move(str_vals_tensor));
+
+  std::vector<Input> storage;
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages), std::move(system_columns), {});
+  ASSERT_THAT(input, IsOk());
+  storage.push_back(*std::move(input));
+  std::vector<RowLocation> locations = CreateRowLocations(2);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
+
+  std::string output_col_name = "int_vals";
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), output_col_name,
+                       google::internal::federated::plan::INT64);
+
+  auto result_status = sqlite_->EvaluateQuery(
+      R"sql(SELECT int_vals FROM t ORDER BY int_vals;)sql",
+      output_schema.column());
+  ASSERT_THAT(result_status, IsOk());
+  std::vector<Tensor> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT64);
+  ASSERT_EQ(result.at(0).num_elements(), 2);
+  ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(0), 24);
+  ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(1), 42);
 }
 
 TEST_F(EvaluateQueryTest, MultipleAddTableContents) {

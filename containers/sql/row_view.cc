@@ -15,6 +15,9 @@
 
 #include "absl/status/status.h"
 #include "fcp/base/monitoring.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::sql {
@@ -25,6 +28,13 @@ absl::StatusOr<RowView> RowView::CreateFromTensors(
   FCP_ASSIGN_OR_RETURN(TensorRowView tensor_row_view,
                        TensorRowView::Create(columns, row_index));
   return RowView(std::move(tensor_row_view));
+}
+
+absl::StatusOr<RowView> RowView::CreateFromMessage(
+    const google::protobuf::Message* message,
+    absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
+    uint32_t row_index) {
+  return RowView(MessageRowView(message, system_columns, row_index));
 }
 
 absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
@@ -43,4 +53,49 @@ absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
   return TensorRowView(columns, row_index);
 }
 
+RowView::MessageRowView::MessageRowView(
+    const google::protobuf::Message* message,
+    absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
+    uint32_t row_index)
+    : message_(message),
+      reflection_(message->GetReflection()),
+      descriptor_(message->GetDescriptor()),
+      system_columns_(system_columns),
+      row_index_(row_index) {}
+
+size_t RowView::MessageRowView::GetSystemColumnIndex(int column_index) const {
+  return column_index - descriptor_->field_count();
+}
+
+tensorflow_federated::aggregation::DataType
+RowView::MessageRowView::GetMessageColumnType(int column_index) const {
+  const google::protobuf::FieldDescriptor* field =
+      descriptor_->field(column_index);
+  switch (field->cpp_type()) {
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+      return tensorflow_federated::aggregation::DataType::DT_INT32;
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+      return tensorflow_federated::aggregation::DataType::DT_INT64;
+    case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+      return tensorflow_federated::aggregation::DataType::DT_FLOAT;
+    case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+      return tensorflow_federated::aggregation::DataType::DT_DOUBLE;
+    case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+      return tensorflow_federated::aggregation::DataType::DT_STRING;
+    default:
+      FCP_LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
+  }
+}
+
+tensorflow_federated::aggregation::DataType
+RowView::MessageRowView::GetColumnType(int column_index) const {
+  if (column_index < descriptor_->field_count()) {
+    return GetMessageColumnType(column_index);
+  }
+  return system_columns_[GetSystemColumnIndex(column_index)].dtype();
+}
+
+size_t RowView::MessageRowView::GetColumnCount() const {
+  return descriptor_->field_count() + system_columns_.size();
+}
 }  // namespace confidential_federated_compute::sql
