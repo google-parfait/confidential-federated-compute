@@ -32,6 +32,10 @@ bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "protobuf", version = "33.0-rc2", repo_name = "com_google_protobuf")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "io_grpc_grpc_java")
+bazel_dep(name = "tink_cc", version = "2.4.0", repo_name = "com_google_tink")
+bazel_dep(name = "nlohmann_json", version = "3.11.3")  # Needed for JSON parsing
+bazel_dep(name = "rules_foreign_cc", version = "0.11.1")
+bazel_dep(name = "curl", version = "8.11.0")  # Example version, check BCR
 
 http_archive(
     name = "sysroot",
@@ -63,4 +67,4 @@ oci.pull(
     image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "distroless_cc_debian12_base")
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
