@@ -19,6 +19,7 @@
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "testing/matchers.h"
@@ -30,8 +31,10 @@ namespace {
 using ::absl_testing::IsOk;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
+using ::fcp::confidentialcompute::Prompt;
 using ::gcpp::Gemma;
 using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
@@ -45,9 +48,12 @@ class MockInferenceModel : public InferenceModel {
  public:
   MOCK_METHOD(void, BuildGemmaCppModel,
               (const SessionGemmaCppConfiguration& gemma_config), (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, RunGemmaCppInference,
-              (const std::string& prompt, const absl::string_view& column_value,
-               const std::string& column_name),
+  MOCK_METHOD(absl::StatusOr<Tensor>, RunGemmaCppInference,
+              (const Prompt& prompt,
+               (const absl::flat_hash_map<std::string,
+                                          absl::Span<const absl::string_view>>&)
+                   column_values,
+               const std::string& output_column_name),
               (override));
 };
 
@@ -67,6 +73,35 @@ TEST(InferenceModelTest, HasModelGemma) {
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_TRUE(inference_model.HasModel());
+}
+
+TEST(InferenceModelTest, HasModelGemmaMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}, {{transcript2}}" }
       }
       gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
     }
@@ -141,13 +176,26 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([](const std::string& prompt,
-                               const absl::string_view& column_value,
-                               const std::string& column_name) {
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        return absl::StrCat(prompt, "---", output_str);
-      }));
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            auto column_value = column_values.at("transcript");
+            int64_t tensor_size = column_value.size();
+            auto output_data = std::make_unique<MutableStringData>(tensor_size);
+            for (int i = 0; i < column_value.size(); ++i) {
+              std::string reversed_val(column_value.at(i));
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data)
+                  .Add(absl::StrCat(prompt.prompt_template(), "---",
+                                    reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({tensor_size}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -194,17 +242,112 @@ TEST(InferenceModelTest, RunInferenceValidConfig) {
                                    "Hello, {{transcript}}---eerht"));
 }
 
+TEST(InferenceModelTest, RunInferenceValidConfigMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+  ON_CALL(inference_model, RunGemmaCppInference)
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            auto transcript_span = column_values.at("transcript");
+            auto transcript2_span = column_values.at("transcript2");
+            auto num_rows = transcript_span.size();
+            auto output_data = std::make_unique<MutableStringData>(num_rows);
+            for (int i = 0; i < num_rows; ++i) {
+              std::string val1(transcript_span[i]);
+              std::string val2(transcript2_span[i]);
+              std::reverse(val1.begin(), val1.end());
+              std::reverse(val2.begin(), val2.end());
+              (*output_data)
+                  .Add(absl::StrCat(prompt.prompt_template(), "---", val1, ",",
+                                    val2));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({(int64_t)num_rows}),
+                                  std::move(output_data), output_column_name);
+          }));
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}, {{transcript2}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  std::initializer_list<absl::string_view> transcript_values = {"one", "two",
+                                                                "three"};
+  absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(transcript_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+  columns.push_back(std::move(*transcript_tensor));
+
+  std::initializer_list<absl::string_view> transcript2_values = {"aol", "bat",
+                                                                 "cat"};
+  absl::StatusOr<Tensor> transcript2_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(transcript2_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(
+          transcript2_values),
+      /*name=*/"transcript2");
+  ASSERT_THAT(transcript2_tensor, IsOk());
+  columns.push_back(std::move(*transcript2_tensor));
+
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  ASSERT_THAT(inference_model.RunInference(columns), IsOk());
+  ASSERT_EQ(columns.size(), 1);
+  ASSERT_EQ(columns.at(0).name(), "topic");
+  ASSERT_EQ(columns.at(0).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(columns.at(0).AsSpan<absl::string_view>(),
+              UnorderedElementsAre(
+                  "Hello, {{transcript}}, {{transcript2}}---eno,loa",
+                  "Hello, {{transcript}}, {{transcript2}}---owt,tab",
+                  "Hello, {{transcript}}, {{transcript2}}---eerht,tac"));
+}
+
 TEST(InferenceModelTest, RunInferenceRegexOutput) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([](const std::string& prompt,
-                               const absl::string_view& column_value,
-                               const std::string& column_name) {
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        return absl::StrCat("Classification: **", output_str, "**");
-      }));
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            auto input_span = column_values.at("transcript");
+            auto num_rows = input_span.size();
+            auto output_data = std::make_unique<MutableStringData>(num_rows);
+            for (int i = 0; i < num_rows; ++i) {
+              std::string reversed_val(input_span[i]);
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data).Add(absl::StrCat(reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({(int64_t)num_rows}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -256,13 +399,32 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([](const std::string& prompt,
-                               const absl::string_view& column_value,
-                               const std::string& column_name) {
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        return absl::StrCat(prompt, "---", output_str);
-      }));
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            absl::Span<const absl::string_view> input_span;
+            auto it = column_values.find("transcript");
+            if (it != column_values.end()) {
+              input_span = it->second;
+            } else {
+              input_span = column_values.at("input");
+            }
+            auto num_rows = input_span.size();
+            auto output_data = std::make_unique<MutableStringData>(num_rows);
+            for (int i = 0; i < num_rows; ++i) {
+              std::string reversed_val(input_span[i]);
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data)
+                  .Add(absl::StrCat(prompt.prompt_template(), "---",
+                                    reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({(int64_t)num_rows}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -336,18 +498,30 @@ TEST(InferenceModelTest, RunInferenceMultipleInferenceTasksWithRegex) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([](const std::string& prompt,
-                               const absl::string_view& column_value,
-                               const std::string& column_name) {
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        if (column_name == "transcript") {
-          return absl::StrCat("Category1: **", output_str, "**");
-        } else if (column_name == "input") {
-          return absl::StrCat("Category2: ##", output_str, "##");
-        }
-        return std::string("");
-      }));
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            absl::Span<const absl::string_view> input_span;
+            auto it = column_values.find("transcript");
+            if (it != column_values.end()) {
+              input_span = it->second;
+            } else {
+              input_span = column_values.at("input");
+            }
+            auto num_rows = input_span.size();
+            auto output_data = std::make_unique<MutableStringData>(num_rows);
+            for (int i = 0; i < num_rows; ++i) {
+              std::string reversed_val(input_span[i]);
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data).Add(absl::StrCat(reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({(int64_t)num_rows}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -423,13 +597,26 @@ TEST(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([](const std::string& prompt,
-                               const absl::string_view& column_value,
-                               const std::string& column_name) {
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        return absl::StrCat(prompt, "---", output_str);
-      }));
+      .WillByDefault(Invoke(
+          [](const Prompt& prompt,
+             const absl::flat_hash_map<std::string,
+                                       absl::Span<const absl::string_view>>&
+                 column_values,
+             const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            auto input_span = column_values.at("transcript");
+            auto num_rows = input_span.size();
+            auto output_data = std::make_unique<MutableStringData>(num_rows);
+            for (int i = 0; i < num_rows; ++i) {
+              std::string reversed_val(input_span[i]);
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data)
+                  .Add(absl::StrCat(prompt.prompt_template(), "---",
+                                    reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({(int64_t)num_rows}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -562,6 +749,52 @@ TEST(InferenceModelTest, RunInferenceInputColumnNotFound) {
           "Couldn't find an input column transcript to run inference on."));
 }
 
+TEST(InferenceModelTest, RunInferenceInputColumnNotFoundMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}, {{transcript2}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  std::initializer_list<absl::string_view> input_str_values = {"uno", "dos",
+                                                               "tres"};
+  absl::StatusOr<Tensor> input_str_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(input_str_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(input_str_values),
+      /*name=*/"input_str_col");
+  ASSERT_THAT(input_str_tensor, IsOk());
+  columns.push_back(std::move(*input_str_tensor));
+
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  auto status = inference_model.RunInference(columns);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr(
+          "Couldn't find an input column transcript to run inference on."));
+}
+
 TEST(InferenceModelTest, RunInferenceNoPrompt) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
@@ -572,6 +805,49 @@ TEST(InferenceModelTest, RunInferenceNoPrompt) {
       inference_task: {
         column_config {
           input_column_name: "transcript"
+          output_column_name: "topic"
+        }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  std::initializer_list<absl::string_view> transcript_values = {"one", "two",
+                                                                "three"};
+  absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(transcript_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+  columns.push_back(std::move(*transcript_tensor));
+
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  auto status = inference_model.RunInference(columns);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Prompt not found when running inference."));
+}
+
+TEST(InferenceModelTest, RunInferenceNoPromptMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
           output_column_name: "topic"
         }
       }
@@ -648,6 +924,49 @@ TEST(InferenceModelTest, RunInferenceNonStringColumn) {
               HasSubstr("Input column transcript is not of type STRING."));
 }
 
+TEST(InferenceModelTest, RunInferenceNonStringColumnMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}, {{transcript2}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  std::initializer_list<int64_t> transcript_values = {1, 2, 3};
+  absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
+      DataType::DT_INT64,
+      TensorShape({static_cast<int64_t>(transcript_values.size())}),
+      std::make_unique<MutableVectorData<int64_t>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+  columns.push_back(std::move(*transcript_tensor));
+
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+  auto status = inference_model.RunInference(columns);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Input column transcript is not of type STRING."));
+}
+
 TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
   MockInferenceModel inference_model = MockInferenceModel();
   ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
@@ -692,6 +1011,50 @@ TEST(InferenceModelTest, RunInferenceModelNotInitialized) {
               HasSubstr("Model must be initialized before running inference."));
 }
 
+TEST(InferenceModelTest, RunInferenceModelNotInitializedMultipleInputs) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript", "transcript2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}, {{transcript2}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "tokenizer_configuration_id"
+    }
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+  inference_configuration.gemma_configuration->tokenizer_path =
+      "/tmp/tokenizer";
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  // Prompt column.
+  std::initializer_list<absl::string_view> transcript_values = {"one", "two",
+                                                                "three"};
+  absl::StatusOr<Tensor> transcript_tensor = Tensor::Create(
+      DataType::DT_STRING,
+      TensorShape({static_cast<int64_t>(transcript_values.size())}),
+      std::make_unique<MutableVectorData<absl::string_view>>(transcript_values),
+      /*name=*/"transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+  columns.push_back(std::move(*transcript_tensor));
+
+  auto status = inference_model.RunInference(columns);
+  ASSERT_EQ(status.code(), absl::StatusCode::kUnimplemented);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Model must be initialized before running inference."));
+}
+
 TEST(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
   MockInferenceModel inference_model;
   ON_CALL(inference_model, BuildGemmaCppModel)
@@ -703,20 +1066,33 @@ TEST(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
             EXPECT_EQ(config.runtime_config().seq_len(), 10000);
           }));
   ON_CALL(inference_model, RunGemmaCppInference)
-      .WillByDefault(Invoke([&inference_model](
-                                const std::string& prompt,
-                                const absl::string_view& column_value,
-                                const std::string& column_name) {
-        const auto& config = inference_model.GetInferenceConfiguration()
-                                 ->initialize_configuration.inference_config();
-        EXPECT_EQ(config.runtime_config().max_prompt_size(), 100);
-        EXPECT_EQ(config.runtime_config().max_generated_tokens(), 50);
-        EXPECT_EQ(config.runtime_config().temperature_diff(), -0.5);
-
-        std::string output_str(column_value);
-        std::reverse(output_str.begin(), output_str.end());
-        return absl::StrCat(prompt, "---", output_str);
-      }));
+      .WillByDefault(Invoke(
+          [&inference_model](
+              const Prompt& prompt,
+              const absl::flat_hash_map<std::string,
+                                        absl::Span<const absl::string_view>>&
+                  column_values,
+              const std::string& output_column_name) -> absl::StatusOr<Tensor> {
+            const auto& config =
+                inference_model.GetInferenceConfiguration()
+                    ->initialize_configuration.inference_config();
+            EXPECT_EQ(config.runtime_config().max_prompt_size(), 100);
+            EXPECT_EQ(config.runtime_config().max_generated_tokens(), 50);
+            EXPECT_EQ(config.runtime_config().temperature_diff(), -0.5);
+            auto column_value = column_values.at("transcript");
+            int64_t tensor_size = column_value.size();
+            auto output_data = std::make_unique<MutableStringData>(tensor_size);
+            for (int i = 0; i < column_value.size(); ++i) {
+              std::string reversed_val(column_value.at(i));
+              std::reverse(reversed_val.begin(), reversed_val.end());
+              (*output_data)
+                  .Add(absl::StrCat(prompt.prompt_template(), "---",
+                                    reversed_val));
+            }
+            return Tensor::Create(DataType::DT_STRING,
+                                  TensorShape({tensor_size}),
+                                  std::move(output_data), output_column_name);
+          }));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(

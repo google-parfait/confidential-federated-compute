@@ -49,6 +49,8 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -124,6 +126,7 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::AnyOf;
@@ -276,8 +279,14 @@ class FedSqlServerTest : public Test {
     const std::string server_address = "[::1]:";
 
     ON_CALL(*mock_inference_model_, BuildGemmaCppModel).WillByDefault(Return());
-    ON_CALL(*mock_inference_model_, RunGemmaCppInference)
-        .WillByDefault(Return("topic_value"));
+    ON_CALL(*mock_inference_model_, RunGemmaCppInference).WillByDefault([]() {
+      std::initializer_list<absl::string_view> topic_values = {"topic_value"};
+      return Tensor::Create(
+          DataType::DT_STRING,
+          TensorShape({static_cast<int64_t>(topic_values.size())}),
+          std::make_unique<MutableVectorData<absl::string_view>>(topic_values),
+          /*name=*/"topic");
+    });
     auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
         EncryptionKeyProvider::Create().value());
     oak_client_encryptor_ =

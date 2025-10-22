@@ -53,7 +53,7 @@ class InferenceModel {
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
   absl::Status RunInference(
-      std::vector<tensorflow_federated::aggregation::Tensor>& columns);
+      std::vector<::tensorflow_federated::aggregation::Tensor>& columns);
   bool HasModel() const;
   const std::optional<SessionInferenceConfiguration>&
   GetInferenceConfiguration() const;
@@ -71,9 +71,14 @@ class InferenceModel {
   virtual void BuildGemmaCppModel(
       const SessionGemmaCppConfiguration& gemma_config);
 
-  virtual absl::StatusOr<std::string> RunGemmaCppInference(
-      const std::string& prompt, const absl::string_view& column_value,
-      const std::string& column_name);
+  // Runs inference with the gemma.cpp model using given prompt over all rows
+  // and returns a 1-D string tensor of results representing the output column.
+  virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
+  RunGemmaCppInference(
+      const ::fcp::confidentialcompute::Prompt& prompt,
+      const absl::flat_hash_map<
+          std::string, absl::Span<const absl::string_view>>& column_values,
+      const std::string& output_column_name);
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::variant<NoModel, GemmaCppModel> model_;

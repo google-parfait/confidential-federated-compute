@@ -41,6 +41,7 @@ cc_library(
     hdrs = ["mocks.h"],
     visibility = ["//containers/fed_sql:__pkg__"],
     deps = [
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@googletest//:gtest",
     ],
 )
