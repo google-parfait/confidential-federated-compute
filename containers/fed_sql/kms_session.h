@@ -33,6 +33,7 @@
 #include "containers/sql/row_set.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
+#include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
@@ -46,6 +47,14 @@ struct DpUnitParameters {
   // The column names that define the DP unit (not including the event time
   // or privacy id columns).
   std::vector<std::string> column_names;
+};
+
+// Interface for creating new protobuf messages.
+class MessageFactory {
+ public:
+  virtual ~MessageFactory() = default;
+  // Creates a new message instance.
+  virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
 };
 
 // FedSql implementation of Session interface that works in conjunction with the
@@ -65,7 +74,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       absl::string_view reencryption_policy_hash,
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
-      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle);
+      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::shared_ptr<MessageFactory> message_factory);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
@@ -172,6 +182,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
   // Parameters for the differential privacy unit.
   std::optional<DpUnitParameters> dp_unit_parameters_;
+  // Prototype for the logged message. Used to create dynamic messages from
+  // serialized message checkpoints.
+  std::shared_ptr<MessageFactory> message_factory_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

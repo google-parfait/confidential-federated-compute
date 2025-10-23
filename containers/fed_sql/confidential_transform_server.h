@@ -62,6 +62,10 @@ class FedSqlConfidentialTransform final
   absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) override;
 
+  // Set the logged message config based on the initialization configuration.
+  absl::Status SetAndValidateMessageFactory(
+      const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
+          config);
   //  Set the intrinsics based on the initialization configuration.
   absl::Status SetAndValidateIntrinsics(
       const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
@@ -115,6 +119,9 @@ class FedSqlConfidentialTransform final
   std::shared_ptr<PrivateState> private_state_;
   // Key ids that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_key_ids_;
+  // Configuration for the expected logged proto message. Set if the container
+  // is configured for serialized Message checkpoints.
+  std::shared_ptr<MessageFactory> message_factory_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

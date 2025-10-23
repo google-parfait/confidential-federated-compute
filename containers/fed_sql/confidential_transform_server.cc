@@ -22,6 +22,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -34,6 +35,9 @@
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "include/llama.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
@@ -56,6 +60,11 @@ using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::LlamaCppInitializeConfiguration;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FileDescriptorSet;
+using ::google::protobuf::Message;
 using ::google::protobuf::Struct;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
@@ -117,6 +126,65 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
   temp_file.close();
   return absl::OkStatus();
 }
+
+class MessageFactoryImpl : public MessageFactory {
+ public:
+  static absl::StatusOr<std::unique_ptr<MessageFactory>> Create(
+      const FileDescriptorSet& file_descriptor_set,
+      absl::string_view message_name) {
+    std::unique_ptr<DescriptorPool> descriptor_pool =
+        std::make_unique<DescriptorPool>();
+    for (const auto& file_descriptor_proto : file_descriptor_set.file()) {
+      if (descriptor_pool->BuildFile(file_descriptor_proto) == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to build file descriptor for ",
+                         file_descriptor_proto.name()));
+      }
+    }
+
+    const google::protobuf::Descriptor* message_descriptor =
+        descriptor_pool->FindMessageTypeByName(message_name);
+    if (message_descriptor == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not find message '", message_name,
+                       "' in the provided descriptor set."));
+    }
+    std::unique_ptr<DynamicMessageFactory> dynamic_message_factory =
+        std::make_unique<DynamicMessageFactory>(descriptor_pool.get());
+    const google::protobuf::Message* prototype =
+        dynamic_message_factory->GetPrototype(message_descriptor);
+    if (prototype == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not create prototype for message '", message_name,
+                       "' from the provided descriptor set."));
+    }
+    return absl::WrapUnique(
+        new MessageFactoryImpl(std::move(descriptor_pool),
+                               std::move(dynamic_message_factory), prototype));
+  }
+
+  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
+    return std::unique_ptr<google::protobuf::Message>(prototype_->New());
+  }
+
+ private:
+  explicit MessageFactoryImpl(
+      std::unique_ptr<DescriptorPool> descriptor_pool,
+      std::unique_ptr<DynamicMessageFactory> dynamic_message_factory,
+      const Message* prototype)
+      : descriptor_pool_(std::move(descriptor_pool)),
+        dynamic_message_factory_(std::move(dynamic_message_factory)),
+        prototype_(prototype) {}
+  // Holds the descriptor of the logged message. Must outlive the factory and
+  // prototype.
+  std::unique_ptr<DescriptorPool> descriptor_pool_;
+  // Factory for creating instances of the logged Message, whose type we don't
+  // know at compile time. Must outlive the prototype.
+  std::unique_ptr<DynamicMessageFactory> dynamic_message_factory_;
+  // Template for creating instances of the logged Message. It is only used by
+  // calling the New() method to get a new, mutable Message*.
+  const Message* prototype_;
+};
 
 }  // namespace
 
@@ -364,6 +432,34 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
   return absl::OkStatus();
 }
 
+absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
+    const FedSqlContainerInitializeConfiguration& fed_sql_config) {
+  absl::MutexLock l(&mutex_);
+  if (message_factory_ != nullptr) {
+    return absl::FailedPreconditionError(
+        "SetAndValidateMessageFactory can only be called once.");
+  }
+  if (!fed_sql_config.logged_message_descriptor_set().empty() &&
+      !fed_sql_config.logged_message_name().empty()) {
+    FileDescriptorSet descriptor_set;
+    if (!descriptor_set.ParseFromString(
+            fed_sql_config.logged_message_descriptor_set())) {
+      return absl::InvalidArgumentError(
+          "Failed to parse logged_message_descriptor_set.");
+    }
+    FCP_ASSIGN_OR_RETURN(
+        message_factory_,
+        MessageFactoryImpl::Create(descriptor_set,
+                                   fed_sql_config.logged_message_name()));
+  } else if (!fed_sql_config.logged_message_descriptor_set().empty() ||
+             !fed_sql_config.logged_message_name().empty()) {
+    return absl::InvalidArgumentError(
+        "Both logged_message_descriptor_set and logged_message_name must be "
+        "set if either is set.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
     const ::google::protobuf::Any& configuration,
     const ::google::protobuf::Any& config_constraints,
@@ -381,6 +477,7 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
   }
   FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(fed_sql_config));
   FCP_RETURN_IF_ERROR(ValidateConfigConstraints(fed_sql_config_constraints));
+  FCP_RETURN_IF_ERROR(SetAndValidateMessageFactory(fed_sql_config));
 
   FCP_RETURN_IF_ERROR(
       InitializePrivateState(fed_sql_config_constraints.access_budget()));
@@ -541,6 +638,7 @@ absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
 FedSqlConfidentialTransform::CreateSession() {
   std::unique_ptr<CheckpointAggregator> aggregator;
   const std::vector<Intrinsic>* intrinsics;
+  std::shared_ptr<MessageFactory> message_factory = nullptr;
   {
     absl::MutexLock l(&mutex_);
     if (intrinsics_ == std::nullopt) {
@@ -553,6 +651,10 @@ FedSqlConfidentialTransform::CreateSession() {
     // local pointer to it and access the object without a lock after we check
     // under the mutex that values have been set for the std::optional wrappers.
     intrinsics = &*intrinsics_;
+    // Like intrinsics_, message_factory_ is set once during initialization and
+    // is never modified. It is safe to copy the shared_ptr after we check that
+    // Initialize has been called.
+    message_factory = message_factory_;
   }
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
@@ -565,7 +667,7 @@ FedSqlConfidentialTransform::CreateSession() {
         std::move(aggregator), *intrinsics, inference_configuration_,
         dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
         reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
-        GetOakSigningKeyHandle());
+        GetOakSigningKeyHandle(), message_factory);
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_configuration_,

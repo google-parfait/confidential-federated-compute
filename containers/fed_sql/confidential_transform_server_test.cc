@@ -35,10 +35,14 @@
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/rpc/code.pb.h"
@@ -49,6 +53,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
@@ -68,9 +73,13 @@ using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::fed_sql::testing::
+    BuildMessageCheckpoint;
+using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -109,6 +118,12 @@ using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::TableSchema;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
 using ::google::protobuf::RepeatedPtrField;
 using ::google::rpc::Code;
 using ::grpc::ClientWriter;
@@ -126,6 +141,7 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
@@ -408,6 +424,183 @@ TEST_F(FedSqlServerTest, ValidStreamInitializeWithoutInferenceConfigs) {
 
   // Inference files shouldn't exist because no write_configuration is provided.
   ASSERT_FALSE(std::filesystem::exists("/tmp/write_configuration_1"));
+}
+
+// Create associated data so the FedSQL server is initialized with KMS.
+AuthorizeConfidentialTransformResponse::AssociatedData
+CreateFakeKmsAssociatedData() {
+  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+    intrinsic_uris: "fedsql_group_by")pb");
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  return associated_data;
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsAndMessageConfigSucceeds) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  MessageHelper message_helper;
+  google::protobuf::FileDescriptorSet descriptor_set;
+  message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
+  init_config.set_logged_message_descriptor_set(
+      descriptor_set.SerializeAsString());
+  init_config.set_logged_message_name(message_helper.message_name());
+
+  request.mutable_configuration()->PackFrom(init_config);
+
+  auto associated_data = CreateFakeKmsAssociatedData();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response =
+      PARSE_TEXT_PROTO(R"pb(
+        result_encryption_keys: "result_encryption_key"
+      )pb");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageDescriptorSetFails) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  MessageHelper message_helper;
+  google::protobuf::FileDescriptorSet descriptor_set;
+  message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
+  init_config.set_logged_message_descriptor_set(
+      descriptor_set.SerializeAsString());
+
+  request.mutable_configuration()->PackFrom(init_config);
+
+  auto associated_data = CreateFakeKmsAssociatedData();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response =
+      PARSE_TEXT_PROTO(R"pb(
+        result_encryption_keys: "result_encryption_key"
+      )pb");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Both logged_message_descriptor_set and "
+                         "logged_message_name must be set if either is set.")));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageNameFails) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+
+  const google::protobuf::Descriptor* descriptor =
+      fcp::confidentialcompute::InitializeRequest::descriptor();
+  init_config.set_logged_message_name(descriptor->full_name());
+
+  request.mutable_configuration()->PackFrom(init_config);
+
+  auto associated_data = CreateFakeKmsAssociatedData();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response =
+      PARSE_TEXT_PROTO(R"pb(
+        result_encryption_keys: "result_encryption_key"
+      )pb");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Both logged_message_descriptor_set and "
+                         "logged_message_name must be set if either is set.")));
+}
+
+TEST_F(FedSqlServerTest,
+       StreamInitializeWithKmsInvalidMessageDescriptorSetFails) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+
+  init_config.set_logged_message_descriptor_set("invalid descriptor set");
+  init_config.set_logged_message_name("some.message.Name");
+
+  request.mutable_configuration()->PackFrom(init_config);
+
+  auto associated_data = CreateFakeKmsAssociatedData();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response =
+      PARSE_TEXT_PROTO(R"pb(
+        result_encryption_keys: "result_encryption_key"
+      )pb");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Failed to parse logged_message_descriptor_set.")));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsMessageNameNotFoundFails) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  FedSqlContainerInitializeConfiguration init_config;
+  *init_config.mutable_agg_configuration() = DefaultConfiguration();
+  MessageHelper message_helper;
+  google::protobuf::FileDescriptorSet descriptor_set;
+  message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
+  init_config.set_logged_message_descriptor_set(
+      descriptor_set.SerializeAsString());
+  init_config.set_logged_message_name("some.nonexistent.Message");
+
+  request.mutable_configuration()->PackFrom(init_config);
+
+  auto associated_data = CreateFakeKmsAssociatedData();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response =
+      PARSE_TEXT_PROTO(R"pb(
+        result_encryption_keys: "result_encryption_key"
+      )pb");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Could not find message 'some.nonexistent.Message' "
+                         "in the provided descriptor set.")));
 }
 
 TEST_F(FedSqlServerTest, InvalidStreamInitializeRequest) {
@@ -1301,26 +1494,6 @@ TEST_F(FedSqlServerTest, CreateSessionWithKmsEnabledSucceeds) {
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(configure_request));
-}
-
-std::string BuildFedSqlGroupByStringKeyCheckpoint(
-    std::initializer_list<absl::string_view> key_col_values,
-    std::string key_col_name) {
-  FederatedComputeCheckpointBuilderFactory builder_factory;
-  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
-
-  absl::StatusOr<Tensor> key =
-      Tensor::Create(DataType::DT_STRING,
-                     TensorShape({static_cast<int64_t>(key_col_values.size())}),
-                     CreateTestData<absl::string_view>(key_col_values));
-  CHECK_OK(key);
-  CHECK_OK(ckpt_builder->Add(key_col_name, *key));
-  auto checkpoint = ckpt_builder->Build();
-  CHECK_OK(checkpoint.status());
-
-  std::string checkpoint_string;
-  absl::CopyCordToString(*checkpoint, &checkpoint_string);
-  return checkpoint_string;
 }
 
 std::string BuildSensitiveGroupByCheckpoint(
@@ -2225,6 +2398,149 @@ TEST_F(InitializedFedSqlServerKmsTest, SessionWriteRequestInvalidPolicyHash) {
   ASSERT_TRUE(stream_->Read(&response));
   ASSERT_EQ(response.write().status().code(), Code::INVALID_ARGUMENT)
       << response.write().status().message();
+}
+
+class InitializedFedSqlServerKmsWithMessagesTest : public FedSqlServerTest {
+ public:
+  InitializedFedSqlServerKmsWithMessagesTest() : FedSqlServerTest() {
+    grpc::ClientContext context;
+    InitializeRequest request;
+    InitializeResponse response;
+    FedSqlContainerInitializeConfiguration init_config;
+    *init_config.mutable_agg_configuration() = DefaultConfiguration();
+
+    MessageHelper message_helper;
+    google::protobuf::FileDescriptorSet descriptor_set;
+    message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
+    init_config.set_logged_message_descriptor_set(
+        descriptor_set.SerializeAsString());
+    init_config.set_logged_message_name(message_helper.message_name());
+
+    request.mutable_configuration()->PackFrom(init_config);
+    request.set_max_num_sessions(kMaxNumSessions);
+
+    auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+    public_key_ = public_private_key_pair.first;
+
+    FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
+      intrinsic_uris: "fedsql_group_by"
+      access_budget { times: 5 }
+    )pb");
+    AuthorizeConfidentialTransformResponse::ProtectedResponse
+        protected_response;
+    // Add 2 re-encryption keys - Merge and Report.
+    protected_response.add_result_encryption_keys(public_key_);
+    protected_response.add_result_encryption_keys(public_key_);
+    protected_response.add_decryption_keys(public_private_key_pair.second);
+    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+    associated_data.add_authorized_logical_pipeline_policies_hashes(
+        allowed_policy_hash_);
+    associated_data.add_omitted_decryption_key_ids("foo");
+    auto encrypted_request =
+        oak_client_encryptor_
+            ->Encrypt(protected_response.SerializeAsString(),
+                      associated_data.SerializeAsString())
+            .value();
+    *request.mutable_protected_response() = encrypted_request;
+
+    auto writer = stub_->StreamInitialize(&context, &response);
+    BudgetState budget_state =
+        PARSE_TEXT_PROTO(R"pb(buckets { key: "expired_key" budget: 3 }
+                              buckets { key: "foo" budget: 3 })pb");
+    EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
+                                          budget_state.SerializeAsString()));
+    EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+                IsOk());
+
+    SessionRequest session_request;
+    SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(1000);
+    TableSchema schema = CreateTableSchema(
+        "input",
+        "CREATE TABLE input (key INTEGER, val INTEGER, "
+        "confidential_compute_event_time STRING)",
+        {CreateColumnSchema("key", google::internal::federated::plan::INT64),
+         CreateColumnSchema("val", google::internal::federated::plan::INT64),
+         CreateColumnSchema("confidential_compute_event_time",
+                            google::internal::federated::plan::STRING)});
+    SqlQuery query = CreateSqlQuery(
+        schema, "SELECT key, val FROM input",
+        {CreateColumnSchema("key", google::internal::federated::plan::INT64),
+         CreateColumnSchema("val", google::internal::federated::plan::INT64)});
+    session_request.mutable_configure()->mutable_configuration()->PackFrom(
+        query);
+
+    stream_ = stub_->Session(&session_context_);
+    CHECK(stream_->Write(session_request));
+    CHECK(stream_->Read(&session_response));
+  }
+
+  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
+      std::string message, std::string associated_data) {
+    MessageEncryptor encryptor;
+    absl::StatusOr<EncryptMessageResult> encrypt_result =
+        encryptor.Encrypt(message, public_key_, associated_data);
+    CHECK(encrypt_result.ok()) << encrypt_result.status();
+
+    BlobMetadata metadata;
+    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+    metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
+    BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+        metadata.mutable_hpke_plus_aead_data();
+    encryption_metadata->set_ciphertext_associated_data(associated_data);
+    encryption_metadata->set_encrypted_symmetric_key(
+        encrypt_result.value().encrypted_symmetric_key);
+    encryption_metadata->set_encapsulated_public_key(
+        encrypt_result.value().encapped_key);
+    encryption_metadata->mutable_kms_symmetric_key_associated_data()
+        ->set_record_header(associated_data);
+
+    return {metadata, encrypt_result.value().ciphertext};
+  }
+
+ protected:
+  grpc::ClientContext session_context_;
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream_;
+  std::string key_id_ = "key_id";
+  std::string allowed_policy_hash_ = "hash_1";
+  std::string public_key_;
+};
+
+TEST_F(InitializedFedSqlServerKmsWithMessagesTest, SessionWriteRequestSuccess) {
+  MessageHelper message_helper;
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back(
+      message_helper.CreateMessage(8, 1)->SerializeAsString());
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
+  absl::StatusOr<std::string> message = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times));
+  ASSERT_THAT(message, IsOk());
+
+  BlobHeader header;
+  header.set_blob_id("blob_id");
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256(allowed_policy_hash_);
+  auto [metadata, ciphertext] =
+      EncryptWithKmsKeys(*message, header.SerializeAsString());
+
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream_->Write(request));
+  ASSERT_TRUE(stream_->Read(&response));
+  ASSERT_EQ(response.write().status().code(), Code::OK)
+      << response.write().status().message();
+  ASSERT_EQ(response.write().committed_size_bytes(), ciphertext.size());
 }
 
 class FedSqlGroupByTest : public FedSqlServerTest {

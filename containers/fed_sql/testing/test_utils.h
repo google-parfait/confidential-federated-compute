@@ -17,6 +17,11 @@
 
 #include <string>
 
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/message.h"
+
 namespace confidential_federated_compute::fed_sql::testing {
 
 std::string BuildFedSqlGroupByCheckpoint(
@@ -24,6 +29,38 @@ std::string BuildFedSqlGroupByCheckpoint(
     std::initializer_list<uint64_t> val_col_values,
     const std::string& key_col_name = "key",
     const std::string& val_col_name = "val");
+
+// A helper class to create test protobuf messages.
+// The test proto message is defined as:
+//
+// message TestMessage {
+//   int64 key = 1;
+//   int64 val = 2;
+// }
+class MessageHelper {
+ public:
+  MessageHelper();
+  ~MessageHelper() = default;
+
+  std::unique_ptr<google::protobuf::Message> CreateMessage(int64_t key,
+                                                           int64_t val);
+
+  const google::protobuf::Message* prototype() const;
+  const google::protobuf::FileDescriptor* file_descriptor() const;
+  absl::string_view message_name() const;
+
+ private:
+  google::protobuf::DescriptorPool pool_;
+  const google::protobuf::Descriptor* descriptor_ = nullptr;
+  google::protobuf::DynamicMessageFactory factory_;
+  const google::protobuf::Message* prototype_ = nullptr;
+};
+
+// Helper to create a checkpoint with a serialized message tensor and an
+// event_time tensor.
+absl::StatusOr<std::string> BuildMessageCheckpoint(
+    std::vector<std::string> serialized_messages,
+    std::vector<std::string> event_times);
 
 }  // namespace confidential_federated_compute::fed_sql::testing
 

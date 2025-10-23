@@ -34,9 +34,11 @@
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
@@ -57,6 +59,8 @@ using ::confidential_federated_compute::sql::RowLocation;
 using ::confidential_federated_compute::sql::RowSet;
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::kEventTimeColumnName;
+using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
@@ -81,6 +85,7 @@ using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::protobuf::Message;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
@@ -124,6 +129,44 @@ BlobMetadata CreateBlobMetadata(const EncryptMessageResult& encrypted_message,
       ->set_record_header(std::string(associated_data));
   return metadata;
 }
+
+absl::StatusOr<Input> CreateInputFromMessageCheckpoint(
+    BlobHeader blob_header, CheckpointParser* checkpoint,
+    MessageFactory& message_factory) {
+  FCP_ASSIGN_OR_RETURN(Tensor entry_tensor,
+                       checkpoint->GetTensor(kPrivateLoggerEntryKey));
+  if (entry_tensor.dtype() !=
+      tensorflow_federated::aggregation::DataType::DT_STRING) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "`%s` tensor must be a string tensor", kPrivateLoggerEntryKey));
+  }
+  FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
+                       checkpoint->GetTensor(kEventTimeColumnName));
+  if (time_tensor.dtype() !=
+      tensorflow_federated::aggregation::DataType::DT_STRING) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "`%s` tensor must be a string tensor", kEventTimeColumnName));
+  }
+
+  std::vector<std::unique_ptr<google::protobuf::Message>> messages;
+  messages.reserve(entry_tensor.num_elements());
+  for (const absl::string_view entry :
+       entry_tensor.AsSpan<absl::string_view>()) {
+    std::unique_ptr<google::protobuf::Message> message(
+        message_factory.NewMessage());
+    if (!message->ParseFromArray(entry.data(), entry.size())) {
+      return absl::InvalidArgumentError("Failed to parse proto");
+    }
+    messages.push_back(std::move(message));
+  }
+
+  std::vector<Tensor> system_columns;
+  system_columns.reserve(1);
+  system_columns.push_back(std::move(time_tensor));
+  return Input::CreateFromMessages(std::move(messages),
+                                   std::move(system_columns), blob_header);
+}
+
 }  // namespace
 
 KmsFedSqlSession::KmsFedSqlSession(
@@ -137,7 +180,8 @@ KmsFedSqlSession::KmsFedSqlSession(
     absl::string_view reencryption_policy_hash,
     std::shared_ptr<PrivateState> private_state,
     const absl::flat_hash_set<std::string>& expired_key_ids,
-    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
+    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+    std::shared_ptr<MessageFactory> message_factory)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       sensitive_values_key_(sensitive_values_key),
@@ -145,7 +189,8 @@ KmsFedSqlSession::KmsFedSqlSession(
       reencryption_policy_hash_(reencryption_policy_hash),
       private_state_(std::move(private_state)),
       signing_key_handle_(signing_key_handle),
-      dp_unit_parameters_(dp_unit_parameters) {
+      dp_unit_parameters_(dp_unit_parameters),
+      message_factory_(std::move(message_factory)) {
   CHECK(reencryption_keys_.size() == 2)
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
@@ -291,14 +336,28 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         "Failed to deserialize checkpoint for AGGREGATION_TYPE_ACCUMULATE: ",
         parser.status()));
   }
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<Tensor> contents,
-      Deserialize(sql_configuration_->input_schema, parser->get(),
-                  inference_model_.GetInferenceConfiguration()));
-  FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-  if (inference_model_.HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
+  absl::StatusOr<Input> input;
+  if (message_factory_ != nullptr) {
+    input = CreateInputFromMessageCheckpoint(blob_header, parser->get(),
+                                             *message_factory_);
+    // TODO: handle inference and sensitive columns for Message checkpoints.
+  } else {
+    FCP_ASSIGN_OR_RETURN(
+        std::vector<Tensor> contents,
+        Deserialize(sql_configuration_->input_schema, parser->get(),
+                    inference_model_.GetInferenceConfiguration()));
+    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
+    if (inference_model_.HasModel()) {
+      FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
+    }
+    input = Input::CreateFromTensors(std::move(contents), blob_header);
   }
+  if (!input.ok()) {
+    return ToWriteFinishedResponse(PrependMessage(
+        "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
+        input.status()));
+  }
+
   // TODO: Calculate the DP unit for each row in the blob and add a RowLocation
   // to uncommitted_row_locations_ to track it.
 
@@ -307,15 +366,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     return ToWriteFinishedResponse(
         absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
   }
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(contents), blob_header);
-  if (!input.ok()) {
-    return ToWriteFinishedResponse(PrependMessage(
-        "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
-        input.status()));
-  }
 
-  uncommitted_inputs_.push_back(std::move(*input));
+  uncommitted_inputs_.push_back(*std::move(input));
 
   return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
 }

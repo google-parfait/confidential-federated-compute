@@ -29,15 +29,20 @@
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/rpc/code.pb.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
@@ -54,6 +59,10 @@ using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::fed_sql::testing::
+    BuildMessageCheckpoint;
+using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
+using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -70,6 +79,12 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
 using ::google::protobuf::Value;
 using ::google::rpc::Code;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
@@ -81,6 +96,8 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::MutableStringData;
+using ::tensorflow_federated::aggregation::Tensor;
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Eq;
@@ -152,7 +169,7 @@ KmsFedSqlSession CreateDefaultSession() {
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
       "reencryption_policy_hash", CreatePrivateState("", 1), {},
-      mock_signing_key_handle);
+      mock_signing_key_handle, /*prototype=*/nullptr);
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -292,7 +309,8 @@ class KmsFedSqlSessionWriteTest : public Test {
                                  report_public_private_key_pair.first},
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(), mock_signing_key_handle_);
+        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        /*prototype=*/nullptr);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1053,7 +1071,8 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
                                  report_public_private_key_pair_.first},
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(), mock_signing_key_handle_);
+        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        /*prototype=*/nullptr);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1220,6 +1239,246 @@ TEST_F(KmsFedSqlSessionWritePartialRangeTest, AccumulateOverlappingBlobFails) {
   auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::FAILED_PRECONDITION);
+}
+
+class TestMessageFactory : public MessageFactory {
+ public:
+  explicit TestMessageFactory(const google::protobuf::Message* prototype)
+      : prototype_(prototype) {}
+
+  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
+    return std::unique_ptr<google::protobuf::Message>(prototype_->New());
+  }
+
+ private:
+  const google::protobuf::Message* prototype_;
+};
+
+class KmsFedSqlSessionWriteWithMessageTest : public Test {
+ public:
+  KmsFedSqlSessionWriteWithMessageTest() {
+    merge_public_private_key_pair_ =
+        crypto_test_utils::GenerateKeyPair("merge");
+    report_public_private_key_pair_ =
+        crypto_test_utils::GenerateKeyPair("report");
+    message_decryptor_ = std::make_unique<MessageDecryptor>(
+        /*config_properties=*/"",
+        std::vector<absl::string_view>(
+            {merge_public_private_key_pair_.second,
+             report_public_private_key_pair_.second}));
+    intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
+                      DefaultConfiguration())
+                      .value();
+    std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
+        CheckpointAggregator::Create(DefaultConfiguration()).value();
+    BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
+      buckets { key: "key_foo" budget: 1 }
+      buckets { key: "key_bar" budget: 3 }
+      buckets { key: "key_baz" budget: 0 }
+    )pb");
+    initial_private_state_ = budget_state.SerializeAsString();
+    session_ = std::make_unique<KmsFedSqlSession>(
+        std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
+        std::nullopt, "sensitive_values_key",
+        std::vector<std::string>{merge_public_private_key_pair_.first,
+                                 report_public_private_key_pair_.first},
+        "reencryption_policy_hash",
+        CreatePrivateState(initial_private_state_, 5),
+        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        std::make_shared<TestMessageFactory>(message_helper_.prototype()));
+    ConfigureRequest request;
+    // The input table will have columns "key" and "val" (from message) and
+    // "confidential_compute_event_time" (system column). The aggregator expects
+    // "key" and "val".
+    SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+      raw_sql: "SELECT key, val * 2 AS val FROM input"
+      database_schema {
+        table {
+          name: "input"
+          column { name: "key" type: INT64 }
+          column { name: "val" type: INT64 }
+          column { name: "confidential_compute_event_time" type: STRING }
+          create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER, "
+                            "confidential_compute_event_time STRING)"
+        }
+      }
+      output_columns { name: "key" type: INT64 }
+      output_columns { name: "val" type: INT64 }
+    )pb");
+    request.mutable_configuration()->PackFrom(sql_query);
+    CHECK_OK(session_->Configure(request, context_));
+  }
+
+ protected:
+  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
+    BlobHeader blob_header;
+    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                    .kms_symmetric_key_associated_data()
+                                    .record_header());
+    CHECK(blob_header.access_policy_sha256() == "reencryption_policy_hash");
+    auto decrypted = message_decryptor_->Decrypt(
+        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+        metadata.hpke_plus_aead_data()
+            .kms_symmetric_key_associated_data()
+            .record_header(),
+        metadata.hpke_plus_aead_data().encapsulated_public_key(),
+        blob_header.key_id());
+    CHECK_OK(decrypted.status());
+    return decrypted.value();
+  }
+
+  void ExpectReadResponse(ReadResponse& read_response) {
+    EXPECT_CALL(context_, Emit).WillOnce([&](ReadResponse response) {
+      read_response = std::move(response);
+      return true;
+    });
+  }
+
+  MessageHelper message_helper_;
+  std::unique_ptr<KmsFedSqlSession> session_;
+  std::vector<Intrinsic> intrinsics_;
+  std::unique_ptr<MessageDecryptor> message_decryptor_;
+  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
+      std::make_shared<MockSigningKeyHandle>();
+  std::string initial_private_state_;
+  std::pair<std::string, std::string> merge_public_private_key_pair_;
+  std::pair<std::string, std::string> report_public_private_key_pair_;
+  MockContext context_;
+};
+
+TEST_F(KmsFedSqlSessionWriteWithMessageTest,
+       AccumulateCommitSerializeSucceeds) {
+  // 1. Create checkpoint with serialized messages
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back(
+      message_helper_.CreateMessage(8, 1)->SerializeAsString());
+  serialized_messages.push_back(
+      message_helper_.CreateMessage(8, 2)->SerializeAsString());
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z",
+                                          "2023-01-01T00:00:01Z"};
+
+  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times));
+  ASSERT_THAT(data, IsOk());
+
+  // 2. Write, Commit, Finalize, Verify
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(*data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, *data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 1);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  ReadResponse read_response;
+  ExpectReadResponse(read_response);
+
+  ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
+
+  auto result_data =
+      Decrypt(read_response.first_response_metadata(), read_response.data());
+  ASSERT_THAT(UnbundleRangeTracker(result_data), IsOk());
+  absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
+      CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
+  ASSERT_THAT(deserialized_agg, IsOk());
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+      builder_factory.Create();
+  ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(*checkpoint);
+  auto col_values = (*parser)->GetTensor("val_out");
+  // The query doubles each element of the val column and sums them.
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+}
+
+TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
+  // 1. Create checkpoint with serialized messages
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back(
+      message_helper_.CreateMessage(8, 1)->SerializeAsString());
+  serialized_messages.push_back(
+      message_helper_.CreateMessage(8, 2)->SerializeAsString());
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z",
+                                          "2023-01-01T00:00:01Z"};
+
+  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times));
+  ASSERT_THAT(data, IsOk());
+
+  // 2. Write, Commit
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(*data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, *data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 1);
+
+  // 3. Finalize and Verify
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  oak::crypto::v1::Signature fake_signature;
+  fake_signature.set_signature("signature");
+  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
+      .WillOnce(Return(fake_signature));
+  ReadResponse read_response;
+  ExpectReadResponse(read_response);
+
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  auto result_data =
+      Decrypt(read_response.first_response_metadata(), read_response.data());
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  ASSERT_THAT(parser, IsOk());
+  auto col_values = (*parser)->GetTensor("val_out");
+  ASSERT_EQ(col_values->num_elements(), 1);
+  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
+  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
 }
 
 }  // namespace
