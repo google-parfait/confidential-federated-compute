@@ -60,15 +60,20 @@ CreateLeafExecutorFactory(
   };
 }
 
+bool IsHandshakeRequest(const SessionRequest& session_request) {
+  return session_request.has_attest_request() ||
+         session_request.has_handshake_request();
+}
+
 }  // namespace
 
 NoiseLeafExecutor::NoiseLeafExecutor(
-    std::unique_ptr<oak::session::ServerSession> server_session,
+    std::function<oak::session::SessionConfig*()> session_config_fn,
     std::function<absl::StatusOr<std::shared_ptr<Executor>>()>
         leaf_executor_factory)
-    : server_session_(std::move(server_session)),
-      executor_service_(std::make_unique<tensorflow_federated::ExecutorService>(
-          CreateLeafExecutorFactory(leaf_executor_factory))) {}
+    : executor_service_(std::make_unique<tensorflow_federated::ExecutorService>(
+          CreateLeafExecutorFactory(leaf_executor_factory))),
+      session_config_fn_(session_config_fn) {}
 
 absl::StatusOr<PlaintextMessage> NoiseLeafExecutor::DecryptRequest(
     const SessionRequest& session_request) {
@@ -93,6 +98,35 @@ absl::StatusOr<SessionResponse> NoiseLeafExecutor::EncryptResult(
   return session_response.value();
 }
 
+absl::StatusOr<std::optional<SessionResponse>>
+NoiseLeafExecutor::HandleHandshakeRequest(
+    const SessionRequest& session_request) {
+  if (server_session_ == nullptr || server_session_->IsOpen()) {
+    // Create a new session in two cases:
+    // (1) The session doesn't exist.
+    // (2) If a handshake request is received on an already-open session, close
+    // the old session and create a new one. This handles cases where a client
+    // restarts and reconnects.
+    auto* session_config = session_config_fn_();
+    FCP_ASSIGN_OR_RETURN(server_session_,
+                         oak::session::ServerSession::Create(session_config));
+  }
+
+  auto put_incoming_message_status =
+      server_session_->PutIncomingMessage(session_request);
+  if (!put_incoming_message_status.ok()) {
+    server_session_ = nullptr;
+    return put_incoming_message_status;
+  }
+  absl::StatusOr<std::optional<SessionResponse>> session_response =
+      server_session_->GetOutgoingMessage();
+  if (!session_response.ok()) {
+    server_session_ = nullptr;
+    return session_response.status();
+  }
+  return session_response.value();
+}
+
 grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
                                         ComputationResponse* response) {
   SessionRequest session_request;
@@ -102,15 +136,9 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
         "ComputationRequest cannot be unpacked to noise SessionRequest.");
   }
 
-  // Perform handshake until the channel is open.
-  if (!server_session_->IsOpen()) {
-    auto put_incoming_message_status =
-        server_session_->PutIncomingMessage(session_request);
-    if (!put_incoming_message_status.ok()) {
-      return ToGrpcStatus(put_incoming_message_status);
-    }
-    absl::StatusOr<std::optional<SessionResponse>> session_response =
-        server_session_->GetOutgoingMessage();
+  // Handle the handshake request.
+  if (IsHandshakeRequest(session_request)) {
+    auto session_response = HandleHandshakeRequest(session_request);
     if (!session_response.ok()) {
       return ToGrpcStatus(session_response.status());
     }

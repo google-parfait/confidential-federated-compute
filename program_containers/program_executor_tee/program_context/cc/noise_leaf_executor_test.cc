@@ -114,11 +114,8 @@ class NoiseLeafExecutorTest : public Test {
  public:
   NoiseLeafExecutorTest() {
     init_tokio_runtime();
-    auto server_session =
-        oak::session::ServerSession::Create(TestConfigAttestedNNServer());
-    CHECK_OK(server_session);
-    auto executor = NoiseLeafExecutor::Create(std::move(server_session.value()),
-                                              CreateExecutor);
+    auto executor =
+        NoiseLeafExecutor::Create(TestConfigAttestedNNServer, CreateExecutor);
     CHECK_OK(executor);
     executor_ = std::move(executor.value());
   }
@@ -190,6 +187,89 @@ class NoiseLeafExecutorTest : public Test {
  protected:
   std::unique_ptr<NoiseLeafExecutor> executor_;
 };
+
+TEST_F(NoiseLeafExecutorTest, ReconnectsAndCanContinue) {
+  // Create a client session and do a handshake.
+  auto client_session1_or = CreateClientSessionAndDoHandshake();
+  ASSERT_TRUE(client_session1_or.ok());
+  auto client_session1 = std::move(client_session1_or.value());
+
+  // Use the session to ensure it's working.
+  {
+    executor_wrapper::ExecutorGroupRequest request;
+    *request.mutable_get_executor_request() = GetExecutorRequest(kNumClients);
+    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
+        MakeExecutorGroupRequest(request, client_session1.get());
+    ASSERT_TRUE(response.ok());
+  }
+
+  // Simulate a reconnect by sending a handshake request on an established
+  // session. The server will close the existing session and open a new one.
+  auto client_session2_or = ClientSession::Create(TestConfigAttestedNNClient());
+  ASSERT_TRUE(client_session2_or.ok());
+  auto client_session2 = std::move(client_session2_or.value());
+
+  auto reconnect_req_or = client_session2->GetOutgoingMessage();
+  ASSERT_TRUE(reconnect_req_or.ok());
+  auto reconnect_req = reconnect_req_or.value();
+  ASSERT_TRUE(reconnect_req.has_value());
+
+  ComputationRequest request;
+  request.mutable_computation()->PackFrom(*reconnect_req);
+  ComputationResponse response;
+  ASSERT_TRUE(executor_->Execute(&request, &response).ok());
+
+  // Complete the handshake for the new session.
+  if (response.has_result()) {
+    SessionResponse init_response;
+    ASSERT_TRUE(response.result().UnpackTo(&init_response));
+    ASSERT_TRUE(client_session2->PutIncomingMessage(init_response).ok());
+  }
+
+  while (!client_session2->IsOpen()) {
+    auto init_request_or = client_session2->GetOutgoingMessage();
+    ASSERT_TRUE(init_request_or.ok());
+    auto init_request = init_request_or.value();
+    ASSERT_TRUE(init_request.has_value());
+    ComputationRequest inner_request;
+    inner_request.mutable_computation()->PackFrom(*init_request);
+    ComputationResponse inner_response;
+    ASSERT_TRUE(executor_->Execute(&inner_request, &inner_response).ok());
+    if (inner_response.has_result()) {
+      SessionResponse init_response;
+      ASSERT_TRUE(inner_response.result().UnpackTo(&init_response));
+      ASSERT_TRUE(client_session2->PutIncomingMessage(init_response).ok());
+    }
+  }
+
+  // Make sure we can continue to use the service with the new session.
+  // Create an executor.
+  std::string executor_id;
+  {
+    executor_wrapper::ExecutorGroupRequest request;
+    *request.mutable_get_executor_request() = GetExecutorRequest(kNumClients);
+    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
+        MakeExecutorGroupRequest(request, client_session2.get());
+    ASSERT_TRUE(response.ok());
+    ASSERT_TRUE(response->has_get_executor_response());
+    executor_id = response->get_executor_response().executor().id();
+    ASSERT_FALSE(executor_id.empty());
+  }
+
+  // Create the value 2.
+  {
+    executor_wrapper::ExecutorGroupRequest request;
+    *request.mutable_create_value_request() =
+        CreateIntValueRequest(executor_id, 2);
+    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
+        MakeExecutorGroupRequest(request, client_session2.get());
+    ASSERT_TRUE(response.ok());
+    ASSERT_TRUE(response->has_create_value_response());
+    std::string value_two_ref =
+        response->create_value_response().value_ref().id();
+    ASSERT_FALSE(value_two_ref.empty());
+  }
+}
 
 TEST_F(NoiseLeafExecutorTest, Success) {
   auto client_session = CreateClientSessionAndDoHandshake();

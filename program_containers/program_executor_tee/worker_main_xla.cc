@@ -60,10 +60,9 @@ CreateExecutor() {
 void RunServer() {
   std::string server_address("[::]:8080");
 
-  // Initialize the Rust runtime to create the session config.
   init_tokio_runtime();
-  auto* session_config = create_session_config();
-  auto service = ProgramWorkerTee::Create(session_config, CreateExecutor);
+  auto service =
+      ProgramWorkerTee::Create(create_session_config, CreateExecutor);
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
 
