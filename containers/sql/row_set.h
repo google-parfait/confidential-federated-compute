@@ -116,7 +116,7 @@ class RowSet {
     return RowSet(locations_.subspan(pos, count), storage_);
   }
 
-  absl::StatusOr<absl::Span<const std::string>> GetColumnNames() const;
+  absl::Span<const std::string> GetColumnNames() const;
 
  private:
   RowSet(absl::Span<const RowLocation> locations,

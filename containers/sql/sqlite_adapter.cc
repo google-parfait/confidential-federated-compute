@@ -327,8 +327,7 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
 
   // Insert each row into the table, using parameterized query syntax:
   // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ...), (?, ?, ...), ...;
-  FCP_ASSIGN_OR_RETURN(absl::Span<const std::string> column_names,
-                       rows.GetColumnNames());
+  absl::Span<const std::string> column_names = rows.GetColumnNames();
   std::string row_template = absl::StrFormat(
       "(%s)",
       absl::StrJoin(std::vector<std::string>(column_names.size(), "?"), ", "));
