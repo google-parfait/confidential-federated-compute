@@ -34,15 +34,13 @@ using ::grpc::ServerContext;
 using ::grpc::Status;
 
 absl::StatusOr<std::unique_ptr<ProgramWorkerTee>> ProgramWorkerTee::Create(
-    oak::session::SessionConfig* session_config,
+    std::function<oak::session::SessionConfig*()> session_config_fn,
     std::function<
         absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
         leaf_executor_factory) {
-  FCP_ASSIGN_OR_RETURN(auto server_session,
-                       oak::session::ServerSession::Create(session_config));
-  FCP_ASSIGN_OR_RETURN(auto noise_leaf_executor,
-                       NoiseLeafExecutor::Create(std::move(server_session),
-                                                 leaf_executor_factory));
+  FCP_ASSIGN_OR_RETURN(
+      auto noise_leaf_executor,
+      NoiseLeafExecutor::Create(session_config_fn, leaf_executor_factory));
   return absl::WrapUnique(new ProgramWorkerTee(std::move(noise_leaf_executor)));
 }
 

@@ -99,10 +99,8 @@ FakeComputationDelegationService::FakeComputationDelegationService(
         absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
         leaf_executor_factory) {
   for (const auto& worker_bns : worker_bns) {
-    auto server_session = ServerSession::Create(TestConfigAttestedNNServer());
-    CHECK_OK(server_session);
     auto noise_leaf_executor = NoiseLeafExecutor::Create(
-        std::move(server_session.value()), leaf_executor_factory);
+        TestConfigAttestedNNServer, leaf_executor_factory);
     CHECK_OK(noise_leaf_executor);
     noise_leaf_executors_[worker_bns] = std::move(noise_leaf_executor.value());
   }

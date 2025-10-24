@@ -32,12 +32,12 @@ namespace confidential_federated_compute::program_executor_tee {
 class NoiseLeafExecutor {
  public:
   static absl::StatusOr<std::unique_ptr<NoiseLeafExecutor>> Create(
-      std::unique_ptr<oak::session::ServerSession> server_session,
+      std::function<oak::session::SessionConfig*()> session_config_fn,
       std::function<
           absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
           leaf_executor_factory) {
-    return absl::WrapUnique(new NoiseLeafExecutor(std::move(server_session),
-                                                  leaf_executor_factory));
+    return absl::WrapUnique(
+        new NoiseLeafExecutor(session_config_fn, leaf_executor_factory));
   }
 
   grpc::Status Execute(
@@ -46,7 +46,7 @@ class NoiseLeafExecutor {
 
  private:
   explicit NoiseLeafExecutor(
-      std::unique_ptr<oak::session::ServerSession> server_session,
+      std::function<oak::session::SessionConfig*()> session_config_fn,
       std::function<
           absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
           leaf_executor_factory);
@@ -57,8 +57,13 @@ class NoiseLeafExecutor {
   absl::StatusOr<oak::session::v1::SessionResponse> EncryptResult(
       const oak::session::v1::PlaintextMessage& plaintext_response);
 
+  absl::StatusOr<std::optional<oak::session::v1::SessionResponse>>
+  HandleHandshakeRequest(
+      const oak::session::v1::SessionRequest& session_request);
+
   std::unique_ptr<oak::session::ServerSession> server_session_;
   std::unique_ptr<tensorflow_federated::ExecutorService> executor_service_;
+  std::function<oak::session::SessionConfig*()> session_config_fn_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

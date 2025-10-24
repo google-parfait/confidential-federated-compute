@@ -32,7 +32,7 @@ class ProgramWorkerTee
     : public fcp::confidentialcompute::ProgramWorker::Service {
  public:
   static absl::StatusOr<std::unique_ptr<ProgramWorkerTee>> Create(
-      oak::session::SessionConfig* session_config,
+      std::function<oak::session::SessionConfig*()> session_config_fn,
       std::function<
           absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
           leaf_executor_factory);
