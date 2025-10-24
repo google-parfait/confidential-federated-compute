@@ -535,7 +535,8 @@ where
         )
         .await
         .map_err(Self::convert_error)?;
-        Ok(Response::new(DeriveKeysResponse { public_keys }))
+        // TODO: b/454946443 - Populate signed_public_keys.
+        Ok(Response::new(DeriveKeysResponse { public_keys, signed_public_keys: vec![] }))
     }
 
     async fn get_logical_pipeline_state(
