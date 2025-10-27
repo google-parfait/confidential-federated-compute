@@ -231,8 +231,7 @@ TEST_F(TensorRowSetTest, GetColumnNames) {
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_THAT(column_names, IsOk());
-  EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
+  EXPECT_THAT(column_names, ElementsAre("int_col", "string_col"));
 }
 
 TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyLocations) {
@@ -240,8 +239,7 @@ TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyLocations) {
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
   ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_THAT(column_names, IsOk());
-  EXPECT_THAT(*column_names, ElementsAre("int_col", "string_col"));
+  EXPECT_THAT(column_names, ElementsAre("int_col", "string_col"));
 }
 
 TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyStorage) {
@@ -249,8 +247,7 @@ TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyStorage) {
   absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
   ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
-  ASSERT_THAT(column_names, IsOk());
-  EXPECT_THAT(*column_names, IsEmpty());
+  EXPECT_THAT(column_names, IsEmpty());
 }
 
 TEST_F(TensorRowSetTest, DereferenceInvalidRowDeathTest) {
