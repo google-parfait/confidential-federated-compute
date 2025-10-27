@@ -96,7 +96,8 @@ class SqliteAdapter {
   // `insert_stmt` should be of the form
   // "INSERT INTO <table name> (<col name 1>, <col name 2>, ...) VALUES (?, ?,
   // ...), ..." and the columns should match those in `rows`.
-  absl::Status InsertRows(const RowSet& rows, absl::string_view insert_stmt);
+  absl::Status InsertRows(const RowSet& rows, absl::string_view insert_stmt,
+                          absl::Span<const int> column_indices);
 
   SqliteResultHandler result_handler_;
   sqlite3* db_;

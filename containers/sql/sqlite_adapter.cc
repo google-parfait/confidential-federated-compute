@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -236,6 +237,48 @@ void EscapeSqlColumnName(std::string* out, absl::string_view column) {
   absl::StrAppend(out, "'", absl::StrReplaceAll(column, {{"'", "''"}}), "'");
 }
 
+// The set of columns in a RowSet that are present in a TableSchema.
+struct SharedColumnSet {
+  std::vector<int> column_indices;
+  std::vector<std::string> column_names;
+};
+
+// Returns the column indices and column names of the columns in the row set
+// that are present in the table schema.
+SharedColumnSet GetSharedColumnSet(const RowSet& rows,
+                                   const TableSchema& table) {
+  absl::flat_hash_set<std::string> table_column_names;
+  for (const auto& column : table.column()) {
+    table_column_names.insert(column.name());
+  }
+  absl::Span<const std::string> row_column_names = rows.GetColumnNames();
+  std::vector<int> column_indices;
+  std::vector<std::string> column_names;
+  for (int i = 0; i < row_column_names.size(); ++i) {
+    if (table_column_names.contains(row_column_names[i])) {
+      column_indices.push_back(i);
+      column_names.push_back(row_column_names[i]);
+    }
+  }
+  return SharedColumnSet{.column_indices = std::move(column_indices),
+                         .column_names = std::move(column_names)};
+}
+
+absl::Status ValidateRowSet(const RowSet& rows, const TableSchema& table) {
+  absl::flat_hash_set<std::string> row_column_names(
+      rows.GetColumnNames().begin(), rows.GetColumnNames().end());
+
+  for (const auto& column : table.column()) {
+    if (!row_column_names.contains(column.name())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Row does not contain a column present in the table schema: %s. "
+          "Table schema: %s",
+          column.name(), table.DebugString()));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status SqliteResultHandler::ToStatus(
@@ -294,7 +337,8 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
 }
 
 absl::Status SqliteAdapter::InsertRows(const RowSet& rows,
-                                       absl::string_view insert_stmt) {
+                                       absl::string_view insert_stmt,
+                                       absl::Span<const int> column_indices) {
   sqlite3_stmt* stmt;
   FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
       db_, insert_stmt.data(), insert_stmt.size(), &stmt, nullptr)));
@@ -302,9 +346,9 @@ absl::Status SqliteAdapter::InsertRows(const RowSet& rows,
 
   int ordinal = 1;
   for (const auto& row : rows) {
-    for (int col_num = 0; col_num < row.GetColumnCount(); ++col_num) {
+    for (const auto& col_index : column_indices) {
       FCP_RETURN_IF_ERROR(
-          BindValue(stmt, ordinal, row, col_num, result_handler_));
+          BindValue(stmt, ordinal, row, col_index, result_handler_));
       ordinal++;
     }
   }
@@ -324,10 +368,18 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
   if (rows.size() == 0) {
     return absl::OkStatus();
   }
+  FCP_RETURN_IF_ERROR(ValidateRowSet(rows, *table_schema_));
+
+  // The RowSet may contain columns that are not present in the table schema.
+  // For example, the table schema will not contain the input columns used for
+  // inference. Get the row indices of columns that are present in the table
+  // schema. Also get the table schema column names in the order they appear in
+  // the row set.
+  const auto [column_indices, column_names] =
+      GetSharedColumnSet(rows, *table_schema_);
 
   // Insert each row into the table, using parameterized query syntax:
   // INSERT INTO t (c1, c2, ...) VALUES (?, ?, ...), (?, ?, ...), ...;
-  absl::Span<const std::string> column_names = rows.GetColumnNames();
   std::string row_template = absl::StrFormat(
       "(%s)",
       absl::StrJoin(std::vector<std::string>(column_names.size(), "?"), ", "));
@@ -352,8 +404,8 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
           absl::StrJoin(
               std::vector<absl::string_view>(batch_size, row_template), ", "));
     }
-    FCP_RETURN_IF_ERROR(
-        InsertRows(rows.subspan(current_row, batch_size), insert_stmt));
+    FCP_RETURN_IF_ERROR(InsertRows(rows.subspan(current_row, batch_size),
+                                   insert_stmt, column_indices));
     current_row += batch_size;
   }
 
