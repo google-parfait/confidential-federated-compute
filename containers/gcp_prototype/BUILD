@@ -218,6 +218,31 @@ oci_load(
     ],
 )
 
+pkg_tar(
+    name = "test_client_tar",
+    srcs = [":test_client"],
+    include_runfiles = True,
+)
+
+oci_image(
+    name = "client_oci_image",
+    base = "@distroless_cc_debian12_base",
+    entrypoint = ["/test_client"],
+    exposed_ports = ["8000/tcp"],
+    tars = [
+        ":test_client_tar",
+    ],
+)
+
+# oci_load rule generates the tarball.sh script
+oci_load(
+    name = "client_tarball",
+    image = ":client_oci_image",
+    repo_tags = [
+        "confidential_verifier:latest",
+    ],
+)
+
 # Genrule loads image, then inspects via Docker CLI
 genrule(
     name = "load_and_print_digest_runner",
