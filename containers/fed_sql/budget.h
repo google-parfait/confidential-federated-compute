@@ -132,6 +132,9 @@ class Budget {
   // range_key.
   bool HasRemainingBudget(const std::string& key, uint64_t range_key);
 
+  // Checks whether the default budget is unlimited.
+  bool HasUnlimitedBudget() const { return !default_budget_.has_value(); }
+
   // Update the budget by applying the data collected in the RangeTracker.
   absl::Status UpdateBudget(const RangeTracker& range_tracker);
 

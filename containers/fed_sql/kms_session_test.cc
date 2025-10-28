@@ -144,7 +144,7 @@ Configuration DefaultConfiguration() {
 }
 
 std::shared_ptr<PrivateState> CreatePrivateState(
-    const std::string& initial_state, uint32_t default_budget) {
+    const std::string& initial_state, std::optional<uint32_t> default_budget) {
   auto private_state =
       std::make_shared<PrivateState>(initial_state, default_budget);
   EXPECT_THAT(private_state->budget.Parse(initial_state), IsOk());
@@ -282,7 +282,7 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
 
 class KmsFedSqlSessionWriteTest : public Test {
  public:
-  KmsFedSqlSessionWriteTest() {
+  KmsFedSqlSessionWriteTest(std::optional<uint32_t> default_budget = 5) {
     auto merge_public_private_key_pair =
         crypto_test_utils::GenerateKeyPair("merge");
     auto report_public_private_key_pair =
@@ -308,7 +308,7 @@ class KmsFedSqlSessionWriteTest : public Test {
         std::vector<std::string>{merge_public_private_key_pair.first,
                                  report_public_private_key_pair.first},
         "reencryption_policy_hash",
-        CreatePrivateState(initial_private_state_, 5),
+        CreatePrivateState(initial_private_state_, default_budget),
         absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
         /*prototype=*/nullptr);
     ConfigureRequest request;
@@ -901,6 +901,77 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   auto result_data = Decrypt(actual_metadata, read_response.data());
 
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  ASSERT_THAT(parser, IsOk());
+  auto col_values = (*parser)->GetTensor("val_out");
+  EXPECT_EQ(col_values->num_elements(), 1);
+  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+}
+
+class KmsFedSqlSessionUnlimitedBudgetTest : public KmsFedSqlSessionWriteTest {
+ public:
+  KmsFedSqlSessionUnlimitedBudgetTest()
+      : KmsFedSqlSessionWriteTest(/*default_budget=*/std::nullopt) {}
+};
+
+TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> input_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
+
+  std::string data = (std::move(*input_aggregator).Serialize()).value();
+  RangeTracker range_tracker1;
+  range_tracker1.AddRange("key_foo", 1, 2);
+  std::string blob1 = BundleRangeTracker(data, range_tracker1);
+  RangeTracker range_tracker2;
+  range_tracker2.AddRange("key_foo", 2, 3);
+  std::string blob2 = BundleRangeTracker(data, range_tracker2);
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE
+  )pb");
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob1, 1, "key_foo");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob2, 2, "key_foo");
+
+  auto write_result1 = session_->Write(write_request1, blob1, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(blob1.size()));
+  auto write_result2 = session_->Write(write_request2, blob2, context_);
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->status().code(), Code::OK)
+      << write_result2->status().message();
+  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(blob2.size()));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PARTITION
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  ReadResponse read_response;
+  ExpectReadResponse(read_response);
+
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
+
+  auto actual_metadata = read_response.first_response_metadata();
+  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
+  ASSERT_EQ(actual_metadata.compression_type(),
+            BlobMetadata::COMPRESSION_TYPE_NONE);
+  ASSERT_TRUE(actual_metadata.has_unencrypted());
+
+  auto parser = parser_factory.Create(absl::Cord(read_response.data()));
   ASSERT_THAT(parser, IsOk());
   auto col_values = (*parser)->GetTensor("val_out");
   EXPECT_EQ(col_values->num_elements(), 1);
