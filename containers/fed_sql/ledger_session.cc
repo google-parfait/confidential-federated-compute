@@ -18,6 +18,7 @@
 #include <string>
 #include <tuple>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
@@ -82,7 +83,7 @@ FedSqlSession::FedSqlSession(
       report_output_access_policy_node_id_(report_output_access_policy_node_id),
       sensitive_values_key_(sensitive_values_key) {
   if (inference_configuration_.has_value()) {
-    inference_model_.BuildModel(inference_configuration_.value());
+    CHECK_OK(inference_model_.BuildModel(inference_configuration_.value()));
   }
 };
 
@@ -93,12 +94,12 @@ FedSqlSession::ExecuteInferenceAndClientQuery(
       std::vector<Tensor> contents,
       Deserialize(configuration.input_schema, parser,
                   inference_model_.GetInferenceConfiguration()));
-  if (inference_model_.HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
-  }
   FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
   FCP_ASSIGN_OR_RETURN(sql::Input input,
                        sql::Input::CreateFromTensors(std::move(contents), {}));
+  if (inference_model_.HasModel()) {
+    FCP_RETURN_IF_ERROR(inference_model_.RunInference(input));
+  }
   absl::Span<sql::Input> storage = absl::MakeSpan(&input, 1);
   std::vector<sql::RowLocation> row_locations =
       CreateRowLocationsForAllRows(input.GetRowCount());

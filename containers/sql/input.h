@@ -57,6 +57,8 @@ class Input {
   Input(const Input&) = delete;
   Input& operator=(const Input&) = delete;
 
+  void AddColumn(tensorflow_federated::aggregation::Tensor&& new_column);
+
   absl::Span<const std::string> GetColumnNames() const;
 
   absl::StatusOr<RowView> GetRow(uint32_t row_index) const;
@@ -79,7 +81,9 @@ class Input {
   struct has_input_contents_interface<
       T, std::void_t<decltype(std::declval<const T&>().GetRowCount()),
                      decltype(std::declval<const T&>().GetRow(0)),
-                     decltype(std::declval<T&&>().MoveToTensors({}))>>
+                     decltype(std::declval<T&&>().MoveToTensors({})),
+                     decltype(std::declval<T&&>().AddColumn(
+                         tensorflow_federated::aggregation::Tensor()))>>
       : std::true_type {};
 
   // Input contents backed by Tensors.
@@ -88,6 +92,10 @@ class Input {
     TensorContents(
         std::vector<tensorflow_federated::aggregation::Tensor> contents)
         : contents_(std::move(contents)) {}
+
+    void AddColumn(tensorflow_federated::aggregation::Tensor&& column) {
+      contents_.push_back(std::move(column));
+    }
 
     absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
     MoveToTensors(absl::Span<const std::string> column_names) && {
@@ -115,6 +123,10 @@ class Input {
         std::vector<tensorflow_federated::aggregation::Tensor> system_columns)
         : messages_(std::move(messages)),
           system_columns_(std::move(system_columns)) {}
+
+    void AddColumn(tensorflow_federated::aggregation::Tensor&& column) {
+      system_columns_.push_back(std::move(column));
+    }
 
     // Unfortunately, this method copies the underlying Message data, since the
     // reflection API doesn't support moving the data out of a Message.

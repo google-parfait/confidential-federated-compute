@@ -19,7 +19,7 @@
 #include <string>
 
 #include "absl/status/status.h"
-#include "containers/sql/sqlite_adapter.h"
+#include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "util/threading_context.h"
@@ -52,8 +52,10 @@ class InferenceModel {
  public:
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
-  absl::Status RunInference(
-      std::vector<::tensorflow_federated::aggregation::Tensor>& columns);
+  // Runs inference on the given input. The input is expected to contain the
+  // columns required by the inference task. The output column produced by the
+  // inference model will be added to the input.
+  absl::Status RunInference(sql::Input& input);
   bool HasModel() const;
   const std::optional<SessionInferenceConfiguration>&
   GetInferenceConfiguration() const;
@@ -61,9 +63,9 @@ class InferenceModel {
  private:
   struct NoModel {};
   struct GemmaCppModel {
-    std::unique_ptr<::gcpp::Gemma> gemma_;
-    std::unique_ptr<::gcpp::MatMulEnv> env_;
-    std::unique_ptr<::gcpp::ThreadingContext> ctx_;
+    std::unique_ptr<gcpp::Gemma> gemma_;
+    std::unique_ptr<gcpp::MatMulEnv> env_;
+    std::unique_ptr<gcpp::ThreadingContext> ctx_;
   };
 
   // Builds a gemma.cpp compatible model from the given Gemma config.
@@ -74,11 +76,10 @@ class InferenceModel {
   // Runs inference with the gemma.cpp model using given prompt over all rows
   // and returns a 1-D string tensor of results representing the output column.
   virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
-  RunGemmaCppInference(
-      const ::fcp::confidentialcompute::Prompt& prompt,
-      const absl::flat_hash_map<
-          std::string, absl::Span<const absl::string_view>>& column_values,
-      const std::string& output_column_name);
+  RunGemmaCppInference(const fcp::confidentialcompute::Prompt& prompt,
+                       const sql::Input& input,
+                       absl::Span<const size_t> input_column_indices,
+                       const std::string& output_column_name);
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::variant<NoModel, GemmaCppModel> model_;

@@ -327,22 +327,22 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   if (message_factory_ != nullptr) {
     input = CreateInputFromMessageCheckpoint(blob_header, parser->get(),
                                              *message_factory_);
-    // TODO: handle inference and sensitive columns for Message checkpoints.
+    // TODO: handle sensitive columns for Message checkpoints.
   } else {
     FCP_ASSIGN_OR_RETURN(
         std::vector<Tensor> contents,
         Deserialize(sql_configuration_->input_schema, parser->get(),
                     inference_model_.GetInferenceConfiguration()));
     FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-    if (inference_model_.HasModel()) {
-      FCP_RETURN_IF_ERROR(inference_model_.RunInference(contents));
-    }
     input = Input::CreateFromTensors(std::move(contents), blob_header);
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(
         "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
         input.status()));
+  }
+  if (inference_model_.HasModel()) {
+    FCP_RETURN_IF_ERROR(inference_model_.RunInference(*input));
   }
 
   // TODO: Calculate the DP unit for each row in the blob and add a RowLocation

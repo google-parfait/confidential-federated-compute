@@ -20,6 +20,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "containers/sql/input.h"
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -30,8 +31,9 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
+using ::confidential_federated_compute::sql::Input;
+using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::ColumnConfiguration;
-using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::GEMMA2_2B;
 using ::fcp::confidentialcompute::GEMMA2_9B;
 using ::fcp::confidentialcompute::GEMMA3_12B;
@@ -123,11 +125,10 @@ absl::Status InferenceModel::BuildModel(
 }
 
 absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
-    const Prompt& prompt,
-    const absl::flat_hash_map<std::string, absl::Span<const absl::string_view>>&
-        column_values,
+    const Prompt& prompt, const Input& input,
+    absl::Span<const size_t> input_column_indices,
     const std::string& output_column_name) {
-  if (column_values.empty()) {
+  if (input_column_indices.empty()) {
     return Tensor::Create(DataType::DT_STRING, TensorShape({0}),
                           std::make_unique<MutableStringData>(0),
                           output_column_name);
@@ -142,9 +143,9 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
           .runtime_config();
   size_t max_prompt_size =
       inference_runtime_config.max_prompt_size() > 0 ?: kMaxPromptSize;
-  int64_t tensor_size = column_values.begin()->second.size();
   std::unique_ptr<MutableStringData> output_string_data =
-      std::make_unique<MutableStringData>(tensor_size);
+      std::make_unique<MutableStringData>(
+          static_cast<long>(input.GetRowCount()));
 
   TimingInfo timing_info;
   std::mt19937 gen;
@@ -158,13 +159,22 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
   // to create a combined prompt matching the column values, then run inference
   // over the combined prompt. Each element in the output tensor corresponds
   // to the inference result of one row of the input columns.
-  for (int i = 0; i < tensor_size; ++i) {
+  for (int i = 0; i < input.GetRowCount(); ++i) {
+    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
     std::string combined_prompt(prompt_template);
-    for (const auto& [column_name, column_value] : column_values) {
-      std::string old_value = absl::StrCat("{", column_name, "}");
+    for (int j = 0; j < input_column_indices.size(); ++j) {
+      const size_t input_column_index = input_column_indices[j];
+      if (row.GetColumnType(input_column_index) != DataType::DT_STRING) {
+        return absl::InvalidArgumentError(
+            "Only string input columns are supported for inference.");
+      }
+      absl::string_view column_value =
+          row.GetValue<absl::string_view>(input_column_index);
+      const std::string old_value =
+          absl::StrCat("{", input.GetColumnNames()[input_column_index], "}");
       size_t pos;
       while ((pos = combined_prompt.find(old_value)) != std::string::npos) {
-        combined_prompt.replace(pos, old_value.size(), column_value[i]);
+        combined_prompt.replace(pos, old_value.size(), column_value);
       }
     }
 
@@ -208,23 +218,24 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
     }
     output_string_data->Add(std::move(output_string));
   }
-  return Tensor::Create(DataType::DT_STRING, TensorShape({tensor_size}),
+
+  return Tensor::Create(DataType::DT_STRING,
+                        TensorShape({static_cast<long>(input.GetRowCount())}),
                         std::move(output_string_data), output_column_name);
 }
 
-absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
+absl::Status InferenceModel::RunInference(Input& input) {
   if (!HasModel()) {
     return absl::UnimplementedError(
         "Model must be initialized before running inference.");
   }
-  absl::flat_hash_set<std::string> erase_column_names;
   for (const auto& inference_task :
        inference_configuration_->initialize_configuration.inference_config()
            .inference_task()) {
     if (!inference_task.has_prompt()) {
-      // Only prompt-based inference is supported.
       return absl::InvalidArgumentError(
-          "Prompt not found when running inference.");
+          "Prompt not found when running inference. Only prompt-based "
+          "inference is supported.");
     }
     std::vector<std::string> input_column_names;
     if (!inference_task.column_config().input_column_names().empty()) {
@@ -242,56 +253,35 @@ absl::Status InferenceModel::RunInference(std::vector<Tensor>& columns) {
     const std::string& output_column_name =
         inference_task.column_config().output_column_name();
 
-    // Iterate through the columns to find the input column.
-    Tensor output_column;
-    absl::flat_hash_map<std::string, absl::Span<const absl::string_view>>
-        input_columns_span_map;
+    // Find the indices that correspond to the input columns.
+    std::vector<size_t> input_column_indices;
     for (const auto& input_column_name : input_column_names) {
-      const auto it = find_if(columns.begin(), columns.end(),
-                              [&input_column_name](const Tensor& column) {
-                                return column.name() == input_column_name;
-                              });
-      if (it == columns.end()) {
+      const auto it =
+          find_if(input.GetColumnNames().begin(), input.GetColumnNames().end(),
+                  [&input_column_name](const std::string& column) {
+                    return column == input_column_name;
+                  });
+      if (it == input.GetColumnNames().end()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Couldn't find an input column ", input_column_name,
                          " to run inference on."));
       }
-
-      const Tensor& input_column = *it;
-      if (input_column.dtype() != DataType::DT_STRING) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Input column ", input_column_name, " is not of type STRING."));
-      }
-      if (input_column.shape().dim_sizes().size() != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Input column ", input_column_name,
-                         " is not a one-dimensional tensor."));
-      }
-      input_columns_span_map[input_column_name] =
-          input_column.AsSpan<absl::string_view>();
+      input_column_indices.push_back(it - input.GetColumnNames().begin());
     }
-    Tensor out_tensor;
+
+    Tensor output_column;
     if (std::holds_alternative<GemmaCppModel>(model_)) {
       FCP_ASSIGN_OR_RETURN(
-          out_tensor,
-          RunGemmaCppInference(inference_task.prompt(), input_columns_span_map,
-                               output_column_name));
+          output_column,
+          RunGemmaCppInference(inference_task.prompt(), input,
+                               input_column_indices, output_column_name));
     } else {
       return absl::UnimplementedError(
           absl::StrCat("Unsupported inference model type."));
     }
-    columns.push_back(std::move(out_tensor));
-    for (const auto& input_column_name : input_column_names) {
-      erase_column_names.insert(input_column_name);
-    }
+    input.AddColumn(std::move(output_column));
   }
 
-  auto new_end =
-      std::remove_if(columns.begin(), columns.end(),
-                     [&erase_column_names](const Tensor& column) {
-                       return erase_column_names.contains(column.name());
-                     });
-  columns.erase(new_end, columns.end());
   return absl::OkStatus();
 }
 

@@ -158,6 +158,24 @@ TEST_F(InputTest, GetRowCount) {
   EXPECT_EQ(input->GetRowCount(), 2);
 }
 
+TEST_F(InputTest, AddColumn) {
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), blob_header_);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                CreateTestData<int64_t>({3, 4}), "col3");
+  ASSERT_THAT(new_col, IsOk());
+  input->AddColumn(std::move(*new_col));
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>({"col1", "col2", "col3"}));
+  absl::StatusOr<RowView> row0 = input->GetRow(0);
+  ASSERT_THAT(row0, IsOk());
+  EXPECT_EQ(row0->GetValue<int64_t>(2), 3);
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int64_t>(2), 4);
+}
+
 TEST_F(InputTest, MoveToTensors) {
   absl::StatusOr<Input> input =
       Input::CreateFromTensors(std::move(contents_), blob_header_);
@@ -341,6 +359,26 @@ TEST_F(MessageInputTest, GetRowCount) {
       std::move(messages_), std::move(system_columns_), blob_header_);
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetRowCount(), 2);
+}
+
+TEST_F(MessageInputTest, AddColumn) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), blob_header_);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                CreateTestData<int64_t>({100, 200}), "new_col");
+  ASSERT_THAT(new_col, IsOk());
+  input->AddColumn(std::move(*new_col));
+  EXPECT_EQ(
+      input->GetColumnNames(),
+      std::vector<std::string>({"col1", "col2", "col3", "col4", "col5",
+                                "system_col1", "system_col2", "new_col"}));
+  absl::StatusOr<RowView> row0 = input->GetRow(0);
+  ASSERT_THAT(row0, IsOk());
+  EXPECT_EQ(row0->GetValue<int64_t>(7), 100);
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int64_t>(7), 200);
 }
 
 TEST_F(MessageInputTest, GetRow) {

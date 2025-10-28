@@ -124,6 +124,15 @@ absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
       contents_);
 }
 
+void Input::AddColumn(Tensor&& new_column) {
+  column_names_.push_back(new_column.name());
+  return absl::visit(
+      [new_column = std::move(new_column)](auto& data) mutable {
+        data.AddColumn(std::move(new_column));
+      },
+      contents_);
+}
+
 size_t Input::GetRowCount() const {
   return absl::visit(
       [](const auto& data) -> size_t { return data.GetRowCount(); }, contents_);

@@ -19,6 +19,7 @@
 #include <string>
 
 #include "containers/fed_sql/inference_model.h"
+#include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gmock/gmock.h"
 
@@ -30,10 +31,9 @@ class MockInferenceModel : public InferenceModel {
               (const SessionGemmaCppConfiguration& gemma_config), (override));
   MOCK_METHOD(absl::StatusOr<tensorflow_federated::aggregation::Tensor>,
               RunGemmaCppInference,
-              (const ::fcp::confidentialcompute::Prompt& prompt,
-               (const absl::flat_hash_map<std::string,
-                                          absl::Span<const absl::string_view>>&)
-                   column_values,
+              (const fcp::confidentialcompute::Prompt& prompt,
+               const sql::Input& input,
+               absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));
 };
