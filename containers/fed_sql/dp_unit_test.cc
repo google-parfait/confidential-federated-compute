@@ -19,12 +19,15 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/types/optional.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
@@ -51,7 +54,10 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::MutableStringData;
+using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::IsEmpty;
 
 Configuration DefaultConfiguration() {
@@ -112,10 +118,64 @@ class DpUnitTest : public ::testing::Test {
     *output_columns.Add() = PARSE_TEXT_PROTO(R"pb(name: "key" type: INT64)pb");
     *output_columns.Add() = PARSE_TEXT_PROTO(R"pb(name: "val" type: INT64)pb");
     sql_config_.output_columns = output_columns;
+
+    dp_unit_processor_ = std::make_unique<DpUnitProcessor>(
+        sql_config_, dp_unit_parameters_, aggregator_.get());
+
+    // Common data setup
+    time1_ = absl::CivilSecond(2024, 1, 1, 0, 0, 0);
+    time2_ = absl::CivilSecond(2024, 1, 1, 0, 0, 1);  // Different time
+    id1_ = 1;
+    id2_ = 2;  // Different ID
+
+    // Create tensors with two rows:
+    // Row 0: {10, "foo"}
+    // Row 1: {20, "bar"}
+    std::unique_ptr<MutableVectorData<int64_t>> int64_data =
+        std::make_unique<MutableVectorData<int64_t>>(0);
+    int64_data->push_back(10);
+    int64_data->push_back(20);
+    tensors_array_[0] = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                       std::move(int64_data), "col1")
+                            .value();
+
+    std::unique_ptr<MutableStringData> string_data =
+        std::make_unique<MutableStringData>(2);
+    string_data->Add("foo");
+    string_data->Add("bar");
+    tensors_array_[1] = Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                                       std::move(string_data), "col2")
+                            .value();
+    dp_tensors_ = absl::Span<const Tensor>(tensors_array_);
+
+    // Use emplace to construct the RowView inside the optional
+    row_view0_.emplace(
+        confidential_federated_compute::sql::RowView::CreateFromTensors(
+            dp_tensors_, 0)
+            .value());
+    row_view1_.emplace(
+        confidential_federated_compute::sql::RowView::CreateFromTensors(
+            dp_tensors_, 1)
+            .value());
   }
 
+  // Member variables.
   std::unique_ptr<CheckpointAggregator> aggregator_;
   SqlConfiguration sql_config_;
+  fcp::confidentialcompute::WindowingSchedule::CivilTimeWindowSchedule
+      schedule_;
+
+  // Common test data.
+  DpUnitParameters dp_unit_parameters_ = {.column_names = {"key"}};
+  std::unique_ptr<DpUnitProcessor> dp_unit_processor_;
+  absl::CivilSecond time1_;
+  absl::CivilSecond time2_;
+  int64_t id1_;
+  int64_t id2_;
+  Tensor tensors_array_[2];
+  absl::Span<const Tensor> dp_tensors_;
+  absl::optional<confidential_federated_compute::sql::RowView> row_view0_;
+  absl::optional<confidential_federated_compute::sql::RowView> row_view1_;
 };
 
 TEST_F(DpUnitTest, Success) {
@@ -202,7 +262,8 @@ TEST_F(DpUnitTest, Success) {
   row_dp_unit_index.push_back(
       {.dp_unit_hash = 2, .input_index = 0, .row_index = 2});
 
-  DpUnitProcessor input_processor(sql_config_, *aggregator_);
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+                                  aggregator_.get());
   ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(
                   std::move(uncommitted_inputs), std::move(row_dp_unit_index)),
               IsOkAndHolds(IsEmpty()));
@@ -270,7 +331,8 @@ TEST_F(DpUnitTest, PartialSqlError) {
   row_dp_unit_index.push_back(
       {.dp_unit_hash = 2, .input_index = 0, .row_index = 1});
 
-  DpUnitProcessor input_processor(sql_config_, *aggregator_);
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+                                  aggregator_.get());
   auto result = input_processor.CommitRowsGroupingByDpUnit(
       std::move(uncommitted_inputs), std::move(row_dp_unit_index));
   ASSERT_THAT(result, IsOk());
@@ -324,7 +386,8 @@ TEST_F(DpUnitTest, SqlError) {
   // Invalid SQL query will cause an error for each DP unit.
   sql_config_.query = "SELECT invalid_column FROM input";
 
-  DpUnitProcessor input_processor(sql_config_, *aggregator_);
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+                                  aggregator_.get());
   auto result = input_processor.CommitRowsGroupingByDpUnit(
       std::move(uncommitted_inputs), std::move(row_dp_unit_index));
   ASSERT_THAT(result, IsOk());
@@ -361,10 +424,145 @@ TEST_F(DpUnitTest, AccumulateError) {
 
   // Errors with the aggregator are propagated, since the aggregator may be in
   // an invalid state.
-  DpUnitProcessor input_processor(sql_config_, *aggregator_);
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+                                  aggregator_.get());
   EXPECT_THAT(input_processor.CommitRowsGroupingByDpUnit(
                   std::move(uncommitted_inputs), std::move(row_dp_unit_index)),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(DpUnitTest, ComputeDpTimeUnitHasNoWindowingSchedule) {
+  DpUnitParameters dp_unit_parameters;  // Empty parameters.
+  auto processor = DpUnitProcessor::Create(sql_config_, dp_unit_parameters,
+                                           aggregator_.get());
+  EXPECT_THAT(
+      (*processor)->ComputeDPTimeUnit(absl::CivilSecond(2025, 1, 1, 0, 0, 0)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               "Windowing schedule must have civil time window schedule."));
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHashSameInputIsDeterministic) {
+  // Hashing the same thing twice produces the same result.
+  absl::StatusOr<uint64_t> hash1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash1, IsOk());
+
+  absl::StatusOr<uint64_t> hash2 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash2, IsOk());
+
+  EXPECT_EQ(*hash1, *hash2);
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHashDifferentRowsProducesDifferentHashes) {
+  // Hashing column 0 for row 0 (data: 10)
+  absl::StatusOr<uint64_t> hash_row0 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_row0, IsOk());
+
+  // Hashing column 0 for row 1 (data: 20)
+  absl::StatusOr<uint64_t> hash_row1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view1_, {0});
+  ASSERT_THAT(hash_row1, IsOk());
+
+  EXPECT_NE(*hash_row0, *hash_row1);
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHashDifferentColumnsProducesDifferentHashes) {
+  // Hash for row 0, column 0 (data: 10)
+  absl::StatusOr<uint64_t> hash_col0 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_col0, IsOk());
+
+  // Hash for row 0, column 1 (data: "foo")
+  absl::StatusOr<uint64_t> hash_col1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {1});
+  ASSERT_THAT(hash_col1, IsOk());
+
+  EXPECT_NE(*hash_col0, *hash_col1);
+}
+
+TEST_F(DpUnitTest,
+       ComputeDPUnitHashDifferentColumnCombinationsProducesDifferentHashes) {
+  absl::StatusOr<uint64_t> hash_col0 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_col0, IsOk());
+
+  absl::StatusOr<uint64_t> hash_col1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {1});
+  ASSERT_THAT(hash_col1, IsOk());
+
+  // Hash for both columns
+  absl::StatusOr<uint64_t> hash_both_cols =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0, 1});
+  ASSERT_THAT(hash_both_cols, IsOk());
+
+  EXPECT_NE(*hash_col0, *hash_both_cols);
+  EXPECT_NE(*hash_col1, *hash_both_cols);
+}
+
+TEST_F(DpUnitTest,
+       ComputeDPUnitHashDifferentColumnSelectionOrderProducesDifferentHashes) {
+  // This test checks that the *order* of indices in the vector matters.
+  // Hash with column order {0, 1}
+  absl::StatusOr<uint64_t> hash_order_01 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0, 1});
+  ASSERT_THAT(hash_order_01, IsOk());
+
+  // Hash with column order {1, 0}
+  absl::StatusOr<uint64_t> hash_order_10 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {1, 0});
+  ASSERT_THAT(hash_order_10, IsOk());
+
+  EXPECT_NE(*hash_order_01, *hash_order_10);
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHashDifferentIdsProducesDifferentHashes) {
+  // Test sensitivity to the privacy ID.
+  absl::StatusOr<uint64_t> hash_id1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_id1, IsOk());
+
+  // Use id2_ instead of id1_
+  absl::StatusOr<uint64_t> hash_id2 =
+      dp_unit_processor_->ComputeDPUnitHash(id2_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_id2, IsOk());
+
+  EXPECT_NE(*hash_id1, *hash_id2);
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHash_DifferentTimes_ProducesDifferentHashes) {
+  // Test sensitivity to the time unit.
+  absl::StatusOr<uint64_t> hash_time1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_time1, IsOk());
+
+  // Use time2_ instead of time1_
+  absl::StatusOr<uint64_t> hash_time2 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time2_, *row_view0_, {0});
+  ASSERT_THAT(hash_time2, IsOk());
+
+  EXPECT_NE(*hash_time1, *hash_time2);
+}
+
+TEST_F(DpUnitTest, ComputeDPUnitHashEmptyColumnListIsDeterministicAndUnique) {
+  absl::StatusOr<uint64_t> hash_empty1 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {});
+  ASSERT_THAT(hash_empty1, IsOk());
+
+  // Hash with an empty list again to ensure determinism
+  absl::StatusOr<uint64_t> hash_empty2 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {});
+  ASSERT_THAT(hash_empty2, IsOk());
+
+  EXPECT_EQ(*hash_empty1, *hash_empty2);
+
+  // Hash with a non-empty list to ensure the empty hash is unique
+  absl::StatusOr<uint64_t> hash_col0 =
+      dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
+  ASSERT_THAT(hash_col0, IsOk());
+
+  EXPECT_NE(*hash_empty1, *hash_col0);
 }
 
 }  // namespace

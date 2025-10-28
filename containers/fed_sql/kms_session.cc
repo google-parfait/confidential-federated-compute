@@ -281,19 +281,6 @@ absl::Status PrependMessage(T message, const absl::Status& status) {
   return absl::Status(status.code(), absl::StrCat(message, status.message()));
 }
 
-absl::StatusOr<absl::CivilSecond> KmsFedSqlSession::ComputeDPTimeUnit(
-    const absl::CivilSecond start_civil_time) {
-  fcp::confidentialcompute::WindowingSchedule windowing_schedule =
-      dp_unit_parameters_->windowing_schedule;
-  if (!windowing_schedule.has_civil_time_window_schedule()) {
-    return absl::InvalidArgumentError(
-        "Windowing schedule must have civil time window schedule.");
-  }
-
-  return GetTimeWindowStart(windowing_schedule.civil_time_window_schedule(),
-                            start_civil_time);
-}
-
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
 KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                              std::string unencrypted_data) {
