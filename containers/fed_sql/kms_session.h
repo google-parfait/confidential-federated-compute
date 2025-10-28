@@ -25,6 +25,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "cc/crypto/signing_key.h"
+#include "containers/fed_sql/dp_unit.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
@@ -39,15 +40,6 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 
 namespace confidential_federated_compute::fed_sql {
-
-// Holds parameters related to the differential privacy unit.
-struct DpUnitParameters {
-  // The windowing schedule for the DP unit.
-  fcp::confidentialcompute::WindowingSchedule windowing_schedule;
-  // The column names that define the DP unit (not including the event time
-  // or privacy id columns).
-  std::vector<std::string> column_names;
-};
 
 // Interface for creating new protobuf messages.
 class MessageFactory {
@@ -148,13 +140,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Encrypts the final result for this session.
   absl::StatusOr<EncryptedResult> EncryptFinalResult(
       absl::string_view plaintext);
-
-  // Computes the start of the DP time unit for the given civil time, using the
-  // windowing schedule from the DP unit parameters.
-  // Returns an error if the windowing schedule does not have a
-  // civil time window schedule.
-  absl::StatusOr<absl::CivilSecond> ComputeDPTimeUnit(
-      absl::CivilSecond start_civil_time);
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
