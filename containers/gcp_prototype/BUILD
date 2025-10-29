@@ -12,10 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_rust//rust:defs.bzl", "rust_library")
+load(":build_defs.bzl", "generate_policy", "image_digest_flag")
+
+proto_library(
+    name = "policy_proto",
+    srcs = ["policy.proto"],
+)
+
+cc_proto_library(
+    name = "policy_cc_proto",
+    deps = [":policy_proto"],
+)
 
 # C++ library for HTTP client utilities
 cc_library(
@@ -124,6 +138,7 @@ cc_library(
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
     deps = [
+        ":policy_cc_proto",
         ":http_client",
         ":json_util",
         "@com_google_absl//absl/log",
@@ -173,12 +188,24 @@ cc_library(
     deps = [":client_session_config_rs"],
 )
 
+# Add near other cc_library targets
+cc_library(
+    name = "proto_util",
+    srcs = ["proto_util.cc"],
+    hdrs = ["proto_util.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 # A local gRPC client for testing the server
 cc_binary(
     name = "test_client",
     srcs = ["test_client.cc"],
     deps = [
         ":client_session_config_cc",
+        ":proto_util",
         ":session_utils",  # Added dependency
         ":verifier_cc",
         "@com_github_grpc_grpc//:grpc++",
@@ -224,23 +251,65 @@ pkg_tar(
     include_runfiles = True,
 )
 
+# 1. Copy the downloaded file to a local name we control
+genrule(
+    name = "copy_jwks",
+    srcs = ["@intel_jwks//file"],
+    outs = ["jwks.json"],
+    cmd = "cp $< $@",
+)
+
+# 2. Tar it up, placing it in the desired directory
+pkg_tar(
+    name = "intel_jwks_layer",
+    srcs = [":copy_jwks"],
+    mode = "0644",
+    package_dir = "/etc/pki/intel",
+)
+
+# Default to "skip" so it doesn't fail if you forget it during local dev.
+image_digest_flag(
+    name = "server_digest",
+    build_setting_default = "skip",
+)
+
+# Generates the runtime policy file based on build configuration.
+generate_policy(
+    name = "gen_offline_policy",
+    out = "offline_policy.textproto",
+    digest_flag = ":server_digest",
+)
+
+# Packages the generated policy into /etc/confidential/policy.textproto
+# for inclusion in the client container.
+pkg_tar(
+    name = "policy_layer",
+    srcs = [":gen_offline_policy"],
+    mode = "0644",
+    package_dir = "/etc/confidential",
+    remap_paths = {"offline_policy.textproto": "policy.textproto"},
+)
+
+# Dedicated image for TEE testing that bakes in the necessary flags
 oci_image(
-    name = "client_oci_image",
+    name = "client_offline_oci_image",
     base = "@distroless_cc_debian12_base",
+    cmd = [
+        "--server_address=10.0.2.100",
+        "--jwks_path=/etc/pki/intel/jwks.json",
+        "--policy_path=/etc/confidential/policy.textproto",
+    ],
     entrypoint = ["/test_client"],
-    exposed_ports = ["8000/tcp"],
     tars = [
         ":test_client_tar",
+        ":intel_jwks_layer",
+        ":policy_layer",
     ],
 )
 
-# oci_load rule generates the tarball.sh script
-oci_load(
-    name = "client_tarball",
-    image = ":client_oci_image",
-    repo_tags = [
-        "confidential_verifier:latest",
-    ],
+oci_runtime_bundle(
+    name = "client_offline_bundle",
+    image = ":client_offline_oci_image",
 )
 
 # Genrule loads image, then inspects via Docker CLI

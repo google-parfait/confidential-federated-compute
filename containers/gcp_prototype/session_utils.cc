@@ -1,4 +1,3 @@
-// session_utils.cc
 // Copyright 2025 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,88 +17,29 @@
 namespace gcp_prototype {
 namespace session_utils {
 
-// --- Client-Side Utilities ---
-
-bool PumpOutgoingMessages(
-    ClientSession* session,
-    grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream) {
-  bool sent_message = false;
-  while (true) {
-    absl::StatusOr<std::optional<SessionRequest>> request =
-        session->GetOutgoingMessage();
-    if (!request.ok()) {
-      // kInternal means the session needs input before generating output.
-      if (request.status().code() != absl::StatusCode::kInternal) {
-        LOG(FATAL) << "Client: Failed to get outgoing message: "
-                   << request.status();
-      }
-      break;
-    }
-    if (!request->has_value()) {
-      break;
-    }
-    LOG(INFO) << "Oak -> gRPC: " << (*request)->DebugString();
-    if (!stream->Write(**request)) {
-      LOG(ERROR) << "Client: Failed to write message to gRPC stream.";
-      return false;
-    }
-    sent_message = true;
-  }
-  return sent_message;
-}
-
 void ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream) {
   while (true) {
-    // 1. Send any pending outgoing handshake messages (AttestRequest).
-    bool sent_message = PumpOutgoingMessages(session, stream);
+    // 1. Send any pending outgoing handshake messages.
+    absl::StatusOr<bool> sent_or = PumpOutgoingMessages(session, stream);
+    CHECK_OK(
+        sent_or);  // Crash on fatal session/network errors during handshake.
 
-    // 3. If no message was sent, the handshake is complete (quiesced).
-    if (!sent_message) {
+    // 2. If no message was sent, the handshake is complete (quiesced).
+    if (!*sent_or) {
       LOG(INFO) << "Handshake quiesced, proceeding to application data.";
       return;
     }
 
-    // 2. Since we sent a message, wait for a reply (HandshakeResponse).
+    // 3. Since we sent a message, expect a reply.
     SessionResponse response;
     if (!stream->Read(&response)) {
-      LOG(ERROR) << "Client: Server closed stream during handshake.";
-      return;
+      LOG(FATAL) << "Client: Server closed stream during handshake.";
     }
     LOG(INFO) << "gRPC -> Oak: " << response.DebugString();
-    // This call triggers C++ verification via FFI.
     CHECK_OK(session->PutIncomingMessage(response))
         << "Client: Attestation verification or handshake protocol failed";
-  }
-}
-
-// --- Server-Side Utilities ---
-
-void PumpOutgoingMessages(
-    ServerSession* session,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  while (true) {
-    absl::StatusOr<std::optional<SessionResponse>> response =
-        session->GetOutgoingMessage();
-    if (!response.ok()) {
-      // kInternal means the session needs input before generating output.
-      if (response.status().code() != absl::StatusCode::kInternal) {
-        LOG(FATAL) << "Server: Failed to get outgoing message: "
-                   << response.status();
-      }
-      break;
-    }
-    if (!response->has_value()) {
-      break;
-    }
-
-    LOG(INFO) << "Oak -> gRPC: " << (*response)->DebugString();
-    if (!stream->Write(**response)) {
-      LOG(ERROR) << "Server: Failed to write to gRPC stream (client likely "
-                    "disconnected).";
-      break;
-    }
   }
 }
 
