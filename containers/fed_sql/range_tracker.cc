@@ -21,6 +21,7 @@
 #include "containers/fed_sql/range_tracker.pb.h"
 #include "fcp/base/monitoring.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/text_format.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -86,6 +87,11 @@ RangeTrackerState RangeTracker::Serialize() const {
   }
 
   state.set_partition_index(partition_index_);
+
+  std::string state_string;
+  google::protobuf::TextFormat::PrintToString(state, &state_string);
+  LOG(INFO) << "Serializing RangeTracker state:\n" << state_string;
+
   return state;
 }
 
