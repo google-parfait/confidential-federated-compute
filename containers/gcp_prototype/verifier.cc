@@ -15,8 +15,10 @@
 #include "verifier.h"
 
 #include <cmath>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -26,11 +28,13 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "http_client.h"
 #include "json_util.h"
 #include "nlohmann/json.hpp"
+#include "policy.pb.h"
 #include "proto/attestation/verification.pb.h"
 #include "tink/config/global_registry.h"
 #include "tink/jwt/jwk_set_converter.h"
@@ -74,90 +78,48 @@ MyVerifier::MyVerifier() {
   CHECK_OK(jwt_status) << "Failed to register Tink JWT Signature primitives.";
 }
 
-void MyVerifier::SkipPolicyEnforcement(bool skip) {
-  skip_policy_enforcement_ = skip;
-}
-
 void MyVerifier::SetDumpJwt(bool dump) { dump_jwt_ = dump; }
 
 void MyVerifier::SetPolicy(const AttestationPolicy& policy) {
-  client_policy_ = policy;
-  std::string verifier_type_str;
-
-  // Set the internal configuration based on the requested verifier type.
-  switch (client_policy_.verifier_type) {
-    case AttestationPolicy::VerifierType::kGca:
+  policy_ = policy;
+  switch (policy_.verifier_type()) {
+    case AttestationPolicy::GCA:
       internal_config_ = {
           .expected_issuer = "https://confidentialcomputing.googleapis.com",
-          .jwks_url =
-              "https://www.googleapis.com/service_accounts/v1/metadata/jwk/"
-              "signer@confidentialspace-sign.iam.gserviceaccount.com",
           .expected_hw_model = "GCP_INTEL_TDX"};
-      verifier_type_str = "GCA (Legacy)";
       break;
-    case AttestationPolicy::VerifierType::kIta:
-      // ITA is the configured Root of Trust, relying on their JWKS endpoint.
+    case AttestationPolicy::ITA:
+    default:  // Default to ITA if unspecified.
       internal_config_ = {
           .expected_issuer = "https://portal.trustauthority.intel.com",
-          .jwks_url = "https://portal.trustauthority.intel.com/certs",
           .expected_hw_model = "INTEL_TDX"};
-      verifier_type_str = "ITA (Intel RoT)";
       break;
   }
-
-  // Log the effective policy for debugging and verification purposes.
-  LOG(INFO)
-      << "Attestation policy set:"
-      << " verifier_type=" << verifier_type_str
-      << ", require_debug_disabled=" << client_policy_.require_debug_disabled
-      << ", require_secboot_enabled=" << client_policy_.require_secboot_enabled
-      << ", require_sw_tcb_uptodate=" << client_policy_.require_sw_tcb_uptodate
-      << ", require_hw_tcb_uptodate=" << client_policy_.require_hw_tcb_uptodate
-      << ", min_sw_tcb_date="
-      << (client_policy_.min_sw_tcb_date.has_value()
-              ? absl::FormatTime(*client_policy_.min_sw_tcb_date)
-              : "[Not Checked]")
-      << ", min_hw_tcb_date="
-      << (client_policy_.min_hw_tcb_date.has_value()
-              ? absl::FormatTime(*client_policy_.min_hw_tcb_date)
-              : "[Not Checked]")
-      << ", expected_project_id="
-      << (client_policy_.expected_project_id.empty()
-              ? "[Not Checked]"
-              : client_policy_.expected_project_id)
-      << ", expected_service_account="
-      << (client_policy_.expected_service_account.empty()
-              ? "[Not Checked]"
-              : client_policy_.expected_service_account)
-      << ", expected_image_digest="
-      << (client_policy_.expected_image_digest.empty()
-              ? "[Not Checked]"
-              : client_policy_.expected_image_digest);
-  LOG(INFO) << "Internal verifier config set:"
-            << " expected_issuer=" << internal_config_.expected_issuer
-            << ", jwks_url=" << internal_config_.jwks_url
+  LOG(INFO) << "Attestation policy updated:\n" << policy_.DebugString();
+  LOG(INFO) << "Internal verifier config set: expected_issuer="
+            << internal_config_.expected_issuer
             << ", expected_hw_model=" << internal_config_.expected_hw_model;
 }
 
-absl::Status MyVerifier::Initialize() {
-  if (internal_config_.jwks_url.empty()) {
-    return absl::FailedPreconditionError(
-        "Verifier policy not set. SetPolicy() must be called before "
-        "Initialize().");
+absl::Status MyVerifier::Initialize(const std::string& jwks_path) {
+  if (jwks_path.empty()) {
+    return absl::InvalidArgumentError(
+        "Initialize: jwks_path cannot be empty in hardened offline mode.");
   }
 
-  // Fetch the public key set (JWKS) from the attestation provider's endpoint.
-  LOG(INFO) << "Fetching JWKS from: " << internal_config_.jwks_url;
-  absl::StatusOr<std::string> jwks_payload =
-      gcp_prototype::CurlGet(internal_config_.jwks_url);
-  if (!jwks_payload.ok()) {
-    return absl::InternalError(absl::StrCat("Failed to fetch JWKS: ",
-                                            jwks_payload.status().ToString()));
+  LOG(INFO) << "Loading JWKS from local file: " << jwks_path;
+  std::ifstream jwks_file(jwks_path);
+  if (!jwks_file.is_open()) {
+    return absl::NotFoundError(
+        absl::StrCat("Failed to open local JWKS file: ", jwks_path));
   }
+  std::stringstream buffer;
+  buffer << jwks_file.rdbuf();
+  std::string jwks_payload_data = buffer.str();
 
-  // Convert the JWKS into a Tink keyset handle for signature verification.
+  // Initialize Tink with the loaded payload.
   absl::StatusOr<std::unique_ptr<crypto::tink::KeysetHandle>> keyset_handle =
-      crypto::tink::JwkSetToPublicKeysetHandle(*jwks_payload);
+      crypto::tink::JwkSetToPublicKeysetHandle(jwks_payload_data);
   if (!keyset_handle.ok()) {
     return absl::InternalError(
         absl::StrCat("JwkSetToPublicKeysetHandle failed: ",
@@ -174,7 +136,7 @@ absl::Status MyVerifier::Initialize() {
                      jwt_verifier_or.status().ToString()));
   }
   jwt_verifier_ = std::move(*jwt_verifier_or);
-  LOG(INFO) << "JWT Verifier initialized successfully.";
+  LOG(INFO) << "JWT Verifier initialized successfully (Hardened Offline Mode).";
   return absl::OkStatus();
 }
 
@@ -182,21 +144,24 @@ absl::StatusOr<oak::attestation::v1::AttestationResults> MyVerifier::Verify(
     std::chrono::time_point<std::chrono::system_clock> now,
     const ::oak::attestation::v1::Evidence& evidence,
     const ::oak::attestation::v1::Endorsements& endorsements) const {
-  LOG(INFO)
-      << "C++ MyVerifier::Verify (Oak Interface Method) called (STUBBED).";
-  // This is a stub for the full Oak AttestationVerifier interface, as
-  // verification is done directly via VerifyJwt.
+  // This method will remain unimplemented. Evidence and Endorsements are older
+  // data structures that are irrelevant in this context (we use assertions).
+  LOG(WARNING)
+      << "MyVerifier::Verify is NOT IMPLEMENTED (returning success stub).";
   oak::attestation::v1::AttestationResults results;
   results.set_status(oak::attestation::v1::AttestationResults::STATUS_SUCCESS);
-  results.set_encryption_public_key("DEPRECATED_FAKE_KEY_FROM_OAK_VERIFY_STUB");
   return results;
 }
 
 absl::StatusOr<std::string> MyVerifier::VerifyJwt(absl::string_view jwt_bytes) {
   LOG(INFO) << "C++ MyVerifier::VerifyJwt called with token (size "
             << jwt_bytes.size() << ").";
+
   if (!jwt_verifier_) {
-    return absl::InternalError("JWT Verifier not initialized.");
+    return absl::FailedPreconditionError(
+        "JWT Verifier not initialized. Call Initialize() with a valid JWKS "
+        "path "
+        "first.");
   }
 
   // 1. Verify the signature and basic claims (issuer/audience).
@@ -213,6 +178,7 @@ absl::StatusOr<std::string> MyVerifier::VerifyJwt(absl::string_view jwt_bytes) {
     return payload_json_or.status();
   }
   const nlohmann::json& payload_json = *payload_json_or;
+
   if (dump_jwt_) {
     LOG(INFO) << "--- BEGIN JWT PAYLOAD DUMP ---";
     try {
@@ -245,11 +211,6 @@ absl::StatusOr<std::string> MyVerifier::VerifyJwt(absl::string_view jwt_bytes) {
 absl::StatusOr<crypto::tink::VerifiedJwt>
 MyVerifier::VerifyTokenSignatureAndBasicClaims(
     absl::string_view jwt_bytes) const {
-  if (internal_config_.expected_issuer.empty()) {
-    return absl::InternalError(
-        "Internal verifier config error: expected_issuer is empty.");
-  }
-
   // Configure validator for standard required claims.
   absl::StatusOr<crypto::tink::JwtValidator> validator_or =
       crypto::tink::JwtValidatorBuilder()
@@ -262,11 +223,10 @@ MyVerifier::VerifyTokenSignatureAndBasicClaims(
     return absl::InternalError(absl::StrCat("Failed to build JWT validator: ",
                                             validator_or.status().ToString()));
   }
-  crypto::tink::JwtValidator validator = *validator_or;
 
   // Verify signature using JWKS and decode the token while validating claims.
   absl::StatusOr<crypto::tink::VerifiedJwt> verified_jwt_or =
-      jwt_verifier_->VerifyAndDecode(std::string(jwt_bytes), validator);
+      jwt_verifier_->VerifyAndDecode(std::string(jwt_bytes), *validator_or);
   if (!verified_jwt_or.ok()) {
     return absl::InternalError(
         absl::StrCat("JWT signature/basic claim verification failed: ",
@@ -428,17 +388,10 @@ absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
 }
 
 absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
-  if (skip_policy_enforcement_) {
-    LOG(WARNING) << "Policy enforcement is being SKIPPED due to debug flag.";
-    return absl::OkStatus();
-  }
   LOG(INFO) << "Enforcing attestation policy...";
 
-  // 1. Hardware Model: Must match the expected TEE type (e.g., INTEL_TDX).
-  if (internal_config_.expected_hw_model.empty()) {
-    return absl::InternalError("config error: expected_hw_model is empty.");
-  }
-  absl::Status status =
+  // 1. Hardware Model (Fixed based on config)
+  auto status =
       CheckStringMatch(claims.hwmodel, internal_config_.expected_hw_model,
                        kJwtHwModelAttributeName);
   if (!status.ok()) return status;
@@ -446,7 +399,7 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
             << internal_config_.expected_hw_model << "'";
 
   // 2. Secure Boot: Must be enabled for TEE protection.
-  if (client_policy_.require_secboot_enabled) {
+  if (policy_.require_secboot_enabled()) {
     if (!claims.secboot.has_value() || *claims.secboot != true) {
       return absl::PermissionDeniedError(
           "Policy violation: Secure Boot must be enabled.");
@@ -455,7 +408,7 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
   }
 
   // 3. Debugging Status: Ensures no platform debugging is possible.
-  if (client_policy_.require_debug_disabled) {
+  if (policy_.require_debug_disabled()) {
     // Check hardware debug status (dbgstat)
     status =
         CheckStringMatch(claims.dbgstat, "disabled", kJwtDbgstatAttributeName);
@@ -474,38 +427,36 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
   }
 
   // 4. Identity Binding: Enforce workload origin (Project ID).
-  if (!client_policy_.expected_project_id.empty()) {
+  if (!policy_.expected_project_id().empty()) {
     status = CheckStringMatch(claims.gce_project_id,
-                              client_policy_.expected_project_id, "Project ID");
+                              policy_.expected_project_id(), "Project ID");
     if (!status.ok()) return status;
     LOG(INFO) << "  [PASS] Project ID matches expected.";
   }
 
   // 4. Identity Binding: Enforce workload origin (Service Account).
-  if (!client_policy_.expected_service_account.empty()) {
+  if (!policy_.expected_service_account().empty()) {
     bool found = false;
     // Check if the expected service account is present in the token's list.
     for (const auto& sa : claims.google_service_accounts) {
-      if (sa == client_policy_.expected_service_account) {
+      if (sa == policy_.expected_service_account()) {
         found = true;
         break;
       }
     }
     if (!found) {
-      return absl::PermissionDeniedError(absl::StrCat(
-          "Policy violation: Expected service account '",
-          client_policy_.expected_service_account, "' not found."));
+      return absl::PermissionDeniedError(
+          absl::StrCat("Policy violation: Expected service account '",
+                       policy_.expected_service_account(), "' not found."));
     }
     LOG(INFO) << "  [PASS] Expected service account found.";
   }
 
-  // 5. TCB Freshness: Enforce up-to-date measurements or minimum dates.
-
   // Helper for date enforcement to avoid repetitive code.
-  auto enforce_min_date = [](const std::optional<absl::Time>& min_date,
+  auto enforce_min_date = [](const std::string& min_date_str,
                              const absl::StatusOr<std::string>& actual_date_str,
                              absl::string_view label) -> absl::Status {
-    if (!min_date.has_value()) {
+    if (min_date_str.empty()) {
       return absl::OkStatus();
     }
     if (!actual_date_str.ok()) {
@@ -513,27 +464,36 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
           "Policy violation: Failed to get '", label,
           "' for minimum date check: ", actual_date_str.status().ToString()));
     }
-    absl::Time actual_date;
+
+    absl::Time min_date, actual_date;
     std::string err;
-    // Parse RFC 3339 timestamp (e.g., "2025-08-14T00:00:00Z")
+
+    if (!absl::ParseTime(absl::RFC3339_full, min_date_str, &min_date, &err)) {
+      return absl::InternalError(absl::StrCat(
+          "Policy configuration error: Invalid minimum date format for '",
+          label, "': ", err));
+    }
+
     if (!absl::ParseTime(absl::RFC3339_full, *actual_date_str, &actual_date,
                          &err)) {
       return absl::PermissionDeniedError(
           absl::StrCat("Policy violation: Failed to parse '", label, "' ('",
                        *actual_date_str, "') as RFC3339 timestamp: ", err));
     }
-    if (actual_date < *min_date) {
+
+    if (actual_date < min_date) {
       return absl::PermissionDeniedError(
           absl::StrCat("Policy violation: ", label, " is too old. Got ",
                        absl::FormatTime(actual_date), ", required minimum ",
-                       absl::FormatTime(*min_date)));
+                       absl::FormatTime(min_date)));
     }
     LOG(INFO) << "  [PASS] " << label << " meets minimum requirement.";
     return absl::OkStatus();
   };
 
+  // 5. TCB Freshness: Enforce up-to-date measurements or minimum dates.
   // GCP Software TCB check.
-  if (client_policy_.require_sw_tcb_uptodate) {
+  if (policy_.require_sw_tcb_uptodate()) {
     status =
         CheckStringMatch(claims.sw_tcb_status, "UpToDate",
                          "SW TCB Status (" + std::string(kSwTcbStatus) + ")");
@@ -541,12 +501,12 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
     LOG(INFO) << "  [PASS] SW TCB is UpToDate.";
   }
   // Enforce SW Minimum Date
-  status = enforce_min_date(client_policy_.min_sw_tcb_date, claims.sw_tcb_date,
+  status = enforce_min_date(policy_.min_sw_tcb_date(), claims.sw_tcb_date,
                             "SW TCB Date");
   if (!status.ok()) return status;
 
   // Intel Hardware TCB check.
-  if (client_policy_.require_hw_tcb_uptodate) {
+  if (policy_.require_hw_tcb_uptodate()) {
     status =
         CheckStringMatch(claims.hw_tcb_status, "UpToDate",
                          "HW TCB Status (" + std::string(kHwTcbStatus) + ")");
@@ -556,15 +516,14 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
     LOG(INFO) << "  [INFO] HW TCB UpToDate check skipped (allowed by policy).";
   }
   // Enforce HW Minimum Date (even if UpToDate check is skipped)
-  status = enforce_min_date(client_policy_.min_hw_tcb_date, claims.hw_tcb_date,
+  status = enforce_min_date(policy_.min_hw_tcb_date(), claims.hw_tcb_date,
                             "HW TCB Date");
   if (!status.ok()) return status;
 
   // 6. Workload Measurement: Final integrity check on container.
-  if (!client_policy_.expected_image_digest.empty()) {
-    status =
-        CheckStringMatch(claims.image_digest,
-                         client_policy_.expected_image_digest, "Image Digest");
+  if (!policy_.expected_image_digest().empty()) {
+    status = CheckStringMatch(claims.image_digest,
+                              policy_.expected_image_digest(), "Image Digest");
     if (!status.ok()) return status;
     LOG(INFO) << "  [PASS] Image digest matches expected.";
   } else {

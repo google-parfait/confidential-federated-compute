@@ -31,47 +31,51 @@ namespace gcp_prototype {
 namespace session_utils {
 
 using ::oak::session::ClientSession;
-using ::oak::session::ServerSession;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
 
-// --- Client-Side Utilities ---
-
 /**
- * @brief Reads outgoing messages (Requests) from the ClientSession and writes
- * them to the bidirectional gRPC stream.
+ * @brief Reads outgoing messages from any Oak Session and writes them to the
+ * provided gRPC stream.
  *
- * @param session The active client session state machine.
- * @param stream The bidirectional gRPC stream object.
- * @return true if any message was written, false otherwise.
+ * @tparam SessionT The Oak session type (ClientSession or ServerSession).
+ * @tparam StreamT The gRPC stream type.
+ * @param session The active session state machine.
+ * @param stream The gRPC stream to write to.
+ * @return absl::StatusOr<bool> True if at least one message was sent, false if
+ * none were sent, or an error status.
  */
-bool PumpOutgoingMessages(
-    ClientSession* session,
-    grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream);
+template <typename SessionT, typename StreamT>
+absl::StatusOr<bool> PumpOutgoingMessages(SessionT* session, StreamT* stream) {
+  bool sent_any_message = false;
+  while (true) {
+    auto outgoing_message = session->GetOutgoingMessage();
+    if (!outgoing_message.ok()) {
+      // kInternal means the session needs more input before it can generate
+      // output. This is a normal state, not an error.
+      if (outgoing_message.status().code() == absl::StatusCode::kInternal) {
+        return sent_any_message;
+      }
+      return outgoing_message.status();
+    }
+    if (!outgoing_message->has_value()) {
+      return sent_any_message;
+    }
+
+    LOG(INFO) << "Oak -> gRPC: " << (*outgoing_message)->DebugString();
+    if (!stream->Write(**outgoing_message)) {
+      return absl::UnavailableError("Failed to write to gRPC stream.");
+    }
+    sent_any_message = true;
+  }
+}
 
 /**
- * @brief Manages the initial handshake phase for the client session, exchanging
- * messages until the session is established.
- *
- * @param session The active client session.
- * @param stream The bidirectional gRPC stream.
+ * @brief Manages the initial handshake phase for the client session.
  */
 void ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream);
-
-// --- Server-Side Utilities ---
-
-/**
- * @brief Reads outgoing messages (Responses) from the ServerSession and writes
- * them to the bidirectional gRPC stream.
- *
- * @param session The active server session state machine.
- * @param stream The bidirectional gRPC stream object.
- */
-void PumpOutgoingMessages(
-    ServerSession* session,
-    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream);
 
 }  // namespace session_utils
 }  // namespace gcp_prototype

@@ -26,6 +26,7 @@
 #include "absl/time/time.h"
 #include "cc/attestation/verification/attestation_verifier.h"
 #include "nlohmann/json.hpp"
+#include "policy.pb.h"
 #include "proto/attestation/endorsement.pb.h"
 #include "proto/attestation/evidence.pb.h"
 #include "proto/attestation/verification.pb.h"
@@ -35,59 +36,22 @@
 namespace gcp_prototype {
 
 /**
- * @brief Defines the policy requirements for validating attestation tokens.
- */
-struct AttestationPolicy {
-  enum class VerifierType {
-    kGca,  // Google Cloud Attestation (Legacy/Optional)
-    kIta,  // Intel Trust Authority (Primary RoT)
-  };
-
-  // Selects the root of trust and provider configuration.
-  VerifierType verifier_type = VerifierType::kIta;
-
-  // Configuration for hardware security features.
-  bool require_debug_disabled = true;
-  bool require_secboot_enabled = true;
-
-  // TCB freshness requirements (delegated to the attestation provider).
-  // Checks that the GCP software stack (kernel, CS agent, etc.) is up-to-date.
-  bool require_sw_tcb_uptodate = true;
-  // Checks that the underlying Intel hardware (microcode, TDX module) is
-  // up-to-date.
-  bool require_hw_tcb_uptodate = true;
-
-  // Minimum date requirements for TCB.
-  // Uses absl::Time to strictly enforce valid date comparisons rather than
-  // relying on brittle string comparisons.
-  std::optional<absl::Time> min_sw_tcb_date;
-  std::optional<absl::Time> min_hw_tcb_date;
-
-  // Identity binding requirements to ensure the workload belongs to us.
-  // Requires the token to be issued for this specific GCP project.
-  std::string expected_project_id = "";
-  // Requires this service account to be present in the token's list.
-  std::string expected_service_account = "";
-  // Expected SHA-256 digest of the container image.
-  std::string expected_image_digest = "";
-};
-
-/**
  * @brief Implements policy-based attestation verification for Confidential
  * Space.
  *
- * It uses Intel Trust Authority (ITA) as the primary Root of Trust,
- * verifying both the Intel signature and a comprehensive set of identity and
- * TCB policies provided by the user.
+ * It verifies both the signature (Intel or Google, depending on policy) and
+ * a comprehensive set of identity and TCB policies provided by the user
+ * via a unified policy file.
  */
 class MyVerifier : public oak::attestation::verification::AttestationVerifier {
  public:
   MyVerifier();
 
-  // Initializes the verifier by fetching JWKS based on the configured policy.
-  absl::Status Initialize();
+  // Initializes the verifier by loading JWKS from the specified local file.
+  // Enforces "Hardened Offline" mode: keys MUST be present in the container
+  // image.
+  absl::Status Initialize(const std::string& jwks_path);
 
-  void SkipPolicyEnforcement(bool skip);
   void SetDumpJwt(bool dump);
   void SetPolicy(const AttestationPolicy& policy);
 
@@ -98,23 +62,21 @@ class MyVerifier : public oak::attestation::verification::AttestationVerifier {
       const ::oak::attestation::v1::Endorsements& endorsements) const override;
 
   // Main verification entry point called via FFI from the Rust session layer.
-  // Verifies the JWT signature, enforces policy, and extracts the public key
-  // from the nonce.
+  // Verifies the JWT signature using locally loaded keys, enforces policy,
+  // and extracts the public key from the nonce.
   absl::StatusOr<std::string> VerifyJwt(absl::string_view jwt_bytes);
 
  private:
-  // Internal configuration selected based on policy.verifier_type.
+  // Configuration for the selected Root of Trust (ITA or GCA).
   struct VerifierConfig {
     std::string expected_issuer;
-    std::string jwks_url;
     std::string expected_hw_model;
   };
 
   VerifierConfig internal_config_;
-  AttestationPolicy client_policy_;
+  AttestationPolicy policy_;
 
   std::unique_ptr<crypto::tink::JwtPublicKeyVerify> jwt_verifier_;
-  bool skip_policy_enforcement_ = false;
   bool dump_jwt_ = false;
 
   // Struct to hold all relevant claims extracted from the token payload.
@@ -134,11 +96,12 @@ class MyVerifier : public oak::attestation::verification::AttestationVerifier {
     absl::StatusOr<std::string> gce_project_id =
         absl::InternalError("Uninitialized");
 
-    // TCB Status Claims (delegated to ITA)
+    // TCB Status Claims (delegated to ITA, or GCA equivalent)
     absl::StatusOr<std::string> sw_tcb_status =
         absl::InternalError("Uninitialized");
     absl::StatusOr<std::string> hw_tcb_status =
         absl::InternalError("Uninitialized");
+
     // TCB Date Claims (raw strings from JSON, parsed during enforcement)
     absl::StatusOr<std::string> sw_tcb_date =
         absl::InternalError("Uninitialized");

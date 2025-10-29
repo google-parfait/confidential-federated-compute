@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -22,11 +24,13 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
-#include "absl/time/time.h"
 #include "cc/oak_session/client_session.h"
 #include "client_session_config.h"
+#include "google/protobuf/text_format.h"
 #include "grpcpp/grpcpp.h"
+#include "policy.pb.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
+#include "proto_util.h"
 #include "session_utils.h"
 #include "verifier.h"
 
@@ -41,69 +45,20 @@ using ::oak::session::v1::SessionResponse;
 const int PORT = 8000;
 
 ABSL_FLAG(std::string, server_address, "localhost", "Server address.");
-ABSL_FLAG(std::string, expected_image_digest, "", "Expected image digest.");
-ABSL_FLAG(bool, skip_policy_enforcement, false, "Skip policy checks (DEBUG).");
+ABSL_FLAG(std::string, policy_path, "",
+          "Path to the AttestationPolicy textproto file.");
+ABSL_FLAG(std::string, jwks_path, "",
+          "Path to local JWKS file for offline verification.");
 ABSL_FLAG(bool, dump_jwt, false, "Dump JWT payload (DEBUG).");
-ABSL_FLAG(std::string, verifier_type, "ita", "Verifier type: 'ita' or 'gca'.");
-ABSL_FLAG(std::string, expected_project_id, "",
-          "Expected GCP Project ID the workload must run in.");
-ABSL_FLAG(std::string, expected_service_account, "",
-          "Expected GCP Service Account the workload must use.");
-ABSL_FLAG(bool, require_hw_tcb_uptodate, true,
-          "Require Intel HW TCB to be UpToDate. Set to false for preview/test "
-          "environments.");
-ABSL_FLAG(std::string, min_sw_tcb_date, "",
-          "Minimum acceptable SW TCB date (RFC3339 format, e.g., "
-          "2024-01-01T00:00:00Z).");
-ABSL_FLAG(std::string, min_hw_tcb_date, "",
-          "Minimum acceptable HW TCB date (RFC3339 format, e.g., "
-          "2024-01-01T00:00:00Z).");
 
-// Parses an optional date flag. Fails immediately if the format is invalid to
-// prevent runtime errors later during policy enforcement.
-std::optional<absl::Time> ParseOptionalDateFlag(absl::string_view flag_name,
-                                                const std::string& date_str) {
-  if (date_str.empty()) {
-    return std::nullopt;
+// Reads the policy file and parses it into the protobuf.
+AttestationPolicy ReadPolicyOrDie() {
+  std::string policy_path = absl::GetFlag(FLAGS_policy_path);
+  if (policy_path.empty()) {
+    LOG(FATAL) << "--policy_path must be specified.";
   }
-  absl::Time parsed_time;
-  std::string err;
-  // Use RFC3339_full to strictly enforce ISO 8601 compliance.
-  if (!absl::ParseTime(absl::RFC3339_full, date_str, &parsed_time, &err)) {
-    LOG(FATAL) << "Invalid format for --" << flag_name << " ('" << date_str
-               << "'): " << err
-               << ". Expected RFC3339 format (e.g., 2024-01-01T00:00:00Z).";
-  }
-  return parsed_time;
-}
-
-// Builds the attestation policy from command-line flags.
-AttestationPolicy BuildPolicyFromFlags() {
   AttestationPolicy policy;
-  std::string verifier_type_flag = absl::GetFlag(FLAGS_verifier_type);
-  if (verifier_type_flag == "ita") {
-    policy.verifier_type = AttestationPolicy::VerifierType::kIta;
-  } else if (verifier_type_flag == "gca") {
-    policy.verifier_type = AttestationPolicy::VerifierType::kGca;
-  } else {
-    LOG(FATAL) << "Invalid --verifier_type: must be 'ita' or 'gca'.";
-  }
-
-  policy.expected_image_digest = absl::GetFlag(FLAGS_expected_image_digest);
-  policy.expected_project_id = absl::GetFlag(FLAGS_expected_project_id);
-  policy.expected_service_account =
-      absl::GetFlag(FLAGS_expected_service_account);
-  policy.require_hw_tcb_uptodate = absl::GetFlag(FLAGS_require_hw_tcb_uptodate);
-
-  policy.min_sw_tcb_date = ParseOptionalDateFlag(
-      "min_sw_tcb_date", absl::GetFlag(FLAGS_min_sw_tcb_date));
-  policy.min_hw_tcb_date = ParseOptionalDateFlag(
-      "min_hw_tcb_date", absl::GetFlag(FLAGS_min_hw_tcb_date));
-
-  // Override policy default to allow debug mode for this test client.
-  // In a production environment, this should likely be true by default.
-  policy.require_debug_disabled = false;
-
+  gcp_prototype::ReadTextProtoOrDie(policy_path, &policy);
   return policy;
 }
 
@@ -115,12 +70,11 @@ int main(int argc, char** argv) {
 
   // 1. Configure & Initialize Verifier
   MyVerifier verifier;
-  verifier.SetPolicy(BuildPolicyFromFlags());
-  verifier.SkipPolicyEnforcement(absl::GetFlag(FLAGS_skip_policy_enforcement));
+  verifier.SetPolicy(ReadPolicyOrDie());
   verifier.SetDumpJwt(absl::GetFlag(FLAGS_dump_jwt));
 
-  // Fetch JWKS and prepare Tink for verification.
-  CHECK_OK(verifier.Initialize())
+  // Fetch JWKS (or load from file) and prepare Tink for verification.
+  CHECK_OK(verifier.Initialize(absl::GetFlag(FLAGS_jwks_path)))
       << "Failed to initialize attestation verifier";
 
   // 2. Initialize Session & Connect
@@ -153,7 +107,7 @@ int main(int argc, char** argv) {
 
   LOG(INFO) << "Client encrypting and sending application message.";
   CHECK_OK(client_session.Write("Client says hi!"));
-  PumpOutgoingMessages(&client_session, stream.get());
+  CHECK_OK(PumpOutgoingMessages(&client_session, stream.get()));
 
   LOG(INFO) << "Waiting for server reply...";
   while (true) {
@@ -172,7 +126,7 @@ int main(int argc, char** argv) {
                 << static_cast<std::string>(decrypted_message->value());
       break;
     }
-    PumpOutgoingMessages(&client_session, stream.get());
+    CHECK_OK(PumpOutgoingMessages(&client_session, stream.get()));
   }
 
   LOG(INFO) << "Closing stream and exiting.";

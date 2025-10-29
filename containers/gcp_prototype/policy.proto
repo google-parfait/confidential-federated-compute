@@ -1,0 +1,55 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package gcp_prototype;
+
+// Defines the policy requirements for validating attestation tokens.
+message AttestationPolicy {
+  // Enumeration of supported attestation authorities.
+  enum VerifierType {
+    VERIFIER_TYPE_UNSPECIFIED = 0;
+    ITA = 1; // Intel Trust Authority (Primary RoT)
+    GCA = 2; // Google Cloud Attestation (Legacy/Optional)
+  }
+  // Selects the root of trust and provider configuration.
+  VerifierType verifier_type = 10;
+
+  // Configuration for hardware security features.
+  bool require_debug_disabled = 1;
+  bool require_secboot_enabled = 2;
+
+  // TCB freshness requirements (delegated to the attestation provider).
+  // Checks that the GCP software stack (kernel, CS agent, etc.) is up-to-date.
+  bool require_sw_tcb_uptodate = 3;
+  // Checks that the underlying Intel hardware (microcode, TDX module) is
+  // up-to-date.
+  bool require_hw_tcb_uptodate = 4;
+
+  // Minimum date requirements for TCB.
+  // Uses RFC 3339 format (e.g., "2024-08-14T00:00:00Z").
+  // Leave empty to skip specifically enforcing a minimum date.
+  string min_sw_tcb_date = 5;
+  string min_hw_tcb_date = 6;
+
+  // Identity binding requirements to ensure the workload belongs to us.
+  // Leave empty to skip enforcement of that specific claim.
+  // Requires the token to be issued for this specific GCP project.
+  string expected_project_id = 7;
+  // Requires this service account to be present in the token's list.
+  string expected_service_account = 8;
+  // Expected SHA-256 digest of the container image.
+  string expected_image_digest = 9;
+}
