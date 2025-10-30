@@ -58,14 +58,8 @@ absl::StatusOr<std::vector<Tensor>> Deserialize(
     for (const auto& inference_task :
          inference_configuration->initialize_configuration.inference_config()
              .inference_task()) {
-      if (!inference_task.column_config().input_column_names().empty()) {
-        const auto& input_names =
-            inference_task.column_config().input_column_names();
-        input_column_names.insert(input_names.begin(), input_names.end());
-      } else if (!inference_task.column_config().input_column_name().empty()) {
-        input_column_names.insert(
-            inference_task.column_config().input_column_name());
-      }
+      input_column_names.insert(
+          inference_task.column_config().input_column_name());
       output_column_names.insert(
           inference_task.column_config().output_column_name());
     }
