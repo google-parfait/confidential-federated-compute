@@ -77,6 +77,7 @@ using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalizeResponse;
@@ -517,6 +518,9 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
     case FINALIZATION_TYPE_PARTITION: {
       return Partition(context, finalize_config.num_partitions());
     }
+    case FINALIZATION_TYPE_REPORT_PARTITION: {
+      return ReportPartition(context);
+    }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
@@ -582,6 +586,49 @@ KmsFedSqlSession::Report(Context& context) {
   // Update the private state
   FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
 
+  // Produce the final report.
+  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+
+  // Encrypt the final result.
+  FCP_ASSIGN_OR_RETURN(auto encrypted_result,
+                       EncryptFinalResult(checkpoint.Flatten()));
+
+  ReadResponse read_response;
+  *(read_response.mutable_data()) = std::move(encrypted_result.ciphertext);
+  *(read_response.mutable_first_response_metadata()) =
+      std::move(encrypted_result.metadata);
+  context.Emit(std::move(read_response));
+
+  return std::move(*encrypted_result.finalize_response);
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::ReportPartition(Context& context) {
+  // Until we implement encryption of the per-partition result and
+  // distributed release of the encrypted results, we will only support
+  // sessions with unlimited budget.
+  if (!private_state_->budget.HasUnlimitedBudget()) {
+    return absl::UnimplementedError(
+        "ReportPartition is not supported for sessions with budget.");
+  }
+
+  // Produce the final report.
+  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+
+  // TODO: Encrypt the result and generate partial release token.
+  BlobMetadata metadata;
+  metadata.mutable_unencrypted();
+  metadata.set_total_size_bytes(checkpoint.size());
+  metadata.set_compression_type(
+      fcp::confidentialcompute::BlobMetadata::COMPRESSION_TYPE_NONE);
+  ReadResponse read_response;
+  *(read_response.mutable_data()) = std::move(checkpoint.Flatten());
+  *(read_response.mutable_first_response_metadata()) = std::move(metadata);
+  context.Emit(std::move(read_response));
+  return FinalizeResponse{};
+}
+
+absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {
   if (!aggregator_->CanReport()) {
     return absl::FailedPreconditionError(
         "The aggregation can't be completed due to failed "
@@ -600,29 +647,13 @@ KmsFedSqlSession::Report(Context& context) {
   }
 
   // Extract unencrypted checkpoint from the aggregator.
-  // Using the scope below ensures that both CheckpointBuilder and Cord
-  // are promptly deleted.
-  absl::Cord checkpoint_cord;
-  {
-    FederatedComputeCheckpointBuilderFactory builder_factory;
-    std::unique_ptr<CheckpointBuilder> checkpoint_builder =
-        builder_factory.Create();
-    FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
-    aggregator_.reset();
-    FCP_ASSIGN_OR_RETURN(checkpoint_cord, checkpoint_builder->Build());
-  }
-
-  // Encrypt the final result.
-  FCP_ASSIGN_OR_RETURN(auto encrypted_result,
-                       EncryptFinalResult(checkpoint_cord.Flatten()));
-
-  ReadResponse read_response;
-  *(read_response.mutable_data()) = std::move(encrypted_result.ciphertext);
-  *(read_response.mutable_first_response_metadata()) =
-      std::move(encrypted_result.metadata);
-  context.Emit(std::move(read_response));
-
-  return std::move(*encrypted_result.finalize_response);
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+      builder_factory.Create();
+  FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
+  aggregator_.reset();
+  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, checkpoint_builder->Build());
+  return checkpoint;
 }
 
 absl::StatusOr<ConfigureResponse> KmsFedSqlSession::Configure(
