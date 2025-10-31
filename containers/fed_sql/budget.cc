@@ -138,54 +138,43 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
 
     BudgetInfo& budget_info = it->second;
 
-    bool has_old_range = budget_info.consumed_range.has_value();
-
-    bool ranges_overlap = false;
-    if (budget_info.budget == 0 and !has_old_range) {
-      return absl::FailedPreconditionError("The budget is exhausted for key: " +
-                                           key);
-    }
-    if (has_old_range) {
-      // Check for any overlap between [interval_min, interval_max) and
-      // [old_range_start, old_range_end).
-      ranges_overlap = interval_max > budget_info.consumed_range->start() &&
-                       interval_min < budget_info.consumed_range->end();
-    }
-    if (budget_info.budget == 0 and ranges_overlap) {
-      return absl::FailedPreconditionError("The budget is exhausted for key: " +
-                                           key);
-    }
-
-    // The budget will be decremented by 1 if there were no
-    // `consumed_range_start` and `consumed_range_end` previously, or if the
-    // bounded partial range consumed overlaps with the `consumed_range_start`
-    // and `consumed_range_end` of the previous budget.
-    bool should_decrement = !has_old_range || ranges_overlap;
-
-    if (should_decrement) {
-      CHECK_GT(budget_info.budget, 0) << "Budget must be positive.";
+    if (!budget_info.consumed_range.has_value()) {
+      // If there is no partially consumed interval, we can think about it as
+      // the last budget unit has no partial range available. So we can just
+      // subtract the budget and set the new consumed range to the current one.
+      if (budget_info.budget == 0) {
+        return absl::FailedPreconditionError(
+            "The budget is exhausted for key: " + key);
+      }
       budget_info.budget--;
-      // Since `should_decrement` is true, we are now tracking the
-      // fractional consumption on the *next* available budget unit. This
-      // was triggered because either:
-      // 1. There was no previous `consumed_range` (the last budget unit
-      //    had no partial range available).
-      // 2. The current access range [interval_min, interval_max) overlapped
-      //    with the previous `consumed_range`, meaning to appropriately track
-      //    the budget of that range, we needed to clear the previous
-      //    `consumed_range` and start tracking the fractional consumption on
-      //    the next budget unit.
-      //
-      // Therefore, the new `consumed_range` for this fresh budget unit
-      // starts with the current access range [interval_min, interval_max).
       budget_info.consumed_range =
           Interval<uint64_t>(interval_min, interval_max);
+    } else {
+      const uint64_t old_interval_start = budget_info.consumed_range->start();
+      const uint64_t old_interval_end = budget_info.consumed_range->end();
+      // Check for any overlap between [interval_min, interval_max) and
+      // [old_interval_start, old_interval_end).
+      const bool ranges_overlap =
+          interval_max > old_interval_start && interval_min < old_interval_end;
 
-    } else {  // Has old range and NO overlap
-      // Extend the existing consumed range to cover the new range.
-      budget_info.consumed_range = Interval<uint64_t>(
-          std::min(interval_min, budget_info.consumed_range->start()),
-          std::max(interval_max, budget_info.consumed_range->end()));
+      if (ranges_overlap) {
+        if (budget_info.budget == 0) {
+          return absl::FailedPreconditionError(
+              "The budget is exhausted for key: " + key);
+        }
+        budget_info.budget--;
+        // If there is an overlap - we subtract the budget by 1 and set the new
+        // interval to the intersection.
+        budget_info.consumed_range =
+            Interval<uint64_t>(std::max(old_interval_start, interval_min),
+                               std::min(old_interval_end, interval_max));
+      } else {
+        // If there is no overlap - we do the union and don't subtract the
+        // budget.
+        budget_info.consumed_range =
+            Interval<uint64_t>(std::min(old_interval_start, interval_min),
+                               std::max(old_interval_end, interval_max));
+      }
     }
 
     if (budget_info.consumed_range->start() == 0 and
