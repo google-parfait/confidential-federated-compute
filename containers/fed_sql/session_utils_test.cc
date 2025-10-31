@@ -142,10 +142,11 @@ TEST(DeserializeTest, DeserializeSucceedsWithoutInferenceConfig) {
 }
 
 std::string BuildInferenceCheckpoint(
-    std::initializer_list<uint64_t> key_col_values,
-    std::initializer_list<absl::string_view> inference_input_col_values,
-    const std::string& key_col_name,
-    const std::string& inference_input_col_name) {
+    const absl::flat_hash_map<std::string,
+                              std::initializer_list<absl::string_view>>&
+        inference_input_col_map,
+    const std::initializer_list<uint64_t>& key_col_values,
+    const std::string& key_col_name) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
 
@@ -153,14 +154,17 @@ std::string BuildInferenceCheckpoint(
       Tensor::Create(DataType::DT_INT64,
                      TensorShape({static_cast<int64_t>(key_col_values.size())}),
                      CreateTestData<uint64_t>(key_col_values));
-  absl::StatusOr<Tensor> inference_col = Tensor::Create(
-      DataType::DT_STRING,
-      TensorShape({static_cast<int64_t>(inference_input_col_values.size())}),
-      CreateTestData<absl::string_view>(inference_input_col_values));
+  for (const auto& [inference_input_col_name, inference_input_col_values] :
+       inference_input_col_map) {
+    absl::StatusOr<Tensor> inference_col = Tensor::Create(
+        DataType::DT_STRING,
+        TensorShape({static_cast<int64_t>(inference_input_col_values.size())}),
+        CreateTestData<absl::string_view>(inference_input_col_values));
+    CHECK_OK(inference_col);
+    CHECK_OK(ckpt_builder->Add(inference_input_col_name, *inference_col));
+  }
   CHECK_OK(key);
-  CHECK_OK(inference_col);
   CHECK_OK(ckpt_builder->Add(key_col_name, *key));
-  CHECK_OK(ckpt_builder->Add(inference_input_col_name, *inference_col));
   auto checkpoint = ckpt_builder->Build();
   CHECK_OK(checkpoint.status());
 
@@ -188,7 +192,12 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
       }
     }
   )pb");
-  std::string data = BuildInferenceCheckpoint({8}, {"abc"}, "key", "val");
+  absl::flat_hash_map<std::string, std::initializer_list<absl::string_view>>
+      inference_input_col_map;
+  std::initializer_list<absl::string_view> inference_input_col_vals = {"abc"};
+  inference_input_col_map["val"] = inference_input_col_vals;
+  std::string data =
+      BuildInferenceCheckpoint(inference_input_col_map, {8}, "key");
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(data));
@@ -203,6 +212,55 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
               UnorderedElementsAre(
                   Int64TensorEq(std::vector<int64_t>{8}),
                   StringTensorEq(std::vector<absl::string_view>{"abc"})));
+}
+
+TEST(DeserializeTest,
+     DeserializeSucceedsWithInferenceConfigMultipleInputColumns) {
+  // The serialized checkpoint contains columns "key", "val1", and "val2". The
+  // TableSchema contains the "key" column and the inference config contains
+  // both the "val1" and "val2" input columns.
+  TableSchema schema = PARSE_TEXT_PROTO(R"pb(
+    name: "input"
+    column { name: "key" type: INT64 }
+    column { name: "topic" type: STRING }
+    create_table_sql: "CREATE TABLE input (key INTEGER, val1 INTEGER, val2 INTEGER)"
+  )pb");
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "val1", "val2" ]
+          output_column_name: "topic"
+        }
+      }
+    }
+  )pb");
+
+  std::initializer_list<absl::string_view> inference_input_col_vals1 = {"abc"};
+  std::initializer_list<absl::string_view> inference_input_col_vals2 = {"def"};
+  absl::flat_hash_map<std::string, std::initializer_list<absl::string_view>>
+      inference_input_col_map = {{"val1", inference_input_col_vals1},
+                                 {"val2", inference_input_col_vals2}};
+  std::string data =
+      BuildInferenceCheckpoint(inference_input_col_map, {8}, "key");
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
+      parser_factory.Create(absl::Cord(data));
+  auto deserialized_result =
+      Deserialize(schema, parser->get(), inference_configuration);
+  EXPECT_THAT(deserialized_result, IsOk());
+  EXPECT_EQ(deserialized_result->size(), 3);
+  EXPECT_THAT(*deserialized_result,
+              UnorderedElementsAre(TensorHasName("key"), TensorHasName("val1"),
+                                   TensorHasName("val2")));
+  EXPECT_THAT(*deserialized_result, Each(TensorHasNumElements(1)));
+  EXPECT_THAT(*deserialized_result,
+              UnorderedElementsAre(
+                  Int64TensorEq(std::vector<int64_t>{8}),
+                  StringTensorEq(std::vector<absl::string_view>{"abc"}),
+                  StringTensorEq(std::vector<absl::string_view>{"def"})));
 }
 
 TEST(CreateRowLocationsForAllRowsTest, ZeroRowsReturnsEmpty) {
