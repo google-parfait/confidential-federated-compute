@@ -78,7 +78,7 @@ std::string RegexMatch(const std::string& text, const std::regex& regex) {
 
 }  // namespace
 
-void InferenceModel::BuildGemmaCppModel(
+absl::Status InferenceModel::BuildGemmaCppModel(
     const SessionGemmaCppConfiguration& gemma_config) {
   GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
   LoaderArgs loader_args(gemma_config.tokenizer_path,
@@ -96,6 +96,26 @@ void InferenceModel::BuildGemmaCppModel(
   gemma_model.gemma_ =
       std::make_unique<Gemma>(loader_args, inference_args, *gemma_model.ctx_);
   gemma_model.env_ = std::make_unique<MatMulEnv>(*gemma_model.ctx_);
+  return absl::OkStatus();
+}
+
+absl::Status InferenceModel::BuildLlamaCppModel(
+    const SessionLlamaCppConfiguration& llama_config) {
+  LlamaCppModel& llama_model_ref = std::get<LlamaCppModel>(model_);
+
+  llama_model_params model_params = llama_model_default_params();
+  model_params.n_gpu_layers = llama_config.n_gpu_layers;
+
+  // Temporarily store the llama_model in a raw pointer.
+  llama_model* raw_model = llama_model_load_from_file(
+      llama_config.model_weight_path.c_str(), model_params);
+  if (raw_model == NULL) {
+    return absl::InternalError("Unable to load the llama.cpp model.");
+  }
+  // Reset the unique_ptr to take ownership of the llama_model.
+  llama_model_ref.llama_.reset(raw_model);
+
+  return absl::OkStatus();
 }
 
 absl::Status InferenceModel::BuildModel(
@@ -106,12 +126,21 @@ absl::Status InferenceModel::BuildModel(
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
       if (!inference_configuration.gemma_configuration.has_value()) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Missing session Gemma configuration"));
+            "Missing session gemma.cpp configuration.");
       }
-      SessionGemmaCppConfiguration session_gemma_config =
-          inference_configuration.gemma_configuration.value();
       model_.emplace<GemmaCppModel>();
-      BuildGemmaCppModel(session_gemma_config);
+      FCP_RETURN_IF_ERROR(BuildGemmaCppModel(
+          inference_configuration.gemma_configuration.value()));
+      break;
+    }
+    case InferenceInitializeConfiguration::kLlamaCppInitConfig: {
+      if (!inference_configuration.llama_configuration.has_value()) {
+        return absl::InvalidArgumentError(
+            "Missing session llama.cpp configuration.");
+      }
+      model_.emplace<LlamaCppModel>();
+      FCP_RETURN_IF_ERROR(BuildLlamaCppModel(
+          inference_configuration.llama_configuration.value()));
       break;
     }
     default:
