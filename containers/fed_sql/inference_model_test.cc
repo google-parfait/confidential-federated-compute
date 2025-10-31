@@ -54,7 +54,10 @@ using ::testing::UnorderedElementsAre;
 class InferenceModelTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    ON_CALL(inference_model_, BuildGemmaCppModel).WillByDefault(Return());
+    ON_CALL(inference_model_, BuildGemmaCppModel)
+        .WillByDefault(Return(absl::OkStatus()));
+    ON_CALL(inference_model_, BuildLlamaCppModel)
+        .WillByDefault(Return(absl::OkStatus()));
   }
 
   // Helper to build a string tensor for our test data.
@@ -106,7 +109,8 @@ TEST_F(InferenceModelTest, HasModelGemma) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+  ON_CALL(inference_model, BuildGemmaCppModel)
+      .WillByDefault(Return(absl::OkStatus()));
   ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   ASSERT_TRUE(inference_model.HasModel());
 }
@@ -135,7 +139,8 @@ TEST_F(InferenceModelTest, HasModelGemmaMultipleInputs) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+  ON_CALL(inference_model, BuildGemmaCppModel)
+      .WillByDefault(Return(absl::OkStatus()));
   ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
   ASSERT_TRUE(inference_model.HasModel());
 }
@@ -164,7 +169,35 @@ TEST_F(InferenceModelTest, BuildModelGemmaValidConfig) {
   inference_configuration.gemma_configuration->model_weight_path =
       "/tmp/model_weight";
 
-  ON_CALL(inference_model, BuildGemmaCppModel).WillByDefault(Return());
+  ON_CALL(inference_model, BuildGemmaCppModel)
+      .WillByDefault(Return(absl::OkStatus()));
+  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
+}
+
+TEST_F(InferenceModelTest, BuildModelLlamaValidConfig) {
+  MockInferenceModel inference_model = MockInferenceModel();
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_name: "transcript"
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+    }
+    llama_cpp_init_config {
+      model_weight_configuration_id: "model_weight_configuration_id"
+    }
+  )pb");
+  inference_configuration.llama_configuration.emplace();
+  inference_configuration.gemma_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  ON_CALL(inference_model, BuildLlamaCppModel)
+      .WillByDefault(Return(absl::OkStatus()));
   ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
 }
 
@@ -183,13 +216,40 @@ TEST_F(InferenceModelTest, BuildModelGemmaMissingSessionGemmaCppConfiguration) {
     }
     gemma_init_config {
       tokenizer_configuration_id: "tokenizer_configuration_id"
+      model_weight_configuration_id: "model_weight_configuration_id"
     }
   )pb");
 
   auto status = inference_model.BuildModel(inference_configuration);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  // gemma_configuration is missing from inference_configuration.
   ASSERT_THAT(status.message(),
-              HasSubstr("Missing session Gemma configuration"));
+              HasSubstr("Missing session gemma.cpp configuration"));
+}
+
+TEST_F(InferenceModelTest, BuildModelLlamaMissingSessionLlamaCppConfiguration) {
+  InferenceModel inference_model = InferenceModel();
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_name: "transcript"
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+    }
+    llama_cpp_init_config {
+      model_weight_configuration_id: "model_weight_configuration_id"
+    }
+  )pb");
+
+  auto status = inference_model.BuildModel(inference_configuration);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  // llama_configuration is missing from inference_configuration.
+  ASSERT_THAT(status.message(),
+              HasSubstr("Missing session llama.cpp configuration"));
 }
 
 TEST_F(InferenceModelTest, RunInferenceValidConfig) {
@@ -706,6 +766,7 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
                 inference_model_.GetInferenceConfiguration()
                     ->initialize_configuration.inference_config();
             EXPECT_EQ(config.runtime_config().seq_len(), 10000);
+            return absl::OkStatus();
           }));
   absl::StatusOr<Tensor> output_tensor =
       CreateStringTensor({"r1", "r2", "r3"}, "topic");

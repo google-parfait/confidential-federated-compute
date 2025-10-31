@@ -294,7 +294,8 @@ class FedSqlServerTest : public Test {
     int port;
     const std::string server_address = "[::1]:";
 
-    ON_CALL(*mock_inference_model_, BuildGemmaCppModel).WillByDefault(Return());
+    ON_CALL(*mock_inference_model_, BuildGemmaCppModel)
+        .WillByDefault(Return(absl::OkStatus()));
     ON_CALL(*mock_inference_model_, RunGemmaCppInference).WillByDefault([]() {
       std::initializer_list<absl::string_view> topic_values = {"topic_value"};
       return Tensor::Create(

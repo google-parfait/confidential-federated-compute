@@ -27,8 +27,10 @@ namespace confidential_federated_compute::fed_sql::testing {
 
 class MockInferenceModel : public InferenceModel {
  public:
-  MOCK_METHOD(void, BuildGemmaCppModel,
+  MOCK_METHOD(absl::Status, BuildGemmaCppModel,
               (const SessionGemmaCppConfiguration& gemma_config), (override));
+  MOCK_METHOD(absl::Status, BuildLlamaCppModel,
+              (const SessionLlamaCppConfiguration& llama_config), (override));
   MOCK_METHOD(absl::StatusOr<tensorflow_federated::aggregation::Tensor>,
               RunGemmaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,

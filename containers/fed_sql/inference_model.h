@@ -22,6 +22,7 @@
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
+#include "include/llama.h"
 #include "util/threading_context.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -35,6 +36,8 @@ struct SessionGemmaCppConfiguration {
 // Session configuration for running inference using llama.cpp engine.
 struct SessionLlamaCppConfiguration {
   std::string model_weight_path;
+  // The following param is currently not surfaced in the customer-facing API.
+  int32_t n_gpu_layers = 0;
 };
 
 // Configuration of the per-client inference step, occurring before the
@@ -67,11 +70,30 @@ class InferenceModel {
     std::unique_ptr<gcpp::MatMulEnv> env_;
     std::unique_ptr<gcpp::ThreadingContext> ctx_;
   };
+  struct LlamaCppModel {
+   private:
+    // Define the custom deleter privately inside the struct
+    struct LlamaModelDeleter {
+      void operator()(llama_model* model) const {
+        if (model) {
+          llama_model_free(model);
+        }
+      }
+    };
+
+   public:
+    std::unique_ptr<llama_model, LlamaModelDeleter> llama_;
+  };
 
   // Builds a gemma.cpp compatible model from the given Gemma config.
   // This function assumes that the model_ is already a GemmaCppModel.
-  virtual void BuildGemmaCppModel(
+  virtual absl::Status BuildGemmaCppModel(
       const SessionGemmaCppConfiguration& gemma_config);
+
+  // Builds a llama.cpp model from the given Llama config.
+  // This function assumes that the model_ is already a LlamaModel.
+  virtual absl::Status BuildLlamaCppModel(
+      const SessionLlamaCppConfiguration& llama_config);
 
   // Runs inference with the gemma.cpp model using given prompt over all rows
   // and returns a 1-D string tensor of results representing the output column.
@@ -82,7 +104,7 @@ class InferenceModel {
                        const std::string& output_column_name);
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::variant<NoModel, GemmaCppModel> model_;
+  std::variant<NoModel, GemmaCppModel, LlamaCppModel> model_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
