@@ -13,3 +13,17 @@
 @@ -25,1 +25,2 @@
  )
 +exports_files(["event_time_range.proto"])
+
+# Make random_token visible
+diff --git fcp/base/BUILD fcp/base/BUILD
+index 2b39f3d..2d09eb3 100644
+--- fcp/base/BUILD
++++ fcp/base/BUILD
+@@ -141,6 +141,7 @@ cc_library(
+         "random_token.h",
+     ],
+     copts = FCP_COPTS,
++    visibility = ["//visibility:public"],
+     deps = [
+         ":base",
+         "@boringssl//:crypto",
