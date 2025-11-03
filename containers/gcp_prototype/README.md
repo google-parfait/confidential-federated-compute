@@ -1,14 +1,15 @@
-# GCP Confidential Space Oak Session Prototype
+# GCP Confidential Space Offloading Prototype with LLM Inference
 
-This directory contains a prototype C++/Rust application demonstrating a secure client-server communication pattern using the [Oak Sessions library](https://github.com/project-oak/oak/tree/main/oak_sessions) over gRPC, designed to run with the server in [GCP Confidential Space](https://cloud.google.com/confidential-computing/confidential-space/docs) and the client within an **Oak TEE**.
+This directory contains a prototype C++/Rust application demonstrating offloading a computation (Large Language Model (LLM) inference) from an on-premise TEE to a GCP Confidential Space TEE.
+It uses the [Oak Sessions library](https://github.com/project-oak/oak/tree/main/oak_sessions) over gRPC, designed to run with the server in [GCP Confidential Space](https://cloud.google.com/confidential-computing/confidential-space/docs) and the client within an **Oak TEE**.
 It features attestation using real GCP Confidential Space tokens and performs client-side verification of both the token claims and session binding.
 
 ## Architecture
 
 The system consists of three main components:
 
-1.  **GCP Server (Confidential Space TEE):** Runs the `main` binary. Authenticates itself to the client via the Oak Session handshake.
-2.  **Oak Client (Oak TEE):** Runs the `test_client` binary inside an Oak-compatible container. It is fully isolated and has **no direct network access**.
+1.  **GCP Server (Confidential Space TEE):** Runs the `main` binary. **Hosts the LLM model and performs inference using** `llama.cpp` **upon receiving an encrypted request.** Authenticates itself to the client via the Oak Session handshake.
+2.  **Oak Client (Oak TEE):** Runs the `test_client` binary inside an Oak-compatible container. It is fully isolated and has **no direct network access**. **It acts as a gRPC server to the Host for receiving prompts.**
 3.  **Host Proxy (Untrusted):** Runs on the host machine that launches the Oak TEE. It provides a gRPC proxy service that forwards encrypted messages between the isolated Oak Client and the external GCP Server.
 
 ## How it Works
@@ -31,8 +32,9 @@ The prototype consists of a server (`main`) designed to run within a Confidentia
         * `image_digest` (the nested container digest) must match the expected server hash.
         * TCB status must be `UpToDate` and meet minimum date requirements.
     * **Binding Verification:** If the JWT is valid, the client extracts the public key from the `eat_nonce` claim. The Rust session layer then uses this key to verify the session binding signature from the `HandshakeResponse`, ensuring the established Noise session is bound to the attested workload.
-4.  **Application Data:** Once the handshake and all verifications succeed, the client sends an encrypted "Client says hi!" message, and the server responds with an encrypted "Server says hi back!".
+4.  **Prompt Offload & Inference:** Once the handshake and all verifications succeed, the host sends a **prompt** via gRPC to the Oak Client. The client encrypts this message and sends it to the GCP Server. The GCP Server decrypts the message, **runs the prompt through the LLM** (`llama.cpp`), and sends the encrypted **generated response** back.
 5.  **FFI:** C++ and Rust code interact via C Foreign Function Interface (FFI) for key management, session configuration, and callbacks.
+6.  **Result Delivery:** The Oak Client decrypts the response and returns it to the host.
 
 ## Implemented Features
 
@@ -42,6 +44,7 @@ The prototype consists of a server (`main`) designed to run within a Confidentia
 * **Session Binding:** Server proves possession of the attestation-bound key.
 * **Hardened Offline Verification:** Client performs full cryptographic verification using only baked-in keys and policy.
 * **Build Integration:** Bazel rules to bake JWKS and generated policy protos into the client container bundle.
+* **LLM Inference:** Integrated `llama.cpp` for CPU-based inference (tested with Gemma-270M).
 
 ## How to Build and Run
 
@@ -51,13 +54,14 @@ The prototype consists of a server (`main`) designed to run within a Confidentia
 * Docker (running and accessible by the user running Bazel)
 * Access to a GCP project configured for Confidential Space.
 * `docker` CLI installed and configured.
+* **Hugging Face Token:** Required to fetch model weights during the build. Set it in your environment or pass it to Bazel.
 
 ### Server
 
 1.  **Build, Load Image, and Get Digest:**
-    Run the following command from the `containers/gcp_prototype` directory. It builds the server container, loads it into your local Docker daemon, and prints the manifest digest.
+    Run the following command from the `containers/gcp_prototype` directory. **You must provide your Hugging Face token to fetch the model weights.** It builds the server container, loads it into your local Docker daemon, and prints the manifest digest.
     ```bash
-    bazel run :load_and_print_digest_runner
+    bazelisk run --repo_env=HF_TOKEN=hf_YOUR_TOKEN :load_and_print_digest_runner
     ```
     **Copy this digest value.**
 
@@ -81,13 +85,16 @@ The prototype consists of a server (`main`) designed to run within a Confidentia
     The output will be a tarball (e.g., `bazel-bin/containers/gcp_prototype/client_offline_bundle.tar`).
 
 2.  **Run with Host Proxy:**
-    Execute your host binary (which must launch the Oak TEE, pass the client bundle to it, and set up port forwarding), pointing it to the running GCP server.
+    Execute your host binary (which must launch the Oak TEE, pass the client bundle to it, and set up port forwarding), pointing it to the running GCP server, **and include the prompt**.
     ```bash
     ./your_host_binary \
       --client_container_path=/path/to/client_offline_bundle.tar \
-      --gcp_server_address=<GCP_SERVER_IP>:8000
+      --gcp_server_address=<GCP_SERVER_IP>:8000 \
+      --prompt="Tell me a joke about semi-conductors."
     ```
 
 ## Potential Future Improvements
 
 * **Error Handling:** Harden gRPC error propagation across the proxy and FFI boundaries, using `absl::Status` more consistently instead of fatal logging.
+
+* **GPU support:** Add support for NVIDIA H100 GPUs.

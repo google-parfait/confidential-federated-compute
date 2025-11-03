@@ -77,3 +77,22 @@ oci.pull(
     platforms = ["linux/amd64"],
 )
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+http_archive(
+    name = "llama_cpp",
+    build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
+    integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
+    strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
+    url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
+)
+
+# 1. Load the custom rule from the local file.
+http_auth_file = use_repo_rule("//:repo_rules.bzl", "http_auth_file")
+
+# 2. Define the repository for the weights.
+http_auth_file(
+    name = "gemma_weights",
+    downloaded_file_path = "gemma-3-270m-it-q4_k_m.gguf",
+    # Gemma 3 270M Instruct, Q4_K_M (~253MB)
+    urls = ["https://huggingface.co/second-state/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q4_K_M.gguf?download=true"],
+)
