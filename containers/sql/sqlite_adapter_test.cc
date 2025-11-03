@@ -445,6 +445,55 @@ TEST_F(AddTableContentsTest, RowSetWithExtraSystemColumns) {
   ASSERT_EQ(result.size(), 2);
 }
 
+TEST_F(AddTableContentsTest, RowSetWithExtraColumnsDifferentOrder) {
+  ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
+  // Create a RowSet with a superset of the table schema columns, in a
+  // different order.
+  std::vector<Tensor> contents;
+
+  absl::StatusOr<Tensor> str_tensor =
+      Tensor::Create(DataType::DT_STRING, {1},
+                     CreateTestData<absl::string_view>({"a"}), "str_vals");
+  ASSERT_THAT(str_tensor, IsOk());
+  contents.push_back(*std::move(str_tensor));
+
+  absl::StatusOr<Tensor> extra_tensor = Tensor::Create(
+      DataType::DT_INT64, {1}, CreateTestData<int64_t>({99}), "extra_col");
+  ASSERT_THAT(extra_tensor, IsOk());
+  contents.push_back(*std::move(extra_tensor));
+
+  absl::StatusOr<Tensor> int_tensor = Tensor::Create(
+      DataType::DT_INT64, {1}, CreateTestData<int64_t>({1}), "int_vals");
+  ASSERT_THAT(int_tensor, IsOk());
+  contents.push_back(*std::move(int_tensor));
+
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents), {});
+  ASSERT_THAT(input, IsOk());
+  std::vector<Input> storage;
+  storage.push_back(*std::move(input));
+  std::vector<RowLocation> locations = CreateRowLocations(1);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
+
+  // Verify the data was inserted correctly and the extra column was ignored.
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), "int_vals",
+                       google::internal::federated::plan::INT64);
+  SetColumnNameAndType(output_schema.add_column(), "str_vals",
+                       google::internal::federated::plan::STRING);
+
+  auto result_status = sqlite_->EvaluateQuery(
+      "SELECT int_vals, str_vals FROM t;", output_schema.column());
+
+  ASSERT_THAT(result_status, IsOk());
+  std::vector<Tensor> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_EQ(result.at(0).AsSpan<int64_t>().at(0), 1);
+  EXPECT_EQ(result.at(1).AsSpan<absl::string_view>().at(0), "a");
+}
+
 TEST_F(AddTableContentsTest, RowSetMissingTableSchemaColumn) {
   ASSERT_THAT(sqlite_->DefineTable(CreateInputTableSchema()), IsOk());
 
