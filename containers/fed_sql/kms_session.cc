@@ -438,17 +438,19 @@ KmsFedSqlSession::CommitRowsGroupingByInput(
       parser = std::make_unique<InMemoryCheckpointParser>(*std::move(tensors));
     }
 
-    // In case of an error with Accumulate, the session is terminated, since we
-    // can't guarantee that the aggregator is in a valid state. If this changes,
-    // consider changing this logic to no longer return an error.
     absl::Status accumulate_status = aggregator_->Accumulate(*parser);
+    // Use the "Invalid Argument" error code to detect bad inputs
+    if (accumulate_status.code() == absl::StatusCode::kInvalidArgument) {
+      LOG(INFO) << "Invalid input skipped";
+      ignored_errors.push_back(accumulate_status);
+      continue;
+    }
+    // For other bad codes, the session is terminated since we can't guarantee
+    // that the aggregator is in a valid state.
     if (!accumulate_status.ok()) {
-      if (absl::IsNotFound(accumulate_status)) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Failed to accumulate SQL query results: ",
-                         accumulate_status.message()));
-      }
-      return accumulate_status;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to accumulate SQL query results: ",
+                       accumulate_status.message()));
     }
   }
   return ignored_errors;
