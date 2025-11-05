@@ -35,6 +35,7 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "inference_engine.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
 #include "server_session_config.h"
 #include "session_utils.h"
@@ -51,6 +52,7 @@ using ::oak::session::v1::SessionResponse;
 
 using ::gcp_prototype::AttestationTokenProvider;
 using ::gcp_prototype::CreateTokenProvider;
+using ::gcp_prototype::InferenceEngine;
 using ::gcp_prototype::ProviderType;
 
 // Default server port.
@@ -60,6 +62,10 @@ const int PORT = 8000;
 ABSL_FLAG(std::string, attestation_provider, "ita",
           "Which attestation provider to use: 'gca' or 'ita'.");
 
+// Flag to specify the path to the model weights (GGUF file).
+ABSL_FLAG(std::string, model_path, "/saved_model/gemma-3-270m-it-q4_k_m.gguf",
+          "Path to the model weights (GGUF file).");
+
 /**
  * @brief Implementation of the Oak Session gRPC service.
  * Handles a single client stream connection.
@@ -67,9 +73,12 @@ ABSL_FLAG(std::string, attestation_provider, "ita",
 class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
  public:
   explicit OakSessionV1ServiceImpl(
-      std::unique_ptr<AttestationTokenProvider> provider)
-      : token_provider_(std::move(provider)) {
+      std::unique_ptr<AttestationTokenProvider> provider,
+      InferenceEngine* inference_engine)
+      : token_provider_(std::move(provider)),
+        inference_engine_(inference_engine) {
     CHECK(token_provider_ != nullptr) << "Token provider cannot be null";
+    CHECK(inference_engine_ != nullptr) << "Inference engine cannot be null";
   }
 
   grpc::Status Stream(grpc::ServerContext* context,
@@ -162,12 +171,27 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
         continue;
       }
 
+      std::string decrypted_request =
+          static_cast<std::string>(decrypted_message->value());
       LOG(INFO) << "Server decrypted application message: \""
-                << static_cast<std::string>(decrypted_message->value()) << "\"";
+                << decrypted_request << "\"";
 
-      // Send a simple echo reply.
+      // Run inference.
+      LOG(INFO) << "Running inference...";
+      absl::StatusOr<std::string> inference_result =
+          inference_engine_->Infer(decrypted_request);
+
+      std::string response_payload;
+      if (inference_result.ok()) {
+        response_payload = *inference_result;
+        LOG(INFO) << "Inference successful.";
+      } else {
+        LOG(ERROR) << "Inference failed: " << inference_result.status();
+        response_payload = "Error: Inference failed.";
+      }
+
       LOG(INFO) << "Server encrypting and sending application reply.";
-      absl::Status write_status = server_session->Write("Server says hi back!");
+      absl::Status write_status = server_session->Write(response_payload);
       CHECK_OK(write_status) << "Failed to write reply message";
 
       CHECK_OK(PumpOutgoingMessages(server_session.get(), stream));
@@ -179,12 +203,13 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
 
  private:
   std::unique_ptr<AttestationTokenProvider> token_provider_;
+  InferenceEngine* inference_engine_;
 };
 
 /**
  * @brief Sets up and runs the gRPC server.
  */
-void RunServer() {
+void RunServer(InferenceEngine* inference_engine) {
   std::string server_address = absl::StrFormat("0.0.0.0:%d", PORT);
 
   // Select and create the appropriate attestation provider based on flag.
@@ -203,7 +228,7 @@ void RunServer() {
   }
   token_provider = CreateTokenProvider(provider_type);
 
-  OakSessionV1ServiceImpl service(std::move(token_provider));
+  OakSessionV1ServiceImpl service(std::move(token_provider), inference_engine);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
@@ -222,7 +247,18 @@ int main(int argc, char** argv) {
   status = crypto::tink::SignatureConfig::Register();
   CHECK_OK(status) << "Failed to register Tink SignatureConfig";
 
-  RunServer();
+  std::string model_path = absl::GetFlag(FLAGS_model_path);
+  LOG(INFO) << "Initializing inference engine... loading model from: "
+            << model_path;
+  auto engine_or = InferenceEngine::Create(model_path);
+  if (!engine_or.ok()) {
+    LOG(FATAL) << "Failed to initialize inference engine: "
+               << engine_or.status();
+  }
+  std::unique_ptr<InferenceEngine> inference_engine = std::move(*engine_or);
+  LOG(INFO) << "Inference engine initialized successfully.";
+
+  RunServer(inference_engine.get());
 
   return 0;
 }

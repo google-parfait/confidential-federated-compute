@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
@@ -96,11 +97,28 @@ cc_library(
     deps = [":server_session_config_rs"],
 )
 
+# Llama.cpp integration factored into a helper library
+cc_library(
+    name = "inference_engine",
+    srcs = ["inference_engine.cc"],
+    hdrs = ["inference_engine.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@llama_cpp",
+    ],
+)
+
 # The gRPC server that will run in the container
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
     deps = [
+        ":inference_engine",
         ":server_session_config_cc",
         ":attestation_cc",
         ":session_utils",  # Added dependency
@@ -199,6 +217,23 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "test_client_proto",
+    srcs = ["test_client.proto"],
+)
+
+cc_proto_library(
+    name = "test_client_cc_proto",
+    deps = [":test_client_proto"],
+)
+
+cc_grpc_library(
+    name = "test_client_cc_grpc",
+    srcs = [":test_client_proto"],
+    grpc_only = True,
+    deps = [":test_client_cc_proto"],
+)
+
 # A local gRPC client for testing the server
 cc_binary(
     name = "test_client",
@@ -207,6 +242,7 @@ cc_binary(
         ":client_session_config_cc",
         ":proto_util",
         ":session_utils",  # Added dependency
+        ":test_client_cc_grpc",
         ":verifier_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/flags:flag",  # For the new flag
@@ -214,6 +250,7 @@ cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/oak_session:client_session",
         "@oak//proto/services:session_v1_service_cc_grpc",
     ],
@@ -225,6 +262,13 @@ pkg_tar(
     include_runfiles = True,
 )
 
+pkg_tar(
+    name = "model_layer",
+    srcs = ["@gemma_weights//:gemma-3-270m-it-q4_k_m.gguf"],
+    mode = "0444",
+    package_dir = "/saved_model",
+)
+
 oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
@@ -233,6 +277,7 @@ oci_image(
     exposed_ports = ["8000/tcp"],
     tars = [
         ":main_tar",
+        ":model_layer",
     ],
 )
 
