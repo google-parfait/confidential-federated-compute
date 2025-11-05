@@ -15,6 +15,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,9 +34,14 @@ namespace confidential_federated_compute::sql {
 // absl::variant to abstract the specific storage mechanism.
 class Input {
  public:
+  // Creates an Input from Tensors.
+  //
+  // The optional `privacy_id` Tensor must be a scalar tensor of type STRING.
   static absl::StatusOr<Input> CreateFromTensors(
       std::vector<tensorflow_federated::aggregation::Tensor> contents,
-      fcp::confidentialcompute::BlobHeader blob_header);
+      fcp::confidentialcompute::BlobHeader blob_header,
+      std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
+          std::nullopt);
 
   // Creates an Input from a list of Messages and a list of system column
   // Tensors.
@@ -46,10 +52,14 @@ class Input {
   //
   // Each system column Tensor must be a 1-dimensional Tensor with the same
   // number of elements (rows) as the number of messages.
+  //
+  // The optional `privacy_id` Tensor must be a scalar tensor of type STRING.
   static absl::StatusOr<Input> CreateFromMessages(
       std::vector<std::unique_ptr<google::protobuf::Message>> messages,
       std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
-      fcp::confidentialcompute::BlobHeader blob_header);
+      fcp::confidentialcompute::BlobHeader blob_header,
+      std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
+          std::nullopt);
 
   Input(Input&&) = default;
   Input& operator=(Input&&) = default;
@@ -68,6 +78,8 @@ class Input {
   const fcp::confidentialcompute::BlobHeader& GetBlobHeader() const {
     return blob_header_;
   }
+
+  const std::optional<std::string>& GetPrivacyId() const { return privacy_id_; }
 
   absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
   MoveToTensors() &&;
@@ -149,11 +161,13 @@ class Input {
 
   Input(ContentsVariant contents,
         fcp::confidentialcompute::BlobHeader blob_header,
-        std::vector<std::string> column_names);
+        std::vector<std::string> column_names,
+        std::optional<std::string> privacy_id);
 
   ContentsVariant contents_;
   fcp::confidentialcompute::BlobHeader blob_header_;
   std::vector<std::string> column_names_;
+  std::optional<std::string> privacy_id_;
 };
 
 }  // namespace confidential_federated_compute::sql
