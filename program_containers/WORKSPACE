@@ -58,7 +58,6 @@ http_archive(
     name = "federated-compute",
     integrity = "sha256-t1/ANyZajzPZrROf8u+0uPM3OhI9FZvpf5FQ4UBrAxs=",
     patches = [
-        "//third_party/federated_compute:executors.patch",
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:testing.patch",
         "//third_party/federated_compute:visibility.patch",
@@ -145,15 +144,15 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-D6LGKBzoe+gELpS8yqVw8Ph9fWLlyeDbSZfv9Kvm4Hw=",
+    integrity = "sha256-4cTB+siKSPDpcmfYwW1t5YTPqmp/hG3AfUeztkRqQAk=",
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
-        "//third_party/org_tensorflow_federated:package.patch",
         "//third_party/org_tensorflow_federated:executor.patch",
+        "//third_party/org_tensorflow_federated:package.patch",
     ],
-    strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
+    strip_prefix = "tensorflow-federated-548eb85480a07423ed52f80461761e6a8f658bbc",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/548eb85480a07423ed52f80461761e6a8f658bbc.tar.gz",
 )
 
 # Required by `pybind11_bazel`.

@@ -10,11 +10,3 @@ index ec09dc818..046229198 100644
      deps = [
          ":cardinalities",
          ":executor",
-@@ -796,6 +797,7 @@ cc_library(
-     name = "streaming_remote_executor",
-     srcs = ["streaming_remote_executor.cc"],
-     hdrs = ["streaming_remote_executor.h"],
-+    visibility = ["//visibility:public"],
-     deps = [
-         ":cardinalities",
-         ":executor",
