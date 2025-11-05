@@ -1,0 +1,7 @@
+# Make libcppbor BUILD file to work with bzlmod.
+--- third_party/libcppbor.BUILD.bzl
++++ third_party/libcppbor.BUILD.bzl
+@@ -27,2 +27,2 @@
+-    copts = ["-Iexternal/libcppbor/include/cppbor"],
++    includes = ["include/cppbor"],
+     include_prefix = "libcppbor",
