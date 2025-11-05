@@ -12,39 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from fcp.confidentialcompute.python import external_service_handle
+from fcp.confidentialcompute.python import external_service_handle
 from fcp.protos.confidentialcompute import confidential_transform_pb2
 from fcp.protos.confidentialcompute import data_read_write_pb2
 from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
-import federated_language
 import grpc
-import tensorflow_federated as tff
 
 
-class ReleaseManager(
-    federated_language.program.ReleaseManager[
-        federated_language.program.ReleasableStructure, str
-    ]
-):
+class ExternalServiceHandle(external_service_handle.ExternalServiceHandle):
   """Helper class for releasing results to untrusted space."""
 
   def __init__(self, outgoing_server_address: str):
     """Establishes a channel to the DataReadWrite service."""
+    super().__init__(outgoing_server_address)
     self._channel = grpc.insecure_channel(outgoing_server_address)
     self._stub = data_read_write_pb2_grpc.DataReadWriteStub(self._channel)
 
-  async def release(
-      self, value: federated_language.program.ReleasableStructure, key: str
-  ) -> None:
-    serialized_value, _ = tff.framework.serialize_value(
-        value, federated_language.framework.infer_type(value)
-    )
+  def release_unencrypted(self, value: bytes, key: bytes) -> None:
     write_request = data_read_write_pb2.WriteRequest(
         first_request_metadata=confidential_transform_pb2.BlobMetadata(
             unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id=key.encode()
+                blob_id=key
             )
         ),
         commit=True,
-        data=serialized_value.SerializeToString(),
+        data=value,
     )
     self._stub.Write(iter([write_request]))
+
+  def release_encrypted(
+      self,
+      value: bytes,
+      key: bytes,
+  ) -> None:
+    """Releases an encrypted value to the external service."""
+    raise NotImplementedError

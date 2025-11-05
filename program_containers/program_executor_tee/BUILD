@@ -32,7 +32,6 @@ trusted_py_runtime(
         "//program_executor_tee/program_context:program_runner",
     ],
     source_repo_names = [
-        "federated_language",
         "federated-compute",
         "org_tensorflow_federated",
         "oak",
@@ -46,6 +45,7 @@ cc_library(
     data = [":trusted_program_py_runtime"],
     visibility = ["//visibility:public"],
     deps = [
+        "//program_executor_tee/program_context/cc:data_parser",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -68,6 +68,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@oak//cc/crypto:signing_key",
         "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
         "@rules_python//python/cc:current_py_cc_libs",
     ],
 )
@@ -171,9 +172,7 @@ py_library(
     srcs = ["initialize_program_xla.py"],
     deps = [
         "//program_executor_tee/program_context:execution_context",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
 )
 
@@ -201,11 +200,8 @@ cc_library(
     data = [":trusted_program_py_xla_runtime"],
     deps = [
         ":confidential_transform_server",
-        "//program_executor_tee/program_context/cc:data_parser",
         "@com_google_absl//absl/strings",
-        "@oak//cc/crypto:signing_key",
         "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

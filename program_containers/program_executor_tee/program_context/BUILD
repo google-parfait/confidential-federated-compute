@@ -21,13 +21,9 @@ py_library(
     srcs = ["execution_context.py"],
     visibility = ["//visibility:public"],
     deps = [
-        ":replace_data_pointers",
         "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
         "@federated-compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
@@ -44,7 +40,6 @@ py_test(
     tags = ["noasan"],
     deps = [
         ":execution_context",
-        ":test_helpers",
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax/computation:jax_computation",
@@ -60,8 +55,9 @@ py_library(
     srcs = ["program_runner.py"],
     visibility = ["//visibility:public"],
     deps = [
-        ":release_manager",
+        ":external_service_handle",
         "@federated-compute//fcp/confidentialcompute/python:program_input_provider",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_py_pb2",
     ],
 )
 
@@ -72,7 +68,6 @@ py_test(
     deps = [
         ":execution_context",
         ":program_runner",
-        ":test_helpers",
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
@@ -85,24 +80,23 @@ py_test(
 )
 
 py_library(
-    name = "release_manager",
-    srcs = ["release_manager.py"],
+    name = "external_service_handle",
+    srcs = ["external_service_handle.py"],
     deps = [
-        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
+        "@federated-compute//fcp/confidentialcompute/python:external_service_handle",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@federated_language//federated_language",
-        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//googleapis_common_protos",
     ],
 )
 
 py_test(
-    name = "release_manager_test",
-    srcs = ["release_manager_test.py"],
+    name = "external_service_handle_test",
+    srcs = ["external_service_handle_test.py"],
     tags = ["noasan"],
     deps = [
-        ":release_manager",
+        ":external_service_handle",
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
@@ -111,42 +105,5 @@ py_test(
         "@pypi//absl_py",
         "@pypi//numpy",
         "@pypi//portpicker",
-    ],
-)
-
-py_library(
-    name = "replace_data_pointers",
-    srcs = ["replace_data_pointers.py"],
-    deps = [
-        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-    ],
-)
-
-py_test(
-    name = "replace_data_pointers_test",
-    srcs = ["replace_data_pointers_test.py"],
-    deps = [
-        ":replace_data_pointers",
-        ":test_helpers",
-        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
-        "@federated_language//federated_language",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-        "@pypi//googleapis_common_protos",
-        "@pypi//numpy",
-    ],
-)
-
-py_library(
-    name = "test_helpers",
-    testonly = True,
-    srcs = ["test_helpers.py"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:file_info_py_pb2",
-        "@federated_language//federated_language",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-        "@pypi//googleapis_common_protos",
     ],
 )

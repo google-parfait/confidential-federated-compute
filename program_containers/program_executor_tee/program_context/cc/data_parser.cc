@@ -29,7 +29,6 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
-#include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -50,9 +49,12 @@ DataParser::DataParser(
     : blob_decryptor_(blob_decryptor),
       use_caching_(use_caching),
       nonce_generator_(nonce_generator) {
+  grpc::ChannelArguments args;
+  args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
+  args.SetMaxReceiveMessageSize(kMaxGrpcMessageSize);
   stub_ = fcp::confidentialcompute::outgoing::DataReadWrite::NewStub(
       grpc::CreateCustomChannel(outgoing_server_address,
-                                grpc::InsecureChannelCredentials(), {}));
+                                grpc::InsecureChannelCredentials(), args));
 }
 
 absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
@@ -66,84 +68,6 @@ absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
   FCP_ASSIGN_OR_RETURN(tensorflow_federated::aggregation::Tensor agg_tensor,
                        parser->GetTensor(key));
   return agg_tensor.ToProto();
-}
-
-absl::StatusOr<tensorflow_federated::v0::Value>
-DataParser::ParseReadResponseToValue(
-    const fcp::confidentialcompute::outgoing::ReadResponse& read_response,
-    const std::string& nonce, const std::string& key) {
-  FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(std::string fc_checkpoint,
-                       ParseReadResponseToFcCheckpoint(read_response, nonce));
-  FCP_ASSIGN_OR_RETURN(
-      std::unique_ptr<CheckpointParser> parser,
-      parser_factory.Create(absl::Cord(std::move(fc_checkpoint))));
-  FCP_ASSIGN_OR_RETURN(tensorflow_federated::aggregation::Tensor agg_tensor,
-                       parser->GetTensor(key));
-  return ConvertAggCoreTensorToValue(std::move(agg_tensor));
-}
-
-absl::StatusOr<tensorflow_federated::v0::Value>
-DataParser::ConvertAggCoreTensorToValue(const Tensor& tensor) {
-  tensorflow_federated::v0::Value value;
-
-  federated_language::Array* array = value.mutable_array();
-
-  federated_language::ArrayShape* array_shape = array->mutable_shape();
-  for (int dim_size : tensor.shape().dim_sizes()) {
-    array_shape->mutable_dim()->Add(dim_size);
-  }
-  array_shape->set_unknown_rank(false);
-
-  switch (tensor.dtype()) {
-    case tensorflow_federated::aggregation::DT_FLOAT: {
-      array->set_dtype(federated_language::DataType::DT_FLOAT);
-      auto float_values = tensor.AsSpan<float>();
-      array->mutable_float32_list()->mutable_value()->Assign(
-          float_values.begin(), float_values.end());
-      break;
-    }
-    case tensorflow_federated::aggregation::DT_DOUBLE: {
-      array->set_dtype(federated_language::DataType::DT_DOUBLE);
-      auto double_values = tensor.AsSpan<double>();
-      array->mutable_float64_list()->mutable_value()->Assign(
-          double_values.begin(), double_values.end());
-      break;
-    }
-    case tensorflow_federated::aggregation::DT_INT32: {
-      array->set_dtype(federated_language::DataType::DT_INT32);
-      auto int32_values = tensor.AsSpan<int32_t>();
-      array->mutable_int32_list()->mutable_value()->Assign(int32_values.begin(),
-                                                           int32_values.end());
-      break;
-    }
-    case tensorflow_federated::aggregation::DT_INT64: {
-      array->set_dtype(federated_language::DataType::DT_INT64);
-      auto int64_values = tensor.AsSpan<int64_t>();
-      array->mutable_int64_list()->mutable_value()->Assign(int64_values.begin(),
-                                                           int64_values.end());
-      break;
-    }
-    case tensorflow_federated::aggregation::DT_STRING: {
-      array->set_dtype(federated_language::DataType::DT_STRING);
-      auto string_values = tensor.AsSpan<absl::string_view>();
-      array->mutable_string_list()->mutable_value()->Assign(
-          string_values.begin(), string_values.end());
-      break;
-    }
-    case tensorflow_federated::aggregation::DT_UINT64: {
-      array->set_dtype(federated_language::DataType::DT_UINT64);
-      auto uint64_values = tensor.AsSpan<uint64_t>();
-      array->mutable_uint64_list()->mutable_value()->Assign(
-          uint64_values.begin(), uint64_values.end());
-      break;
-    }
-    default:
-      return absl::UnimplementedError(
-          absl::StrCat("Unexpected DataType found: ", tensor.dtype()));
-  }
-
-  return value;
 }
 
 absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(

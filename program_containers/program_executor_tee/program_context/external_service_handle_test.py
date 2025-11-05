@@ -20,14 +20,14 @@ from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
 import numpy as np
 import portpicker
-from program_executor_tee.program_context import release_manager
+from program_executor_tee.program_context import external_service_handle
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 
 
-class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
+class ExternalServiceHandleTest(unittest.TestCase):
 
-  async def test_release(self):
+  def test_unencrypted_release(self):
     untrusted_root_port = portpicker.pick_unused_port()
     self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
     data_read_write_service = (
@@ -38,22 +38,24 @@ class ReleaseManagerTest(unittest.IsolatedAsyncioTestCase):
     )
     server.start()
 
-    manager = release_manager.ReleaseManager(f"[::1]:{untrusted_root_port}")
-    result_uri = "my_result"
-    value = 5
-    await manager.release(value, result_uri)
-
-    serialized_value, _ = tff.framework.serialize_value(
-        value, federated_language.TensorType(np.int32)
+    handle = external_service_handle.ExternalServiceHandle(
+        f"[::1]:{untrusted_root_port}"
     )
+    result_uri = b"my_result"
+    value, _ = tff.framework.serialize_value(
+        5, federated_language.TensorType(np.int32)
+    )
+    serialized_value = value.SerializeToString()
+    handle.release_unencrypted(serialized_value, result_uri)
+
     expected_request = data_read_write_pb2.WriteRequest(
         first_request_metadata=confidential_transform_pb2.BlobMetadata(
             unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id=result_uri.encode()
+                blob_id=result_uri
             )
         ),
         commit=True,
-        data=serialized_value.SerializeToString(),
+        data=serialized_value,
     )
     self.assertEqual(
         data_read_write_service.get_write_call_args(), [[expected_request]]

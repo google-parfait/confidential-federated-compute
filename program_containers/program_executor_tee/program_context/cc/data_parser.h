@@ -24,11 +24,13 @@
 #include "fcp/base/random_token.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
+
+// Increase gRPC message size limit to 2GB
+inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 
 class DataParser {
  public:
@@ -43,19 +45,6 @@ class DataParser {
   // FcCheckpoint key.
   absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
   ResolveUriToTensor(std::string uri, std::string key);
-
-  // TODO: Remove once migration to ResolveUriToTensor is complete.
-  // Parses a ReadResponse message into a FC checkpoint, extracts the tensor at
-  // the provided key, and returns a TFF value proto representing the tensor.
-  absl::StatusOr<tensorflow_federated::v0::Value> ParseReadResponseToValue(
-      const fcp::confidentialcompute::outgoing::ReadResponse& read_response,
-      const std::string& nonce, const std::string& key);
-
-  // TODO: Remove once migration to ResolveUriToTensor is complete.
-  // Convert an AggCore tensor into a TFF value proto.
-  static absl::StatusOr<tensorflow_federated::v0::Value>
-  ConvertAggCoreTensorToValue(
-      const tensorflow_federated::aggregation::Tensor& tensor);
 
  private:
   // Retrieve the FC checkpoint for a uri, either by using the cache or

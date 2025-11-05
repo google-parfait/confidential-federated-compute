@@ -23,7 +23,6 @@ import numpy as np
 from parameterized import parameterized_class
 import portpicker
 from program_executor_tee.program_context import execution_context
-from program_executor_tee.program_context import test_helpers
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 
@@ -90,9 +89,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.outgoing_server_address = f"[::1]:{self.untrusted_root_port}"
     self.worker_bns = [f"bns_address_{i}" for i in range(self.num_workers)]
     self.serialized_reference_values = b""
-    self.data_read_write_service = (
-        fake_service_bindings_jax.FakeDataReadWriteService()
-    )
     self.computation_delegation_service = (
         fake_service_bindings_jax.FakeComputationDelegationService(
             self.worker_bns
@@ -100,7 +96,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     )
     self.server = fake_service_bindings_jax.FakeServer(
         self.untrusted_root_port,
-        self.data_read_write_service,
+        None,
         self.computation_delegation_service,
     )
     self.server.start()
@@ -111,7 +107,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
-        test_helpers.parse_read_response_fn,
     )
 
   def tearDown(self):
@@ -151,64 +146,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       result_1, result_2 = my_comp([1, 2, 3, 4], 10)
       self.assertEqual(result_1, 10)
       self.assertEqual(result_2, 10)
-
-  async def test_execution_context_data_pointer_arg(self):
-    with federated_language.framework.get_context_stack().install(self.context):
-      client_data_type = federated_language.FederatedType(
-          np.int32, federated_language.CLIENTS
-      )
-      server_state_type = federated_language.FederatedType(
-          np.int32, federated_language.SERVER
-      )
-
-      @jax_computation.jax_computation
-      def abs_diff(x, y):
-        return jnp.abs(x - y)
-
-      @federated_language.federated_computation(
-          [client_data_type, server_state_type]
-      )
-      def my_comp(client_data, server_state):
-        server_state_at_client = federated_language.federated_broadcast(
-            server_state
-        )
-        shifted_client_values = federated_language.federated_map(
-            abs_diff,
-            federated_language.federated_zip(
-                [server_state_at_client, client_data]
-            ),
-        )
-        return build_federated_sum_comp()(shifted_client_values)
-
-      self.data_read_write_service.store_plaintext_message(
-          "client_1",
-          test_helpers.create_array_value(
-              1, client_data_type.member
-          ).SerializeToString(),
-      )
-      self.data_read_write_service.store_plaintext_message(
-          "client_2",
-          test_helpers.create_array_value(
-              8, client_data_type.member
-          ).SerializeToString(),
-      )
-      client_1_data = test_helpers.create_data_value(
-          "client_1", "mykey", client_data_type.member
-      ).computation
-      client_2_data = test_helpers.create_data_value(
-          "client_2", "mykey", client_data_type.member
-      ).computation
-
-      result = my_comp([client_1_data, client_2_data, client_1_data], 5)
-
-    # abs(1-5) + abs(8-5) + abs(1-5) = 4+3+4 = 11
-    self.assertEqual(result, 11)
-
-    # Check that each uri was requested only once.
-    self.assertEqual(
-        self.data_read_write_service.get_read_request_uris(),
-        ["client_1", "client_2"],
-    )
 
 
 if __name__ == "__main__":

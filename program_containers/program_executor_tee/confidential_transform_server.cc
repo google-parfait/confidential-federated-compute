@@ -41,6 +41,8 @@
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
+#include "program_executor_tee/program_context/cc/data_parser.h"
+#include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -50,6 +52,24 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Struct;
+
+PYBIND11_EMBEDDED_MODULE(data_parser, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
+  pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
+
+  pybind11::class_<DataParser>(m, "DataParser")
+      .def(pybind11::init<BlobDecryptor*, std::string&>())
+      .def("resolve_uri_to_tensor",
+           [](DataParser& self, std::string& uri, std::string& key) {
+             auto tensor = self.ResolveUriToTensor(uri, key);
+             if (!tensor.ok()) {
+               throw std::runtime_error("Failed to fetch Tensor: " +
+                                        std::string(tensor.status().message()));
+             }
+             return *tensor;
+           });
+}
 
 absl::StatusOr<fcp::confidentialcompute::ConfigureResponse>
 ProgramExecutorTeeSession::Configure(
@@ -97,18 +117,17 @@ ProgramExecutorTeeSession::Finalize(
             "program_executor_tee.program_context.program_runner")
             .attr("run_program");
 
-    // Schedule execution of the program as a Task.
-    pybind11::object task =
-        pybind11::module::import("asyncio").attr("ensure_future")(run_program(
-            get_program_initialize_fn_(),
-            pybind11::bytes(initialize_config_.program()), client_ids,
-            initialize_config_.client_data_dir(), model_id_to_zip_file_,
-            initialize_config_.outgoing_server_address()));
+    // Create a DataParser object bound to the BlobDecryptor pointer.
+    pybind11::object data_parser_instance =
+        pybind11::module::import("data_parser")
+            .attr("DataParser")(blob_decryptor_,
+                                initialize_config_.outgoing_server_address());
 
-    // Run the task in the event loop and get the result.
-    pybind11::object loop =
-        pybind11::module::import("asyncio").attr("get_event_loop")();
-    pybind11::object result = loop.attr("run_until_complete")(task);
+    run_program(get_program_initialize_fn_(),
+                pybind11::bytes(initialize_config_.program()), client_ids,
+                initialize_config_.client_data_dir(), model_id_to_zip_file_,
+                initialize_config_.outgoing_server_address(),
+                data_parser_instance.attr("resolve_uri_to_tensor"));
   } catch (const std::exception& e) {
     LOG(INFO) << "Error executing federated program: " << e.what();
   }
@@ -223,7 +242,7 @@ absl::StatusOr<std::string> ProgramExecutorTeeConfidentialTransform::GetKeyId(
   return GetKeyIdFromMetadata(metadata);
 }
 
-absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session> >
+absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
 ProgramExecutorTeeConfidentialTransform::CreateSession() {
   // Check that all zipped models passed in through WriteConfigurationRequest
   // are committed and populate model_id_to_zip_file_.

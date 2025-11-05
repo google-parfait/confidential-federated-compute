@@ -114,14 +114,9 @@ cc_test(
         "@confidential-federated-compute//containers:crypto_test_utils",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@federated-compute//fcp/testing",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:array_shape_test_utils",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:array_test_utils",
     ],
 )
 
