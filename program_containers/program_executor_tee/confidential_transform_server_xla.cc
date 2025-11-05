@@ -34,7 +34,7 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
   pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
 
   pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<BlobDecryptor*>())
+      .def(pybind11::init<BlobDecryptor*, std::string&>())
       .def("parse_read_response_to_value",
            [](DataParser& self,
               const fcp::confidentialcompute::outgoing::ReadResponse&
@@ -61,7 +61,8 @@ XLAProgramExecutorTeeConfidentialTransform::GetProgramInitializeFn() {
 
   pybind11::object data_parser_instance =
       pybind11::module::import("data_parser")
-          .attr("DataParser")(*GetBlobDecryptor());
+          .attr("DataParser")(*GetBlobDecryptor(),
+                              initialize_config.outgoing_server_address());
 
   return pybind11::module::import("program_executor_tee.initialize_program_xla")
       .attr("get_program_initialize_fn")(
