@@ -14,6 +14,7 @@
 
 #include "containers/sql/input.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -81,13 +82,33 @@ std::unique_ptr<TensorData> CreateVectorTensorData(
 }  // namespace
 Input::Input(ContentsVariant contents,
              fcp::confidentialcompute::BlobHeader blob_header,
-             std::vector<std::string> column_names)
+             std::vector<std::string> column_names,
+             std::optional<std::string> privacy_id)
     : contents_(std::move(contents)),
       blob_header_(std::move(blob_header)),
-      column_names_(std::move(column_names)) {}
+      column_names_(std::move(column_names)),
+      privacy_id_(std::move(privacy_id)) {}
 
-absl::StatusOr<Input> Input::CreateFromTensors(std::vector<Tensor> contents,
-                                               BlobHeader blob_header) {
+absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
+    const std::optional<Tensor>& privacy_id) {
+  if (!privacy_id.has_value()) {
+    return std::nullopt;
+  }
+  if (privacy_id->dtype() != tensorflow_federated::aggregation::DT_STRING) {
+    return absl::InvalidArgumentError("Privacy ID must be of type DT_STRING.");
+  }
+  FCP_ASSIGN_OR_RETURN(int64_t num_elements, privacy_id->shape().NumElements());
+  if (num_elements != 1) {
+    return absl::InvalidArgumentError("Privacy ID must be a scalar.");
+  }
+  return std::string(privacy_id->AsScalar<absl::string_view>());
+}
+
+absl::StatusOr<Input> Input::CreateFromTensors(
+    std::vector<Tensor> contents, BlobHeader blob_header,
+    std::optional<Tensor> privacy_id) {
+  FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
+                       ExtractPrivacyIdAndValidate(privacy_id));
   if (contents.empty()) {
     return absl::InvalidArgumentError("No columns provided.");
   }
@@ -111,7 +132,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(std::vector<Tensor> contents,
     }
   }
   return Input(TensorContents(std::move(contents)), std::move(blob_header),
-               std::move(column_names));
+               std::move(column_names), std::move(privacy_id_string));
 }
 
 absl::Span<const std::string> Input::GetColumnNames() const {
@@ -155,7 +176,10 @@ size_t Input::TensorContents::GetRowCount() const {
 
 absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<google::protobuf::Message>> messages,
-    std::vector<Tensor> system_columns, BlobHeader blob_header) {
+    std::vector<Tensor> system_columns, BlobHeader blob_header,
+    std::optional<Tensor> privacy_id) {
+  FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
+                       ExtractPrivacyIdAndValidate(privacy_id));
   FCP_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
   std::vector<std::string> column_names;
   for (int i = 0; i < messages[0]->GetDescriptor()->field_count(); ++i) {
@@ -165,7 +189,8 @@ absl::StatusOr<Input> Input::CreateFromMessages(
     column_names.push_back(system_column.name());
   }
   return Input(MessageContents(std::move(messages), std::move(system_columns)),
-               std::move(blob_header), std::move(column_names));
+               std::move(blob_header), std::move(column_names),
+               std::move(privacy_id_string));
 }
 
 absl::StatusOr<RowView> Input::MessageContents::GetRow(
