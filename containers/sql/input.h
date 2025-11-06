@@ -71,6 +71,10 @@ class Input {
 
   absl::Span<const std::string> GetColumnNames() const;
 
+  // Returns a view of the row at the specified index.
+  //
+  // The returned RowView will provide access to the values of the columns in
+  // the row, in the order of the column names returned by GetColumnNames().
   absl::StatusOr<RowView> GetRow(uint32_t row_index) const;
 
   size_t GetRowCount() const;
