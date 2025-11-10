@@ -45,10 +45,11 @@ class InferenceEngine {
    * application startup.
    *
    * @param model_path Filesystem path to the GGUF model file.
+   * @param gpu_layers Number of layers to offload to GPU (0 for CPU only).
    * @return A unique_ptr to the initialized engine, or an error status.
    */
   static absl::StatusOr<std::unique_ptr<InferenceEngine>> Create(
-      const std::string& model_path);
+      const std::string& model_path, int gpu_layers);
 
   ~InferenceEngine();
 

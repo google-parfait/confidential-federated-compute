@@ -3,9 +3,7 @@ A custom build file for llama.cpp
 """
 
 load("@rules_cc//cc:defs.bzl", "cc_library")
-
-# Commented out for now to test with CPU only; will re-add later for GPU.
-# load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -42,8 +40,7 @@ cc_library(
         "GGML_VERSION='\"0.0.0\"'",
         "GGML_COMMIT='\"6efcd65945a98cf6883cdd9de4c8ccd8c79d219a\"'",
         "GGML_USE_CPU",
-        # Commented out for now to test with CPU only; will re-add later for GPU.
-        # "GGML_USE_CUDA",
+        "GGML_USE_CUDA",
     ],
     linkopts = LINKOPTS,
 )
@@ -73,38 +70,38 @@ cc_library(
     linkopts = LINKOPTS,
 )
 
-# Commented out for now to test with CPU only; will re-add later for GPU.
-# cuda_library(
-#     name = "ggml-cuda",
-#     srcs = glob([
-#         "ggml/src/ggml-cuda/**/*.cu",
-#     ]),
-#     hdrs = glob([
-#         "ggml/src/ggml-cuda/**/*.cuh",
-#         "ggml/src/ggml-cuda/**/*.h",
-#     ]),
-#     includes = [
-#         "ggml/src",
-#     ],
-#     host_copts = [
-#         "-stdlib=libstdc++",
-#         "-Wno-pedantic",
-#     ],
-#     copts = [
-#         "-use_fast_math",
-#         "-extended-lambda",
-#     ],
-#     local_defines = [
-#         "GGML_CUDA_FORCE_CUBLAS",
-#     ],
-#     deps = [
-#         ":ggml-base",
-#         "@cuda_curand//:curand",
-#         "@cuda_cublas//:cublas",
-#         "@nvidia_driver//:cuda_libs",
-#     ],
-#     alwayslink = True,
-# )
+cuda_library(
+    name = "ggml-cuda",
+    srcs = glob([
+        "ggml/src/ggml-cuda/**/*.cu",
+    ]),
+    hdrs = glob([
+        "ggml/src/ggml-cuda/**/*.cuh",
+        "ggml/src/ggml-cuda/**/*.h",
+    ]),
+    includes = [
+        "ggml/src",
+    ],
+    host_copts = [
+        "-stdlib=libstdc++",
+        "-Wno-pedantic",
+    ],
+    copts = [
+        "-allow-unsupported-compiler",
+        "-use_fast_math",
+        "-extended-lambda",
+    ],
+    local_defines = [
+        "GGML_CUDA_FORCE_CUBLAS",
+    ],
+    deps = [
+        ":ggml-base",
+        "@cuda_curand//:curand",
+        "@cuda_cublas//:cublas",
+        "@nvidia_driver//:cuda_libs",
+    ],
+    alwayslink = True,
+)
 
 cc_library(
     name = "llama_cpp",
@@ -137,7 +134,6 @@ cc_library(
     deps = [
         ":ggml-base",
         ":ggml-cpu",
-        # Commented out for now to test with CPU only; will re-add later for GPU.
-        # ":ggml-cuda",
+        ":ggml-cuda",
     ],
 )
