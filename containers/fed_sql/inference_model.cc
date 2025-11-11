@@ -272,9 +272,6 @@ absl::Status InferenceModel::RunInference(Input& input) {
           input_column_names.end(),
           inference_task.column_config().input_column_names().begin(),
           inference_task.column_config().input_column_names().end());
-    } else if (!inference_task.column_config().input_column_name().empty()) {
-      input_column_names.push_back(
-          inference_task.column_config().input_column_name());
     } else {
       return absl::InvalidArgumentError(
           "No input column names found when running inference.");

@@ -85,36 +85,6 @@ TEST_F(InferenceModelTest, HasModelNone) {
   ASSERT_FALSE(inference_model.HasModel());
 }
 
-TEST_F(InferenceModelTest, HasModelGemma) {
-  MockInferenceModel inference_model = MockInferenceModel();
-  SessionInferenceConfiguration inference_configuration;
-  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
-    inference_config {
-      inference_task: {
-        column_config {
-          input_column_name: "transcript"
-          output_column_name: "topic"
-        }
-        prompt { prompt_template: "Hello, {{transcript}}" }
-      }
-      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
-    }
-    gemma_init_config {
-      tokenizer_configuration_id: "tokenizer_configuration_id"
-    }
-  )pb");
-  inference_configuration.gemma_configuration.emplace();
-  inference_configuration.gemma_configuration->tokenizer_path =
-      "/tmp/tokenizer";
-  inference_configuration.gemma_configuration->model_weight_path =
-      "/tmp/model_weight";
-
-  ON_CALL(inference_model, BuildGemmaCppModel)
-      .WillByDefault(Return(absl::OkStatus()));
-  ASSERT_THAT(inference_model.BuildModel(inference_configuration), IsOk());
-  ASSERT_TRUE(inference_model.HasModel());
-}
-
 TEST_F(InferenceModelTest, HasModelGemmaMultipleInputs) {
   MockInferenceModel inference_model = MockInferenceModel();
   SessionInferenceConfiguration inference_configuration;
@@ -152,7 +122,7 @@ TEST_F(InferenceModelTest, BuildModelGemmaValidConfig) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -181,7 +151,7 @@ TEST_F(InferenceModelTest, BuildModelLlamaValidConfig) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -208,7 +178,7 @@ TEST_F(InferenceModelTest, BuildModelGemmaMissingSessionGemmaCppConfiguration) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -234,7 +204,7 @@ TEST_F(InferenceModelTest, BuildModelLlamaMissingSessionLlamaCppConfiguration) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -263,7 +233,7 @@ TEST_F(InferenceModelTest, RunInferenceValidConfig) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -372,14 +342,14 @@ TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
       inference_task: {
         column_config {
-          input_column_name: "input"
+          input_column_names: [ "input" ]
           output_column_name: "output"
         }
         prompt { prompt_template: "Good bye, {{input}}" }
@@ -438,7 +408,7 @@ TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -512,7 +482,7 @@ TEST_F(InferenceModelTest, RunInferenceInputColumnNotFound) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -606,7 +576,7 @@ TEST_F(InferenceModelTest, RunInferenceNoPrompt) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
       }
@@ -684,7 +654,7 @@ TEST_F(InferenceModelTest, RunInferenceModelNotInitialized) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -788,7 +758,7 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }

@@ -188,7 +188,10 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
     inference_config {
       inference_task: {
-        column_config { input_column_name: "val" output_column_name: "topic" }
+        column_config {
+          input_column_names: [ "val" ]
+          output_column_name: "topic"
+        }
       }
     }
   )pb");
