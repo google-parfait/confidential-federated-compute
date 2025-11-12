@@ -83,7 +83,6 @@ py_test(
         ":compilers",
         ":fake_service_bindings_tensorflow",
         "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
-        "@confidential-federated-compute-program//program_executor_tee/program_context:test_helpers",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
@@ -98,8 +97,6 @@ py_library(
     deps = [
         ":compilers",
         "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
     ],
 )
 
@@ -130,10 +127,8 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@confidential-federated-compute-program//program_executor_tee:confidential_transform_server",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:data_parser",
         "@oak//cc/crypto:signing_key",
         "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

@@ -56,22 +56,22 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-Wxxjx2eEGaQqWbwzp/NLuZiO3pA3mC3sl3eevGMfPEA=",
-    strip_prefix = "confidential-federated-compute-c3de33d9d287fafed5b07beaf649b0c7b74679a2/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/c3de33d9d287fafed5b07beaf649b0c7b74679a2.tar.gz",
+    integrity = "sha256-yjyre7lvXetP+UoY0ZMe3opHYau8S+G0vhJVxdzTgH0=",
+    strip_prefix = "confidential-federated-compute-5b3b3e7a6e57e5d219c7dd48c4ff755f7dbd0b50/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/5b3b3e7a6e57e5d219c7dd48c4ff755f7dbd0b50.tar.gz",
 )
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-t1/ANyZajzPZrROf8u+0uPM3OhI9FZvpf5FQ4UBrAxs=",
+    integrity = "sha256-bUqQqX6icbB8tr8hdxi4uPgzAmYMq22euENPojOIpTI=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:testing.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-e9ea585583ce17ddd5f8f6f1c4f399a4e2785fc4",
-    url = "https://github.com/google/federated-compute/archive/e9ea585583ce17ddd5f8f6f1c4f399a4e2785fc4.tar.gz",
+    strip_prefix = "federated-compute-6106f29dc7b3c569655dc6493203327b1d5db515",
+    url = "https://github.com/google/federated-compute/archive/6106f29dc7b3c569655dc6493203327b1d5db515.tar.gz",
 )
 
 http_archive(
@@ -152,7 +152,7 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-D6LGKBzoe+gELpS8yqVw8Ph9fWLlyeDbSZfv9Kvm4Hw=",
+    integrity = "sha256-yfeNsA/1ehZ/Vx/GthZkD//1hOnTvTzMWc8CpzcG5sY=",
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
@@ -160,8 +160,8 @@ http_archive(
         "//third_party/org_tensorflow_federated:vizier.patch",
         "@confidential-federated-compute-program//third_party/org_tensorflow_federated:executor.patch",
     ],
-    strip_prefix = "tensorflow-federated-15c13df458277c97f4d991569f4a9853fbf8c521",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/15c13df458277c97f4d991569f4a9853fbf8c521.tar.gz",
+    strip_prefix = "tensorflow-federated-f9b451b46a39c540266a752bbf2dd2b4ff16e229",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/f9b451b46a39c540266a752bbf2dd2b4ff16e229.tar.gz",
 )
 
 # Required by `pybind11_bazel`.

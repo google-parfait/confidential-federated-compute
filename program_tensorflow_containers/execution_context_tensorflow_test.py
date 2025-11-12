@@ -21,7 +21,6 @@ import federated_language
 import numpy as np
 import portpicker
 from program_executor_tee.program_context import execution_context
-from program_executor_tee.program_context import test_helpers
 import tensorflow_federated as tff
 
 
@@ -59,7 +58,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
-        test_helpers.parse_read_response_fn,
     )
 
     client_data_type = federated_language.FederatedType(
@@ -98,7 +96,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -124,62 +121,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result_1, 6)
     self.assertEqual(result_2, 10)
 
-  async def test_tf_execution_context_data_pointer_arg(self):
-    federated_language.framework.set_default_context(
-        execution_context.TrustedContext(
-            compilers.compile_tf_to_call_dominant,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
-            self.outgoing_server_address,
-            self.worker_bns,
-            self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
-        )
-    )
-
-    client_data_type = federated_language.FederatedType(
-        np.int32, federated_language.CLIENTS
-    )
-    server_state_type = federated_language.FederatedType(
-        np.int32, federated_language.SERVER
-    )
-
-    @federated_language.federated_computation(
-        [client_data_type, server_state_type]
-    )
-    def my_comp(client_data, server_state):
-      return federated_language.federated_sum(client_data), server_state
-
-    self.data_read_write_service.store_plaintext_message(
-        "client_1",
-        test_helpers.create_array_value(
-            1, client_data_type.member
-        ).SerializeToString(),
-    )
-    self.data_read_write_service.store_plaintext_message(
-        "client_2",
-        test_helpers.create_array_value(
-            2, client_data_type.member
-        ).SerializeToString(),
-    )
-    client_1_data = test_helpers.create_data_value(
-        "client_1", "mykey", client_data_type.member
-    ).computation
-    client_2_data = test_helpers.create_data_value(
-        "client_2", "mykey", client_data_type.member
-    ).computation
-
-    result_1, result_2 = my_comp(
-        [client_1_data, client_2_data, client_1_data], 10
-    )
-    self.assertEqual(result_1, 4)
-    self.assertEqual(result_2, 10)
-
-    # Check that each uri was requested only once.
-    self.assertEqual(
-        self.data_read_write_service.get_read_request_uris(),
-        ["client_1", "client_2"],
-    )
-
   async def test_tf_execution_context_no_arg(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
@@ -188,7 +129,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -242,7 +182,6 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
         )
     )
 
@@ -272,62 +211,6 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     result_1, result_2 = my_comp([1, 2, 3, 4], 10)
     self.assertEqual(result_1, 20)
     self.assertEqual(result_2, 10)
-
-  async def test_execution_context_data_pointer_arg(self):
-    federated_language.framework.set_default_context(
-        execution_context.TrustedContext(
-            compilers.compile_tf_to_call_dominant,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
-            self.outgoing_server_address,
-            self.worker_bns,
-            self.serialized_reference_values,
-            test_helpers.parse_read_response_fn,
-        )
-    )
-
-    client_data_type = federated_language.FederatedType(
-        np.int32, federated_language.CLIENTS
-    )
-    server_state_type = federated_language.FederatedType(
-        np.int32, federated_language.SERVER
-    )
-
-    @federated_language.federated_computation(
-        [client_data_type, server_state_type]
-    )
-    def my_comp(client_data, server_state):
-      return federated_language.federated_sum(client_data), server_state
-
-    self.data_read_write_service.store_plaintext_message(
-        "client_1",
-        test_helpers.create_array_value(
-            1, client_data_type.member
-        ).SerializeToString(),
-    )
-    self.data_read_write_service.store_plaintext_message(
-        "client_2",
-        test_helpers.create_array_value(
-            2, client_data_type.member
-        ).SerializeToString(),
-    )
-    client_1_data = test_helpers.create_data_value(
-        "client_1", "mykey", client_data_type.member
-    ).computation
-    client_2_data = test_helpers.create_data_value(
-        "client_2", "mykey", client_data_type.member
-    ).computation
-
-    result_1, result_2 = my_comp(
-        [client_1_data, client_2_data, client_1_data], 10
-    )
-    self.assertEqual(result_1, 4)
-    self.assertEqual(result_2, 10)
-
-    # Check that each uri was requested only once.
-    self.assertEqual(
-        self.data_read_write_service.get_read_request_uris(),
-        ["client_1", "client_2"],
-    )
 
 
 if __name__ == "__main__":

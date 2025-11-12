@@ -57,12 +57,11 @@ import numpy as np
 from google.protobuf import any_pb2
 from fcp.confidentialcompute.python import min_sep_data_source
 
-async def trusted_program(input_provider, release_manager):
+def trusted_program(input_provider, external_service_handle):
 
   data_source = min_sep_data_source.MinSepDataSource(
       min_sep=2,
-      client_ids=input_provider.client_ids,
-      client_data_directory=input_provider.client_data_directory,
+      input_provider=input_provider,
       computation_type=computation_pb2.Type(
           tensor=computation_pb2.TensorType(
               dtype=data_type_pb2.DataType.DT_INT32,
@@ -113,8 +112,20 @@ async def trusted_program(input_provider, release_manager):
   for _ in range(4):
     server_state, metrics = my_comp(server_state, data_source_iterator.select(2))
 
-  await release_manager.release(server_state['sum'], "resulting_sum")
-  await release_manager.release(server_state['client_count'], "resulting_client_count")
+  sum_val, _ = tff.framework.serialize_value(
+      server_state["sum"],
+      federated_language.framework.infer_type(server_state["sum"]),
+  )
+  client_count_val, _ = tff.framework.serialize_value(
+      server_state["client_count"],
+      federated_language.framework.infer_type(server_state["client_count"]),
+  )
+  external_service_handle.release_unencrypted(
+      sum_val.SerializeToString(), b"resulting_sum"
+  )
+  external_service_handle.release_unencrypted(
+      client_count_val.SerializeToString(), b"resulting_client_count"
+  )
   )",
                       client_ids, client_data_dir);
 

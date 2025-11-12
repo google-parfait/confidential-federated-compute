@@ -35,12 +35,21 @@ TYPED_TEST_SUITE(
 TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
   this->CreateSession(
       R"(
+import os
+import zipfile
+
+import federated_language
 import tensorflow_federated as tff
 import tensorflow as tf
 import numpy as np
 
-async def trusted_program(input_provider, release_manager):
-  model = input_provider.get_model('model1')
+def trusted_program(input_provider, external_service_handle):
+  zip_file_path = input_provider.get_filename_for_config_id('model1')
+  model_path = os.path.join(os.path.dirname(zip_file_path), 'model1')
+  with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
+    zip_ref.extractall(model_path)
+  model = tff.learning.models.load_functional_model(model_path)
+
   def model_fn() -> tff.learning.models.VariableModel:
     return tff.learning.models.model_from_functional(model)
 
@@ -51,7 +60,16 @@ async def trusted_program(input_provider, release_manager):
       ),
   )
   state = learning_process.initialize()
-  await release_manager.release(state, "result")
+
+  state_val, _ = tff.framework.serialize_value(
+      state,
+      federated_language.framework.infer_type(
+          state,
+      ),
+  )
+  external_service_handle.release_unencrypted(
+      state_val.SerializeToString(), b"result"
+  )
   )",
       /*client_ids=*/{}, /*client_data_dir=*/"",
       /*file_id_to_filepath=*/
