@@ -24,11 +24,12 @@ import portpicker
 from program_executor_tee.program_context import program_runner
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
+from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 
-class ProgramRunnerTest(unittest.IsolatedAsyncioTestCase):
+class ProgramRunnerTest(unittest.TestCase):
 
-  async def test_run_program(self):
+  def test_run_program(self):
     untrusted_root_port = portpicker.pick_unused_port()
     self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
     data_read_write_service = (
@@ -40,11 +41,18 @@ class ProgramRunnerTest(unittest.IsolatedAsyncioTestCase):
     server.start()
 
     program_string = """
-async def trusted_program(input_provider, release_manager):
+import tensorflow_federated as tff
+import federated_language
+
+def trusted_program(input_provider, external_service_handle):
     result1 = 1+2
     result2 = 1*2
-    await release_manager.release(result1, "result1")
-    await release_manager.release(result2, "result2")
+
+    result1_val, _ = tff.framework.serialize_value(result1, federated_language.framework.infer_type(result1))
+    result2_val, _ = tff.framework.serialize_value(result2, federated_language.framework.infer_type(result2))
+
+    external_service_handle.release_unencrypted(result1_val.SerializeToString(), b"result1")
+    external_service_handle.release_unencrypted(result2_val.SerializeToString(), b"result2")
     """
 
     value_3, _ = tff.framework.serialize_value(
@@ -72,13 +80,14 @@ async def trusted_program(input_provider, release_manager):
         data=value_2.SerializeToString(),
     )
 
-    await program_runner.run_program(
+    program_runner.run_program(
         initialize_fn=None,
         program=base64.b64encode(program_string.encode("utf-8")),
         client_ids=[],
         client_data_directory="",
         model_id_to_zip_file={},
         outgoing_server_address=f"[::1]:{untrusted_root_port}",
+        resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
     )
 
     self.assertEqual(
@@ -88,20 +97,21 @@ async def trusted_program(input_provider, release_manager):
 
     server.stop()
 
-  async def test_run_program_without_trusted_program_function(self):
+  def test_run_program_without_trusted_program_function(self):
     program_string = """
-def incorrectly_named_trusted_program(release_manager):
+def incorrectly_named_trusted_program(input_provider, external_service_handle):
     return 10
     """
 
     with self.assertRaises(ValueError) as context:
-      await program_runner.run_program(
+      program_runner.run_program(
           initialize_fn=None,
           program=base64.b64encode(program_string.encode("utf-8")),
           client_ids=[],
           client_data_directory="",
           model_id_to_zip_file={},
           outgoing_server_address="",
+          resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
       )
     self.assertEqual(
         str(context.exception),

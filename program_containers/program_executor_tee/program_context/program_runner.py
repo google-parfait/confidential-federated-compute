@@ -16,25 +16,23 @@ import base64
 from collections.abc import Callable
 from typing import Optional
 
-from program_executor_tee.program_context import release_manager
-
-try:
-  from fcp.confidentialcompute.python import program_input_provider  # pylint: disable=g-import-not-at-top
-except AttributeError:
-  program_input_provider = None
+from fcp.confidentialcompute.python import program_input_provider
+from program_executor_tee.program_context import external_service_handle
+from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
 # federated program to execute.
 TRUSTED_PROGRAM_KEY = "trusted_program"
 
 
-async def run_program(
+def run_program(
     initialize_fn: Optional[Callable[[], None]],
     program: bytes,
     client_ids: list[str],
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
+    resolve_uri_to_tensor: Callable[[str, str], tensor_pb2.TensorProto],
 ):
   """Executes a federated program.
 
@@ -54,6 +52,8 @@ async def run_program(
     outgoing_server_address: The address at which the untrusted root server can
       be reached for data read/write requests and computation delegation
       requests.
+    resolve_uri_to_tensor: Function that resolves pointers to data. Expects a
+      uri and key and returns an AggCore tensor proto.
 
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
@@ -77,14 +77,14 @@ async def run_program(
     )
   trusted_program = program_namespace[TRUSTED_PROGRAM_KEY]
 
-  if program_input_provider is not None:
-    input_provider = program_input_provider.ProgramInputProvider(
-        client_ids, client_data_directory, model_id_to_zip_file
-    )
-  else:
-    input_provider = None
-  initialized_release_manager = release_manager.ReleaseManager(
-      outgoing_server_address
+  input_provider = program_input_provider.ProgramInputProvider(
+      client_ids,
+      client_data_directory,
+      model_id_to_zip_file,
+      resolve_uri_to_tensor,
+  )
+  initialized_external_service_handle = (
+      external_service_handle.ExternalServiceHandle(outgoing_server_address)
   )
 
-  await trusted_program(input_provider, initialized_release_manager)
+  trusted_program(input_provider, initialized_external_service_handle)

@@ -30,13 +30,16 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXPrivacy) {
   this->CreateSession(R"(
 import numpy as np
 import jax_privacy
+import tensorflow_federated as tff
+import federated_language
 
-async def trusted_program(input_provider, release_manager):
+def trusted_program(input_provider, external_service_handle):
   fn = lambda param, data: 0.5 * np.mean((data - param) ** 2)
   grad_fn = jax_privacy.clipped_grad(fn, l2_clip_norm=np.inf)
   grad = grad_fn(3.0, np.array([0, 7, -2]))
   grad = grad.tolist()
-  await release_manager.release(grad, "result")
+  grad_val, _ = tff.framework.serialize_value(grad, federated_language.framework.infer_type(grad))
+  external_service_handle.release_unencrypted(grad_val.SerializeToString(), b"result")
   )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;

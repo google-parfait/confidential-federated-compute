@@ -29,15 +29,18 @@ TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
 TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXComputation) {
   this->CreateSession(R"(
 from federated_language_jax.computation import jax_computation
+import tensorflow_federated as tff
+import federated_language
 
-async def trusted_program(input_provider, release_manager):
+def trusted_program(input_provider, external_service_handle):
 
   @jax_computation.jax_computation
   def comp():
     return 10
 
   result = comp()
-  await release_manager.release(result, "result")
+  result_val, _ = tff.framework.serialize_value(result, federated_language.framework.infer_type(result))
+  external_service_handle.release_unencrypted(result_val.SerializeToString(), b"result")
   )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;
