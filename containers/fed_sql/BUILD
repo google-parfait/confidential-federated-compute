@@ -294,9 +294,11 @@ cc_test(
         "//containers/sql:row_set",
         "//containers/sql:sqlite_adapter",
         "//testing:parse_text_proto",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:optional",
+        "@federated-compute//fcp/confidentialcompute:constants",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
@@ -305,6 +307,7 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
 

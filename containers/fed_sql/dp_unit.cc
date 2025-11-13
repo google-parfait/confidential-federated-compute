@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@
 #include "containers/fed_sql/session_utils.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -37,7 +39,9 @@ namespace {
 using confidential_federated_compute::sql::Input;
 using confidential_federated_compute::sql::RowLocation;
 using confidential_federated_compute::sql::RowSet;
+using confidential_federated_compute::sql::RowView;
 using confidential_federated_compute::sql::SqliteAdapter;
+using fcp::confidential_compute::kEventTimeColumnName;
 using tensorflow_federated::aggregation::CheckpointParser;
 using tensorflow_federated::aggregation::Tensor;
 }  // namespace
@@ -78,9 +82,8 @@ absl::StatusOr<absl::CivilSecond> DpUnitProcessor::ComputeDPTimeUnit(
 }
 
 absl::StatusOr<uint64_t> DpUnitProcessor::ComputeDPUnitHash(
-    int64_t privacy_id, absl::CivilSecond dp_time_unit,
-    confidential_federated_compute::sql::RowView row_view,
-    absl::Span<const int64_t> dp_indices) {
+    absl::string_view privacy_id, absl::CivilSecond dp_time_unit,
+    RowView row_view, absl::Span<const int64_t> dp_indices) {
   auto hasher = absl::HashOf(dp_time_unit, privacy_id);
   for (int64_t dp_index : dp_indices) {
     tensorflow_federated::aggregation::DataType column_type =
@@ -116,26 +119,96 @@ absl::StatusOr<uint64_t> DpUnitProcessor::ComputeDPUnitHash(
   return hasher;
 }
 
+absl::StatusOr<int> FindColumnIndex(const Input& input,
+                                    absl::string_view column_name) {
+  const auto& column_names = input.GetColumnNames();
+  auto it = std::find(column_names.begin(), column_names.end(), column_name);
+  if (it == column_names.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Column '", column_name, "' not found."));
+  }
+  return std::distance(column_names.begin(), it);
+}
+
+template <typename T>
+absl::StatusOr<T> GetRowValue(const Input& input, uint32_t row_index,
+                              int col_index) {
+  FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(row_index));
+  return row.GetValue<T>(col_index);
+}
+
+absl::Status DpUnitProcessor::StageInputForCommit(Input&& input) {
+  // Unpack class members.
+  uint32_t input_index = uncommitted_inputs_.size();
+  const std::vector<std::string>& dp_column_names =
+      dp_unit_parameters_.column_names;
+
+  // Get info about elements in the input.
+  uint32_t num_rows = input.GetRowCount();
+  absl::Span<const std::string> column_names = input.GetColumnNames();
+
+  const auto& optional_privacy_id = input.GetPrivacyId();
+  if (!optional_privacy_id.has_value()) {
+    return absl::InvalidArgumentError("Privacy ID not found in input.");
+  }
+  absl::string_view privacy_id = *optional_privacy_id;
+
+  FCP_ASSIGN_OR_RETURN(int event_time_col_index,
+                       FindColumnIndex(input, kEventTimeColumnName));
+  std::vector<int64_t> dp_col_indices;
+  dp_col_indices.reserve(dp_column_names.size());
+  for (const auto& dp_column_name : dp_column_names) {
+    FCP_ASSIGN_OR_RETURN(int dp_col_index,
+                         FindColumnIndex(input, dp_column_name));
+    dp_col_indices.push_back(dp_col_index);
+  }
+  absl::Span<const int64_t> dp_indices = dp_col_indices;
+
+  for (uint32_t i = 0; i < num_rows; ++i) {
+    FCP_ASSIGN_OR_RETURN(
+        absl::string_view event_time,
+        GetRowValue<absl::string_view>(input, i, event_time_col_index));
+    FCP_ASSIGN_OR_RETURN(
+        absl::CivilSecond start_civil_time,
+        fcp::confidentialcompute::ConvertEventTimeToCivilSecond(event_time));
+    FCP_ASSIGN_OR_RETURN(absl::CivilSecond dp_time_unit,
+                         ComputeDPTimeUnit(start_civil_time));
+    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
+    FCP_ASSIGN_OR_RETURN(
+        uint64_t dp_unit_hash,
+        ComputeDPUnitHash(privacy_id, dp_time_unit, row, dp_indices));
+    uint32_t row_index = i;
+    uncommitted_row_locations_.push_back({.dp_unit_hash = dp_unit_hash,
+                                          .input_index = input_index,
+                                          .row_index = row_index});
+  }
+
+  // Push back the input to the class member.
+  uncommitted_inputs_.push_back(std::move(input));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<absl::Status>>
-DpUnitProcessor::CommitRowsGroupingByDpUnit(
-    std::vector<Input>&& uncommitted_inputs,
-    std::vector<RowLocation>&& row_dp_unit_index) {
+DpUnitProcessor::CommitRowsGroupingByDpUnit() {
   std::vector<absl::Status> ignored_errors;
   // TODO: Iterate over uncommitted partition keys and ensure they're in the
   // specified fedsql::Interval range.
-  std::sort(row_dp_unit_index.begin(), row_dp_unit_index.end());
-  for (auto it = row_dp_unit_index.begin(); it != row_dp_unit_index.end();) {
+  std::sort(uncommitted_row_locations_.begin(),
+            uncommitted_row_locations_.end());
+  for (auto it = uncommitted_row_locations_.begin();
+       it != uncommitted_row_locations_.end();) {
     const auto& dp_unit_hash = it->dp_unit_hash;
     // Get a span of rows that belong to the same DP unit.
-    auto end_of_range = std::find_if(
-        it, row_dp_unit_index.end(), [&dp_unit_hash](const auto& other) {
-          return dp_unit_hash != other.dp_unit_hash;
-        });
+    auto end_of_range =
+        std::find_if(it, uncommitted_row_locations_.end(),
+                     [&dp_unit_hash](const auto& other) {
+                       return dp_unit_hash != other.dp_unit_hash;
+                     });
     absl::Span<const RowLocation> dp_unit_span(&*it,
                                                std::distance(it, end_of_range));
     it = end_of_range;  // Move to the next DP unit.
     FCP_ASSIGN_OR_RETURN(RowSet row_set,
-                         RowSet::Create(dp_unit_span, uncommitted_inputs));
+                         RowSet::Create(dp_unit_span, uncommitted_inputs_));
     absl::StatusOr<std::vector<Tensor>> sql_result =
         ExecuteClientQuery(sql_configuration_, row_set);
     // Errors from the SQL query itself (eg. division by zero, invalid column

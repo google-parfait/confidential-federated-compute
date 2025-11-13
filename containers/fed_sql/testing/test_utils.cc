@@ -49,6 +49,8 @@ using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 
+}  // namespace
+
 std::unique_ptr<MutableStringData> CreateStringTestData(
     std::vector<std::string> data) {
   std::unique_ptr<MutableStringData> tensor_data =
@@ -58,7 +60,6 @@ std::unique_ptr<MutableStringData> CreateStringTestData(
   }
   return tensor_data;
 }
-}  // namespace
 
 std::string BuildFedSqlGroupByCheckpoint(
     std::initializer_list<uint64_t> key_col_values,

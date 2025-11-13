@@ -63,22 +63,25 @@ class DpUnitProcessor {
   /// Returns a hash of the DP time unit and DP column values. This is used to
   // group rows by DP unit.
   absl::StatusOr<uint64_t> ComputeDPUnitHash(
-      int64_t privacy_id, absl::CivilSecond dp_time_unit,
+      absl::string_view privacy_id, absl::CivilSecond dp_time_unit,
       confidential_federated_compute::sql::RowView row_view,
       absl::Span<const int64_t> dp_indices);
 
+  // Creates a DP unit index entry for each input row, and queues the input for
+  // processing in `CommitRowsGroupingByDpUnit`.
+  // This function consumes the input, so that it cannot be accidentally reused.
+  absl::Status StageInputForCommit(sql::Input&& input);
+
   // Executes the SQL query on each DP unit and accumulates the results using
   // the provided aggregator. Returns any ignored errors. Not thread safe.
-  absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByDpUnit(
-      std::vector<confidential_federated_compute::sql::Input>&&
-          uncommitted_inputs,
-      std::vector<confidential_federated_compute::sql::RowLocation>&&
-          row_dp_unit_index);
+  absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByDpUnit();
 
  private:
   SqlConfiguration sql_configuration_;
   DpUnitParameters dp_unit_parameters_;
   tensorflow_federated::aggregation::CheckpointAggregator* aggregator_;
+  std::vector<sql::Input> uncommitted_inputs_;
+  std::vector<sql::RowLocation> uncommitted_row_locations_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

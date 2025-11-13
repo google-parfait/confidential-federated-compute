@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/optional.h"
@@ -24,6 +25,7 @@
 #include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -33,6 +35,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -42,13 +45,17 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::confidential_federated_compute::fed_sql::testing::CreateStringTestData;
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowLocation;
+using ::confidential_federated_compute::sql::RowView;
+using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::google::protobuf::RepeatedPtrField;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::Configuration;
+using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
@@ -59,6 +66,8 @@ using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::IsEmpty;
+using ::testing::Test;
+using ::testing::UnorderedElementsAre;
 
 Configuration DefaultConfiguration() {
   return PARSE_TEXT_PROTO(R"pb(
@@ -95,7 +104,7 @@ Configuration DefaultConfiguration() {
   )pb");
 }
 
-class DpUnitTest : public ::testing::Test {
+class DpUnitCommitTest : public Test {
  protected:
   void SetUp() override {
     CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
@@ -119,44 +128,15 @@ class DpUnitTest : public ::testing::Test {
     *output_columns.Add() = PARSE_TEXT_PROTO(R"pb(name: "val" type: INT64)pb");
     sql_config_.output_columns = output_columns;
 
-    dp_unit_processor_ = std::make_unique<DpUnitProcessor>(
-        sql_config_, dp_unit_parameters_, aggregator_.get());
+    id1_ = "1";
+    id2_ = "2";  // Different ID
 
-    // Common data setup
-    time1_ = absl::CivilSecond(2024, 1, 1, 0, 0, 0);
-    time2_ = absl::CivilSecond(2024, 1, 1, 0, 0, 1);  // Different time
-    id1_ = 1;
-    id2_ = 2;  // Different ID
-
-    // Create tensors with two rows:
-    // Row 0: {10, "foo"}
-    // Row 1: {20, "bar"}
-    std::unique_ptr<MutableVectorData<int64_t>> int64_data =
-        std::make_unique<MutableVectorData<int64_t>>(0);
-    int64_data->push_back(10);
-    int64_data->push_back(20);
-    tensors_array_[0] = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
-                                       std::move(int64_data), "col1")
-                            .value();
-
-    std::unique_ptr<MutableStringData> string_data =
-        std::make_unique<MutableStringData>(2);
-    string_data->Add("foo");
-    string_data->Add("bar");
-    tensors_array_[1] = Tensor::Create(DataType::DT_STRING, TensorShape({2}),
-                                       std::move(string_data), "col2")
-                            .value();
-    dp_tensors_ = absl::Span<const Tensor>(tensors_array_);
-
-    // Use emplace to construct the RowView inside the optional
-    row_view0_.emplace(
-        confidential_federated_compute::sql::RowView::CreateFromTensors(
-            dp_tensors_, 0)
-            .value());
-    row_view1_.emplace(
-        confidential_federated_compute::sql::RowView::CreateFromTensors(
-            dp_tensors_, 1)
-            .value());
+    // Create a windowing schedule.
+    schedule_ = PARSE_TEXT_PROTO(R"pb(
+      size { size: 1 unit: HOURS }
+      shift { size: 1 unit: HOURS }
+      start_date { year: 2025 month: 1 day: 1 }
+    )pb");
   }
 
   // Member variables.
@@ -164,108 +144,151 @@ class DpUnitTest : public ::testing::Test {
   SqlConfiguration sql_config_;
   fcp::confidentialcompute::WindowingSchedule::CivilTimeWindowSchedule
       schedule_;
-
-  // Common test data.
-  DpUnitParameters dp_unit_parameters_ = {.column_names = {"key"}};
-  std::unique_ptr<DpUnitProcessor> dp_unit_processor_;
-  absl::CivilSecond time1_;
-  absl::CivilSecond time2_;
-  int64_t id1_;
-  int64_t id2_;
-  Tensor tensors_array_[2];
-  absl::Span<const Tensor> dp_tensors_;
-  absl::optional<confidential_federated_compute::sql::RowView> row_view0_;
-  absl::optional<confidential_federated_compute::sql::RowView> row_view1_;
+  std::string id1_;
+  std::string id2_;
 };
 
-TEST_F(DpUnitTest, Success) {
+// A helper to build a vector of Tensors for DP unit tests.
+//
+// This function constructs `Tensor` objects from the provided column data.
+// Tensors are named "key", "val", the value of `kEventTimeColumnName`, and the
+// names provided in the `dp_columns` map. All input vectors must have the
+// same size.
+absl::StatusOr<std::vector<Tensor>> BuildTensors(
+    std::vector<int64_t> keys, std::vector<int64_t> vals,
+    std::vector<std::string> event_times,
+    absl::flat_hash_map<std::string, std::vector<int64_t>> dp_columns) {
+  if (keys.size() != vals.size() || keys.size() != event_times.size()) {
+    return absl::InvalidArgumentError("Input vectors must have the same size.");
+  }
+  for (const auto& [name, values] : dp_columns) {
+    if (values.size() != keys.size()) {
+      return absl::InvalidArgumentError(
+          "DP column vectors must have the same size as other inputs.");
+    }
+  }
+
+  size_t num_rows = keys.size();
+  std::vector<Tensor> tensors;
+
+  // Key tensor
+  auto key_data = std::make_unique<MutableVectorData<int64_t>>(std::move(keys));
+  FCP_ASSIGN_OR_RETURN(
+      Tensor key_tensor,
+      Tensor::Create(DataType::DT_INT64, TensorShape({(int64_t)num_rows}),
+                     std::move(key_data)));
+  key_tensor.set_name("key");
+  tensors.push_back(std::move(key_tensor));
+
+  // Val tensor
+  auto val_data = std::make_unique<MutableVectorData<int64_t>>(std::move(vals));
+  FCP_ASSIGN_OR_RETURN(
+      Tensor val_tensor,
+      Tensor::Create(DataType::DT_INT64, TensorShape({(int64_t)num_rows}),
+                     std::move(val_data)));
+  val_tensor.set_name("val");
+  tensors.push_back(std::move(val_tensor));
+
+  // Event time tensor
+  FCP_ASSIGN_OR_RETURN(
+      Tensor event_times_tensor,
+      Tensor::Create(DataType::DT_STRING, {(int64_t)num_rows},
+                     CreateStringTestData(std::move(event_times))));
+  event_times_tensor.set_name(fcp::confidential_compute::kEventTimeColumnName);
+  tensors.push_back(std::move(event_times_tensor));
+
+  // DP column tensors
+  for (auto& [name, values] : dp_columns) {
+    auto col_data =
+        std::make_unique<MutableVectorData<int64_t>>(std::move(values));
+    FCP_ASSIGN_OR_RETURN(Tensor dp_column_tensor,
+                         Tensor::Create(DataType::DT_INT64, {(int64_t)num_rows},
+                                        std::move(col_data)));
+    dp_column_tensor.set_name(name);
+    tensors.push_back(std::move(dp_column_tensor));
+  }
+
+  return tensors;
+}
+
+// A helper to build a privacy ID tensor.
+absl::StatusOr<Tensor> CreatePrivacyIdTensor(std::string id) {
+  auto privacy_id_data = std::make_unique<MutableStringData>(1);
+  privacy_id_data->Add(std::move(id));
+  FCP_ASSIGN_OR_RETURN(
+      Tensor privacy_id_tensor,
+      Tensor::Create(DataType::DT_STRING, {}, std::move(privacy_id_data)));
+  privacy_id_tensor.set_name(kPrivacyIdColumnName);
+  return privacy_id_tensor;
+}
+
+TEST_F(DpUnitCommitTest, SuccessWithSingleColumn) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  // Input checkpoint 1 contains:
-  // +-----+-----+
-  // | key | val |
-  // +-----+-----+
-  // |  1  | 100 |
-  // |  2  | 200 |
-  // |  1  | 300 |
-  // +-----+-----+
+  // Input 1 (privacy_id = 1) contains:
+  // +-----+-----+-----------------------------+-------+
+  // | key | val | event_time                  | unit1 |
+  // +-----+-----+-----------------------------+-------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00   |   0   |
+  // |  2  | 200 | 2025-01-01T12:00:00+00:00   |   1   |
+  // |  1  | 300 | 2025-01-01T12:00:00+00:00   |   0   |
+  // +-----+-----+-----------------------------+-------+
   //
-  // Input checkpoint 2 contains:
-  // +-----+-----+
-  // | key | val |
-  // +-----+-----+
-  // |  1  | 400 |
-  // |  3  | 500 |
-  // +-----+-----+
-  std::string checkpoint1 =
-      testing::BuildFedSqlGroupByCheckpoint({1, 2, 1}, {100, 200, 300});
-  auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  ASSERT_THAT(parser1, IsOk());
+  // Input 2 (privacy_id = 1) contains:
+  // +-----+-----+-----------------------------+-------+
+  // | key | val | event_time                  | unit1 |
+  // +-----+-----+-----------------------------+-------+
+  // |  1  | 400 | 2025-01-01T12:00:00+00:00   |   0   |
+  // |  3  | 500 | 2025-01-01T12:00:00+00:00   |   1   |
+  // +-----+-----+-----------------------------+-------+
+  DpUnitParameters dp_unit_parameters;
+  dp_unit_parameters.column_names.push_back("unit1");
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
   absl::StatusOr<std::vector<Tensor>> tensors1 =
-      Deserialize(sql_config_.input_schema, parser1->get());
+      BuildTensors({1, 2, 1}, {100, 200, 300},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00",
+                    "2025-01-01T12:00:00+00:00"},
+                   {{"unit1", {0, 1, 0}}});
   ASSERT_THAT(tensors1, IsOk());
-  std::string checkpoint2 =
-      testing::BuildFedSqlGroupByCheckpoint({1, 3}, {400, 500});
-  auto parser2 = parser_factory.Create(absl::Cord(checkpoint2));
-  ASSERT_THAT(parser2, IsOk());
+
   absl::StatusOr<std::vector<Tensor>> tensors2 =
-      Deserialize(sql_config_.input_schema, parser2->get());
+      BuildTensors({1, 3}, {400, 500},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00"},
+                   {{"unit1", {0, 1}}});
   ASSERT_THAT(tensors2, IsOk());
 
-  std::vector<Input> uncommitted_inputs;
-  absl::StatusOr<Input> input1 =
-      Input::CreateFromTensors(*std::move(tensors1), {});
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
   ASSERT_THAT(input1, IsOk());
-  uncommitted_inputs.push_back(*std::move(input1));
-  absl::StatusOr<Input> input2 =
-      Input::CreateFromTensors(*std::move(tensors2), {});
+  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor2, IsOk());
+  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
+      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
   ASSERT_THAT(input2, IsOk());
-  uncommitted_inputs.push_back(*std::move(input2));
 
   // For each DP unit, we run the SQL query `SELECT key, SUM(val) + 1 AS val
-  // FROM input GROUP BY key` on its subset of rows. DP Unit 1 corresponds to:
-  // +-----+-----+-------------+
-  // | key | val | checkpoint  |
-  // +-----+-----+-------------+
-  // |  1  | 100 | checkpoint1 |
-  // +-----+-----+-------------+
-  // Output of SQL query: (1, 101)
+  // FROM input GROUP BY key` on its subset of rows.
+  // Since both inputs share a privacy ID and event times within the same
+  // window, rows from both inputs are grouped into DP units based on the value
+  // of `unit1`. The SQL query should be run once for all data in a DP unit.
   //
-  // DP Unit 2 contains:
-  // +-----+-----+-------------+
-  // | key | val | checkpoint  |
-  // +-----+-----+-------------+
-  // |  2  | 200 | checkpoint1 |
-  // |  1  | 400 | checkpoint2 |
-  // |  1  | 300 | checkpoint1 |
-  // +-----+-----+-------------+
-  // Output of SQL query: (1, 701), (2, 201)
+  // DP Unit (unit1 = 0) contains:
+  // - from Input 1: (1, 100), (1, 300)
+  // - from Input 2: (1, 400)
+  // The SQL query on this combined data results in: (1, 801)
   //
-  // DP Unit 3 processes:
-  // +-----+-----+-------------+
-  // | key | val | checkpoint  |
-  // +-----+-----+-------------+
-  // |  3  | 500 | checkpoint2 |
-  // +-----+-----+-------------+
-  // Output of SQL query: (3, 401)
+  // DP Unit (unit1 = 1) contains:
+  // - from Input 1: (2, 200)
+  // - from Input 2: (3, 500)
+  // The SQL query on this combined data results in: (2, 201), (3, 501)
 
-  std::vector<RowLocation> row_dp_unit_index;
-  // Insert the rows in a random order to ensure the code under test sorts them
-  // correctly.
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 3, .input_index = 1, .row_index = 1});
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 2, .input_index = 0, .row_index = 1});
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 1, .input_index = 0, .row_index = 0});
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 2, .input_index = 1, .row_index = 0});
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 2, .input_index = 0, .row_index = 2});
-
-  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
                                   aggregator_.get());
-  ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(
-                  std::move(uncommitted_inputs), std::move(row_dp_unit_index)),
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input2)), IsOk());
+  ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(),
               IsOkAndHolds(IsEmpty()));
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
@@ -279,8 +302,110 @@ TEST_F(DpUnitTest, Success) {
   ASSERT_THAT(parser, IsOk());
   auto key_out = (*parser)->GetTensor("key_out");
   ASSERT_THAT(key_out, IsOk());
-  EXPECT_THAT(key_out->AsSpan<int64_t>(),
-              ::testing::ElementsAreArray({1, 2, 3}));
+  EXPECT_THAT(key_out->AsSpan<int64_t>(), UnorderedElementsAre(1, 2, 3));
+  auto val_out = (*parser)->GetTensor("val_out");
+  ASSERT_THAT(val_out, IsOk());
+  // Final aggregated result:
+  // +---------+---------+
+  // | key_out | val_out |
+  // +---------+---------+
+  // |    1    |   801   |
+  // |    2    |   201   |
+  // |    3    |   501   |
+  // +---------+---------+
+  // For key 1, the data from two inputs is combined into a single DP unit, so
+  // the SQL query is run once. `SUM(100, 300, 400) + 1 = 801`.
+  EXPECT_THAT(val_out->AsSpan<int64_t>(), UnorderedElementsAre(801, 201, 501));
+}
+
+TEST_F(DpUnitCommitTest, SuccessEmptyDpUnitColumns) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  // Input 1 (privacy_id = 1):
+  // +-----+-----+---------------------------+
+  // | key | val | event_time                |
+  // +-----+-----+---------------------------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00 |
+  // |  2  | 200 | 2025-01-01T12:00:00+00:00 |
+  // |  1  | 300 | 2025-01-01T12:00:00+00:00 |
+  // +-----+-----+---------------------------+
+  //
+  // Input 2 (privacy_id = 2):
+  // +-----+-----+---------------------------+
+  // | key | val | event_time                |
+  // +-----+-----+---------------------------+
+  // |  1  | 400 | 2025-01-01T13:00:00+00:00 |
+  // |  3  | 500 | 2025-01-01T13:00:00+00:00 |
+  // +-----+-----+---------------------------+
+  // This test does not use any DP columns.
+  DpUnitParameters dp_unit_parameters;
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
+
+  absl::StatusOr<std::vector<Tensor>> tensors1 =
+      BuildTensors({1, 2, 1}, {100, 200, 300},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00",
+                    "2025-01-01T12:00:00+00:00"},
+                   {});
+  ASSERT_THAT(tensors1, IsOk());
+  absl::StatusOr<std::vector<Tensor>> tensors2 = BuildTensors(
+      {1, 3}, {400, 500},
+      {"2025-01-01T13:00:00+00:00", "2025-01-01T13:00:00+00:00"}, {});
+  ASSERT_THAT(tensors2, IsOk());
+
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  ASSERT_THAT(input1, IsOk());
+  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id2_);
+  ASSERT_THAT(privacy_id_tensor2, IsOk());
+  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
+      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  ASSERT_THAT(input2, IsOk());
+
+  // For each DP unit, we run the SQL query `SELECT key, SUM(val) + 1 AS val
+  // FROM input GROUP BY key` on its subset of rows.
+  // With no DP columns, the data is still split into two DP units because the
+  // inputs have different privacy IDs and event times that fall into different
+  // time windows.
+  // DP Unit 1 (from input 1):
+  // +-----+-----+
+  // | key | val |
+  // +-----+-----+
+  // |  1  | 100 |
+  // |  2  | 200 |
+  // |  1  | 300 |
+  // +-----+-----+
+  // Output of SQL query: (1, 401), (2, 201)
+  //
+  // DP Unit 2 (from input 2):
+  // +-----+-----+
+  // | key | val |
+  // +-----+-----+
+  // |  1  | 400 |
+  // |  3  | 500 |
+  // +-----+-----+
+  // Output of SQL query: (1, 401), (3, 501)
+
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
+                                  aggregator_.get());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input2)), IsOk());
+  ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(),
+              IsOkAndHolds(IsEmpty()));
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<tensorflow_federated::aggregation::CheckpointBuilder>
+      checkpoint_builder = builder_factory.Create();
+  EXPECT_THAT(aggregator_->Report(*checkpoint_builder), IsOk());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  ASSERT_THAT(checkpoint, IsOk());
+
+  auto parser = parser_factory.Create(*checkpoint);
+  ASSERT_THAT(parser, IsOk());
+  auto key_out = (*parser)->GetTensor("key_out");
+  ASSERT_THAT(key_out, IsOk());
+  EXPECT_THAT(key_out->AsSpan<int64_t>(), UnorderedElementsAre(1, 2, 3));
   auto val_out = (*parser)->GetTensor("val_out");
   ASSERT_THAT(val_out, IsOk());
   // Final aggregated result:
@@ -289,52 +414,211 @@ TEST_F(DpUnitTest, Success) {
   // +---------+---------+
   // |    1    |   802   |
   // |    2    |   201   |
-  // |    3    |   401   |
+  // |    3    |   501   |
   // +---------+---------+
   // We expect the SQL query to be run twice for key 1 since it's present in two
   // DP units. The SQL query adds 1 each time it's executed.
-  EXPECT_THAT(val_out->AsSpan<int64_t>(),
-              ::testing::ElementsAreArray({802, 201, 501}));
+  EXPECT_THAT(val_out->AsSpan<int64_t>(), UnorderedElementsAre(802, 201, 501));
 }
 
-TEST_F(DpUnitTest, PartialSqlError) {
+TEST_F(DpUnitCommitTest, SuccessMultipleDpUnitColumns) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  // Input checkpoint contains:
+  // Input 1 (privacy_id = 1):
+  // +-----+-----+---------------------------+-------+-------+
+  // | key | val | event_time                | unit1 | unit2 |
+  // +-----+-----+---------------------------+-------+-------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00 |   0   |   0   |
+  // |  2  | 200 | 2025-01-01T12:00:00+00:00 |   0   |   1   |
+  // |  1  | 300 | 2025-01-01T12:00:00+00:00 |   1   |   0   |
+  // +-----+-----+---------------------------+-------+-------+
+  //
+  // Input 2 (privacy_id = 1):
+  // +-----+-----+---------------------------+-------+-------+
+  // | key | val | event_time                | unit1 | unit2 |
+  // +-----+-----+---------------------------+-------+-------+
+  // |  1  | 400 | 2025-01-01T12:00:00+00:00 |   0   |   0   |
+  // |  3  | 500 | 2025-01-01T12:00:00+00:00 |   1   |   1   |
+  // +-----+-----+---------------------------+-------+-------+
+  DpUnitParameters dp_unit_parameters;
+  dp_unit_parameters.column_names.push_back("unit1");
+  dp_unit_parameters.column_names.push_back("unit2");
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
+  absl::StatusOr<std::vector<Tensor>> tensors1 =
+      BuildTensors({1, 2, 1}, {100, 200, 300},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00",
+                    "2025-01-01T12:00:00+00:00"},
+                   {{"unit1", {0, 0, 1}}, {"unit2", {0, 1, 0}}});
+  ASSERT_THAT(tensors1, IsOk());
+
+  absl::StatusOr<std::vector<Tensor>> tensors2 =
+      BuildTensors({1, 3}, {400, 500},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00"},
+                   {{"unit1", {0, 1}}, {"unit2", {0, 1}}});
+  ASSERT_THAT(tensors2, IsOk());
+
+  // Use same privacy ID for both inputs.
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  ASSERT_THAT(input1, IsOk());
+  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor2, IsOk());
+  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
+      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  ASSERT_THAT(input2, IsOk());
+
+  // With same privacy ID and event time, DP units are determined by unit1,
+  // unit2.
+  // DP Unit (0, 0): (1, 100), (1, 400). SQL -> (1, 501)
+  // DP Unit (0, 1): (2, 200). SQL -> (2, 201)
+  // DP Unit (1, 0): (1, 300). SQL -> (1, 301)
+  // DP Unit (1, 1): (3, 500). SQL -> (3, 501)
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
+                                  aggregator_.get());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input2)), IsOk());
+  ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(),
+              IsOkAndHolds(IsEmpty()));
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<tensorflow_federated::aggregation::CheckpointBuilder>
+      checkpoint_builder = builder_factory.Create();
+  EXPECT_THAT(aggregator_->Report(*checkpoint_builder), IsOk());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  ASSERT_THAT(checkpoint, IsOk());
+
+  auto parser = parser_factory.Create(*checkpoint);
+  ASSERT_THAT(parser, IsOk());
+  auto key_out = (*parser)->GetTensor("key_out");
+  ASSERT_THAT(key_out, IsOk());
+  EXPECT_THAT(key_out->AsSpan<int64_t>(), UnorderedElementsAre(1, 2, 3));
+  auto val_out = (*parser)->GetTensor("val_out");
+  ASSERT_THAT(val_out, IsOk());
+  // Final aggregated result:
+  // key 1: 501 (from 0,0) + 301 (from 1,0) = 802
+  // key 2: 201 (from 0,1)
+  // key 3: 501 (from 1,1)
+  EXPECT_THAT(val_out->AsSpan<int64_t>(), UnorderedElementsAre(802, 201, 501));
+}
+
+TEST_F(DpUnitCommitTest, SuccessDpUnitDeterminedByEventTime) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  // Input 1 (privacy_id = 1):
+  // +-----+-----+---------------------------+
+  // | key | val | event_time                |
+  // +-----+-----+---------------------------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00 |
+  // +-----+-----+---------------------------+
+  //
+  // Input 2 (privacy_id = 1):
+  // +-----+-----+---------------------------+
+  // | key | val | event_time                |
+  // +-----+-----+---------------------------+
+  // |  1  | 200 | 2025-01-01T13:00:00+00:00 |
+  // +-----+-----+---------------------------+
+  DpUnitParameters dp_unit_parameters;
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
+
+  absl::StatusOr<std::vector<Tensor>> tensors1 =
+      BuildTensors({1}, {100}, {"2025-01-01T12:00:00+00:00"}, {});
+  ASSERT_THAT(tensors1, IsOk());
+  absl::StatusOr<std::vector<Tensor>> tensors2 =
+      BuildTensors({1}, {200}, {"2025-01-01T13:00:00+00:00"}, {});
+  ASSERT_THAT(tensors2, IsOk());
+
+  // Same privacy ID for both inputs.
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  ASSERT_THAT(input1, IsOk());
+  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor2, IsOk());
+  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
+      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  ASSERT_THAT(input2, IsOk());
+
+  // With no DP columns and the same privacy ID, the data is split into two DP
+  // units because the event times fall into different time windows.
+  // DP Unit 1 (from input 1):
   // +-----+-----+
   // | key | val |
   // +-----+-----+
-  // |  1  |  1 |
-  // |  2  |  0 |
+  // |  1  | 100 |
   // +-----+-----+
-  std::string checkpoint1 =
-      testing::BuildFedSqlGroupByCheckpoint({1, 2}, {1, 0});
-  auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  ASSERT_THAT(parser1, IsOk());
-  absl::StatusOr<std::vector<Tensor>> tensors1 =
-      Deserialize(sql_config_.input_schema, parser1->get());
+  // Output of SQL query: (1, 101)
+  //
+  // DP Unit 2 (from input 2):
+  // +-----+-----+
+  // | key | val |
+  // +-----+-----+
+  // |  1  | 200 |
+  // +-----+-----+
+  // Output of SQL query: (1, 201)
+
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
+                                  aggregator_.get());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input2)), IsOk());
+  ASSERT_THAT(input_processor.CommitRowsGroupingByDpUnit(),
+              IsOkAndHolds(IsEmpty()));
+
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<tensorflow_federated::aggregation::CheckpointBuilder>
+      checkpoint_builder = builder_factory.Create();
+  EXPECT_THAT(aggregator_->Report(*checkpoint_builder), IsOk());
+  absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
+  ASSERT_THAT(checkpoint, IsOk());
+
+  auto parser = parser_factory.Create(*checkpoint);
+  ASSERT_THAT(parser, IsOk());
+  auto key_out = (*parser)->GetTensor("key_out");
+  ASSERT_THAT(key_out, IsOk());
+  EXPECT_THAT(key_out->AsSpan<int64_t>(), UnorderedElementsAre(1));
+  auto val_out = (*parser)->GetTensor("val_out");
+  ASSERT_THAT(val_out, IsOk());
+  // Final aggregated result:
+  // +---------+---------+
+  // | key_out | val_out |
+  // +---------+---------+
+  // |    1    |   302   |
+  // +---------+---------+
+  // We expect the SQL query to be run twice for key 1 since it's present in two
+  // DP units. `(100 + 1) + (200 + 1) = 302`.
+  EXPECT_THAT(val_out->AsSpan<int64_t>(), UnorderedElementsAre(302));
+}
+
+TEST_F(DpUnitCommitTest, PartialSqlError) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  // Input (privacy_id = 1):
+  // +-----+-----+---------------------+
+  // | key | val | event_time                |
+  // +-----+-----+---------------------------+
+  // |  1  |  1  | 2025-01-01T12:00:00+00:00 |
+  // |  2  |  0  | 2025-01-02T13:00:00+00:00 |
+  // +-----+-----+---------------------------+
+  absl::StatusOr<std::vector<Tensor>> tensors1 = BuildTensors(
+      {1, 2}, {1, 0},
+      {"2025-01-01T12:00:00+00:00", "2025-01-02T13:00:00+00:00"}, {});
   ASSERT_THAT(tensors1, IsOk());
 
-  std::vector<Input> uncommitted_inputs;
-  absl::StatusOr<Input> input1 =
-      Input::CreateFromTensors(*std::move(tensors1), {});
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
   ASSERT_THAT(input1, IsOk());
-  uncommitted_inputs.push_back(*std::move(input1));
-  // Query will cause division by zero for DP unit 2.
   sql_config_.query = "SELECT key, 1 / val AS val FROM input";
+  DpUnitParameters dp_unit_parameters;
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
 
-  std::vector<RowLocation> row_dp_unit_index;
-  // DP Unit 1 has row (1, 1).
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 1, .input_index = 0, .row_index = 0});
-  // DP Unit 2 has rows (2, 0). This will cause a division by zero error when
-  // executing the SQL query.
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 2, .input_index = 0, .row_index = 1});
-
-  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
                                   aggregator_.get());
-  auto result = input_processor.CommitRowsGroupingByDpUnit(
-      std::move(uncommitted_inputs), std::move(row_dp_unit_index));
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  auto result = input_processor.CommitRowsGroupingByDpUnit();
   ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 1);
   EXPECT_THAT(result->at(0), StatusIs(absl::StatusCode::kInvalidArgument));
@@ -359,37 +643,38 @@ TEST_F(DpUnitTest, PartialSqlError) {
   EXPECT_THAT(val_out->AsSpan<int64_t>(), ::testing::ElementsAreArray({1}));
 }
 
-TEST_F(DpUnitTest, SqlError) {
+TEST_F(DpUnitCommitTest, SqlError) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  std::string checkpoint1 =
-      testing::BuildFedSqlGroupByCheckpoint({1, 2}, {100, 200});
-  auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  ASSERT_THAT(parser1, IsOk());
+  // Input (privacy_id = 1):
+  // +-----+-----+---------------------+-------+
+  // | key | val | event_time                | unit1 |
+  // +-----+-----+---------------------------+-------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00 |   0   |
+  // |  2  | 200 | 2025-01-01T12:00:00+00:00 |   1   |
+  // +-----+-----+---------------------------+-------+
+  DpUnitParameters dp_unit_parameters;
+  dp_unit_parameters.column_names.push_back("unit1");
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
   absl::StatusOr<std::vector<Tensor>> tensors1 =
-      Deserialize(sql_config_.input_schema, parser1->get());
+      BuildTensors({1, 2}, {100, 200},
+                   {"2025-01-01T12:00:00+00:00", "2025-01-01T12:00:00+00:00"},
+                   {{"unit1", {0, 1}}});
   ASSERT_THAT(tensors1, IsOk());
 
-  std::vector<Input> uncommitted_inputs;
-  absl::StatusOr<Input> input1 =
-      Input::CreateFromTensors(*std::move(tensors1), {});
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
   ASSERT_THAT(input1, IsOk());
-  uncommitted_inputs.push_back(*std::move(input1));
-
-  std::vector<RowLocation> row_dp_unit_index;
-  // DP Unit 1 has row (1, 100).
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 1, .input_index = 0, .row_index = 0});
-  // DP Unit 2 has row (2, 200).
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 2, .input_index = 0, .row_index = 1});
 
   // Invalid SQL query will cause an error for each DP unit.
   sql_config_.query = "SELECT invalid_column FROM input";
 
-  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
                                   aggregator_.get());
-  auto result = input_processor.CommitRowsGroupingByDpUnit(
-      std::move(uncommitted_inputs), std::move(row_dp_unit_index));
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  auto result = input_processor.CommitRowsGroupingByDpUnit();
   ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->size(), 2);
   EXPECT_THAT(result->at(0), StatusIs(absl::StatusCode::kInvalidArgument));
@@ -399,24 +684,27 @@ TEST_F(DpUnitTest, SqlError) {
   EXPECT_EQ(aggregator_->GetNumCheckpointsAggregated().value(), 0);
 }
 
-TEST_F(DpUnitTest, AccumulateError) {
+TEST_F(DpUnitCommitTest, AccumulateError) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  std::string checkpoint1 = testing::BuildFedSqlGroupByCheckpoint({1}, {100});
-  auto parser1 = parser_factory.Create(absl::Cord(checkpoint1));
-  ASSERT_THAT(parser1, IsOk());
+  // Input (privacy_id = 1):
+  // +-----+-----+---------------------+-------+
+  // | key | val | event_time                | unit1 |
+  // +-----+-----+---------------------------+-------+
+  // |  1  | 100 | 2025-01-01T12:00:00+00:00 |   0   |
+  // +-----+-----+---------------------------+-------+
+  DpUnitParameters dp_unit_parameters;
+  dp_unit_parameters.column_names.push_back("unit1");
+  *dp_unit_parameters.windowing_schedule.mutable_civil_time_window_schedule() =
+      schedule_;
   absl::StatusOr<std::vector<Tensor>> tensors1 =
-      Deserialize(sql_config_.input_schema, parser1->get());
+      BuildTensors({1}, {100}, {"2025-01-01T12:00:00+00:00"}, {{"unit1", {0}}});
   ASSERT_THAT(tensors1, IsOk());
 
-  std::vector<Input> uncommitted_inputs;
-  absl::StatusOr<Input> input1 =
-      Input::CreateFromTensors(*std::move(tensors1), {});
+  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
+  ASSERT_THAT(privacy_id_tensor1, IsOk());
+  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
+      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
   ASSERT_THAT(input1, IsOk());
-  uncommitted_inputs.push_back(*std::move(input1));
-
-  std::vector<RowLocation> row_dp_unit_index;
-  row_dp_unit_index.push_back(
-      {.dp_unit_hash = 1, .input_index = 0, .row_index = 0});
 
   // Output column name "wrong_name" doesn't match aggregator expectation.
   sql_config_.output_columns.at(0).set_name("wrong_name");
@@ -424,14 +712,14 @@ TEST_F(DpUnitTest, AccumulateError) {
 
   // Errors with the aggregator are propagated, since the aggregator may be in
   // an invalid state.
-  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters_,
+  DpUnitProcessor input_processor(sql_config_, dp_unit_parameters,
                                   aggregator_.get());
-  EXPECT_THAT(input_processor.CommitRowsGroupingByDpUnit(
-                  std::move(uncommitted_inputs), std::move(row_dp_unit_index)),
+  ASSERT_THAT(input_processor.StageInputForCommit(*std::move(input1)), IsOk());
+  EXPECT_THAT(input_processor.CommitRowsGroupingByDpUnit(),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(DpUnitTest, ComputeDpTimeUnitHasNoWindowingSchedule) {
+TEST_F(DpUnitCommitTest, ComputeDpTimeUnitHasNoWindowingSchedule) {
   DpUnitParameters dp_unit_parameters;  // Empty parameters.
   auto processor = DpUnitProcessor::Create(sql_config_, dp_unit_parameters,
                                            aggregator_.get());
@@ -441,7 +729,64 @@ TEST_F(DpUnitTest, ComputeDpTimeUnitHasNoWindowingSchedule) {
                "Windowing schedule must have civil time window schedule."));
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHashSameInputIsDeterministic) {
+class DpUnitHashTest : public Test {
+ protected:
+  void SetUp() override {
+    CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+
+    SqlConfiguration sql_config;  // Empty, not used by ComputeDPUnitHash.
+    DpUnitParameters dp_unit_parameters;
+
+    // Create a windowing schedule.
+    auto schedule = PARSE_TEXT_PROTO(R"pb(
+      size { size: 1 unit: HOURS }
+      shift { size: 1 unit: HOURS }
+      start_date { year: 2025 month: 1 day: 1 }
+    )pb");
+    *dp_unit_parameters.windowing_schedule
+         .mutable_civil_time_window_schedule() = schedule;
+
+    // The aggregator is not used by ComputeDPUnitHash.
+    dp_unit_processor_ = std::make_unique<DpUnitProcessor>(
+        sql_config, dp_unit_parameters, nullptr /* aggregator */);
+
+    // Common data setup
+    time1_ = absl::CivilSecond(2024, 1, 1, 0, 0, 0);
+    time2_ = absl::CivilSecond(2024, 1, 1, 0, 0, 1);  // Different time
+    id1_ = "1";
+    id2_ = "2";  // Different ID
+
+    std::unique_ptr<MutableVectorData<int64_t>> int64_data =
+        std::make_unique<MutableVectorData<int64_t>>(0);
+    int64_data->push_back(10);
+    int64_data->push_back(20);
+    tensors_.push_back(Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                      std::move(int64_data), "col1")
+                           .value());
+
+    std::unique_ptr<MutableStringData> string_data =
+        std::make_unique<MutableStringData>(2);
+    string_data->Add("foo");
+    string_data->Add("bar");
+    tensors_.push_back(Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                                      std::move(string_data), "col2")
+                           .value());
+
+    row_view0_.emplace(RowView::CreateFromTensors(tensors_, 0).value());
+    row_view1_.emplace(RowView::CreateFromTensors(tensors_, 1).value());
+  }
+
+  std::unique_ptr<DpUnitProcessor> dp_unit_processor_;
+  absl::CivilSecond time1_;
+  absl::CivilSecond time2_;
+  std::string id1_;
+  std::string id2_;
+  std::vector<Tensor> tensors_;
+  absl::optional<RowView> row_view0_;
+  absl::optional<RowView> row_view1_;
+};
+
+TEST_F(DpUnitHashTest, ComputeDPUnitHashSameInputIsDeterministic) {
   // Hashing the same thing twice produces the same result.
   absl::StatusOr<uint64_t> hash1 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -454,7 +799,7 @@ TEST_F(DpUnitTest, ComputeDPUnitHashSameInputIsDeterministic) {
   EXPECT_EQ(*hash1, *hash2);
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHashDifferentRowsProducesDifferentHashes) {
+TEST_F(DpUnitHashTest, ComputeDPUnitHashDifferentRowsProducesDifferentHashes) {
   // Hashing column 0 for row 0 (data: 10)
   absl::StatusOr<uint64_t> hash_row0 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -468,7 +813,8 @@ TEST_F(DpUnitTest, ComputeDPUnitHashDifferentRowsProducesDifferentHashes) {
   EXPECT_NE(*hash_row0, *hash_row1);
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHashDifferentColumnsProducesDifferentHashes) {
+TEST_F(DpUnitHashTest,
+       ComputeDPUnitHashDifferentColumnsProducesDifferentHashes) {
   // Hash for row 0, column 0 (data: 10)
   absl::StatusOr<uint64_t> hash_col0 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -482,7 +828,7 @@ TEST_F(DpUnitTest, ComputeDPUnitHashDifferentColumnsProducesDifferentHashes) {
   EXPECT_NE(*hash_col0, *hash_col1);
 }
 
-TEST_F(DpUnitTest,
+TEST_F(DpUnitHashTest,
        ComputeDPUnitHashDifferentColumnCombinationsProducesDifferentHashes) {
   absl::StatusOr<uint64_t> hash_col0 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -501,7 +847,7 @@ TEST_F(DpUnitTest,
   EXPECT_NE(*hash_col1, *hash_both_cols);
 }
 
-TEST_F(DpUnitTest,
+TEST_F(DpUnitHashTest,
        ComputeDPUnitHashDifferentColumnSelectionOrderProducesDifferentHashes) {
   // This test checks that the *order* of indices in the vector matters.
   // Hash with column order {0, 1}
@@ -517,7 +863,7 @@ TEST_F(DpUnitTest,
   EXPECT_NE(*hash_order_01, *hash_order_10);
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHashDifferentIdsProducesDifferentHashes) {
+TEST_F(DpUnitHashTest, ComputeDPUnitHashDifferentIdsProducesDifferentHashes) {
   // Test sensitivity to the privacy ID.
   absl::StatusOr<uint64_t> hash_id1 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -531,7 +877,8 @@ TEST_F(DpUnitTest, ComputeDPUnitHashDifferentIdsProducesDifferentHashes) {
   EXPECT_NE(*hash_id1, *hash_id2);
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHash_DifferentTimes_ProducesDifferentHashes) {
+TEST_F(DpUnitHashTest,
+       ComputeDPUnitHash_DifferentTimes_ProducesDifferentHashes) {
   // Test sensitivity to the time unit.
   absl::StatusOr<uint64_t> hash_time1 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {0});
@@ -545,7 +892,8 @@ TEST_F(DpUnitTest, ComputeDPUnitHash_DifferentTimes_ProducesDifferentHashes) {
   EXPECT_NE(*hash_time1, *hash_time2);
 }
 
-TEST_F(DpUnitTest, ComputeDPUnitHashEmptyColumnListIsDeterministicAndUnique) {
+TEST_F(DpUnitHashTest,
+       ComputeDPUnitHashEmptyColumnListIsDeterministicAndUnique) {
   absl::StatusOr<uint64_t> hash_empty1 =
       dp_unit_processor_->ComputeDPUnitHash(id1_, time1_, *row_view0_, {});
   ASSERT_THAT(hash_empty1, IsOk());

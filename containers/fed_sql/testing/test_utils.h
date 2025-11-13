@@ -16,13 +16,19 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TEST_UTILS_H_
 
 #include <string>
+#include <vector>
 
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/message.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::fed_sql::testing {
+
+std::unique_ptr<tensorflow_federated::aggregation::MutableStringData>
+CreateStringTestData(std::vector<std::string> data);
 
 std::string BuildFedSqlGroupByCheckpoint(
     std::initializer_list<uint64_t> key_col_values,
