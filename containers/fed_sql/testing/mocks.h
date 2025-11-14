@@ -38,6 +38,13 @@ class MockInferenceModel : public InferenceModel {
                absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));
+  MOCK_METHOD(absl::StatusOr<tensorflow_federated::aggregation::Tensor>,
+              RunLlamaCppInference,
+              (const fcp::confidentialcompute::Prompt& prompt,
+               const sql::Input& input,
+               const absl::Span<const size_t> input_column_indices,
+               const std::string& output_column_name),
+              (override));
 };
 
 }  // namespace confidential_federated_compute::fed_sql::testing

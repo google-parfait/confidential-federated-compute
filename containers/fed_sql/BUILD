@@ -63,11 +63,42 @@ cc_library(
 )
 
 cc_library(
+    name = "inference_model_helper",
+    srcs = ["inference_model_helper.cc"],
+    hdrs = ["inference_model_helper.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//containers/sql:input",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "inference_model_helper_test",
+    size = "small",
+    srcs = ["inference_model_helper_test.cc"],
+    deps = [
+        ":inference_model_helper",
+        "//containers/sql:input",
+        "@com_google_absl//absl/status:status_matchers",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
+    ],
+)
+
+cc_library(
     name = "inference_model",
     srcs = ["inference_model.cc"],
     hdrs = ["inference_model.h"],
     visibility = ["//containers/fed_sql/testing:__subpackages__"],
     deps = [
+        ":inference_model_helper",
         "//containers/sql:input",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -92,6 +123,7 @@ cc_test(
     srcs = ["inference_model_test.cc"],
     deps = [
         ":inference_model",
+        ":inference_model_helper",
         "//containers/fed_sql/testing:mocks",
         "//containers/sql:input",
         "//testing:matchers",

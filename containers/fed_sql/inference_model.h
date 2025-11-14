@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "containers/fed_sql/inference_model_helper.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
@@ -49,15 +50,15 @@ struct SessionInferenceConfiguration {
   std::optional<SessionLlamaCppConfiguration> llama_configuration;
 };
 
-// An LLM model that can be invoked to run inference before the per-client query
-// step.
+// An LLM model that can be invoked to run inference before the per-client
+// query step.
 class InferenceModel {
  public:
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
   // Runs inference on the given input. The input is expected to contain the
-  // columns required by the inference task. The output column produced by the
-  // inference model will be added to the input.
+  // columns required by the inference task. The output column produced by
+  // the inference model will be added to the input.
   absl::Status RunInference(sql::Input& input);
   bool HasModel() const;
   const std::optional<SessionInferenceConfiguration>&
@@ -83,6 +84,7 @@ class InferenceModel {
 
    public:
     std::unique_ptr<llama_model, LlamaModelDeleter> llama_;
+    ;
   };
 
   // Builds a gemma.cpp compatible model from the given Gemma config.
@@ -95,16 +97,34 @@ class InferenceModel {
   virtual absl::Status BuildLlamaCppModel(
       const SessionLlamaCppConfiguration& llama_config);
 
-  // Runs inference with the gemma.cpp model using given prompt over all rows
-  // and returns a 1-D string tensor of results representing the output column.
+  // Runs inference with the gemma.cpp model using given prompt over all
+  // rows and returns a 1-D string tensor of results representing the output
+  // column.
   virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
   RunGemmaCppInference(const fcp::confidentialcompute::Prompt& prompt,
                        const sql::Input& input,
                        absl::Span<const size_t> input_column_indices,
                        const std::string& output_column_name);
 
+  // Runs inference with the llama.cpp model using given prompt over all
+  // rows and returns a 1-D string tensor of results representing the output
+  // column.
+  virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
+  RunLlamaCppInference(const fcp::confidentialcompute::Prompt& prompt,
+                       const sql::Input& input,
+                       absl::Span<const size_t> input_column_indices,
+                       const std::string& output_column_name);
+
+  // Helpter function that runs inference with the llama.cpp model using
+  // given prompt over a single row.
+  absl::StatusOr<std::string> RunLlamaCppInferencePerRow(
+      const std::string& combined_prompt, LlamaCppModel& llama_model,
+      const llama_vocab* vocab);
+
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::variant<NoModel, GemmaCppModel, LlamaCppModel> model_;
+  InferencePromptProcessor prompt_processor_;
+  InferenceOutputProcessor output_processor_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

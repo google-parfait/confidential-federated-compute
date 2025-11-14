@@ -20,9 +20,13 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "common/common.h"  // From @llama_cpp.
+#include "containers/fed_sql/inference_model_helper.h"
 #include "containers/sql/input.h"
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
+#include "include/llama-cpp.h"
+#include "include/llama.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -65,16 +69,10 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 
 constexpr size_t kMaxPromptSize = 10000;
-
-// Apply a regex matching to the given text. Returns only the first match. If
-// no match is found, returns the original text.
-std::string RegexMatch(const std::string& text, const std::regex& regex) {
-  std::smatch match;
-  if (std::regex_match(text, match, regex) && match.size() > 1) {
-    return match[1];
-  }
-  return text;
-}
+// Set the default max_output_tokens to 128. This can be overridden by the
+// RuntimeConfig.max_generated_tokens field in the inference_configuration_.
+constexpr size_t kMaxOutputTokens = 1024;
+constexpr size_t kNumTokensPerBatch = 2048;
 
 }  // namespace
 
@@ -180,32 +178,17 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
   std::mt19937 gen;
   std::random_device rd;
   gen.seed(rd());
-  size_t max_generated_tokens =
-      inference_runtime_config.max_generated_tokens() > 0 ?: 1024;
 
-  std::string prompt_template = prompt.prompt_template();
   // For each row of the input columns, we first populate the prompt template
   // to create a combined prompt matching the column values, then run inference
   // over the combined prompt. Each element in the output tensor corresponds
   // to the inference result of one row of the input columns.
   for (int i = 0; i < input.GetRowCount(); ++i) {
     FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    std::string combined_prompt(prompt_template);
-    for (int j = 0; j < input_column_indices.size(); ++j) {
-      const size_t input_column_index = input_column_indices[j];
-      if (row.GetColumnType(input_column_index) != DataType::DT_STRING) {
-        return absl::InvalidArgumentError(
-            "Only string input columns are supported for inference.");
-      }
-      absl::string_view column_value =
-          row.GetValue<absl::string_view>(input_column_index);
-      const std::string old_value =
-          absl::StrCat("{", input.GetColumnNames()[input_column_index], "}");
-      size_t pos;
-      while ((pos = combined_prompt.find(old_value)) != std::string::npos) {
-        combined_prompt.replace(pos, old_value.size(), column_value);
-      }
-    }
+    FCP_ASSIGN_OR_RETURN(std::string combined_prompt,
+                         prompt_processor_.PopulatePromptTemplate(
+                             prompt.prompt_template(), row,
+                             input.GetColumnNames(), input_column_indices));
 
     if (combined_prompt.size() > max_prompt_size) {
       combined_prompt.resize(max_prompt_size);
@@ -227,8 +210,15 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
       return true;
     };
     float temperature = 1.0 + inference_runtime_config.temperature_diff();
+
+    // Set the max_output_tokens to the value in the RuntimeConfig if provided.
+    size_t max_output_tokens =
+        inference_configuration_->initialize_configuration.inference_config()
+                    .runtime_config()
+                    .max_generated_tokens() > 0
+            ?: kMaxOutputTokens;
     ::gcpp::RuntimeConfig runtime_config = {
-        .max_generated_tokens = max_generated_tokens,
+        .max_generated_tokens = max_output_tokens,
         .temperature = temperature,
         .gen = &gen,
         .verbosity = 0,
@@ -238,13 +228,187 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
                     timing_info);
 
     std::string output_string = output_stream.str();
-    std::unique_ptr<std::regex> regex;
-    if (!prompt.regex().empty()) {
-      regex = std::make_unique<std::regex>(prompt.regex());
+    // Apply regex matching to the output string if configured.
+    FCP_ASSIGN_OR_RETURN(output_string,
+                         output_processor_.ApplyRegex(prompt, output_string));
+
+    output_string_data->Add(std::move(output_string));
+  }
+
+  return Tensor::Create(DataType::DT_STRING,
+                        TensorShape({static_cast<long>(input.GetRowCount())}),
+                        std::move(output_string_data), output_column_name);
+}
+
+absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
+    const std::string& combined_prompt, LlamaCppModel& llama_model,
+    const llama_vocab* vocab) {
+  // 1. Tokenize the prompt.
+  const int32_t num_prompt_tokens =
+      -llama_tokenize(vocab, combined_prompt.c_str(), combined_prompt.size(),
+                      /* tokens= */ NULL, /* n_tokens_max= */ 0,
+                      /* add_special= */ true, /* parse_special= */ true);
+  // Allocate space for the tokens and tokenize the prompt.
+  std::vector<llama_token> prompt_tokens(num_prompt_tokens);
+  // Actually populate the prompt tokens, and raise an error if the
+  // tokenization fails.
+  if (llama_tokenize(vocab, combined_prompt.c_str(), combined_prompt.size(),
+                     prompt_tokens.data(), prompt_tokens.size(), true,
+                     true) < 0) {
+    return absl::InternalError("Failed to tokenize the prompt");
+  }
+
+  // 2. Initialize the context.
+  llama_context_params ctx_params = llama_context_default_params();
+
+  // Set the max_output_tokens to the value in the RuntimeConfig if provided.
+  size_t max_output_tokens =
+      inference_configuration_->initialize_configuration.inference_config()
+                  .runtime_config()
+                  .max_generated_tokens() > 0
+          ?: kMaxOutputTokens;
+  // Set the context size to accommodate the prompt and generated tokens.
+  ctx_params.n_ctx = num_prompt_tokens + max_output_tokens;
+  // n_batch is the maximum number of tokens that can be processed in a single
+  // call to llama_decode.
+  ctx_params.n_batch = kNumTokensPerBatch;
+  // Disable performance counters.
+  ctx_params.no_perf = false;
+
+  // Create the llama_context from the model, wrapped in a unique_ptr
+  // (llama_context_ptr) to ensure automatic cleanup via llama_free.
+  llama_context_ptr ctx(
+      llama_init_from_model(llama_model.llama_.get(), ctx_params));
+  if (!ctx) {
+    return absl::InternalError("Failed to create the llama_context");
+  }
+
+  // 3. Initialize the sampler.
+  auto sampler_params = llama_sampler_chain_default_params();
+  sampler_params.no_perf = false;
+  // Create the sampler chain, wrapped in a unique_ptr (llama_sampler_ptr) to
+  // ensure automatic cleanup via llama_sampler_free.
+  llama_sampler_ptr smpl(llama_sampler_chain_init(sampler_params));
+  if (!smpl) {
+    return absl::InternalError("Failed to create llama_sampler");
+  }
+  // Add a greedy sampler to the chain.
+  llama_sampler_chain_add(smpl.get(), llama_sampler_init_greedy());
+
+  // 4. Create and process the initial prompt batch
+  // Initialize a llama_batch to hold the prompt tokens.
+  struct llama_batch batch = llama_batch_init(
+      /* n_tokens= */ num_prompt_tokens, /* embed= */ 0, /* n_seq_max= */ 1);
+  // RAII wrapper to ensure llama_batch_free is called for the batch.
+  auto batch_cleaner = [](struct llama_batch* b) { llama_batch_free(*b); };
+  std::unique_ptr<struct llama_batch, decltype(batch_cleaner)> batch_ptr(
+      &batch, batch_cleaner);
+
+  // Sequence ID for the single stream
+  const std::vector<llama_seq_id> seq_ids = {0};
+
+  // Add all prompt tokens to the batch.
+  for (int32_t i = 0; i < num_prompt_tokens; ++i) {
+    // Add token at its position. Set request_logits to false for all prompt
+    // tokens except the very last one.
+    common_batch_add(/* batch= */ batch, /* id= */ prompt_tokens[i],
+                     /* pos= */ i, /* seq_ids= */ seq_ids, /* logits= */ false);
+  }
+  // We need logits for the next token prediction.
+  batch.logits[batch.n_tokens - 1] = true;
+
+  // Process the entire prompt. This "ingests" the prompt and populates the KV
+  // cache.
+  if (llama_decode(ctx.get(), batch) != 0) {
+    return absl::InternalError("Failed to decode prompt");
+  }
+
+  // 5. Loop for generating output tokens.
+  std::stringstream output_stream;
+  // n_cur tracks the current total sequence length.
+  int32_t n_cur = batch.n_tokens;
+
+  for (int i = 0; i < max_output_tokens; ++i) {
+    // Sample the next token id.
+    // sampler needs to know which token's logits to use, which is the last one
+    // added.
+    int32_t last_token_idx_in_batch = batch.n_tokens - 1;
+    llama_token new_token_id =
+        llama_sampler_sample(smpl.get(), ctx.get(), last_token_idx_in_batch);
+
+    // Check if the sampled token is the End-of-Generation token.
+    if (llama_vocab_is_eog(vocab, new_token_id)) {
+      break;
     }
-    if (regex) {
-      output_string = RegexMatch(output_string, *regex);
+
+    // Convert the sampled token ID back to its string representation.
+    char buf[128];
+    int32_t num_bytes_written =
+        llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+    if (num_bytes_written < 0) {
+      return absl::InternalError("Failed to convert token to piece.");
     }
+    output_stream << std::string(buf, num_bytes_written);
+
+    // Prepare the batch for the single new token.
+    common_batch_clear(batch);
+    // Add the new token at the current end of the sequence (n_cur).
+    common_batch_add(batch, new_token_id, n_cur, seq_ids, true);
+
+    // Increment the total sequence length.
+    n_cur++;
+
+    // Process the batch containing the single new token, which updates the KV
+    // cache with the new token.
+    if (llama_decode(ctx.get(), batch) != 0) {
+      return absl::InternalError("Failed to decode next token");
+    }
+  }
+
+  // Before returning, batch_ptr's destructor automatically calls
+  // llama_batch_free(batch); ctx and smpl unique_ptrs handle their
+  // cleanup.
+  return output_stream.str();
+}
+
+absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
+    const Prompt& prompt, const Input& input,
+    absl::Span<const size_t> input_column_indices,
+    const std::string& output_column_name) {
+  if (input_column_indices.empty()) {
+    return Tensor::Create(DataType::DT_STRING, TensorShape({0}),
+                          std::make_unique<MutableStringData>(0),
+                          output_column_name);
+  }
+  LlamaCppModel& llama_model = std::get<LlamaCppModel>(model_);
+  const llama_vocab* vocab = llama_model_get_vocab(llama_model.llama_.get());
+  if (!vocab) {
+    return absl::InternalError("Failed to get llama vocab");
+  }
+
+  std::unique_ptr<MutableStringData> output_string_data =
+      std::make_unique<MutableStringData>(
+          static_cast<long>(input.GetRowCount()));
+  // For each row of the input columns, we first populate the prompt template
+  // to create a combined prompt matching the column values, then run inference
+  // over the combined prompt. Each element in the output tensor corresponds
+  // to the inference result of one row of the input columns.
+  for (int i = 0; i < input.GetRowCount(); ++i) {
+    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
+    FCP_ASSIGN_OR_RETURN(std::string combined_prompt,
+                         prompt_processor_.PopulatePromptTemplate(
+                             prompt.prompt_template(), row,
+                             input.GetColumnNames(), input_column_indices));
+
+    // Generate inference output for a row.
+    FCP_ASSIGN_OR_RETURN(
+        std::string output_string,
+        RunLlamaCppInferencePerRow(combined_prompt, llama_model, vocab));
+
+    // Apply regex matching to the output string if configured.
+    FCP_ASSIGN_OR_RETURN(output_string,
+                         output_processor_.ApplyRegex(prompt, output_string));
+
     output_string_data->Add(std::move(output_string));
   }
 
@@ -300,6 +464,11 @@ absl::Status InferenceModel::RunInference(Input& input) {
       FCP_ASSIGN_OR_RETURN(
           output_column,
           RunGemmaCppInference(inference_task.prompt(), input,
+                               input_column_indices, output_column_name));
+    } else if (std::holds_alternative<LlamaCppModel>(model_)) {
+      FCP_ASSIGN_OR_RETURN(
+          output_column,
+          RunLlamaCppInference(inference_task.prompt(), input,
                                input_column_indices, output_column_name));
     } else {
       return absl::UnimplementedError(
