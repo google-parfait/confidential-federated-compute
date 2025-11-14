@@ -31,8 +31,10 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::confidential_federated_compute::sql::Input;
+using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::Prompt;
@@ -70,8 +72,9 @@ class InferenceModelTest : public ::testing::Test {
   }
 
   // Helper to set expectations on RunGemmaCppInference.
-  void ExpectInference(const std::vector<std::string>& input_names,
-                       const std::string& output_name, Tensor output_tensor) {
+  void ExpectGemmaCppInference(const std::vector<std::string>& input_names,
+                               const std::string& output_name,
+                               Tensor output_tensor) {
     EXPECT_CALL(inference_model_,
                 RunGemmaCppInference(_, _, _, Eq(output_name)))
         .WillOnce(Return(ByMove(std::move(output_tensor))));
@@ -156,14 +159,14 @@ TEST_F(InferenceModelTest, BuildModelLlamaValidConfig) {
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
       }
-      gemma_config { tokenizer_file: "/tmp/tokenizer.json" }
+      gemma_config { model_weight_file: "/tmp/model_weight.gguf" }
     }
     llama_cpp_init_config {
       model_weight_configuration_id: "model_weight_configuration_id"
     }
   )pb");
   inference_configuration.llama_configuration.emplace();
-  inference_configuration.gemma_configuration->model_weight_path =
+  inference_configuration.llama_configuration->model_weight_path =
       "/tmp/model_weight";
 
   ON_CALL(inference_model, BuildLlamaCppModel)
@@ -222,11 +225,11 @@ TEST_F(InferenceModelTest, BuildModelLlamaMissingSessionLlamaCppConfiguration) {
               HasSubstr("Missing session llama.cpp configuration"));
 }
 
-TEST_F(InferenceModelTest, RunInferenceValidConfig) {
+TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfig) {
   absl::StatusOr<Tensor> output_tensor =
       CreateStringTensor({"1", "2", "3"}, "topic");
   ASSERT_THAT(output_tensor, IsOk());
-  ExpectInference({"transcript"}, "topic", std::move(*output_tensor));
+  ExpectGemmaCppInference({"transcript"}, "topic", std::move(*output_tensor));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -272,12 +275,12 @@ TEST_F(InferenceModelTest, RunInferenceValidConfig) {
               UnorderedElementsAre("1", "2", "3"));
 }
 
-TEST_F(InferenceModelTest, RunInferenceValidConfigMultipleInputs) {
+TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfigMultipleInputs) {
   absl::StatusOr<Tensor> output_tensor =
       CreateStringTensor({"1", "2", "3"}, "topic");
   ASSERT_THAT(output_tensor, IsOk());
-  ExpectInference({"transcript", "transcript2"}, "topic",
-                  std::move(*output_tensor));
+  ExpectGemmaCppInference({"transcript", "transcript2"}, "topic",
+                          std::move(*output_tensor));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -332,10 +335,10 @@ TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   absl::StatusOr<Tensor> output_tensor =
       CreateStringTensor({"1", "2", "3"}, "topic");
   ASSERT_THAT(output_tensor, IsOk());
-  ExpectInference({"transcript"}, "topic", *std::move(output_tensor));
+  ExpectGemmaCppInference({"transcript"}, "topic", *std::move(output_tensor));
   output_tensor = CreateStringTensor({"1", "2", "3"}, "output");
   ASSERT_THAT(output_tensor, IsOk());
-  ExpectInference({"input"}, "output", *std::move(output_tensor));
+  ExpectGemmaCppInference({"input"}, "output", *std::move(output_tensor));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -401,7 +404,7 @@ TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   absl::StatusOr<Tensor> output_tensor =
       CreateStringTensor({"1", "2", "3"}, "topic");
   ASSERT_THAT(output_tensor, IsOk());
-  ExpectInference({"transcript"}, "topic", *std::move(output_tensor));
+  ExpectGemmaCppInference({"transcript"}, "topic", *std::move(output_tensor));
 
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
@@ -801,6 +804,120 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
   ASSERT_EQ(output_tensors->at(1).shape().dim_sizes()[0], 3);
   EXPECT_THAT(output_tensors->at(1).AsSpan<absl::string_view>(),
               UnorderedElementsAre("r1", "r2", "r3"));
+}
+
+TEST_F(InferenceModelTest, RunLlamaCppInferenceSuccess) {
+  // This test is modified based on RunGemmaCppInferenceValidConfig.
+  std::string output_column_name = "topic";
+  absl::StatusOr<Tensor> output_tensor =
+      CreateStringTensor({"1", "2", "3"}, output_column_name);
+  ASSERT_THAT(output_tensor, IsOk());
+
+  // Mock the RunLlamaCppInferencePerRow function to return the output tensor.
+  EXPECT_CALL(inference_model_,
+              RunLlamaCppInference(_, _, _, Eq(output_column_name)))
+      .WillOnce(Return(ByMove(std::move(output_tensor))));
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      gemma_config { model_weight_file: "/tmp/model_weight.gguf" }
+    }
+    llama_cpp_init_config {
+      model_weight_configuration_id: "model_weight_configuration_id"
+    }
+  )pb");
+  inference_configuration.llama_configuration.emplace();
+  inference_configuration.llama_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  absl::StatusOr<Tensor> input_tensor =
+      CreateStringTensor({"one", "two", "three"}, "transcript");
+  ASSERT_THAT(input_tensor, IsOk());
+  columns.push_back(std::move(*input_tensor));
+
+  ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
+  BlobHeader blob_header;
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), blob_header);
+  ASSERT_THAT(input, IsOk());
+  ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
+  absl::StatusOr<std::vector<Tensor>> output_tensors =
+      std::move(*input).MoveToTensors();
+  ASSERT_THAT(output_tensors, IsOk());
+  ASSERT_EQ(output_tensors->size(), 2);
+  ASSERT_EQ(output_tensors->at(1).name(), output_column_name);
+  ASSERT_EQ(output_tensors->at(1).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(output_tensors->at(1).AsSpan<absl::string_view>(),
+              UnorderedElementsAre("1", "2", "3"));
+}
+
+TEST_F(InferenceModelTest, RunLlamaCppInferenceValidConfigMultipleInputs) {
+  // This test is modified based on
+  // RunGemmaCppInferenceValidConfigMultipleInputs.
+  std::string output_column_name = "topic";
+  absl::StatusOr<Tensor> output_tensor =
+      CreateStringTensor({"1", "2", "3"}, output_column_name);
+  ASSERT_THAT(output_tensor, IsOk());
+
+  // Mock the RunLlamaCppInferencePerRow function to return the output tensor.
+  EXPECT_CALL(inference_model_,
+              RunLlamaCppInference(_, _, _, Eq(output_column_name)))
+      .WillOnce(Return(ByMove(std::move(output_tensor))));
+
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript_1", "transcript_2" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript_1}}, {{transcript_2}}" }
+      }
+      gemma_config { model_weight_file: "/tmp/model_weight.gguf" }
+    }
+    llama_cpp_init_config {
+      model_weight_configuration_id: "model_weight_configuration_id"
+    }
+  )pb");
+  inference_configuration.llama_configuration.emplace();
+  inference_configuration.llama_configuration->model_weight_path =
+      "/tmp/model_weight";
+
+  std::vector<Tensor> columns;
+  absl::StatusOr<Tensor> input_1_tensor =
+      CreateStringTensor({"one", "two", "three"}, "transcript_1");
+  ASSERT_THAT(input_1_tensor, IsOk());
+  columns.push_back(std::move(*input_1_tensor));
+
+  absl::StatusOr<Tensor> input_2_tensor =
+      CreateStringTensor({"aol", "bat", "cat"}, "transcript_2");
+  ASSERT_THAT(input_2_tensor, IsOk());
+  columns.push_back(std::move(*input_2_tensor));
+
+  ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
+  BlobHeader blob_header;
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), blob_header);
+  ASSERT_THAT(input, IsOk());
+  ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
+  absl::StatusOr<std::vector<Tensor>> output_tensors =
+      std::move(*input).MoveToTensors();
+  ASSERT_THAT(output_tensors, IsOk());
+  ASSERT_EQ(output_tensors->size(), 3);
+  ASSERT_EQ(output_tensors->at(2).name(), output_column_name);
+  ASSERT_EQ(output_tensors->at(2).shape().dim_sizes()[0], 3);
+  EXPECT_THAT(output_tensors->at(2).AsSpan<absl::string_view>(),
+              UnorderedElementsAre("1", "2", "3"));
 }
 
 }  // namespace
