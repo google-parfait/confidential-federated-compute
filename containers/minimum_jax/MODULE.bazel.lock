@@ -105,7 +105,7 @@
     "https://bcr.bazel.build/modules/cel-spec/0.15.0/source.json": "ab7dccdf21ea2261c0f809b5a5221a4d7f8b580309f285fdf1444baaca75d44a",
     "https://bcr.bazel.build/modules/civetweb/1.16/MODULE.bazel": "46a38f9daeb57392e3827fce7d40926be0c802bd23cdd6bfd3a96c804de42fae",
     "https://bcr.bazel.build/modules/civetweb/1.16/source.json": "ba8b9585adb8355cb51b999d57172fd05e7a762c56b8d4bac6db42c99de3beb7",
-    "https://bcr.bazel.build/modules/confidential-federated-compute/0.0.5/MODULE.bazel": "not found",
+    "https://bcr.bazel.build/modules/confidential-federated-compute/0.0.6/MODULE.bazel": "not found",
     "https://bcr.bazel.build/modules/curl/8.4.0/MODULE.bazel": "0bc250aa1cb69590049383df7a9537c809591fcf876c620f5f097c58fdc9bc10",
     "https://bcr.bazel.build/modules/curl/8.7.1/MODULE.bazel": "088221c35a2939c555e6e47cb31a81c15f8b59f4daa8009b1e9271a502d33485",
     "https://bcr.bazel.build/modules/curl/8.8.0/MODULE.bazel": "7da3b3e79b0b4ee8f8c95d640bc6ad7b430ce66ef6e9c9d2bc29b3b5ef85f6fe",
@@ -435,8 +435,8 @@
     "https://bcr.bazel.build/modules/zlib/1.3.1/MODULE.bazel": "751c9940dcfe869f5f7274e1295422a34623555916eb98c174c1e945594bf198",
     "https://bcr.bazel.build/modules/zlib/1.3/MODULE.bazel": "6a9c02f19a24dcedb05572b2381446e27c272cd383aed11d41d99da9e3167a72",
     "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/bazel_registry.json": "not found",
-    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.5/MODULE.bazel": "14e4d0cc7f2bf3255085b9e409672a07bdfe7ee34bc12f90a564d5250c7dc208",
-    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.5/source.json": "9a0ceb00d0ceb5e0354ec34fc011aecef97d2a131fb536fb95a5cfbd7e280aa5"
+    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.6/MODULE.bazel": "800a04501f92b50034314f229e88f53f7abb75f1bfa5247b05672882af5cde24",
+    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.6/source.json": "987e5115bcbd87d45a788509970c1311110ba45120fed23b3b0081617b44573b"
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
@@ -613,8 +613,8 @@
     },
     "@@confidential-federated-compute+//:extensions.bzl%cfc_deps": {
       "general": {
-        "bzlTransitiveDigest": "Hb6SOXWvoCvZqWyj6bb89lY5f5eEzs6/5gVu8ZzkbMY=",
-        "usagesDigest": "FYfhuM3B0GW2wQ0ey+P5tBpNBd9KGH2NZ9dzARJIGnQ=",
+        "bzlTransitiveDigest": "gY87pU/mBHNt949faoXy7chi/Oa004CvydLtS7bcLWE=",
+        "usagesDigest": "HwqpCpLGxZY3LY7Kerm8jfS55bC+G8Cp38ecY7KJmJY=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -622,13 +622,13 @@
           "federated-compute": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "integrity": "sha256-0ZzUR9bSZC95FtytijehFKaxleTUbAE/KFy0TDVBUHU=",
+              "integrity": "sha256-n/IwJB/5Alv2hbIpNlcvZd0iCXDgZhRunqFmQobKYuU=",
               "patches": [
                 "@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch",
                 "@@confidential-federated-compute+//third_party/federated_compute:visibility.patch"
               ],
-              "strip_prefix": "federated-compute-e66009557836cf39653fd963c6ab1fdec10027ad",
-              "url": "https://github.com/google/federated-compute/archive/e66009557836cf39653fd963c6ab1fdec10027ad.tar.gz"
+              "strip_prefix": "federated-compute-6efc8646e7f79c60a3110f6c4a63c85e06c9301e",
+              "url": "https://github.com/google/federated-compute/archive/6efc8646e7f79c60a3110f6c4a63c85e06c9301e.tar.gz"
             }
           },
           "libcppbor": {
@@ -645,9 +645,9 @@
           "oak": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "integrity": "sha256-3CzlN6XG3D3/sjJQIeK6XrMcjIU4TaYLfjamy3IC9Ew=",
-              "strip_prefix": "oak-4d5246a4786e3be0dd80590edbfdfb807f658f21",
-              "url": "https://github.com/project-oak/oak/archive/4d5246a4786e3be0dd80590edbfdfb807f658f21.tar.gz"
+              "integrity": "sha256-ZEZ+qDfHWNivUm3z9LkWG5q2F6udbjij8GTgUFmIl/k=",
+              "strip_prefix": "oak-0beb0de86a546df46365cf4caef3ac8065e304e9",
+              "url": "https://github.com/project-oak/oak/archive/0beb0de86a546df46365cf4caef3ac8065e304e9.tar.gz"
             }
           }
         },

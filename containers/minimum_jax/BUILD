@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@confidential-federated-compute//containers/bazel:gen_python_path.bzl", "gen_python_path")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
@@ -19,7 +20,6 @@ load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
-load("//:python_path.bzl", "gen_python_path")
 
 # Define a set of PIP-provided deps to use.
 compile_pip_requirements(
