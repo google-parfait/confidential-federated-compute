@@ -353,7 +353,7 @@ InferenceInitializeConfiguration FedSqlServerTest::DefaultInferenceConfig()
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -1151,7 +1151,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelInitConfig) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -1184,7 +1184,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingModelConfig) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -1214,7 +1214,7 @@ TEST_F(FedSqlServerTest, StreamInitializeMissingInferenceLogic) {
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
       }
@@ -1348,7 +1348,7 @@ TEST_F(FedSqlServerTest,
     inference_config {
       inference_task: {
         column_config {
-          input_column_name: "transcript"
+          input_column_names: [ "transcript" ]
           output_column_name: "topic"
         }
         prompt { prompt_template: "Hello, {{transcript}}" }
@@ -1759,7 +1759,7 @@ TEST_F(FedSqlServerTest,
       inference_config {
         inference_task: {
           column_config {
-            input_column_name: "transcript"
+            input_column_names: [ "transcript" ]
             output_column_name: "topic"
           }
           prompt { prompt_template: "Hello, {{transcript}}" }
