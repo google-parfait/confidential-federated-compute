@@ -36,7 +36,6 @@ jobs:
           module-root: ${{ matrix.module-root }}
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}-${{ matrix.module-root }}
-          repository-cache: true
       - name: Build
         run: |
           cd "${{ matrix.module-root }}" && bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
