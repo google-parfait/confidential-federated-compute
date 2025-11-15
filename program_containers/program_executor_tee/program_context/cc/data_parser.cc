@@ -74,6 +74,7 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
     std::string uri) {
   // Check whether the uri is already in the cache.
   if (use_caching_) {
+    absl::MutexLock lock(&cache_mutex_);
     auto it = uri_to_checkpoint_cache_.find(uri);
     if (it != uri_to_checkpoint_cache_.end()) {
       return it->second;
@@ -108,6 +109,7 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
       std::string checkpoint,
       ParseReadResponseToFcCheckpoint(combined_read_response, nonce));
   if (use_caching_) {
+    absl::MutexLock lock(&cache_mutex_);
     uri_to_checkpoint_cache_[uri] = checkpoint;
   }
   return checkpoint;

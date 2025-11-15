@@ -62,6 +62,7 @@ class DataParser {
       fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface>
       stub_;
   bool use_caching_;
+  absl::Mutex cache_mutex_;
   absl::flat_hash_map<std::string, std::string> uri_to_checkpoint_cache_;
   std::function<std::string()> nonce_generator_;
 };
