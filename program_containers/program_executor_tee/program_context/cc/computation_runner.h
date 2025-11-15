@@ -57,7 +57,11 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
 
  private:
   absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
-  CreateDistributedExecutor(int num_clients);
+  CreateDistributedExecutor(
+      std::function<
+          absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
+          leaf_executor_factory,
+      int num_clients);
 
   std::function<
       absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>

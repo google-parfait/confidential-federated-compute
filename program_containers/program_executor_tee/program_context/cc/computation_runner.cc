@@ -24,9 +24,6 @@
 #include "cc/oak_session/config.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/confidentialcompute/composing_tee_executor.h"
-#include "fcp/confidentialcompute/tee_executor.h"
-#include "fcp/confidentialcompute/tff_execution_helper.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
@@ -48,8 +45,6 @@ namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
 using ::fcp::base::ToGrpcStatus;
-using ::fcp::confidential_compute::CreateComposingTeeExecutor;
-using ::fcp::confidential_compute::CreateTeeExecutor;
 using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::outgoing::ComputationDelegation;
 using ::fcp::confidentialcompute::outgoing::ComputationRequest;
@@ -101,15 +96,10 @@ absl::StatusOr<std::shared_ptr<Executor>> CreateExecutor(
     std::function<absl::StatusOr<std::shared_ptr<Executor>>()>
         leaf_executor_factory,
     int num_clients) {
-  auto leaf_executor_fn =
-      [leaf_executor_factory]() -> absl::StatusOr<std::shared_ptr<Executor>> {
-    FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory());
-    return CreateReferenceResolvingExecutor(executor);
-  };
   CardinalityMap cardinality_map;
   cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
-  FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_fn());
-  FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_fn());
+  FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_factory());
+  FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_factory());
   FCP_ASSIGN_OR_RETURN(
       auto federating_executor,
       CreateFederatingExecutor(server_child, client_child, cardinality_map));
@@ -124,11 +114,10 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
                        executor->CreateValue(comp));
   tensorflow_federated::v0::Value call_result;
   if (arg.has_value()) {
-    FCP_ASSIGN_OR_RETURN(
-        std::shared_ptr<tensorflow_federated::OwnedValueId> arg_handle,
-        fcp::confidential_compute::Embed(*arg, executor));
+    FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId arg_handle,
+                         executor->CreateValue(*arg));
     FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
-                         executor->CreateCall(fn_handle, *arg_handle));
+                         executor->CreateCall(fn_handle, arg_handle));
     FCP_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
   } else {
     FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
@@ -173,17 +162,21 @@ ComputationRunner::ComputationRunner(
 
 // Creates a distributed TFF execution stack.
 absl::StatusOr<std::shared_ptr<Executor>>
-ComputationRunner::CreateDistributedExecutor(int num_clients) {
+ComputationRunner::CreateDistributedExecutor(
+    std::function<absl::StatusOr<std::shared_ptr<Executor>>()>
+        leaf_executor_factory,
+    int num_clients) {
   if (worker_bns_.size() < 2) {
     return absl::InvalidArgumentError(
-        "worker_bns must have at least 2 entries.");
+        "worker_bns must have at least 2 entries otherwise distributing the "
+        "work will have no benefit.");
   }
 
   std::vector<ComposingChild> client_executors;
   int remaining_clients = num_clients;
   int num_clients_values_per_executor =
-      std::ceil(static_cast<float>(num_clients) / (worker_bns_.size() - 1));
-  for (int i = 0; i < worker_bns_.size() - 1; i++) {
+      std::ceil(static_cast<float>(num_clients) / (worker_bns_.size()));
+  for (int i = 0; i < worker_bns_.size(); i++) {
     int clients_for_executor =
         std::min(num_clients_values_per_executor, remaining_clients);
     CardinalityMap cardinality_map;
@@ -196,11 +189,7 @@ ComputationRunner::CreateDistributedExecutor(int num_clients) {
     remaining_clients -= clients_for_executor;
   }
 
-  CardinalityMap cardinality_map;
-  cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
-  std::shared_ptr<Executor> server_executor = CreateStreamingRemoteExecutor(
-      std::make_unique<NoiseExecutorStub>(noise_client_sessions_.back().get()),
-      cardinality_map);
+  FCP_ASSIGN_OR_RETURN(auto server_executor, leaf_executor_factory());
 
   return CreateReferenceResolvingExecutor(
       CreateComposingExecutor(server_executor, client_executors));
@@ -217,12 +206,18 @@ grpc::Status ComputationRunner::Execute(
         "ComputationRequest cannot be unpacked to TffSessionConfig.");
   }
 
+  auto leaf_executor_fn =
+      [this]() -> absl::StatusOr<std::shared_ptr<Executor>> {
+    FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory_());
+    return CreateReferenceResolvingExecutor(executor);
+  };
+
   // Create executor stack.
   absl::StatusOr<std::shared_ptr<Executor>> executor =
       worker_bns_.empty()
-          ? CreateExecutor(leaf_executor_factory_,
-                           session_request.num_clients())
-          : CreateDistributedExecutor(session_request.num_clients());
+          ? CreateExecutor(leaf_executor_fn, session_request.num_clients())
+          : CreateDistributedExecutor(leaf_executor_fn,
+                                      session_request.num_clients());
   if (!executor.status().ok()) {
     return ToGrpcStatus(executor.status());
   }
