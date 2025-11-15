@@ -62,6 +62,10 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
       .def(pybind11::init<BlobDecryptor*, std::string&>())
       .def("resolve_uri_to_tensor",
            [](DataParser& self, std::string& uri, std::string& key) {
+             // Release the GIL so that the grpc requests in ResolveUriToTensor
+             // can be made in parallel. This safe because the shared mutable
+             // state within DataParser (the cache) is protected by a mutex.
+             pybind11::gil_scoped_release release;
              auto tensor = self.ResolveUriToTensor(uri, key);
              if (!tensor.ok()) {
                throw std::runtime_error("Failed to fetch Tensor: " +
