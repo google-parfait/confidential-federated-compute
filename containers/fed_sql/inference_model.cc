@@ -168,8 +168,9 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
   RuntimeConfig inference_runtime_config =
       inference_configuration_->initialize_configuration.inference_config()
           .runtime_config();
-  size_t max_prompt_size =
-      inference_runtime_config.max_prompt_size() > 0 ?: kMaxPromptSize;
+  size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
+                               ? inference_runtime_config.max_prompt_size()
+                               : kMaxPromptSize;
   std::unique_ptr<MutableStringData> output_string_data =
       std::make_unique<MutableStringData>(
           static_cast<long>(input.GetRowCount()));
@@ -212,11 +213,13 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
     float temperature = 1.0 + inference_runtime_config.temperature_diff();
 
     // Set the max_output_tokens to the value in the RuntimeConfig if provided.
-    size_t max_output_tokens =
+    size_t config_max_output_tokens =
         inference_configuration_->initialize_configuration.inference_config()
-                    .runtime_config()
-                    .max_generated_tokens() > 0
-            ?: kMaxOutputTokens;
+            .runtime_config()
+            .max_generated_tokens();
+    size_t max_output_tokens = config_max_output_tokens > 0
+                                   ? config_max_output_tokens
+                                   : kMaxOutputTokens;
     ::gcpp::RuntimeConfig runtime_config = {
         .max_generated_tokens = max_output_tokens,
         .temperature = temperature,
@@ -262,11 +265,13 @@ absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
   llama_context_params ctx_params = llama_context_default_params();
 
   // Set the max_output_tokens to the value in the RuntimeConfig if provided.
-  size_t max_output_tokens =
+  size_t config_max_output_tokens =
       inference_configuration_->initialize_configuration.inference_config()
-                  .runtime_config()
-                  .max_generated_tokens() > 0
-          ?: kMaxOutputTokens;
+          .runtime_config()
+          .max_generated_tokens();
+  size_t max_output_tokens = config_max_output_tokens > 0
+                                 ? config_max_output_tokens
+                                 : kMaxOutputTokens;
   // Set the context size to accommodate the prompt and generated tokens.
   ctx_params.n_ctx = num_prompt_tokens + max_output_tokens;
   // n_batch is the maximum number of tokens that can be processed in a single
