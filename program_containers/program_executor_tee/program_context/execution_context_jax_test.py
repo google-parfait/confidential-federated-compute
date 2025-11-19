@@ -147,6 +147,30 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       self.assertEqual(result_1, 10)
       self.assertEqual(result_2, 10)
 
+  async def test_execution_context_server_arg_only(self):
+    with federated_language.framework.get_context_stack().install(self.context):
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
+
+      @federated_language.federated_computation(server_state_type)
+      def my_comp(server_state):
+        return server_state
+
+      result = my_comp(10)
+    self.assertEqual(result, 10)
+
+  async def test_execution_context_jax_computation(self):
+    with federated_language.framework.get_context_stack().install(self.context):
+
+      @jax_computation.jax_computation(np.int32)
+      def my_comp(x):
+        return x + 1
+
+      result = my_comp(10)
+
+    self.assertEqual(result, 11)
+
 
 if __name__ == "__main__":
   absltest.main()

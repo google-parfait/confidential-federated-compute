@@ -135,9 +135,12 @@ class TrustedContext(federated_language.program.FederatedContext):
     serialized_arg = None
     clients_cardinality = 0
     if arg is not None:
-      clients_cardinality = federated_language.framework.infer_cardinalities(
+      cardinalities = federated_language.framework.infer_cardinalities(
           arg, comp.type_signature.parameter
-      )[federated_language.CLIENTS]
+      )
+      clients_cardinality = cardinalities.get(
+          federated_language.CLIENTS, clients_cardinality
+      )
       serialized_arg, _ = tff.framework.serialize_value(
           arg, comp.type_signature.parameter
       )
