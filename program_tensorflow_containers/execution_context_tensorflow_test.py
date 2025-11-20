@@ -144,6 +144,45 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.assertEqual(my_comp(), 10)
 
+  async def test_execution_context_server_arg_only(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            compilers.compile_tf_to_call_dominant,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+    server_state_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+
+    @federated_language.federated_computation(server_state_type)
+    def my_comp(server_state):
+      return server_state
+
+    result = my_comp(10)
+    self.assertEqual(result, 10)
+
+  async def test_execution_context_tf_computation(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            lambda x: x,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+
+    @tff.tensorflow.computation(np.int32)
+    def my_comp(x):
+      return x + 1
+
+    result = my_comp(10)
+    self.assertEqual(result, 11)
+
 
 class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
 
@@ -211,6 +250,45 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     result_1, result_2 = my_comp([1, 2, 3, 4], 10)
     self.assertEqual(result_1, 20)
     self.assertEqual(result_2, 10)
+
+  async def test_execution_context_server_arg_only(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            compilers.compile_tf_to_call_dominant,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+    server_state_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+
+    @federated_language.federated_computation(server_state_type)
+    def my_comp(server_state):
+      return server_state
+
+    result = my_comp(10)
+    self.assertEqual(result, 10)
+
+  async def test_execution_context_tf_computation(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            lambda x: x,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+
+    @tff.tensorflow.computation(np.int32)
+    def my_comp(x):
+      return x + 1
+
+    result = my_comp(10)
+    self.assertEqual(result, 11)
 
 
 if __name__ == "__main__":
