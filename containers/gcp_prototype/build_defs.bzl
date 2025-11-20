@@ -18,9 +18,8 @@ def _generate_policy_impl(ctx):
     digest = ctx.attr.digest_flag[BuildSettingInfo].value
 
     content = """verifier_type: {type}
-require_secboot_enabled: true
-require_debug_disabled: false
-require_sw_tcb_uptodate: true
+allow_debug: true
+allow_outdated_hw_tcb: true
 """.format(type = ctx.attr.verifier_type)
 
     if digest and digest != "skip":

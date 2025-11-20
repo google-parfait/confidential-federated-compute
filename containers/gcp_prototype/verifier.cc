@@ -399,16 +399,19 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
             << internal_config_.expected_hw_model << "'";
 
   // 2. Secure Boot: Must be enabled for TEE protection.
-  if (policy_.require_secboot_enabled()) {
+  if (!policy_.skip_secboot()) {
     if (!claims.secboot.has_value() || *claims.secboot != true) {
       return absl::PermissionDeniedError(
           "Policy violation: Secure Boot must be enabled.");
     }
     LOG(INFO) << "  [PASS] Secure Boot is enabled.";
+  } else {
+    LOG(INFO) << "  [INFO] Secure Boot check skipped (explicitly disabled by "
+                 "policy).";
   }
 
   // 3. Debugging Status: Ensures no platform debugging is possible.
-  if (policy_.require_debug_disabled()) {
+  if (!policy_.allow_debug()) {
     // Check hardware debug status (dbgstat)
     status =
         CheckStringMatch(claims.dbgstat, "disabled", kJwtDbgstatAttributeName);
@@ -493,7 +496,7 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
 
   // 5. TCB Freshness: Enforce up-to-date measurements or minimum dates.
   // GCP Software TCB check.
-  if (policy_.require_sw_tcb_uptodate()) {
+  if (!policy_.allow_outdated_sw_tcb()) {
     status =
         CheckStringMatch(claims.sw_tcb_status, "UpToDate",
                          "SW TCB Status (" + std::string(kSwTcbStatus) + ")");
@@ -506,7 +509,7 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
   if (!status.ok()) return status;
 
   // Intel Hardware TCB check.
-  if (policy_.require_hw_tcb_uptodate()) {
+  if (!policy_.allow_outdated_hw_tcb()) {
     status =
         CheckStringMatch(claims.hw_tcb_status, "UpToDate",
                          "HW TCB Status (" + std::string(kHwTcbStatus) + ")");

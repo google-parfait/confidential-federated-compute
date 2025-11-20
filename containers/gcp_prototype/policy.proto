@@ -27,16 +27,27 @@ message AttestationPolicy {
   // Selects the root of trust and provider configuration.
   VerifierType verifier_type = 10;
 
-  // Configuration for hardware security features.
-  bool require_debug_disabled = 1;
-  bool require_secboot_enabled = 2;
+  // --- Hardware Security ---
+  
+  // Default (false): Debugging MUST be disabled (Secure).
+  // Set true to allow debug/experimental images.
+  bool allow_debug = 11; 
 
-  // TCB freshness requirements (delegated to the attestation provider).
-  // Checks that the GCP software stack (kernel, CS agent, etc.) is up-to-date.
-  bool require_sw_tcb_uptodate = 3;
-  // Checks that the underlying Intel hardware (microcode, TDX module) is
-  // up-to-date.
-  bool require_hw_tcb_uptodate = 4;
+  // Default (false): Secure Boot MUST be enabled.
+  // Set true to skip this check (Insecure).
+  bool skip_secboot = 12;
+
+  // --- TCB Freshness ---
+
+  // Default (false): Software TCB (kernel, CS agent) MUST be "UpToDate".
+  // Set true to allow outdated or unknown software TCB status, and/or to
+  // explicitly control it using the `min_sw_tcb_date` field (below).
+  bool allow_outdated_sw_tcb = 13;
+
+  // Default (false): Hardware TCB (microcode, TDX) MUST be "UpToDate".
+  // Set true to allow outdated or unknown hardware TCB status, and/or to
+  // explicitly control it using the `min_hw_tcb_date` field (below).
+  bool allow_outdated_hw_tcb = 14;
 
   // Minimum date requirements for TCB.
   // Uses RFC 3339 format (e.g., "2024-08-14T00:00:00Z").
@@ -52,4 +63,13 @@ message AttestationPolicy {
   string expected_service_account = 8;
   // Expected SHA-256 digest of the container image.
   string expected_image_digest = 9;
+
+  // --- RETIRED FIELDS ---
+  // We reserve these numbers and names to prevent accidental reuse or 
+  // wire-format collisions with older clients/configs.
+  reserved 1, 2, 3, 4;
+  reserved "require_debug_disabled", 
+           "require_secboot_enabled", 
+           "require_sw_tcb_uptodate", 
+           "require_hw_tcb_uptodate";
 }
