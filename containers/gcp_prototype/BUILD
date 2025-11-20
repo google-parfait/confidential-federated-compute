@@ -20,7 +20,7 @@ load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_rust//rust:defs.bzl", "rust_library")
-load(":build_defs.bzl", "generate_policy", "image_digest_flag")
+load(":build_defs.bzl", "define_load_runner", "generate_policy", "image_digest_flag")
 
 proto_library(
     name = "policy_proto",
@@ -262,6 +262,36 @@ pkg_tar(
     include_runfiles = True,
 )
 
+genrule(
+    name = "copy_intel_jwks",
+    srcs = ["@intel_jwks//file"],
+    outs = ["intel_jwks.json"],
+    cmd = "cp $< $@",
+)
+
+pkg_tar(
+    name = "intel_jwks_layer",
+    srcs = [":copy_intel_jwks"],
+    mode = "0644",
+    package_dir = "/etc/pki/intel",
+    remap_paths = {"intel_jwks.json": "jwks.json"},
+)
+
+genrule(
+    name = "copy_google_jwks",
+    srcs = ["@google_jwks//file"],
+    outs = ["google_jwks.json"],
+    cmd = "cp $< $@",
+)
+
+pkg_tar(
+    name = "google_jwks_layer",
+    srcs = [":copy_google_jwks"],
+    mode = "0644",
+    package_dir = "/etc/pki/google",
+    remap_paths = {"google_jwks.json": "jwks.json"},
+)
+
 pkg_tar(
     name = "model_layer",
     srcs = ["@gemma_weights//:gemma-3-270m-it-q4_k_m.gguf"],
@@ -270,10 +300,14 @@ pkg_tar(
 )
 
 oci_image(
-    name = "oci_image",
+    name = "oci_image_ita",
     base = "@distroless_cc_debian12_base",
-    cmd = ["--attestation_provider=ita"],
+    cmd = [
+        "--attestation_provider=ita",
+        "--gpu_layers=999",
+    ],
     entrypoint = ["/main"],
+    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
     exposed_ports = ["8000/tcp"],
     tars = [
         ":main_tar",
@@ -281,13 +315,41 @@ oci_image(
     ],
 )
 
-# oci_load rule generates the tarball.sh script
 oci_load(
-    name = "tarball",
-    image = ":oci_image",
-    repo_tags = [
-        "gcp_prototype:latest",
+    name = "tarball_ita",
+    image = ":oci_image_ita",
+    repo_tags = ["gcp_prototype:ita_latest"],
+)
+
+oci_image(
+    name = "oci_image_gca",
+    base = "@distroless_cc_debian12_base",
+    cmd = [
+        "--attestation_provider=gca",
+        "--gpu_layers=999",
     ],
+    entrypoint = ["/main"],
+    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
+    exposed_ports = ["8000/tcp"],
+    tars = [
+        ":main_tar",
+        ":model_layer",
+    ],
+)
+
+oci_load(
+    name = "tarball_gca",
+    image = ":oci_image_gca",
+    repo_tags = ["gcp_prototype:gca_latest"],
+)
+
+define_load_runner("ita", "ita_latest")
+
+define_load_runner("gca", "gca_latest")
+
+image_digest_flag(
+    name = "server_digest",
+    build_setting_default = "skip",
 )
 
 pkg_tar(
@@ -296,120 +358,76 @@ pkg_tar(
     include_runfiles = True,
 )
 
-# 1. Copy the downloaded file to a local name we control
-genrule(
-    name = "copy_jwks",
-    srcs = ["@intel_jwks//file"],
-    outs = ["jwks.json"],
-    cmd = "cp $< $@",
-)
-
-# 2. Tar it up, placing it in the desired directory
-pkg_tar(
-    name = "intel_jwks_layer",
-    srcs = [":copy_jwks"],
-    mode = "0644",
-    package_dir = "/etc/pki/intel",
-)
-
-# Default to "skip" so it doesn't fail if you forget it during local dev.
-image_digest_flag(
-    name = "server_digest",
-    build_setting_default = "skip",
-)
-
-# Generates the runtime policy file based on build configuration.
 generate_policy(
-    name = "gen_offline_policy",
-    out = "offline_policy.textproto",
+    name = "gen_policy_ita",
+    out = "policy_ita.textproto",
     digest_flag = ":server_digest",
+    verifier_type = "ITA",
 )
 
-# Packages the generated policy into /etc/confidential/policy.textproto
-# for inclusion in the client container.
 pkg_tar(
-    name = "policy_layer",
-    srcs = [":gen_offline_policy"],
+    name = "policy_layer_ita",
+    srcs = [":gen_policy_ita"],
     mode = "0644",
     package_dir = "/etc/confidential",
-    remap_paths = {"offline_policy.textproto": "policy.textproto"},
+    remap_paths = {"policy_ita.textproto": "policy.textproto"},
 )
 
-# Dedicated image for TEE testing that bakes in the necessary flags
 oci_image(
-    name = "client_offline_oci_image",
+    name = "client_offline_oci_image_ita",
     base = "@distroless_cc_debian12_base",
     cmd = [
         "--server_address=10.0.2.100",
-        "--jwks_path=/etc/pki/intel/jwks.json",
+        "--jwks_path=/etc/pki/intel/jwks.json",  # Points to Intel keys
         "--policy_path=/etc/confidential/policy.textproto",
     ],
     entrypoint = ["/test_client"],
     tars = [
         ":test_client_tar",
-        ":intel_jwks_layer",
-        ":policy_layer",
+        ":intel_jwks_layer",  # Bakes in Intel keys
+        ":policy_layer_ita",
     ],
 )
 
 oci_runtime_bundle(
-    name = "client_offline_bundle",
-    image = ":client_offline_oci_image",
+    name = "client_offline_bundle_ita",
+    image = ":client_offline_oci_image_ita",
 )
 
-# Genrule loads image, then inspects via Docker CLI
-genrule(
-    name = "load_and_print_digest_runner",
-    outs = ["load_and_print_digest.sh"],  # Output a dummy script
-    cmd = """
-        set -e # Exit on error
-        TARBALL_SCRIPT=$(location :tarball)
-        IMAGE_TAG="gcp_prototype:latest" # Must match repo_tags in :tarball
+generate_policy(
+    name = "gen_policy_gca",
+    out = "policy_gca.textproto",
+    digest_flag = ":server_digest",
+    verifier_type = "GCA",
+)
 
-        # --- STEP 1: Execute the oci_load script ---
-        echo "Executing oci_load script: $$TARBALL_SCRIPT" >&2
-        $$TARBALL_SCRIPT # This runs 'docker load'
-        echo "Image load complete." >&2
+pkg_tar(
+    name = "policy_layer_gca",
+    srcs = [":gen_policy_gca"],
+    mode = "0644",
+    package_dir = "/etc/confidential",
+    remap_paths = {"policy_gca.textproto": "policy.textproto"},
+)
 
-        # --- STEP 2: Get the Image ID for the loaded tag ---
-        echo "Inspecting tag '$$IMAGE_TAG' to get Image ID..." >&2
-        LOADED_ID=$$(docker image inspect "$$IMAGE_TAG" --format '{{.Id}}' 2>/dev/null)
+oci_image(
+    name = "client_offline_oci_image_gca",
+    base = "@distroless_cc_debian12_base",
+    cmd = [
+        "--server_address=10.0.2.100",
+        "--jwks_path=/etc/pki/google/jwks.json",  # Points to Google keys
+        "--policy_path=/etc/confidential/policy.textproto",
+    ],
+    entrypoint = ["/test_client"],
+    tars = [
+        ":test_client_tar",
+        ":google_jwks_layer",  # Bakes in Google keys
+        ":policy_layer_gca",
+    ],
+)
 
-        if [ -z "$$LOADED_ID" ]; then
-            echo "ERROR: Could not inspect tag '$$IMAGE_TAG' to get Image ID after load." >&2
-            exit 1
-        fi
-        echo "Found Image ID for tag '$$IMAGE_TAG': $$LOADED_ID" >&2
-
-        # --- STEP 3: Inspect the specific Image ID to get the RepoDigest (Manifest Digest) ---
-        echo "Inspecting loaded Image ID '$$LOADED_ID' for RepoDigest..." >&2
-        # Inspect the specific ID and format RepoDigests.
-        # Use grep/head to robustly get the first sha256:... digest listed.
-        DIGEST=$$(docker image inspect "$$LOADED_ID" --format '{{range .RepoDigests}}{{.}}{{println}}{{end}}' 2>/dev/null | grep -o 'sha256:[a-f0-9]*' | head -n 1 || true)
-
-        # Fallback to the Image ID itself ONLY if RepoDigests is empty for that ID
-        if [ -z "$$DIGEST" ]; then
-            echo "WARNING: RepoDigest not found for specific Image ID $$LOADED_ID after load. Falling back to Image ID (Config Digest)." >&2
-            # Use the ID we got from inspecting the tag
-            DIGEST="$$LOADED_ID"
-        else
-            echo "Found RepoDigest (Manifest Digest) for Image ID $$LOADED_ID: $$DIGEST" >&2
-        fi
-
-        # --- STEP 4: Print the final digest ---
-        # This should now be the Manifest Digest if available, otherwise the Config Digest.
-        echo "==================================================" >&2
-        echo "Server Image Docker Digest: $$DIGEST" >&2
-        echo "==================================================" >&2
-
-        # --- STEP 5: Generate the dummy output script for bazel run ---
-        printf '#!/bin/bash\\n echo "Wrapper script finished."\\n exit 0\\n' > $@
-        chmod +x $@
-    """,
-    executable = True,  # Make runnable via `bazel run`
-    local = True,  # Allow access to local Docker daemon
-    tools = [":tarball"],  # Need the tarball script path
-    visibility = ["//visibility:public"],
+oci_runtime_bundle(
+    name = "client_offline_bundle_gca",
+    image = ":client_offline_oci_image_gca",
 )
 
 # Fill in the correct repo setup if needed

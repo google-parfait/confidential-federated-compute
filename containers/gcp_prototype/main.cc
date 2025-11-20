@@ -15,6 +15,7 @@
 // gRPC server implementation using Oak Noise sessions for secure communication
 // and GCP Confidential Space attestation.
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -66,6 +67,9 @@ ABSL_FLAG(std::string, attestation_provider, "ita",
 ABSL_FLAG(std::string, model_path, "/saved_model/gemma-3-270m-it-q4_k_m.gguf",
           "Path to the model weights (GGUF file).");
 
+ABSL_FLAG(int32_t, gpu_layers, 0,
+          "Number of layers to offload to GPU. Set to 0 for CPU only, or a "
+          "large number (e.g., 999) to offload all layers.");
 /**
  * @brief Implementation of the Oak Session gRPC service.
  * Handles a single client stream connection.
@@ -178,8 +182,17 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
 
       // Run inference.
       LOG(INFO) << "Running inference...";
+
+      auto start_time =
+          std::chrono::high_resolution_clock::now();  // START TIMER
+
       absl::StatusOr<std::string> inference_result =
           inference_engine_->Infer(decrypted_request);
+
+      auto end_time = std::chrono::high_resolution_clock::now();  // END TIMER
+      std::chrono::duration<double> elapsed = end_time - start_time;
+
+      LOG(INFO) << "Inference completed in " << elapsed.count() << " seconds.";
 
       std::string response_payload;
       if (inference_result.ok()) {
@@ -248,9 +261,11 @@ int main(int argc, char** argv) {
   CHECK_OK(status) << "Failed to register Tink SignatureConfig";
 
   std::string model_path = absl::GetFlag(FLAGS_model_path);
-  LOG(INFO) << "Initializing inference engine... loading model from: "
-            << model_path;
-  auto engine_or = InferenceEngine::Create(model_path);
+  int32_t gpu_layers = absl::GetFlag(FLAGS_gpu_layers);
+  LOG(INFO) << "Initializing inference engine... ";
+  LOG(INFO) << "  Model: " << model_path;
+  LOG(INFO) << "  GPU Layers: " << gpu_layers;
+  auto engine_or = InferenceEngine::Create(model_path, gpu_layers);
   if (!engine_or.ok()) {
     LOG(FATAL) << "Failed to initialize inference engine: "
                << engine_or.status();

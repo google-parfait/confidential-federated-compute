@@ -28,6 +28,11 @@ http_file(
     urls = ["https://portal.trustauthority.intel.com/certs"],
 )
 
+http_file(
+    name = "google_jwks",
+    urls = ["https://www.googleapis.com/service_accounts/v1/metadata/jwk/signer@confidentialspace-sign.iam.gserviceaccount.com"],
+)
+
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
@@ -45,6 +50,13 @@ bazel_dep(name = "nlohmann_json", version = "3.11.3")  # Needed for JSON parsing
 bazel_dep(name = "rules_foreign_cc", version = "0.11.1")
 bazel_dep(name = "curl", version = "8.11.0")  # Example version, check BCR
 bazel_dep(name = "aspect_bazel_lib", version = "2.9.4")
+bazel_dep(name = "rules_cuda")
+archive_override(
+    module_name = "rules_cuda",
+    integrity = "sha256-1p+wq8uTeO1ZELmj03RqR9cKwpuK+idfkTrF4ZehfBw=",
+    strip_prefix = "rules_cuda-76cb0a6afbe814d4da3cc50b9117c64272db4c44",
+    url = "https://github.com/bazel-contrib/rules_cuda/archive/76cb0a6afbe814d4da3cc50b9117c64272db4c44.tar.gz",
+)
 
 http_archive(
     name = "sysroot",
@@ -96,3 +108,238 @@ http_auth_file(
     # Gemma 3 270M Instruct, Q4_K_M (~253MB)
     urls = ["https://huggingface.co/second-state/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q4_K_M.gguf?download=true"],
 )
+
+# Set up hermetic CUDA toolchain
+cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+
+# ------------------
+# -- CUDA 12.2 -----
+# ------------------
+
+cuda.component(
+    name = "cuda_cccl",
+    component_name = "cccl",
+    strip_prefix = "cuda_cccl-linux-x86_64-12.2.140-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.2.140-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_cudart",
+    component_name = "cudart",
+    strip_prefix = "cuda_cudart-linux-x86_64-12.2.140-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.2.140-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_nvcc",
+    component_name = "nvcc",
+    strip_prefix = "cuda_nvcc-linux-x86_64-12.2.140-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.2.140-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_cublas",
+    component_name = "cublas",
+    strip_prefix = "libcublas-linux-x86_64-12.2.5.6-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-12.2.5.6-archive.tar.xz"],
+)
+cuda.component(
+    name = "cuda_curand",
+    component_name = "curand",
+    strip_prefix = "libcurand-linux-x86_64-10.3.3.141-archive",
+    urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.3.141-archive.tar.xz"],
+)
+cuda.toolkit(
+    name = "cuda",
+    components_mapping = {
+        "cccl": "@cuda_cccl",
+        "cudart": "@cuda_cudart",
+        "nvcc": "@cuda_nvcc",
+        "cublas": "@cuda_cublas",
+        "curand": "@cuda_curand",
+    },
+    version = "12.2.2",
+)
+use_repo(
+    cuda,
+    "cuda",
+    "cuda_cccl",
+    "cuda_cublas",
+    "cuda_cudart",
+    "cuda_curand",
+    "cuda_nvcc",
+)
+
+http_archive(
+    name = "nvidia_driver",
+    build_file_content = """
+load("@rules_cc//cc:defs.bzl", "cc_library")
+package(default_visibility = ["//visibility:public"])
+cc_library(
+    name = "cuda_libs",
+    srcs = glob(["lib/libcuda.so*"]),
+)
+""",
+    strip_prefix = "nvidia_driver-linux-x86_64-535.161.07-archive",
+    # Corrected URL: compute/nvidia-driver/redist/...
+    urls = ["https://developer.download.nvidia.com/compute/nvidia-driver/redist/nvidia_driver/linux-x86_64/nvidia_driver-linux-x86_64-535.161.07-archive.tar.xz"],
+)
+
+# ------------------
+# -- CUDA 12.4 -----
+# ------------------
+
+# cuda.component(
+#     name = "cuda_cccl",
+#     component_name = "cccl",
+#     sha256 = "e1636f27a142d24e73dfd831c54bbf5575b498fd5900648d7372fae46f824fdf",
+#     strip_prefix = "cuda_cccl-linux-x86_64-12.4.127-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.4.127-archive.tar.xz"],
+# )
+
+# cuda.component(
+#     name = "cuda_cudart",
+#     component_name = "cudart",
+#     sha256 = "0483bff9a36e7a44465db3cd42874f6f70f019297dcf803fbefcbf58d7448c8f",
+#     strip_prefix = "cuda_cudart-linux-x86_64-12.4.127-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.4.127-archive.tar.xz"],
+# )
+
+# cuda.component(
+#     name = "cuda_nvcc",
+#     component_name = "nvcc",
+#     sha256 = "7ffba1ada0e4b8c17e451ac7a60d386aa2642ecd08d71202a0b100c98bd74681",
+#     strip_prefix = "cuda_nvcc-linux-x86_64-12.4.131-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.4.131-archive.tar.xz"],
+# )
+
+# cuda.component(
+#     name = "cuda_cublas",
+#     component_name = "cublas",
+#     sha256 = "c267c4d2cd42065ae2c30ca41a43ddce4e0ecc5484de23f299e3c397b5506eda",
+#     strip_prefix = "libcublas-linux-x86_64-12.4.5.8-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-12.4.5.8-archive.tar.xz"],
+# )
+
+# cuda.component(
+#     name = "cuda_curand",
+#     component_name = "curand",
+#     sha256 = "f3752abef1ffae7bc9180bd9885905e971cc9c28d7f4d5860731a012e07638a3",
+#     strip_prefix = "libcurand-linux-x86_64-10.3.5.147-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.5.147-archive.tar.xz"],
+# )
+
+# cuda.toolkit(
+#     name = "cuda",
+#     components_mapping = {
+#         "cccl": "@cuda_cccl",
+#         "cudart": "@cuda_cudart",
+#         "nvcc": "@cuda_nvcc",
+#         "cublas": "@cuda_cublas",
+#         "curand": "@cuda_curand",
+#     },
+#     version = "12.4.1",
+# )
+# use_repo(
+#     cuda,
+#     "cuda",
+#     "cuda_cccl",
+#     "cuda_cublas",
+#     "cuda_cudart",
+#     "cuda_curand",
+#     "cuda_nvcc",
+# )
+
+# # Using Driver 550.54.14 (Compatible with CUDA 12.4)
+# http_archive(
+#     name = "nvidia_driver",
+#     build_file_content = """
+# load("@rules_cc//cc:defs.bzl", "cc_library")
+# package(default_visibility = ["//visibility:public"])
+# cc_library(
+#     name = "cuda_libs",
+#     srcs = glob(["lib/libcuda.so*"]),
+# )
+# """,
+#     sha256 = "de89627ec616b58623be16448142a2d5fe771ee32536cd19be8ea97d7609b49a",
+#     strip_prefix = "nvidia_driver-linux-x86_64-550.54.14-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/nvidia_driver/linux-x86_64/nvidia_driver-linux-x86_64-550.54.14-archive.tar.xz"],
+# )
+
+# ------------------
+# -- CUDA 12.8 -----
+# ------------------
+
+# # cccl, cudart, nvcc are mandatory and needed for basic cuda support.
+# cuda.component(
+#     name = "cuda_cccl",
+#     component_name = "cccl",
+#     sha256 = "0740e9e01e4f15e17c5ab8d68bba4f8ec0eb6b84edccba4ac45112d2d2174e4b",
+#     strip_prefix = "cuda_cccl-linux-x86_64-12.8.90-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.8.90-archive.tar.xz"],
+# )
+# cuda.component(
+#     name = "cuda_cudart",
+#     component_name = "cudart",
+#     sha256 = "8d566b5fe745c46842dc16945cf36686227536decd2302c372be86da37faca68",
+#     strip_prefix = "cuda_cudart-linux-x86_64-12.8.90-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.8.90-archive.tar.xz"],
+# )
+# cuda.component(
+#     name = "cuda_nvcc",
+#     component_name = "nvcc",
+#     sha256 = "9961b3484b6b71314063709a4f9529654f96782ad39e72bf1e00f070db8210d3",
+#     strip_prefix = "cuda_nvcc-linux-x86_64-12.8.93-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.8.93-archive.tar.xz"],
+# )
+
+# # cublas is required by llama.cpp
+# cuda.component(
+#     name = "cuda_cublas",
+#     component_name = "cublas",
+#     sha256 = "21718957c2cf000bacd69d36c95708a2319199e39e056f8b4f0f68e3b9f323bb",
+#     strip_prefix = "libcublas-linux-x86_64-12.8.4.1-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-12.8.4.1-archive.tar.xz"],
+# )
+
+# # curand is needed for compiling cuda with clang
+# cuda.component(
+#     name = "cuda_curand",
+#     component_name = "curand",
+#     sha256 = "32a5ec30be446c1b7228d1bc502b2f029cc8b59a5e362c70d960754fa646778b",
+#     strip_prefix = "libcurand-linux-x86_64-10.3.9.90-archive",
+#     urls = ["https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.3.9.90-archive.tar.xz"],
+# )
+
+# cuda.toolkit(
+#     name = "cuda",
+#     components_mapping = {
+#         "cccl": "@cuda_cccl",
+#         "cudart": "@cuda_cudart",
+#         "nvcc": "@cuda_nvcc",
+#         "cublas": "@cuda_cublas",
+#         "curand": "@cuda_curand",
+#     },
+#     version = "12.8.1",
+# )
+# use_repo(
+#     cuda,
+#     "cuda",
+#     "cuda_cccl",
+#     "cuda_cublas",
+#     "cuda_cudart",
+#     "cuda_curand",
+#     "cuda_nvcc",
+# )
+
+# http_archive(
+#     name = "nvidia_driver",
+#     build_file_content = """
+# load("@rules_cc//cc:defs.bzl", "cc_library")
+# package(default_visibility = ["//visibility:public"])
+# cc_library(
+#     name = "cuda_libs",
+#     srcs = glob(["lib/libcuda.so*"]),
+# )
+# """,
+#     sha256 = "0fcaa9b47c124cca981df5155e2826615de3f28e31a27e139af8901e92d38b34",
+#     strip_prefix = "nvidia_driver-linux-x86_64-570.124.06-archive",
+#     url = "https://developer.download.nvidia.com/compute/cuda/redist/nvidia_driver/linux-x86_64/nvidia_driver-linux-x86_64-570.124.06-archive.tar.xz",
+# )

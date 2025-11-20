@@ -25,7 +25,6 @@ namespace gcp_prototype {
 
 namespace {
 // Hardcoded parameters for this prototype step.
-constexpr int kGpuLayers = 0;  // CPU only for step 1
 constexpr int kMaxTokensToPredict = 1024;
 
 // Custom log callback to suppress verbose output from llama.cpp
@@ -35,6 +34,26 @@ static void LlamaNoOpLogger(ggml_log_level level, const char* text,
     LOG(ERROR) << "llama.cpp: " << text;
   }
 }
+
+// Custom log callback to forward llama.cpp logs to Abseil
+static void LlamaVerboseLogger(ggml_log_level level, const char* text,
+                               void* user_data) {
+  // Strip trailing newline for cleaner formatting
+  std::string msg(text);
+  if (!msg.empty() && msg.back() == '\n') {
+    msg.pop_back();
+  }
+
+  if (level == GGML_LOG_LEVEL_ERROR) {
+    LOG(ERROR) << "llama.cpp: " << msg;
+  } else if (level == GGML_LOG_LEVEL_WARN) {
+    LOG(WARNING) << "llama.cpp: " << msg;
+  } else {
+    // Capture INFO and DEBUG logs to verify GPU offloading stats
+    LOG(INFO) << "llama.cpp: " << msg;
+  }
+}
+
 }  // namespace
 
 InferenceEngine::InferenceEngine(llama_model* model, const llama_vocab* vocab)
@@ -47,14 +66,15 @@ InferenceEngine::~InferenceEngine() {
 }
 
 absl::StatusOr<std::unique_ptr<InferenceEngine>> InferenceEngine::Create(
-    const std::string& model_path) {
-  // Register no-op logger to keep logs clean.
-  llama_log_set(LlamaNoOpLogger, nullptr);
+    const std::string& model_path, int gpu_layers) {
+  llama_log_set(LlamaVerboseLogger, nullptr);
 
   llama_model_params model_params = llama_model_default_params();
-  model_params.n_gpu_layers = kGpuLayers;
+  model_params.n_gpu_layers = gpu_layers;
 
-  LOG(INFO) << "Loading LLM from " << model_path << "...";
+  LOG(INFO) << "Loading LLM from " << model_path;
+  LOG(INFO) << "Attempting to offload " << gpu_layers << " layers to GPU.";
+
   llama_model* model =
       llama_model_load_from_file(model_path.c_str(), model_params);
   if (!model) {
