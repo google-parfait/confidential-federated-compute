@@ -42,6 +42,7 @@
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
 #include "program_executor_tee/program_context/cc/data_parser.h"
+#include "program_executor_tee/python_manager.h"
 #include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -106,15 +107,9 @@ ProgramExecutorTeeSession::Finalize(
     client_ids.push_back(client_id);
   }
 
-  std::vector<std::string> worker_bns_addresses;
-  worker_bns_addresses.reserve(
-      initialize_config_.worker_bns_addresses().size());
-  for (const auto& address : initialize_config_.worker_bns_addresses()) {
-    worker_bns_addresses.push_back(address);
-  }
-
-  pybind11::scoped_interpreter guard{};
-  try {
+  // Define the Python work that should be executed on the python execution
+  // thread.
+  auto python_task = [this, client_ids = std::move(client_ids)]() {
     // Load the python function for running the program.
     auto run_program =
         pybind11::module::import(
@@ -132,9 +127,18 @@ ProgramExecutorTeeSession::Finalize(
                 initialize_config_.client_data_dir(), model_id_to_zip_file_,
                 initialize_config_.outgoing_server_address(),
                 data_parser_instance.attr("resolve_uri_to_tensor"));
-  } catch (const std::exception& e) {
-    LOG(INFO) << "Error executing federated program: " << e.what();
+  };
+
+  // Submit the work to the python execution queue and wait for the result.
+  try {
+    PythonManager::GetInstance().ExecuteTask(python_task);
+  } catch (const pybind11::error_already_set& e) {
+    return absl::InternalError("Failed to execute python function: " +
+                               std::string(e.what()));
+  } catch (...) {
+    return absl::InternalError("Failed to execute python function.");
   }
+
   return fcp::confidentialcompute::FinalizeResponse();
 }
 

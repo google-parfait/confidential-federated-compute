@@ -23,6 +23,7 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "program_executor_tee/confidential_transform_server_xla.h"
+#include "program_executor_tee/python_manager.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -60,6 +61,8 @@ void RunServer() {
 
 int main(int argc, char** argv) {
   setenv("PYTHONPATH", CPP_PYTHON_PATH, true);
+  PythonManager::GetInstance().Start();
   confidential_federated_compute::program_executor_tee::RunServer();
+  PythonManager::GetInstance().Stop();
   return 0;
 }

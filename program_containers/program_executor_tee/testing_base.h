@@ -28,6 +28,7 @@
 #include "gtest/gtest.h"
 #include "program_executor_tee/confidential_transform_server.h"
 #include "program_executor_tee/program_context/cc/fake_data_read_write_service.h"
+#include "program_executor_tee/python_manager.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
@@ -46,16 +47,22 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::testing::Test;
 
-// This file of base test classes exists because there can only be one test per
-// file that exercises the pybind11::scoped_interpreter code in
-// FinalizeSession. This is because all test cases in a single file run in the
-// same process and pybind11::scoped_interpreter is only allowed to be used
-// once per process (third-party extension modules like numpy do not load
-// correctly if pybind11::scoped_interpreter is used a second time). Any test
-// that exercises pybind11::scoped_interpreter should extend
-// ProgramExecutorTeeSessionTest but be added to a new integration test file.
-
 inline constexpr int kMaxNumSessions = 8;
+
+class PythonEnvironment : public ::testing::Environment {
+ public:
+  // Called once before the very first test case starts.
+  void SetUp() override {
+    // This starts the dedicated python execution thread.
+    PythonManager::GetInstance().Start();
+  }
+
+  // Called once after the very last test case finishes.
+  void TearDown() override {
+    // This stops the dedicated python execution thread.
+    PythonManager::GetInstance().Stop();
+  }
+};
 
 template <typename T>
 class ProgramExecutorTeeTest : public Test {

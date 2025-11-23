@@ -18,6 +18,7 @@
 #include "fcp/testing/parse_text_proto.h"
 #include "gmock/gmock.h"
 #include "grpcpp/client_context.h"
+#include "gtest/gtest.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -35,6 +36,10 @@ using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::grpc::StatusCode;
 using ::testing::HasSubstr;
+
+// Register the global python environment.
+::testing::Environment* const python_env =
+    ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
 TYPED_TEST_SUITE(ProgramExecutorTeeTest,
                  ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
