@@ -16,6 +16,7 @@
 
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "gtest/gtest.h"
 #include "program_executor_tee/program_context/cc/fake_data_read_write_service.h"
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
@@ -28,10 +29,12 @@ namespace {
 ::testing::Environment* const python_env =
     ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
-TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
-                 ::testing::Types<XLAProgramExecutorTeeConfidentialTransform>);
+class ProgramExecutorTeeConfidentialTransformXlaSessionTest
+    : public ProgramExecutorTeeSessionTest<
+          XLAProgramExecutorTeeConfidentialTransform> {};
 
-TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXComputation) {
+TEST_P(ProgramExecutorTeeConfidentialTransformXlaSessionTest,
+       ProgramWithJAXComputation) {
   this->CreateSession(R"(
 from federated_language_jax.computation import jax_computation
 import tensorflow_federated as tff
@@ -46,7 +49,8 @@ def trusted_program(input_provider, external_service_handle):
   result = comp()
   result_val, _ = tff.framework.serialize_value(result, federated_language.framework.infer_type(result))
   external_service_handle.release_unencrypted(result_val.SerializeToString(), b"result")
-  )");
+  )",
+                      UseKms());
 
   ::fcp::confidentialcompute::SessionRequest session_request;
   ::fcp::confidentialcompute::SessionResponse session_response;
@@ -78,7 +82,8 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(session_response.has_finalize());
 }
 
-TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXPrivacy) {
+TEST_P(ProgramExecutorTeeConfidentialTransformXlaSessionTest,
+       ProgramWithJAXPrivacy) {
   this->CreateSession(R"(
 import numpy as np
 import jax_privacy
@@ -92,7 +97,8 @@ def trusted_program(input_provider, external_service_handle):
     grad = grad.tolist()
     grad_val, _ = tff.framework.serialize_value(grad, federated_language.framework.infer_type(grad))
     external_service_handle.release_unencrypted(grad_val.SerializeToString(), b"result")
-  )");
+  )",
+                      UseKms());
 
   ::fcp::confidentialcompute::SessionRequest session_request;
   ::fcp::confidentialcompute::SessionResponse session_response;
@@ -123,6 +129,12 @@ def trusted_program(input_provider, external_service_handle):
 
   ASSERT_TRUE(session_response.has_finalize());
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    KmsParam, ProgramExecutorTeeConfidentialTransformXlaSessionTest,
+    ::testing::Bool(),  // Generates {false, true}
+    ProgramExecutorTeeSessionTest<
+        ProgramExecutorTeeConfidentialTransform>::TestNameSuffix);
 
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

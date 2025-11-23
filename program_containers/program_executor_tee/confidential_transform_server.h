@@ -94,12 +94,21 @@ class ProgramExecutorTeeConfidentialTransform
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   ProgramExecutorTeeConfidentialTransform(
-      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
-      : ConfidentialTransformBase(std::move(signing_key_handle)) {}
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
+          nullptr)
+      : ConfidentialTransformBase(std::move(signing_key_handle),
+                                  std::move(encryption_key_handle)) {}
 
  protected:
   absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
+
+  absl::Status StreamInitializeTransformWithKms(
+      const google::protobuf::Any& configuration,
+      const google::protobuf::Any& config_constraints,
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash) override;
 
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
