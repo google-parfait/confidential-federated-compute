@@ -62,3 +62,48 @@ cc_test(
         "@oak//cc/crypto:encryption_key",
     ],
 )
+
+cc_library(
+    name = "metadata_map_fn",
+    srcs = ["metadata_map_fn.cc"],
+    hdrs = ["metadata_map_fn.h"],
+    deps = [
+        "//containers:big_endian",
+        "//containers/fns:map_fn",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@federated-compute//fcp/base:base",
+        "@federated-compute//fcp/base:digest",
+        "@federated-compute//fcp/confidentialcompute:constants",
+        "@federated-compute//fcp/confidentialcompute:time_window_utilities",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_test(
+    name = "metadata_map_fn_test",
+    srcs = ["metadata_map_fn_test.cc"],
+    deps = [
+        ":metadata_map_fn",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googleapis//google/rpc:code_cc_proto",
+        "@federated-compute//fcp/confidentialcompute:constants",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
