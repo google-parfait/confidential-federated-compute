@@ -186,8 +186,11 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
   }
 
   // Remove any expired keys from the budget.
-  for (const auto& expired_key : range_tracker.GetExpiredKeys()) {
-    per_key_budgets_.erase(expired_key);
+  auto expired_keys = range_tracker.GetExpiredKeys();
+  if (expired_keys.has_value()) {
+    for (const auto& expired_key : expired_keys.value()) {
+      per_key_budgets_.erase(expired_key);
+    }
   }
 
   return absl::OkStatus();

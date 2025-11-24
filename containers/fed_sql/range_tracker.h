@@ -71,10 +71,10 @@ class RangeTracker {
   // Sets the index of the partition that this RangeTracker is tracking.
   void SetPartitionIndex(uint64_t index) { partition_index_ = index; }
   // Returns the index of the partition that this RangeTracker is tracking.
-  uint64_t GetPartitionIndex() const { return partition_index_; }
+  std::optional<uint64_t> GetPartitionIndex() const { return partition_index_; }
 
   // Gets the expired keys for this RangeTracker.
-  absl::flat_hash_set<std::string> GetExpiredKeys() const {
+  std::optional<absl::flat_hash_set<std::string>> GetExpiredKeys() const {
     return expired_keys_;
   }
   // Sets the expired keys for this RangeTracker.
@@ -92,10 +92,10 @@ class RangeTracker {
   InnerMap per_key_ranges_;
 
   // The index of the partition that this RangeTracker is tracking.
-  uint64_t partition_index_ = 0;
+  std::optional<uint64_t> partition_index_;
 
   // Keys that have already expired and must be removed from the budget.
-  absl::flat_hash_set<std::string> expired_keys_;
+  std::optional<absl::flat_hash_set<std::string>> expired_keys_;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined

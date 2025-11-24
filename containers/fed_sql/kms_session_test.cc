@@ -536,7 +536,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
                 UnorderedElementsAre(
                     Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
                     Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
-    EXPECT_EQ(range_tracker->GetPartitionIndex(), i);
+    EXPECT_EQ(range_tracker->GetPartitionIndex(), std::optional<uint64_t>(i));
     auto config = read_response.first_response_configuration();
     FedSqlContainerPartitionedOutputConfiguration partition_config;
     ASSERT_TRUE(config.UnpackTo(&partition_config));
