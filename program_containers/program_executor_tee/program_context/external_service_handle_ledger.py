@@ -20,7 +20,7 @@ from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
 import grpc
 
 
-class ExternalServiceHandle(external_service_handle.ExternalServiceHandle):
+class ExternalServiceHandleForLedger(external_service_handle.ExternalServiceHandle):
   """Helper class for releasing results to untrusted space."""
 
   def __init__(self, outgoing_server_address: str):

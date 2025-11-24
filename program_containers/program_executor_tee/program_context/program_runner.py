@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import Optional
 
 from fcp.confidentialcompute.python import program_input_provider
-from program_executor_tee.program_context import external_service_handle
+from program_executor_tee.program_context import external_service_handle_ledger
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
@@ -84,7 +84,7 @@ def run_program(
       resolve_uri_to_tensor,
   )
   initialized_external_service_handle = (
-      external_service_handle.ExternalServiceHandle(outgoing_server_address)
+      external_service_handle_ledger.ExternalServiceHandleForLedger(outgoing_server_address)
   )
 
   trusted_program(input_provider, initialized_external_service_handle)

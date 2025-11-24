@@ -20,12 +20,12 @@ from fcp.protos.confidentialcompute import data_read_write_pb2
 import federated_language
 import numpy as np
 import portpicker
-from program_executor_tee.program_context import external_service_handle
+from program_executor_tee.program_context import external_service_handle_ledger
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 
 
-class ExternalServiceHandleTest(unittest.TestCase):
+class ExternalServiceHandleForLedgerTest(unittest.TestCase):
 
   def test_unencrypted_release(self):
     untrusted_root_port = portpicker.pick_unused_port()
@@ -38,7 +38,7 @@ class ExternalServiceHandleTest(unittest.TestCase):
     )
     server.start()
 
-    handle = external_service_handle.ExternalServiceHandle(
+    handle = external_service_handle_ledger.ExternalServiceHandleForLedger(
         f"[::1]:{untrusted_root_port}"
     )
     result_uri = b"my_result"
