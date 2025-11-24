@@ -132,36 +132,15 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "data_source_integration_test",
-    size = "medium",
-    srcs = ["data_source_integration_test.cc"],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_runtime"],
-    deps = [
-        ":confidential_transform_server",
-        "@confidential-federated-compute-program//program_executor_tee:testing_base",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
 filegroup(
     name = "testdata",
     srcs = glob(["testdata/*"]),
 )
 
 cc_test(
-    name = "load_model_integration_test",
+    name = "confidential_transform_server_test",
     size = "medium",
-    srcs = ["load_model_integration_test.cc"],
+    srcs = ["confidential_transform_server_test.cc"],
     data = [":testdata"],
     env = {
         "PYTHONPATH": "$(PYTHONPATH)",
@@ -176,6 +155,7 @@ cc_test(
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:generate_checkpoint",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
@@ -193,6 +173,7 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@confidential-federated-compute-program//program_executor_tee:python_manager",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
     ],

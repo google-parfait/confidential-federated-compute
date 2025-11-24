@@ -30,9 +30,11 @@ class TensorflowProgramExecutorTeeConfidentialTransform final
           ProgramExecutorTeeConfidentialTransform {
  public:
   TensorflowProgramExecutorTeeConfidentialTransform(
-      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
-      : ProgramExecutorTeeConfidentialTransform(std::move(signing_key_handle)) {
-  }
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
+          nullptr)
+      : ProgramExecutorTeeConfidentialTransform(
+            std::move(signing_key_handle), std::move(encryption_key_handle)) {}
 
   std::optional<pybind11::function> GetProgramInitializeFn() override;
 };
