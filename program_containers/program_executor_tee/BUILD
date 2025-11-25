@@ -39,12 +39,24 @@ trusted_py_runtime(
 )
 
 cc_library(
+    name = "python_manager",
+    srcs = ["python_manager.cc"],
+    hdrs = ["python_manager.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "confidential_transform_server",
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     data = [":trusted_program_py_runtime"],
     visibility = ["//visibility:public"],
     deps = [
+        ":python_manager",
         "//program_executor_tee/program_context/cc:data_parser",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -79,6 +91,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":confidential_transform_server",
+        ":python_manager",
         "//program_executor_tee/program_context/cc:fake_data_read_write_service",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -125,6 +138,7 @@ cc_binary(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
+        ":python_manager",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -206,31 +220,8 @@ cc_library(
 )
 
 cc_test(
-    name = "computation_integration_test",
-    srcs = ["computation_integration_test.cc"],
-    data = [
-        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
-    ],
-    env = {
-        "PYTHONPATH": "$(PYTHONPATH)",
-        "PYTHONHOME": "$(PYTHONHOME)",
-    },
-    tags = ["noasan"],
-    toolchains = [":trusted_program_py_xla_runtime"],
-    deps = [
-        ":confidential_transform_server_xla",
-        ":testing_base",
-        "//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_test(
-    name = "jax_privacy_integration_test",
-    srcs = ["jax_privacy_integration_test.cc"],
+    name = "confidential_transform_server_xla_test",
+    srcs = ["confidential_transform_server_xla_test.cc"],
     data = [
         "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
     ],
@@ -264,6 +255,7 @@ cc_binary(
     toolchains = [":trusted_program_py_xla_runtime"],
     deps = [
         ":confidential_transform_server_xla",
+        ":python_manager",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
