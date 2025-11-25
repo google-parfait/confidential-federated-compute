@@ -13,6 +13,8 @@
 // limitations under the License.
 #include <memory>
 
+#include "absl/status/status.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "fcp/testing/parse_text_proto.h"
@@ -26,6 +28,7 @@ namespace confidential_federated_compute::program_executor_tee {
 
 namespace {
 
+using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
@@ -34,6 +37,7 @@ using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteRequest;
+using ::grpc::ClientWriter;
 using ::grpc::StatusCode;
 using ::testing::HasSubstr;
 
@@ -41,23 +45,155 @@ using ::testing::HasSubstr;
 ::testing::Environment* const python_env =
     ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
+// Write the InitializeRequest to the client stream and then close
+// the stream, returning the status of Finish.
+absl::Status WriteInitializeRequest(
+    std::unique_ptr<ClientWriter<StreamInitializeRequest>> stream,
+    InitializeRequest request) {
+  StreamInitializeRequest stream_request;
+  *stream_request.mutable_initialize_request() = std::move(request);
+  if (!stream->Write(stream_request)) {
+    return absl::AbortedError("Write to StreamInitialize failed.");
+  }
+  if (!stream->WritesDone()) {
+    return absl::AbortedError("WritesDone to StreamInitialize failed.");
+  }
+  return FromGrpcStatus(stream->Finish());
+}
+
 TYPED_TEST_SUITE(ProgramExecutorTeeTest,
                  ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
 
 TYPED_TEST(ProgramExecutorTeeTest, InvalidStreamInitialize) {
   grpc::ClientContext context;
   InitializeResponse response;
-  StreamInitializeRequest request;
 
-  InitializeRequest* initialize_request = request.mutable_initialize_request();
-  initialize_request->set_max_num_sessions(kMaxNumSessions);
+  InitializeRequest request;
+  request.set_max_num_sessions(kMaxNumSessions);
 
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      this->stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  grpc::Status status = writer->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  absl::Status status = WriteInitializeRequest(
+      this->stub_->StreamInitialize(&context, &response), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr("ProgramExecutorTeeInitializeConfig cannot be unpacked"));
+}
+
+TYPED_TEST(ProgramExecutorTeeTest,
+           StreamInitializeWithKmsInvalidInitializeConfig) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      CreateProgramExecutorTeeConfigConstraints("my_program"));
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  absl::Status status = WriteInitializeRequest(
+      this->stub_->StreamInitialize(&context, &response), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Cannot unpack ProgramExecutorTeeInitializeConfig"));
+}
+
+TYPED_TEST(ProgramExecutorTeeTest,
+           StreamInitializeWithKmsInvalidConfigConstraints) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig("my_program"));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  absl::Status status = WriteInitializeRequest(
+      this->stub_->StreamInitialize(&context, &response), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Cannot unpack ProgramExecutorTeeConfigConstraints"));
+}
+
+TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsMismatchingProgram) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig("my_program"));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      CreateProgramExecutorTeeConfigConstraints("mismatching_program"));
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  absl::Status status = WriteInitializeRequest(
+      this->stub_->StreamInitialize(&context, &response), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr(
+          "Configured program must match the program specified in the policy"));
+}
+
+TYPED_TEST(ProgramExecutorTeeTest,
+           StreamInitializeWithKmsMismatchingReferenceValues) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig("my_program"));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  auto config_constraints =
+      CreateProgramExecutorTeeConfigConstraints("my_program");
+  config_constraints.set_worker_reference_values(
+      "mismatching_worker_reference_values");
+  associated_data.mutable_config_constraints()->PackFrom(config_constraints);
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  absl::Status status = WriteInitializeRequest(
+      this->stub_->StreamInitialize(&context, &response), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  ASSERT_THAT(status.message(),
+              HasSubstr("Configured worker reference values must match the "
+                        "ones specified in the policy"));
 }
 
 TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
@@ -101,11 +237,89 @@ TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
   ASSERT_GT(session_response.configure().nonce().size(), 0);
 }
 
-TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
-                 ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
+TYPED_TEST(ProgramExecutorTeeTest,
+           ValidStreamInitializeWithKmsNoReferenceValueConstraints) {
+  grpc::ClientContext context;
+  InitializeResponse response;
 
-TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
-  this->CreateSession("unused program");
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig(
+          "my_program", /*client_ids=*/{},
+          /*client_data_dir=*/"", /*outgoing_server_address=*/"",
+          /*worker_reference_values_path=*/
+          "program_executor_tee/testdata/test_reference_values.txtpb"));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      CreateProgramExecutorTeeConfigConstraints("my_program"));
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  ASSERT_TRUE(
+      WriteInitializeRequest(this->stub_->StreamInitialize(&context, &response),
+                             std::move(request))
+          .ok());
+}
+
+TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigureWithKms) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig(
+          "my_program", /*client_ids=*/{},
+          /*client_data_dir=*/"", /*outgoing_server_address=*/"",
+          /*worker_reference_values_path=*/
+          "program_executor_tee/testdata/test_reference_values.txtpb"));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      CreateProgramExecutorTeeConfigConstraints(
+          "my_program", /*worker_reference_values_path=*/
+          "program_executor_tee/testdata/test_reference_values.txtpb"));
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  ASSERT_TRUE(
+      WriteInitializeRequest(this->stub_->StreamInitialize(&context, &response),
+                             std::move(request))
+          .ok());
+
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_configure()->set_chunk_size(1000);
+
+  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
+      stream = this->stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_TRUE(stream->Read(&session_response));
+  ASSERT_TRUE(session_response.has_configure());
+}
+
+class ProgramExecutorTeeConfidentialTransformSessionTest
+    : public ProgramExecutorTeeSessionTest<
+          ProgramExecutorTeeConfidentialTransform> {};
+
+TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
+       SessionWriteFailsUnsupported) {
+  this->CreateSession("unused program", UseKms());
   SessionRequest session_request;
   SessionResponse session_response;
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
@@ -127,12 +341,14 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
           "Writing to a session is not supported in program executor TEE"));
 }
 
-TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
+TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
+       ValidFinalizeSession) {
   this->CreateSession(R"(
 def trusted_program(input_provider, external_service_handle):
   result = "a" + "b" + "c"
   external_service_handle.release_unencrypted(result.encode(), b"result")
-  )");
+  )",
+                      UseKms());
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_finalize();
@@ -151,6 +367,12 @@ def trusted_program(input_provider, external_service_handle):
 
   ASSERT_TRUE(session_response.has_finalize());
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    KmsParam, ProgramExecutorTeeConfidentialTransformSessionTest,
+    ::testing::Bool(),  // Generates {false, true}
+    ProgramExecutorTeeSessionTest<
+        ProgramExecutorTeeConfidentialTransform>::TestNameSuffix);
 
 }  // namespace
 

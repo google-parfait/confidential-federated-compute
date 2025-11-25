@@ -48,6 +48,7 @@
 namespace confidential_federated_compute::program_executor_tee {
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::ProgramExecutorTeeConfigConstraints;
 using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
@@ -165,6 +166,49 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
       .set_string_value(absl::Base64Escape(
           initialize_config_.reference_values().SerializeAsString()));
   return config_properties;
+}
+
+absl::Status
+ProgramExecutorTeeConfidentialTransform::StreamInitializeTransformWithKms(
+    const google::protobuf::Any& configuration,
+    const google::protobuf::Any& config_constraints,
+    std::vector<std::string> reencryption_keys,
+    absl::string_view reencryption_policy_hash) {
+  ProgramExecutorTeeInitializeConfig program_executor_config;
+  if (!configuration.UnpackTo(&program_executor_config)) {
+    return absl::InvalidArgumentError(
+        "Cannot unpack ProgramExecutorTeeInitializeConfig.");
+  }
+  initialize_config_ = std::move(program_executor_config);
+
+  worker_bns_addresses_.reserve(
+      initialize_config_.worker_bns_addresses().size());
+  for (const auto& address : initialize_config_.worker_bns_addresses()) {
+    worker_bns_addresses_.push_back(address);
+  }
+
+  ProgramExecutorTeeConfigConstraints program_executor_config_constraints;
+  if (!config_constraints.UnpackTo(&program_executor_config_constraints)) {
+    return absl::InvalidArgumentError(
+        "Cannot unpack ProgramExecutorTeeConfigConstraints.");
+  }
+
+  if (initialize_config_.program() !=
+      program_executor_config_constraints.program()) {
+    return absl::FailedPreconditionError(
+        "Configured program must match the program specified in the policy.");
+  }
+
+  if (!program_executor_config_constraints.worker_reference_values().empty() &&
+      absl::Base64Escape(
+          initialize_config_.reference_values().SerializeAsString()) !=
+          program_executor_config_constraints.worker_reference_values()) {
+    return absl::FailedPreconditionError(
+        "Configured worker reference values must match the ones specified in "
+        "the policy, if any are specified.");
+  }
+
+  return absl::OkStatus();
 }
 
 absl::Status AppendBytesToTempFile(std::string& file_path,

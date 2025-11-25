@@ -97,13 +97,18 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
         "@confidential-federated-compute//containers:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:client_encryptor",
+        "@oak//cc/crypto:encryption_key",
+        "@oak//proto/attestation:reference_value_cc_proto",
     ],
 )
 
@@ -111,6 +116,9 @@ cc_test(
     name = "confidential_transform_server_test",
     size = "medium",
     srcs = ["confidential_transform_server_test.cc"],
+    data = [
+        "testdata/test_reference_values.txtpb",
+    ],
     env = {
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
@@ -120,6 +128,8 @@ cc_test(
     deps = [
         ":testing_base",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
+        "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@federated-compute//fcp/testing:parse_text_proto",
@@ -238,6 +248,7 @@ cc_test(
         "//program_executor_tee/program_context/cc:generate_checkpoint",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
 )
