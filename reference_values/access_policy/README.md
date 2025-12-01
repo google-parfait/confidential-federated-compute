@@ -55,3 +55,14 @@ Processing of Recorder data with TEE-hosted confidential federated computations
 will use differential privacy to produce anonymized results. We expect
 Recorder's use of confidential federated computations to evolve over time, and
 any changes to these details will be reflected here.
+
+## Google Application
+
+[Google Application](https://play.google.com/store/apps/details?id=com.google.android.googlequicksearchbox)
+uses the values in [`google_app.txtpb`](google_app.txtpb) to
+validate access policy endorsements.
+
+Processing of Google Application data with TEE-hosted confidential federated
+computations will use differential privacy to produce anonymized results. We
+expect Google Application's use of confidential federated computations to evolve over
+time, and any changes to these details will be reflected here.
