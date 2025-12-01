@@ -16,6 +16,7 @@ load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
 load("//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
@@ -46,6 +47,42 @@ cc_library(
     deps = [
         "@com_google_absl//absl/synchronization",
         "@pybind11",
+    ],
+)
+
+proto_library(
+    name = "budget_proto",
+    srcs = ["budget.proto"],
+)
+
+# buildifier: disable=native-cc-proto
+cc_proto_library(
+    name = "budget_cc_proto",
+    deps = [":budget_proto"],
+)
+
+cc_library(
+    name = "private_state",
+    srcs = ["private_state.cc"],
+    hdrs = ["private_state.h"],
+    deps = [
+        ":budget_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "private_state_test",
+    srcs = ["private_state_test.cc"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":budget_cc_proto",
+        ":private_state",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
