@@ -19,6 +19,49 @@ package(
 )
 
 cc_library(
+    name = "confidential_transform_server",
+    srcs = ["confidential_transform_server.cc"],
+    hdrs = ["confidential_transform_server.h"],
+    deps = [
+        ":fn_factory",
+        "//containers:confidential_transform_server_base",
+        "//containers:session",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated-compute//fcp/base",
+    ],
+)
+
+cc_test(
+    name = "confidential_transform_server_test",
+    srcs = ["confidential_transform_server_test.cc"],
+    deps = [
+        ":confidential_transform_server",
+        "//containers:crypto_test_utils",
+        "//containers:session",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:kms_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@oak//cc/crypto:client_encryptor",
+        "@oak//cc/crypto:encryption_key",
+    ],
+)
+
+cc_library(
     name = "map_fn",
     srcs = ["map_fn.cc"],
     hdrs = ["map_fn.h"],
@@ -44,5 +87,14 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "fn_factory",
+    hdrs = ["fn_factory.h"],
+    deps = [
+        "//containers:session",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
