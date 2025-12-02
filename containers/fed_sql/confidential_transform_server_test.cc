@@ -447,9 +447,12 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsAndMessageConfigSucceeds) {
   MessageHelper message_helper;
   google::protobuf::FileDescriptorSet descriptor_set;
   message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
-  init_config.set_logged_message_descriptor_set(
-      descriptor_set.SerializeAsString());
-  init_config.set_logged_message_name(message_helper.message_name());
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_descriptor_set(descriptor_set.SerializeAsString());
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_name(message_helper.message_name());
 
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -470,7 +473,7 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsAndMessageConfigSucceeds) {
               IsOk());
 }
 
-TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageDescriptorSetFails) {
+TEST_F(FedSqlServerTest, StreamInitializeWithKmsMissingMessageNameFails) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -479,8 +482,9 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageDescriptorSetFails) {
   MessageHelper message_helper;
   google::protobuf::FileDescriptorSet descriptor_set;
   message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
-  init_config.set_logged_message_descriptor_set(
-      descriptor_set.SerializeAsString());
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_descriptor_set(descriptor_set.SerializeAsString());
 
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -497,14 +501,15 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageDescriptorSetFails) {
 
   auto writer = stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-  EXPECT_THAT(
-      WriteInitializeRequest(std::move(writer), std::move(request)),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Both logged_message_descriptor_set and "
-                         "logged_message_name must be set if either is set.")));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("If private_logger_uploads_config is set, "
+                                 "both message_descriptor_set and message_name "
+                                 "must be set within message_description")));
 }
 
-TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageNameFails) {
+TEST_F(FedSqlServerTest,
+       StreamInitializeWithKmsMissingMessageDescriptorSetFails) {
   grpc::ClientContext context;
   InitializeRequest request;
   InitializeResponse response;
@@ -513,7 +518,9 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageNameFails) {
 
   const google::protobuf::Descriptor* descriptor =
       fcp::confidentialcompute::InitializeRequest::descriptor();
-  init_config.set_logged_message_name(descriptor->full_name());
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_name(descriptor->full_name());
 
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -530,11 +537,11 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsOnlyMessageNameFails) {
 
   auto writer = stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-  EXPECT_THAT(
-      WriteInitializeRequest(std::move(writer), std::move(request)),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Both logged_message_descriptor_set and "
-                         "logged_message_name must be set if either is set.")));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("If private_logger_uploads_config is set, "
+                                 "both message_descriptor_set and message_name "
+                                 "must be set within message_description")));
 }
 
 TEST_F(FedSqlServerTest,
@@ -545,8 +552,12 @@ TEST_F(FedSqlServerTest,
   FedSqlContainerInitializeConfiguration init_config;
   *init_config.mutable_agg_configuration() = DefaultConfiguration();
 
-  init_config.set_logged_message_descriptor_set("invalid descriptor set");
-  init_config.set_logged_message_name("some.message.Name");
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_descriptor_set("invalid descriptor set");
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_name("some.message.Name");
 
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -578,9 +589,12 @@ TEST_F(FedSqlServerTest, StreamInitializeWithKmsMessageNameNotFoundFails) {
   MessageHelper message_helper;
   google::protobuf::FileDescriptorSet descriptor_set;
   message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
-  init_config.set_logged_message_descriptor_set(
-      descriptor_set.SerializeAsString());
-  init_config.set_logged_message_name("some.nonexistent.Message");
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_descriptor_set(descriptor_set.SerializeAsString());
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->set_message_name("some.nonexistent.Message");
 
   request.mutable_configuration()->PackFrom(init_config);
 
@@ -2413,9 +2427,12 @@ class InitializedFedSqlServerKmsWithMessagesTest : public FedSqlServerTest {
     MessageHelper message_helper;
     google::protobuf::FileDescriptorSet descriptor_set;
     message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
-    init_config.set_logged_message_descriptor_set(
-        descriptor_set.SerializeAsString());
-    init_config.set_logged_message_name(message_helper.message_name());
+    init_config.mutable_private_logger_uploads_config()
+        ->mutable_message_description()
+        ->set_message_descriptor_set(descriptor_set.SerializeAsString());
+    init_config.mutable_private_logger_uploads_config()
+        ->mutable_message_description()
+        ->set_message_name(message_helper.message_name());
 
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);

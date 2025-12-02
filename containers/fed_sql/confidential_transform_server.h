@@ -122,6 +122,8 @@ class FedSqlConfidentialTransform final
   // Configuration for the expected logged proto message. Set if the container
   // is configured for serialized Message checkpoints.
   std::shared_ptr<MessageFactory> message_factory_;
+  // The name of query that was executed on-device.
+  std::string on_device_query_name_ = "";
 };
 
 }  // namespace confidential_federated_compute::fed_sql

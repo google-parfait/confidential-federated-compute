@@ -35,6 +35,7 @@
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "fcp/protos/confidentialcompute/message_description.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
@@ -59,6 +60,7 @@ using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::LlamaCppInitializeConfiguration;
+using ::fcp::confidentialcompute::MessageDescription;
 using ::google::protobuf::Descriptor;
 using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
@@ -438,24 +440,29 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
     return absl::FailedPreconditionError(
         "SetAndValidateMessageFactory can only be called once.");
   }
-  if (!fed_sql_config.logged_message_descriptor_set().empty() &&
-      !fed_sql_config.logged_message_name().empty()) {
+  if (fed_sql_config.has_private_logger_uploads_config()) {
+    const MessageDescription& message_description =
+        fed_sql_config.private_logger_uploads_config().message_description();
+    if (message_description.message_descriptor_set().empty() ||
+        message_description.message_name().empty()) {
+      return absl::InvalidArgumentError(
+          "If private_logger_uploads_config is set, both "
+          "message_descriptor_set and "
+          "message_name must be set within message_description.");
+    }
     FileDescriptorSet descriptor_set;
     if (!descriptor_set.ParseFromString(
-            fed_sql_config.logged_message_descriptor_set())) {
+            message_description.message_descriptor_set())) {
       return absl::InvalidArgumentError(
           "Failed to parse logged_message_descriptor_set.");
     }
     FCP_ASSIGN_OR_RETURN(
         message_factory_,
         MessageFactoryImpl::Create(descriptor_set,
-                                   fed_sql_config.logged_message_name()));
-  } else if (!fed_sql_config.logged_message_descriptor_set().empty() ||
-             !fed_sql_config.logged_message_name().empty()) {
-    return absl::InvalidArgumentError(
-        "Both logged_message_descriptor_set and logged_message_name must be "
-        "set if either is set.");
+                                   message_description.message_name()));
   }
+  on_device_query_name_ =
+      fed_sql_config.private_logger_uploads_config().on_device_query_name();
   return absl::OkStatus();
 }
 
