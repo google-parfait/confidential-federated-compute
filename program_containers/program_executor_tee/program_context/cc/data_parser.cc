@@ -18,6 +18,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/escaping.h"
 #include "containers/crypto.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
@@ -26,6 +27,8 @@
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
+#include "program_executor_tee/private_state.h"
+#include "program_executor_tee/program_context/cc/kms_helper.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -33,8 +36,11 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 using ::confidential_federated_compute::BlobDecryptor;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
+using ::fcp::confidentialcompute::outgoing::WriteRequest;
+using ::fcp::confidentialcompute::outgoing::WriteResponse;
 using ::grpc::ClientContext;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::
@@ -44,11 +50,35 @@ using ::tensorflow_federated::aggregation::TensorProto;
 
 DataParser::DataParser(
     confidential_federated_compute::BlobDecryptor* blob_decryptor,
-    std::string outgoing_server_address, bool use_caching,
+    std::string outgoing_server_address, bool use_kms,
+    std::string reencryption_key, std::string reencryption_policy_hash,
+    PrivateState* private_state,
+    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+    std::set<std::string> authorized_logical_pipeline_policies_hashes,
     std::function<std::string()> nonce_generator)
     : blob_decryptor_(blob_decryptor),
-      use_caching_(use_caching),
+      use_kms_(use_kms),
+      private_state_(private_state),
+      signing_key_handle_(signing_key_handle),
       nonce_generator_(nonce_generator) {
+  // All hashes and encryption keys are Base64Escaped before being passed over
+  // the pybind boundary, so they must be decoded here.
+  if (use_kms_) {
+    std::string decoded_reencryption_key;
+    absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
+    reencryption_key_ = decoded_reencryption_key;
+
+    std::string decoded_reencryption_policy_hash;
+    absl::Base64Unescape(reencryption_policy_hash,
+                         &decoded_reencryption_policy_hash);
+    reencryption_policy_hash_ = reencryption_policy_hash;
+
+    for (const auto& hash : authorized_logical_pipeline_policies_hashes) {
+      std::string decoded_hash;
+      absl::Base64Unescape(hash, &decoded_hash);
+      authorized_logical_pipeline_policies_hashes_.insert(decoded_hash);
+    }
+  }
   grpc::ChannelArguments args;
   args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
   args.SetMaxReceiveMessageSize(kMaxGrpcMessageSize);
@@ -72,8 +102,8 @@ absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
 
 absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
     std::string uri) {
-  // Check whether the uri is already in the cache.
-  if (use_caching_) {
+  // Check whether the uri is already in the cache if the ledger is being used.
+  if (!use_kms_) {
     absl::MutexLock lock(&cache_mutex_);
     auto it = uri_to_checkpoint_cache_.find(uri);
     if (it != uri_to_checkpoint_cache_.end()) {
@@ -82,11 +112,15 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
   }
 
   // Make a ReadRequest for the uri and reconstruct a combined ReadResponse.
+  // Only use a nonce if the ledger is being used.
   ClientContext client_context;
   ReadRequest read_request;
   read_request.set_uri(uri);
-  std::string nonce = nonce_generator_();
-  read_request.set_nonce(nonce);
+  std::optional<std::string> nonce = std::nullopt;
+  if (!use_kms_) {
+    nonce = nonce_generator_();
+    read_request.set_nonce(*nonce);
+  }
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse combined_read_response;
   std::string combined_data = "";
@@ -104,11 +138,11 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
   }
   FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
 
-  // Add the checkpoint to the cache.
+  // Add the checkpoint to the cache if the ledger is being used.
   FCP_ASSIGN_OR_RETURN(
       std::string checkpoint,
       ParseReadResponseToFcCheckpoint(combined_read_response, nonce));
-  if (use_caching_) {
+  if (!use_kms_) {
     absl::MutexLock lock(&cache_mutex_);
     uri_to_checkpoint_cache_[uri] = checkpoint;
   }
@@ -116,18 +150,73 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
 }
 
 absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
-    const ReadResponse& read_response, const std::string& nonce) {
+    const ReadResponse& read_response,
+    const std::optional<std::string>& nonce) {
   if (read_response.first_response_metadata().has_unencrypted()) {
     return read_response.data();
   }
-  if (read_response.first_response_metadata()
-          .hpke_plus_aead_data()
-          .rewrapped_symmetric_key_associated_data()
-          .nonce() != nonce) {
-    return absl::InvalidArgumentError("ReadResponse nonce does not match");
+
+  // Check the nonce if the ledger is being used.
+  if (!use_kms_) {
+    if (read_response.first_response_metadata()
+            .hpke_plus_aead_data()
+            .rewrapped_symmetric_key_associated_data()
+            .nonce() != *nonce) {
+      return absl::InvalidArgumentError("ReadResponse nonce does not match");
+    }
+    return blob_decryptor_->DecryptBlob(read_response.first_response_metadata(),
+                                        read_response.data());
   }
+
+  // Parse the BlobHeader to get the access policy hash and key ID.
+  BlobHeader blob_header;
+  if (!blob_header.ParseFromString(read_response.first_response_metadata()
+                                       .hpke_plus_aead_data()
+                                       .kms_symmetric_key_associated_data()
+                                       .record_header())) {
+    return absl::InvalidArgumentError(
+        "kms_symmetric_key_associated_data.record_header() cannot be "
+        "parsed to BlobHeader.");
+  }
+
+  // Verify that the access policy hash matches one of the authorized
+  // logical pipeline policy hashes returned by KMS before returning
+  // the key ID.
+  if (authorized_logical_pipeline_policies_hashes_.find(
+          blob_header.access_policy_sha256()) ==
+      authorized_logical_pipeline_policies_hashes_.end()) {
+    return absl::InvalidArgumentError(
+        "BlobHeader.access_policy_sha256 does not match any "
+        "authorized_logical_pipeline_policies_hashes returned by "
+        "KMS.");
+  }
+
   return blob_decryptor_->DecryptBlob(read_response.first_response_metadata(),
-                                      read_response.data());
+                                      read_response.data(),
+                                      blob_header.key_id());
+}
+
+absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
+  WriteRequest write_request;
+  std::string next_state = private_state_->GetReleaseUpdateState();
+  FCP_RETURN_IF_ERROR(CreateWriteRequestForRelease(
+      &write_request, *signing_key_handle_, reencryption_key_, key, data,
+      reencryption_policy_hash_, private_state_->GetReleaseInitialState(),
+      next_state));
+
+  ClientContext client_context;
+  WriteResponse response;
+  std::unique_ptr<::grpc::ClientWriterInterface<WriteRequest>> writer =
+      stub_->Write(&client_context, &response);
+
+  if (!writer->Write(write_request)) {
+    return absl::InternalError("Failed to write WriteRequest");
+  }
+  if (!writer->WritesDone() || !writer->Finish().ok()) {
+    return absl::InternalError("Failed to complete Write");
+  }
+  private_state_->SetReleaseInitialState(next_state);
+  return absl::OkStatus();
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

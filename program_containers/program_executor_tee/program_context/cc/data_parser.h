@@ -24,6 +24,7 @@
 #include "fcp/base/random_token.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "program_executor_tee/private_state.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -36,7 +37,13 @@ class DataParser {
  public:
   DataParser(
       confidential_federated_compute::BlobDecryptor* blob_decryptor,
-      std::string outgoing_server_address, bool use_caching = true,
+      std::string outgoing_server_address, bool use_kms = false,
+      std::string reencryption_key = "",
+      std::string reencryption_policy_hash = "",
+      PrivateState* private_state = nullptr,
+      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle =
+          nullptr,
+      std::set<std::string> authorized_logical_pipeline_policies_hashes = {},
       std::function<std::string()> nonce_generator = []() {
         return fcp::RandomToken::Generate().ToString();
       });
@@ -46,22 +53,45 @@ class DataParser {
   absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
   ResolveUriToTensor(std::string uri, std::string key);
 
+  // Wraps the data in a release token and sends it to untrusted space.
+  absl::Status ReleaseUnencrypted(std::string data, std::string key);
+
  private:
   // Retrieve the FC checkpoint for a uri, either by using the cache or
   // sending a ReadRequest to the DataReadWrite service.
   absl::StatusOr<std::string> ResolveUriToFcCheckpoint(std::string uri);
 
   // Parse a ReadResponse message into a FC checkpoint, decrypting it and
-  // checking that the nonce matches, if necessary.
+  // checking that the nonce matches (only necessary when the ledger is being
+  // used).
+  // TODO: b/451714072 - Remove the nonce arg once the KMS migration is
+  // complete.
   absl::StatusOr<std::string> ParseReadResponseToFcCheckpoint(
       const fcp::confidentialcompute::outgoing::ReadResponse& read_response,
-      const std::string& nonce);
+      const std::optional<std::string>& nonce);
 
   BlobDecryptor* blob_decryptor_;
   std::unique_ptr<
       fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface>
       stub_;
-  bool use_caching_;
+
+  // Whether or not KMS is being used.
+  // TODO: b/451714072 - Delete this once the KMS migration is complete.
+  bool use_kms_;
+
+  // The reencryption keys used to re-encrypt the final blobs.
+  std::string reencryption_key_;
+  // The policy hash used to re-encrypt the final blobs with.
+  std::string reencryption_policy_hash_;
+  // Private state.
+  PrivateState* private_state_;
+  // The signing key handle used to sign the final result.
+  std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
+  // The authorized logical policy hashes for this container.
+  std::set<std::string> authorized_logical_pipeline_policies_hashes_;
+
+  // TODO: b/451714072 - Delete the caching and nonce support once the KMS
+  // migration is complete.
   absl::Mutex cache_mutex_;
   absl::flat_hash_map<std::string, std::string> uri_to_checkpoint_cache_;
   std::function<std::string()> nonce_generator_;

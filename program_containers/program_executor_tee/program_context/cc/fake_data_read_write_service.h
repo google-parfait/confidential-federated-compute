@@ -33,7 +33,6 @@ namespace confidential_federated_compute::program_executor_tee {
 
 constexpr char kInputKeyId[] = "input";
 constexpr char kAccessPolicyHash[] = "access_policy_hash";
-constexpr size_t kBlobIdSize = 16;
 
 // Fake DataReadWrite service that retains information about past requests
 // and can send mock responses.
@@ -43,7 +42,7 @@ class FakeDataReadWriteService
   FakeDataReadWriteService(bool use_kms = false)
       : use_kms_(use_kms),
         input_public_private_key_pair_(
-            crypto_test_utils::GenerateKeyPair("input")),
+            crypto_test_utils::GenerateKeyPair(kInputKeyId)),
         result_public_private_key_pair_(
             crypto_test_utils::GenerateKeyPair("result")),
         message_decryptor_(
@@ -102,6 +101,13 @@ class FakeDataReadWriteService
     return released_data_;
   }
 
+  // Returns a map of key to state change pairs received by the Write endpoint.
+  std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
+                                  std::optional<std::string>>>
+  GetReleasedStateChanges() {
+    return released_state_changes_;
+  }
+
  private:
   // Whether or not KMS is being used.
   // TODO: b/451714072 - Delete this once the KMS migration is complete.
@@ -127,6 +133,12 @@ class FakeDataReadWriteService
 
   // A map of key to plaintext messages received by the Write endpoint.
   std::map<std::string, std::string> released_data_;
+
+  // A map of key to state change pairs (initial state, updated state) received
+  // by the Write endpoint.
+  std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
+                                  std::optional<std::string>>>
+      released_state_changes_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

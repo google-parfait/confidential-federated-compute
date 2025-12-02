@@ -35,20 +35,21 @@ class PrivateState {
       std::optional<std::string> initial_state, uint32_t default_max_num_runs);
 
   // Update the "initial state" to use for the next release operation.
-  void SetReleaseInitialState(std::string initial_state);
+  virtual void SetReleaseInitialState(std::string initial_state);
 
   // Return the "initial state" to use for the next release operation.
-  std::optional<std::string> GetReleaseInitialState() const;
+  virtual std::optional<std::string> GetReleaseInitialState() const;
 
   // Return the "update state" to use for the next release operation.
-  std::string GetReleaseUpdateState();
+  virtual std::string GetReleaseUpdateState();
 
- private:
+ protected:
   PrivateState(std::optional<std::string> initial_state,
                BudgetState next_update_state)
       : initial_serialized_state_(std::move(initial_state)),
         next_update_state_(next_update_state) {}
 
+ private:
   // Each release operation produces a release token containing a "initial
   // state" that must match KMS's current stored state as well as an "update
   // state" that KMS should update its stored state to.
