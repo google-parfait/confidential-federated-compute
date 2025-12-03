@@ -186,14 +186,11 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
   // to the inference result of one row of the input columns.
   for (int i = 0; i < input.GetRowCount(); ++i) {
     FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    FCP_ASSIGN_OR_RETURN(std::string combined_prompt,
-                         prompt_processor_.PopulatePromptTemplate(
-                             prompt.prompt_template(), row,
-                             input.GetColumnNames(), input_column_indices));
-
-    if (combined_prompt.size() > max_prompt_size) {
-      combined_prompt.resize(max_prompt_size);
-    }
+    FCP_ASSIGN_OR_RETURN(
+        std::string combined_prompt,
+        prompt_processor_.PopulatePromptTemplate(
+            prompt, row, input.GetColumnNames(), input_column_indices,
+            output_column_name, max_prompt_size));
     size_t generated = 0;
     const std::vector<int> tokens = ::gcpp::WrapAndTokenize(
         gemma->Tokenizer(), gemma->ChatTemplate(), gemma->Config().wrapping,
@@ -390,6 +387,12 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
   if (!vocab) {
     return absl::InternalError("Failed to get llama vocab");
   }
+  RuntimeConfig inference_runtime_config =
+      inference_configuration_->initialize_configuration.inference_config()
+          .runtime_config();
+  size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
+                               ? inference_runtime_config.max_prompt_size()
+                               : kMaxPromptSize;
 
   std::unique_ptr<MutableStringData> output_string_data =
       std::make_unique<MutableStringData>(
@@ -400,11 +403,11 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
   // to the inference result of one row of the input columns.
   for (int i = 0; i < input.GetRowCount(); ++i) {
     FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    FCP_ASSIGN_OR_RETURN(std::string combined_prompt,
-                         prompt_processor_.PopulatePromptTemplate(
-                             prompt.prompt_template(), row,
-                             input.GetColumnNames(), input_column_indices));
-
+    FCP_ASSIGN_OR_RETURN(
+        std::string combined_prompt,
+        prompt_processor_.PopulatePromptTemplate(
+            prompt, row, input.GetColumnNames(), input_column_indices,
+            output_column_name, max_prompt_size));
     // Generate inference output for a row.
     FCP_ASSIGN_OR_RETURN(
         std::string output_string,

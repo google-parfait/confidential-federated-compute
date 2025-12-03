@@ -48,9 +48,16 @@ class InferencePromptProcessor {
   // Build the combined prompt for a single row of data by populating the
   // template and replacing the placeholders with the column values.
   absl::StatusOr<std::string> PopulatePromptTemplate(
-      const std::string& prompt_template, const sql::RowView& row,
+      const fcp::confidentialcompute::Prompt& prompt, const sql::RowView& row,
       absl::Span<const std::string> column_names,
-      absl::Span<const size_t> input_column_indices);
+      absl::Span<const size_t> input_column_indices,
+      const std::string& output_column_name, size_t max_prompt_size);
+
+ private:
+  // A helper function to append system instructions to the prompt if the prompt
+  // config is set to PARSER_AUTO.
+  void AppendSystemInstructions(std::string& prompt,
+                                const std::string& output_column_name);
 };
 
 }  // namespace confidential_federated_compute::fed_sql

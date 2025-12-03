@@ -18,6 +18,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -60,11 +61,30 @@ absl::StatusOr<std::string> InferenceOutputProcessor::ApplyRegex(
 
 InferencePromptProcessor::InferencePromptProcessor() {}
 
+void InferencePromptProcessor::AppendSystemInstructions(
+    std::string& prompt, const std::string& output_column_name) {
+  // Modifies a prompt to include instructions for the model to generate
+  // output in a JSON format that can be parsed automatically.
+  absl::StrAppend(
+      &prompt, "\n***System Instruction***\n",
+      "You must respond with a valid JSON object. The key of the JSON "
+      "object "
+      "must be '",
+      output_column_name,
+      "' and its value must be a JSON array. Do not include any other text "
+      "or "
+      "explanation outside of the JSON object.\n",
+      "Example format:\n", "```json\n", "{\n", "  \"", output_column_name,
+      "\": [\"", output_column_name, "_val_0\", \"", output_column_name,
+      "_val_1\", \"", output_column_name, "_val_2\" ...]\n", "}\n", "```");
+}
+
 absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
-    const std::string& prompt_template, const RowView& row,
+    const Prompt& prompt, const RowView& row,
     absl::Span<const std::string> column_names,
-    absl::Span<const size_t> input_column_indices) {
-  std::string populated_prompt(prompt_template);
+    absl::Span<const size_t> input_column_indices,
+    const std::string& output_column_name, size_t max_prompt_size) {
+  std::string populated_prompt(prompt.prompt_template());
   for (size_t input_column_index : input_column_indices) {
     if (input_column_index >= column_names.size()) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -85,6 +105,12 @@ absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
                                column_value);
       start_position += column_value.length();  // Move past the replacement
     }
+  }
+  if (populated_prompt.size() > max_prompt_size) {
+    populated_prompt.resize(max_prompt_size);
+  }
+  if (prompt.parser() == Prompt::PARSER_AUTO) {
+    AppendSystemInstructions(populated_prompt, output_column_name);
   }
   return populated_prompt;
 }
