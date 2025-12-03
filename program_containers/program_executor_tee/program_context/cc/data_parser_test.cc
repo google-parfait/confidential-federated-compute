@@ -176,7 +176,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
-  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessage(
+  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessageForLedger(
       uri, checkpoint, "ciphertext associated data", *recipient_public_key,
       nonce, "reencryption_public_key"));
 
@@ -202,7 +202,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
-  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessage(
+  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessageForLedger(
       uri, checkpoint, "ciphertext associated data", *recipient_public_key,
       nonce, "reencryption_public_key"));
 
@@ -228,7 +228,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_MismatchedNonce) {
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
-  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessage(
+  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessageForLedger(
       uri, checkpoint, "ciphertext associated data", *recipient_public_key,
       "nonce", "reencryption_public_key"));
 
@@ -251,7 +251,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
-  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessage(
+  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessageForLedger(
       uri, message, "ciphertext associated data", *recipient_public_key, nonce,
       "reencryption_public_key"));
 
@@ -274,7 +274,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
   absl::StatusOr<absl::string_view> recipient_public_key =
       blob_decryptor.GetPublicKey();
   ASSERT_TRUE(recipient_public_key.ok());
-  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessage(
+  CHECK_OK(fake_data_read_write_service_.StoreEncryptedMessageForLedger(
       uri, checkpoint, "ciphertext associated data", *recipient_public_key,
       nonce, "reencryption_public_key"));
 

@@ -55,7 +55,7 @@ PYBIND11_MODULE(fake_service_bindings_jax, m) {
            })
       .def("get_read_request_uris",
            &FakeDataReadWriteService::GetReadRequestUris)
-      .def("get_write_call_args", &FakeDataReadWriteService::GetWriteCallArgs);
+      .def("get_released_data", &FakeDataReadWriteService::GetReleasedData);
 
   py::class_<FakeComputationDelegationService>(
       m, "FakeComputationDelegationService")

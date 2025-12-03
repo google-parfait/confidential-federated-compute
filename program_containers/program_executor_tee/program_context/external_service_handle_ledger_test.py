@@ -48,18 +48,10 @@ class ExternalServiceHandleForLedgerTest(unittest.TestCase):
     serialized_value = value.SerializeToString()
     handle.release_unencrypted(serialized_value, result_uri)
 
-    expected_request = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id=result_uri
-            )
-        ),
-        commit=True,
-        data=serialized_value,
-    )
-    self.assertEqual(
-        data_read_write_service.get_write_call_args(), [[expected_request]]
-    )
+    released_data = data_read_write_service.get_released_data();
+    self.assertEqual(len(released_data), 1)
+    self.assertEqual(released_data["my_result"].encode('latin-1'), serialized_value);
+
     server.stop()
 
 

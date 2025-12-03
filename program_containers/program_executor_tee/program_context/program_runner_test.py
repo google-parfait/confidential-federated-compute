@@ -55,31 +55,6 @@ def trusted_program(input_provider, external_service_handle):
     external_service_handle.release_unencrypted(result2_val.SerializeToString(), b"result2")
     """
 
-    value_3, _ = tff.framework.serialize_value(
-        3, federated_language.TensorType(np.int32)
-    )
-    expected_request_1 = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id="result1".encode()
-            )
-        ),
-        commit=True,
-        data=value_3.SerializeToString(),
-    )
-    value_2, _ = tff.framework.serialize_value(
-        2, federated_language.TensorType(np.int32)
-    )
-    expected_request_2 = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id="result2".encode()
-            )
-        ),
-        commit=True,
-        data=value_2.SerializeToString(),
-    )
-
     program_runner.run_program(
         initialize_fn=None,
         program=base64.b64encode(program_string.encode("utf-8")),
@@ -90,10 +65,16 @@ def trusted_program(input_provider, external_service_handle):
         resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
     )
 
-    self.assertEqual(
-        data_read_write_service.get_write_call_args(),
-        [[expected_request_1], [expected_request_2]],
+    released_data = data_read_write_service.get_released_data();
+    self.assertEqual(len(released_data), 2)
+    value_3, _ = tff.framework.serialize_value(
+        3, federated_language.TensorType(np.int32)
     )
+    self.assertEqual(released_data["result1"].encode('latin-1'), value_3.SerializeToString());
+    value_2, _ = tff.framework.serialize_value(
+        2, federated_language.TensorType(np.int32)
+    )
+    self.assertEqual(released_data["result2"].encode('latin-1'), value_2.SerializeToString());
 
     server.stop()
 

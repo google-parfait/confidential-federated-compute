@@ -25,14 +25,20 @@
 #include "absl/strings/string_view.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
+#include "openssl/rand.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
+using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::MessageDecryptor;
+using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
@@ -56,21 +62,59 @@ grpc::Status FakeDataReadWriteService::Read(
 grpc::Status FakeDataReadWriteService::Write(
     ::grpc::ServerContext*, ::grpc::ServerReader<WriteRequest>* request_reader,
     WriteResponse*) {
-  // Append the stream of requests to write_call_args_.
   std::vector<WriteRequest> requests;
   WriteRequest request;
   while (request_reader->Read(&request)) {
     requests.push_back(request);
   }
-  write_call_args_.push_back(requests);
+  if (requests.size() > 1) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "Chunked WriteRequests are not supported by the "
+                        "FakeDataReadWriteService");
+  }
+  if (use_kms_) {
+    BlobMetadata metadata = requests[0].first_request_metadata();
+    auto ciphertext = requests[0].data();
+    BlobHeader blob_header;
+    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                    .kms_symmetric_key_associated_data()
+                                    .record_header());
+    absl::StatusOr<std::string> plaintext_message = message_decryptor_.Decrypt(
+        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+        metadata.hpke_plus_aead_data()
+            .kms_symmetric_key_associated_data()
+            .record_header(),
+        metadata.hpke_plus_aead_data().encapsulated_public_key(),
+        blob_header.key_id());
+    if (!plaintext_message.ok()) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          "Decryption failed: " +
+              std::string(plaintext_message.status().message()));
+    }
+    released_data_[requests[0].key()] = *plaintext_message;
+  } else {
+    // In the ledger case, the WriteRequest is unencrypted and the blob_id field
+    // is used to store the key.
+    released_data_
+        [requests[0].first_request_metadata().unencrypted().blob_id()] =
+            requests[0].data();
+  }
   return grpc::Status::OK;
 }
 
-absl::Status FakeDataReadWriteService::StoreEncryptedMessage(
+absl::Status FakeDataReadWriteService::StoreEncryptedMessageForLedger(
     absl::string_view uri, absl::string_view message,
     absl::string_view ciphertext_associated_data,
     absl::string_view recipient_public_key, absl::string_view nonce,
     absl::string_view reencryption_public_key) {
+  if (use_kms_) {
+    return absl::InvalidArgumentError(
+        "This version of the StoreEncryptedMessage* method should only be "
+        "called when the ledger is being used.");
+  }
+
   if (uri_to_read_response_.find(std::string(uri)) !=
       uri_to_read_response_.end()) {
     return absl::InvalidArgumentError("Uri already set.");
@@ -83,6 +127,55 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessage(
       crypto_test_utils::CreateRewrappedBlob(
           message, ciphertext_associated_data, recipient_public_key, nonce,
           reencryption_public_key));
+  response.set_finish_read(true);
+
+  uri_to_read_response_[std::string(uri)] = std::move(response);
+  return absl::OkStatus();
+}
+
+absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
+    absl::string_view uri, absl::string_view message) {
+  if (!use_kms_) {
+    return absl::InvalidArgumentError(
+        "This version of the StoreEncryptedMessage* method should only be "
+        "called when KMS is being used.");
+  }
+
+  if (uri_to_read_response_.find(std::string(uri)) !=
+      uri_to_read_response_.end()) {
+    return absl::InvalidArgumentError("Uri already set.");
+  }
+
+  BlobHeader header;
+  std::string blob_id(kBlobIdSize, '\0');
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  header.set_blob_id(blob_id);
+  header.set_key_id(kInputKeyId);
+  header.set_access_policy_sha256(kAccessPolicyHash);
+  std::string associated_data = header.SerializeAsString();
+
+  MessageEncryptor encryptor;
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypt_result,
+      encryptor.Encrypt(message, input_public_private_key_pair_.first,
+                        associated_data));
+
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypt_result.ciphertext.size());
+  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  encryption_metadata->set_ciphertext_associated_data(associated_data);
+  encryption_metadata->set_encrypted_symmetric_key(
+      encrypt_result.encrypted_symmetric_key);
+  encryption_metadata->set_encapsulated_public_key(encrypt_result.encapped_key);
+  encryption_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(associated_data);
+
+  ReadResponse response;
+  *response.mutable_first_response_metadata() = std::move(metadata);
+  *response.mutable_data() = std::move(encrypt_result.ciphertext);
   response.set_finish_read(true);
 
   uri_to_read_response_[std::string(uri)] = std::move(response);
@@ -108,15 +201,6 @@ absl::Status FakeDataReadWriteService::StorePlaintextMessage(
 
   uri_to_read_response_[std::string(uri)] = std::move(response);
   return absl::OkStatus();
-}
-
-std::vector<std::string> FakeDataReadWriteService::GetReadRequestUris() {
-  return read_request_uris_;
-}
-
-std::vector<std::vector<WriteRequest>>
-FakeDataReadWriteService::GetWriteCallArgs() {
-  return write_call_args_;
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

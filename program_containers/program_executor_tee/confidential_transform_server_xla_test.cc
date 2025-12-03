@@ -59,23 +59,10 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Write(session_request));
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
-  expected_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id("result");
-  expected_request.set_commit(true);
-
-  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result");
-  ASSERT_TRUE(write_request.commit());
-
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 1);
   tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(write_request.data());
+  released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.array().int32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().int32_list().value().at(0), 10);
 
@@ -107,23 +94,10 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Write(session_request));
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
-  expected_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id("result");
-  expected_request.set_commit(true);
-
-  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result");
-  ASSERT_TRUE(write_request.commit());
-
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 1);
   tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(write_request.data());
+  released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.array().float32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().float32_list().value().at(0), 4.0);
 

@@ -356,14 +356,8 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Write(session_request));
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result");
-  ASSERT_TRUE(write_request.commit());
-  ASSERT_EQ(write_request.data(), "abc");
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data["result"], "abc");
 
   ASSERT_TRUE(session_response.has_finalize());
 }
