@@ -17,6 +17,7 @@
 #include <string>
 
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "containers/sql/input.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
@@ -74,7 +75,8 @@ TEST_F(InferenceModelInternalTest, ApplyRegexNoMatchFullString) {
 }
 
 TEST_F(InferenceModelInternalTest, PopulatePromptTemplateSuccess) {
-  std::string prompt_template = "User: {user}, Message: {msg}, Session: {id}";
+  Prompt prompt;
+  prompt.set_prompt_template("User: {user}, Message: {msg}, Session: {id}");
 
   absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"John"}, "user");
   ASSERT_THAT(user_tensor, IsOk());
@@ -98,12 +100,89 @@ TEST_F(InferenceModelInternalTest, PopulatePromptTemplateSuccess) {
 
   const std::string column_names[] = {"user", "msg", "id"};
   const size_t indices[] = {0, 1, 2};
+  const std::string output_column_name = "output";
+  const size_t max_prompt_size = 1000;
 
   InferencePromptProcessor prompt_processor;
 
-  EXPECT_THAT(prompt_processor.PopulatePromptTemplate(prompt_template, *row,
-                                                      column_names, indices),
-              IsOkAndHolds("User: John, Message: Are you okay?, Session: 42"));
+  std::string expected_prompt =
+      "User: John, Message: Are you okay?, Session: 42";
+  EXPECT_THAT(prompt_processor.PopulatePromptTemplate(
+                  prompt, *row, column_names, indices, output_column_name,
+                  max_prompt_size),
+              IsOkAndHolds(expected_prompt));
+}
+
+TEST_F(InferenceModelInternalTest,
+       PopulatePromptTemplateWithSystemInstructions) {
+  Prompt prompt;
+  prompt.set_prompt_template("User: {user}");
+  prompt.set_parser(Prompt::PARSER_AUTO);
+
+  absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"John"}, "user");
+  ASSERT_THAT(user_tensor, IsOk());
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*user_tensor));
+  fcp::confidentialcompute::BlobHeader blob_header;
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), blob_header);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<RowView> row = input->GetRow(0);
+  ASSERT_THAT(row, IsOk());
+
+  const std::string column_names[] = {"user"};
+  const size_t indices[] = {0};
+  const std::string output_column_name = "output";
+  const size_t max_prompt_size = 1000;
+  InferencePromptProcessor prompt_processor;
+
+  std::string expected_prompt = "User: John";
+  absl::StrAppend(
+      &expected_prompt, "\n***System Instruction***\n",
+      "You must respond with a valid JSON object. The key of the JSON object "
+      "must be '",
+      output_column_name,
+      "' and its value must be a JSON array. Do not include any other text or "
+      "explanation outside of the JSON object.\n",
+      "Example format:\n", "```json\n", "{\n", "  \"", output_column_name,
+      "\": [\"", output_column_name, "_val_0\", \"", output_column_name,
+      "_val_1\", \"", output_column_name, "_val_2\" ...]\n", "}\n", "```");
+
+  EXPECT_THAT(prompt_processor.PopulatePromptTemplate(
+                  prompt, *row, column_names, indices, output_column_name,
+                  max_prompt_size),
+              IsOkAndHolds(expected_prompt));
+}
+
+TEST_F(InferenceModelInternalTest, PopulatePromptTemplateTruncation) {
+  Prompt prompt;
+  prompt.set_prompt_template("User: {user}");
+
+  absl::StatusOr<Tensor> user_tensor = CreateStringTensor(
+      {"This is a very long username that will cause the prompt to exceed the "
+       "max size"},
+      "user");
+  ASSERT_THAT(user_tensor, IsOk());
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*user_tensor));
+  fcp::confidentialcompute::BlobHeader blob_header;
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), blob_header);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<RowView> row = input->GetRow(0);
+  ASSERT_THAT(row, IsOk());
+
+  const std::string column_names[] = {"user"};
+  const size_t indices[] = {0};
+  const std::string output_column_name = "output";
+  const size_t max_prompt_size = 20;
+  InferencePromptProcessor prompt_processor;
+
+  std::string expected_prompt = "User: This is a very";  // Truncated to 20
+  EXPECT_THAT(prompt_processor.PopulatePromptTemplate(
+                  prompt, *row, column_names, indices, output_column_name,
+                  max_prompt_size),
+              IsOkAndHolds(expected_prompt));
 }
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

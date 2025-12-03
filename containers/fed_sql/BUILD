@@ -71,6 +71,7 @@ cc_library(
     deps = [
         "//containers/sql:input",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
@@ -85,6 +86,7 @@ cc_test(
         ":inference_model_helper",
         "//containers/sql:input",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
