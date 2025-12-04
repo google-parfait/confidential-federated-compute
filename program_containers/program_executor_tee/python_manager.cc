@@ -17,6 +17,8 @@
 
 #include <chrono>
 
+#include "absl/status/status.h"
+
 void PythonManager::Start() {
   if (running_) return;
   running_ = true;
@@ -56,16 +58,18 @@ void PythonManager::ThreadLoop() {
     // Execute the task.
     try {
       task.function();
-      task.promise.set_value();
-    } catch (...) {
-      task.promise.set_exception(std::current_exception());
+      task.promise.set_value(absl::OkStatus());
+    } catch (const std::exception& e) {
+      task.promise.set_value(
+          absl::InternalError("PythonManager hit exception executing task: " +
+                              std::string(e.what())));
     }
   }
 }
 
-void PythonManager::ExecuteTask(std::function<void()> function) {
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
+absl::Status PythonManager::ExecuteTask(std::function<void()> function) {
+  std::promise<absl::Status> promise;
+  std::future<absl::Status> future = promise.get_future();
 
   // Add the task to the queue.
   PythonTask task = {.function = std::move(function),
@@ -77,5 +81,5 @@ void PythonManager::ExecuteTask(std::function<void()> function) {
   queue_cv_.Signal();  // Wake up the thread
 
   // Wait for the task to execute before returning.
-  future.get();
+  return future.get();
 }

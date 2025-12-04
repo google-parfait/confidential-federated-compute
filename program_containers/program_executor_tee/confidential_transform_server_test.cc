@@ -428,6 +428,29 @@ TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
 }
 
 TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
+       InvalidProgramFails) {
+  this->CreateSession(R"(
+def incorrectly_named_trusted_program(input_provider, external_service_handle):
+  return 10
+  )");
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("PythonManager hit exception executing task"));
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr("The provided program must have a trusted_program function"));
+}
+
+TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
        ValidFinalizeSessionWithoutStartingState) {
   this->CreateSession(R"(
 def trusted_program(input_provider, external_service_handle):
