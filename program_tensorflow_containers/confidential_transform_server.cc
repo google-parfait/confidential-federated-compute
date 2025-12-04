@@ -27,11 +27,6 @@ TensorflowProgramExecutorTeeConfidentialTransform::GetProgramInitializeFn() {
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
       initialize_config = GetInitializeConfig();
 
-  pybind11::object data_parser_instance =
-      pybind11::module::import("data_parser")
-          .attr("DataParser")(*GetBlobDecryptor(),
-                              initialize_config.outgoing_server_address());
-
   return pybind11::module::import("initialize_program_tensorflow")
       .attr("get_program_initialize_fn")(
           initialize_config.outgoing_server_address(), GetWorkerBnsAddresses(),

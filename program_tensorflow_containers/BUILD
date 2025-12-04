@@ -174,6 +174,7 @@ cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@confidential-federated-compute-program//program_executor_tee:python_manager",
+        "@oak//cc/containers/sdk:encryption_key_handle",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
     ],

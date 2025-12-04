@@ -25,8 +25,10 @@ namespace confidential_federated_compute::tensorflow::program_executor_tee {
 
 namespace {
 
+using ::confidential_federated_compute::program_executor_tee::BudgetState;
 using ::confidential_federated_compute::program_executor_tee::
     BuildClientCheckpointFromInts;
+using ::confidential_federated_compute::program_executor_tee::kMaxNumRuns;
 using ::confidential_federated_compute::program_executor_tee::
     ProgramExecutorTeeConfidentialTransform;
 using ::confidential_federated_compute::program_executor_tee::
@@ -50,10 +52,15 @@ TEST_P(ProgramExecutorTeeConfidentialTransformTensorflowSessionTest,
   std::string client_data_dir = "data_dir";
   std::string tensor_name = "output_tensor_name";
   for (int i = 0; i < client_ids.size(); i++) {
-    CHECK_OK(this->fake_data_read_write_service_.StorePlaintextMessage(
-        client_data_dir + "/" + client_ids[i],
-        BuildClientCheckpointFromInts({1 + i * 3, 2 + i * 3, 3 + i * 3},
-                                      tensor_name)));
+    std::string data = BuildClientCheckpointFromInts(
+        {1 + i * 3, 2 + i * 3, 3 + i * 3}, tensor_name);
+    if (UseKms()) {
+      CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
+          client_data_dir + "/" + client_ids[i], data));
+    } else {
+      CHECK_OK(this->fake_data_read_write_service_.StorePlaintextMessage(
+          client_data_dir + "/" + client_ids[i], data));
+    }
   }
 
   this->CreateSession(R"(
@@ -137,7 +144,7 @@ def trusted_program(input_provider, external_service_handle):
       client_count_val.SerializeToString(), b"resulting_client_count"
   )
   )",
-                      UseKms(), client_ids, client_data_dir);
+                      /*kms_private_state=*/"", client_ids, client_data_dir);
 
   SessionRequest session_request;
   SessionResponse session_response;
@@ -146,27 +153,32 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Write(session_request));
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 2);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-  auto sum_write_request = write_call_args[0][0];
-  ASSERT_EQ(sum_write_request.first_request_metadata().unencrypted().blob_id(),
-            "resulting_sum");
-  ASSERT_TRUE(sum_write_request.commit());
-  tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(sum_write_request.data());
-  ASSERT_THAT(released_value.array().int32_list().value(),
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  tensorflow_federated::v0::Value released_sum;
+  released_sum.ParseFromString(released_data["resulting_sum"]);
+  ASSERT_THAT(released_sum.array().int32_list().value(),
               ::testing::ElementsAreArray({44, 52, 60}));
-
-  ASSERT_EQ(write_call_args[1].size(), 1);
-  auto count_write_request = write_call_args[1][0];
-  ASSERT_EQ(
-      count_write_request.first_request_metadata().unencrypted().blob_id(),
-      "resulting_client_count");
-  ASSERT_TRUE(count_write_request.commit());
-  released_value.ParseFromString(count_write_request.data());
-  ASSERT_THAT(released_value.array().int32_list().value(),
+  tensorflow_federated::v0::Value released_client_count;
+  released_client_count.ParseFromString(
+      released_data["resulting_client_count"]);
+  ASSERT_THAT(released_client_count.array().int32_list().value(),
               ::testing::ElementsAreArray({8}));
+
+  // State changes should only be checked in the KMS case.
+  if (UseKms()) {
+    auto released_state_changes =
+        this->fake_data_read_write_service_.GetReleasedStateChanges();
+    // There is no initial state.
+    ASSERT_FALSE(
+        released_state_changes["resulting_sum"].first.value().has_value());
+    // The first release operation triggers a state change that should decrease
+    // the number of remaining runs and increment the counter.
+    BudgetState expected_first_release_budget;
+    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+    expected_first_release_budget.set_counter(1);
+    ASSERT_EQ(released_state_changes["resulting_sum"].second.value(),
+              expected_first_release_budget.SerializeAsString());
+  }
 
   ASSERT_TRUE(session_response.has_finalize());
 }
@@ -211,7 +223,7 @@ def trusted_program(input_provider, external_service_handle):
       state_val.SerializeToString(), b"result"
   )
   )",
-      UseKms(),
+      /*kms_private_state=*/"",
       /*client_ids=*/{}, /*client_data_dir=*/"",
       /*file_id_to_filepath=*/
       {{"model1", "testdata/model1.zip"}});
@@ -223,22 +235,25 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Write(session_request));
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
-  auto expected_request = fcp::confidentialcompute::outgoing::WriteRequest();
-  expected_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id("result");
-  expected_request.set_commit(true);
-
-  auto write_call_args = this->fake_data_read_write_service_.GetWriteCallArgs();
-  ASSERT_EQ(write_call_args.size(), 1);
-  ASSERT_EQ(write_call_args[0].size(), 1);
-  auto write_request = write_call_args[0][0];
-  ASSERT_EQ(write_request.first_request_metadata().unencrypted().blob_id(),
-            "result");
-  ASSERT_TRUE(write_request.commit());
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
   tensorflow_federated::v0::Value released_value;
-  released_value.ParseFromString(write_request.data());
+  released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.struct_().element().size(), 5);
+
+  // State changes should only be checked in the KMS case.
+  if (UseKms()) {
+    auto released_state_changes =
+        this->fake_data_read_write_service_.GetReleasedStateChanges();
+    // There is no initial state.
+    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+    // The first release operation triggers a state change that should decrease
+    // the number of remaining runs and increment the counter.
+    BudgetState expected_first_release_budget;
+    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+    expected_first_release_budget.set_counter(1);
+    ASSERT_EQ(released_state_changes["result"].second.value(),
+              expected_first_release_budget.SerializeAsString());
+  }
 
   ASSERT_TRUE(session_response.has_finalize());
 }

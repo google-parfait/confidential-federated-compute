@@ -56,22 +56,22 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-yCGsUsxqi38tuwwAStwYBZU9nX6MZu3Fj/z4xKUIG3g=",
-    strip_prefix = "confidential-federated-compute-f763ac2a1b73ffac782e60e67e4f7d53b3435cc4/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/f763ac2a1b73ffac782e60e67e4f7d53b3435cc4.tar.gz",
+    integrity = "sha256-gcJ9XSat2NeDsZcYD7zKptPJqcHUKABfExw6AuWBv3E=",
+    strip_prefix = "confidential-federated-compute-67cbd6648b360976396a6f3b574979c7e1f0fc1a/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/67cbd6648b360976396a6f3b574979c7e1f0fc1a.tar.gz",
 )
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-+V1nxYTyV8HqL+b2ULeanuAwsDLRbwR6bjJYsEUZxXc=",
+    integrity = "sha256-mX88WWniXOZuHBkZsYASvHzeS8zBXayugggsLj5eTCg=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:testing.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-22d86f20f55954f142c9de43a3f5b03b3ec15009",
-    url = "https://github.com/google/federated-compute/archive/22d86f20f55954f142c9de43a3f5b03b3ec15009.tar.gz",
+    strip_prefix = "federated-compute-200e563db875432e4cf98a0b20eda39cbe9e2de5",
+    url = "https://github.com/google/federated-compute/archive/200e563db875432e4cf98a0b20eda39cbe9e2de5.tar.gz",
 )
 
 http_archive(

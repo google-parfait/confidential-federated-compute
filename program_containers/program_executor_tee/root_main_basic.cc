@@ -17,6 +17,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
 #include "grpcpp/security/credentials.h"
@@ -40,7 +41,8 @@ void RunServer() {
   std::string server_address("[::]:8080");
 
   ProgramExecutorTeeConfidentialTransform service(
-      std::make_unique<oak::containers::sdk::InstanceSigningKeyHandle>());
+      std::make_unique<oak::containers::sdk::InstanceSigningKeyHandle>(),
+      std::make_unique<oak::containers::sdk::InstanceEncryptionKeyHandle>());
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
   builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
