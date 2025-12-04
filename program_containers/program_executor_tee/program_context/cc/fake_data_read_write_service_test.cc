@@ -37,7 +37,7 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
 #include "gtest/gtest.h"
-#include "openssl/rand.h"
+#include "program_executor_tee/program_context/cc/kms_helper.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
@@ -60,7 +60,6 @@ using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
-using ::testing::PrintToStringParamName;
 using ::testing::Test;
 
 class FakeDataReadWriteServiceTest : public ::testing::TestWithParam<bool> {
@@ -96,59 +95,6 @@ class FakeDataReadWriteServiceTest : public ::testing::TestWithParam<bool> {
     stub_ = DataReadWrite::NewStub(
         grpc::CreateChannel(absl::StrCat(server_address, port),
                             grpc::InsecureChannelCredentials()));
-  }
-
-  absl::Status CreateWriteRequest(WriteRequest* write_request, std::string key,
-                                  std::string data) {
-    FCP_ASSIGN_OR_RETURN(OkpKey okp_key,
-                         OkpKey::Decode(fake_data_read_write_service_
-                                            ->GetResultPublicPrivateKeyPair()
-                                            .second));
-    BlobHeader header;
-    std::string blob_id(kBlobIdSize, '\0');
-    (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
-                     blob_id.size());
-    header.set_blob_id(blob_id);
-    header.set_key_id(okp_key.key_id);
-    header.set_access_policy_sha256(kAccessPolicyHash);
-    std::string serialized_blob_header = header.SerializeAsString();
-
-    MessageEncryptor message_encryptor;
-    FCP_ASSIGN_OR_RETURN(
-        EncryptMessageResult encrypted_message,
-        message_encryptor.EncryptForRelease(
-            data,
-            fake_data_read_write_service_->GetResultPublicPrivateKeyPair()
-                .first,
-            serialized_blob_header,
-            /*src_state=*/"", /*dst_state=*/"",
-            [this](absl::string_view message) -> absl::StatusOr<std::string> {
-              FCP_ASSIGN_OR_RETURN(auto signature,
-                                   mock_signing_key_handle_.Sign(message));
-              return std::move(*signature.mutable_signature());
-            }));
-
-    BlobMetadata metadata;
-    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-    metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
-    BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
-        metadata.mutable_hpke_plus_aead_data();
-    hpke_plus_aead_metadata->set_ciphertext_associated_data(
-        std::string(serialized_blob_header));
-    hpke_plus_aead_metadata->set_encrypted_symmetric_key(
-        encrypted_message.encrypted_symmetric_key);
-    hpke_plus_aead_metadata->set_encapsulated_public_key(
-        encrypted_message.encapped_key);
-    hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
-        ->set_record_header(std::string(serialized_blob_header));
-
-    *write_request->mutable_first_request_metadata() = std::move(metadata);
-    write_request->set_commit(true);
-    write_request->set_data(encrypted_message.ciphertext);
-    write_request->set_release_token(encrypted_message.release_token);
-    write_request->set_key(key);
-
-    return absl::OkStatus();
   }
 
   void TearDown() override { fake_data_read_write_server_->Shutdown(); }
@@ -350,12 +296,19 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
 TEST_P(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   WriteRequest write_request_1;
   WriteRequest write_request_2;
-
   if (GetParam()) {
-    ASSERT_TRUE(
-        CreateWriteRequest(&write_request_1, "key_1", "write_request_1").ok());
-    ASSERT_TRUE(
-        CreateWriteRequest(&write_request_2, "key_2", "write_request_2").ok());
+    auto result_public_key =
+        fake_data_read_write_service_->GetResultPublicPrivateKeyPair().first;
+    ASSERT_TRUE(CreateWriteRequestForRelease(
+                    &write_request_1, mock_signing_key_handle_,
+                    result_public_key, "key_1", "write_request_1",
+                    kAccessPolicyHash, "state_a", "state_b")
+                    .ok());
+    ASSERT_TRUE(CreateWriteRequestForRelease(
+                    &write_request_2, mock_signing_key_handle_,
+                    result_public_key, "key_2", "write_request_2",
+                    kAccessPolicyHash, "state_b", "state_c")
+                    .ok());
   } else {
     write_request_1.mutable_first_request_metadata()
         ->mutable_unencrypted()
@@ -383,6 +336,21 @@ TEST_P(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   ASSERT_EQ(released_data.size(), 2);
   ASSERT_EQ(released_data["key_1"], "write_request_1");
   ASSERT_EQ(released_data["key_2"], "write_request_2");
+
+  // In the KMS case, check the recorded state transitions as well.
+  if (GetParam()) {
+    std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
+                                    std::optional<std::string>>>
+        released_state_changes =
+            fake_data_read_write_service_->GetReleasedStateChanges();
+    ASSERT_EQ(released_state_changes.size(), 2);
+    auto state_change_1 = released_state_changes["key_1"];
+    ASSERT_EQ(state_change_1.first.value().value(), "state_a");
+    ASSERT_EQ(state_change_1.second.value(), "state_b");
+    auto state_change_2 = released_state_changes["key_2"];
+    ASSERT_EQ(state_change_2.first.value().value(), "state_b");
+    ASSERT_EQ(state_change_2.second.value(), "state_c");
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(KmsParam, FakeDataReadWriteServiceTest,

@@ -19,12 +19,12 @@
 #include <tuple>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
@@ -32,12 +32,14 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
 #include "openssl/rand.h"
+#include "program_executor_tee/program_context/cc/kms_helper.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
@@ -94,6 +96,17 @@ grpc::Status FakeDataReadWriteService::Write(
               std::string(plaintext_message.status().message()));
     }
     released_data_[requests[0].key()] = *plaintext_message;
+
+    absl::StatusOr<ReleaseToken> token =
+        ReleaseToken::Decode(requests[0].release_token());
+    if (!token.ok()) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                          "Decoding release token failed: " +
+                              std::string(token.status().message()));
+    }
+    released_state_changes_[requests[0].key()] = {token->src_state,
+                                                  token->dst_state};
+
   } else {
     // In the ledger case, the WriteRequest is unencrypted and the blob_id field
     // is used to store the key.

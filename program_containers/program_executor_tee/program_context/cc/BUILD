@@ -76,6 +76,8 @@ cc_library(
     hdrs = ["data_parser.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":kms_helper",
+        "//program_executor_tee:private_state",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -103,8 +105,10 @@ cc_test(
         ":data_parser",
         ":fake_data_read_write_service",
         ":generate_checkpoint",
+        "//program_executor_tee:private_state",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@confidential-federated-compute//containers:crypto",
         "@confidential-federated-compute//containers:crypto_test_utils",
@@ -122,14 +126,15 @@ cc_library(
     hdrs = ["fake_data_read_write_service.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":kms_helper",
         "@boringssl//:crypto",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@confidential-federated-compute//containers:crypto_test_utils",
         "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
@@ -143,7 +148,7 @@ cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":fake_data_read_write_service",
-        "@boringssl//:crypto",
+        ":kms_helper",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -188,6 +193,39 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_library(
+    name = "kms_helper",
+    srcs = ["kms_helper.cc"],
+    hdrs = ["kms_helper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:cose",
+        "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@oak//cc/crypto:signing_key",
+    ],
+)
+
+cc_test(
+    name = "kms_helper_test",
+    srcs = ["kms_helper_test.cc"],
+    deps = [
+        ":kms_helper",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@confidential-federated-compute//containers:crypto",
+        "@confidential-federated-compute//containers:crypto_test_utils",
+        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 

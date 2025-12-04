@@ -65,6 +65,7 @@ cc_library(
     name = "private_state",
     srcs = ["private_state.cc"],
     hdrs = ["private_state.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":budget_cc_proto",
         "@com_google_absl//absl/status",
