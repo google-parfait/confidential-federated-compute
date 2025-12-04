@@ -94,6 +94,7 @@ cc_library(
     data = [":trusted_program_py_runtime"],
     visibility = ["//visibility:public"],
     deps = [
+        ":private_state",
         ":python_manager",
         "//program_executor_tee/program_context/cc:data_parser",
         "@com_github_grpc_grpc//:grpc++",
@@ -112,6 +113,7 @@ cc_library(
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:crypto",
+        "@federated-compute//fcp/confidentialcompute:private_state",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
@@ -165,9 +167,11 @@ cc_test(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":testing_base",
+        "//program_executor_tee/program_context/cc:generate_checkpoint",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
         "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/confidentialcompute:private_state",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:program_executor_tee_cc_proto",
         "@federated-compute//fcp/testing:parse_text_proto",

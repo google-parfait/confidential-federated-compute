@@ -12,36 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from fcp.confidentialcompute.python import external_service_handle
-from fcp.confidentialcompute.python import external_service_handle
-from fcp.protos.confidentialcompute import confidential_transform_pb2
-from fcp.protos.confidentialcompute import data_read_write_pb2
-from fcp.protos.confidentialcompute import data_read_write_pb2_grpc
-import grpc
 
 
-class ExternalServiceHandleForLedger(
-    external_service_handle.ExternalServiceHandle
-):
+class ExternalServiceHandle(external_service_handle.ExternalServiceHandle):
   """Helper class for releasing results to untrusted space."""
 
-  def __init__(self, outgoing_server_address: str):
+  def __init__(
+      self,
+      outgoing_server_address: str,
+      release_unencrypted_fn: Callable[[bytes, bytes], None],
+  ):
     """Establishes a channel to the DataReadWrite service."""
     super().__init__(outgoing_server_address)
-    self._channel = grpc.insecure_channel(outgoing_server_address)
-    self._stub = data_read_write_pb2_grpc.DataReadWriteStub(self._channel)
+    self.release_unencrypted_fn = release_unencrypted_fn
 
   def release_unencrypted(self, value: bytes, key: bytes) -> None:
-    write_request = data_read_write_pb2.WriteRequest(
-        first_request_metadata=confidential_transform_pb2.BlobMetadata(
-            unencrypted=confidential_transform_pb2.BlobMetadata.Unencrypted(
-                blob_id=key
-            )
-        ),
-        commit=True,
-        data=value,
-    )
-    self._stub.Write(iter([write_request]))
+    """Releases an unencrypted value to the external service."""
+    self.release_unencrypted_fn(value, key)
 
   def release_encrypted(
       self,

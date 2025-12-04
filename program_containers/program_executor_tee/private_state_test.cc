@@ -52,6 +52,21 @@ TEST(PrivateStateTest, CreatePrivateState_InvalidInitialState) {
   EXPECT_EQ(result.status().message(), "Failed to parse initial budget state.");
 }
 
+TEST(PrivateStateTest, CreatePrivateState_ExhaustedInitialState) {
+  BudgetState initial_budget_state;
+  initial_budget_state.set_num_runs_remaining(0);
+  initial_budget_state.set_counter(100);
+
+  absl::StatusOr<std::unique_ptr<PrivateState>> result =
+      PrivateState::CreatePrivateState(initial_budget_state.SerializeAsString(),
+                                       kDefaultMaxRuns);
+
+  // Expect failure due to exhausted budget.
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_EQ(result.status().message(), "No budget remaining.");
+}
+
 TEST(PrivateStateTest, CreatePrivateState_ValidInitialState) {
   BudgetState initial_budget_state;
   initial_budget_state.set_num_runs_remaining(3);

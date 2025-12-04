@@ -35,17 +35,20 @@
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
+#include "program_executor_tee/private_state.h"
 #include "program_executor_tee/program_context/cc/data_parser.h"
 #include "program_executor_tee/python_manager.h"
 #include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
+using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::ProgramExecutorTeeConfigConstraints;
@@ -60,8 +63,17 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
 
   pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
 
+  pybind11::class_<PrivateState>(m, "PrivateState");
+
+  pybind11::class_<oak::crypto::SigningKeyHandle,
+                   std::shared_ptr<oak::crypto::SigningKeyHandle>>(
+      m, "SigningKeyHandle");
+
   pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<BlobDecryptor*, std::string&>())
+      .def(pybind11::init<BlobDecryptor*, std::string&, bool, std::string&,
+                          std::string&, PrivateState*,
+                          std::shared_ptr<oak::crypto::SigningKeyHandle>,
+                          std::set<std::string>>())
       .def("resolve_uri_to_tensor",
            [](DataParser& self, std::string& uri, std::string& key) {
              // Release the GIL so that the grpc requests in ResolveUriToTensor
@@ -74,6 +86,14 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
                                         std::string(tensor.status().message()));
              }
              return *tensor;
+           })
+      .def("release_unencrypted",
+           [](DataParser& self, std::string& data, std::string& key) {
+             auto result = self.ReleaseUnencrypted(data, key);
+             if (!result.ok()) {
+               throw std::runtime_error("Failed to release data: " +
+                                        std::string(result.message()));
+             }
            });
 }
 
@@ -107,10 +127,16 @@ ProgramExecutorTeeSession::Finalize(
   for (const auto& client_id : initialize_config_.client_ids()) {
     client_ids.push_back(client_id);
   }
+  std::set<std::string> authorized_hashes_set;
+  for (const auto& hash : authorized_logical_pipeline_policies_hashes_) {
+    authorized_hashes_set.insert(absl::Base64Escape(hash));
+  }
 
   // Define the Python work that should be executed on the python execution
   // thread.
-  auto python_task = [this, client_ids = std::move(client_ids)]() {
+  auto python_task = [this, client_ids = std::move(client_ids),
+                      authorized_hashes_set =
+                          std::move(authorized_hashes_set)]() {
     // Load the python function for running the program.
     auto run_program =
         pybind11::module::import(
@@ -118,16 +144,22 @@ ProgramExecutorTeeSession::Finalize(
             .attr("run_program");
 
     // Create a DataParser object bound to the BlobDecryptor pointer.
+    bool use_kms = !reencryption_key_.empty();
     pybind11::object data_parser_instance =
         pybind11::module::import("data_parser")
-            .attr("DataParser")(blob_decryptor_,
-                                initialize_config_.outgoing_server_address());
+            .attr("DataParser")(
+                blob_decryptor_, initialize_config_.outgoing_server_address(),
+                use_kms, absl::Base64Escape(reencryption_key_),
+                absl::Base64Escape(reencryption_policy_hash_), private_state_,
+                signing_key_handle_, authorized_hashes_set);
 
+    // Run the program.
     run_program(get_program_initialize_fn_(),
                 pybind11::bytes(initialize_config_.program()), client_ids,
                 initialize_config_.client_data_dir(), model_id_to_zip_file_,
                 initialize_config_.outgoing_server_address(),
-                data_parser_instance.attr("resolve_uri_to_tensor"));
+                data_parser_instance.attr("resolve_uri_to_tensor"), use_kms,
+                data_parser_instance.attr("release_unencrypted"));
   };
 
   // Submit the work to the python execution queue and wait for the result.
@@ -166,6 +198,34 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
       .set_string_value(absl::Base64Escape(
           initialize_config_.reference_values().SerializeAsString()));
   return config_properties;
+}
+
+absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
+    uint32_t num_runs) {
+  auto it = write_configuration_map_.find(kPrivateStateConfigId);
+  if (it == write_configuration_map_.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected '", kPrivateStateConfigId,
+                     "' configuration id is not found."));
+  }
+  const auto& file_path = it->second.file_path;
+  std::ifstream file(file_path);
+  if (!file.is_open()) {
+    return absl::DataLossError(
+        absl::StrCat("Failed to open file for reading: ", file_path));
+  }
+  auto size = std::filesystem::file_size(file_path);
+  if (size > 0) {
+    std::string private_state(size, '\0');
+    file.read(private_state.data(), size);
+    FCP_ASSIGN_OR_RETURN(
+        private_state_,
+        PrivateState::CreatePrivateState(std::move(private_state), num_runs));
+  } else {
+    FCP_ASSIGN_OR_RETURN(private_state_, PrivateState::CreatePrivateState(
+                                             std::nullopt, num_runs));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status
@@ -208,7 +268,15 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransformWithKms(
         "the policy, if any are specified.");
   }
 
-  return absl::OkStatus();
+  if (reencryption_keys.size() != 1) {
+    return absl::FailedPreconditionError(
+        "Expected exactly one reencryption key (for releasing results).");
+  }
+
+  reencryption_key_ = std::move(reencryption_keys[0]);
+  reencryption_policy_hash_ = reencryption_policy_hash;
+
+  return InitializePrivateState(program_executor_config_constraints.num_runs());
 }
 
 absl::Status AppendBytesToTempFile(std::string& file_path,
@@ -315,6 +383,8 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
 
   return std::make_unique<ProgramExecutorTeeSession>(
       initialize_config_, model_id_to_zip_file_, blob_decryptor,
+      reencryption_key_, reencryption_policy_hash_, private_state_.get(),
+      GetOakSigningKeyHandle(), GetAuthorizedLogicalPipelinePoliciesHashes(),
       get_program_initialize_fn);
 }
 

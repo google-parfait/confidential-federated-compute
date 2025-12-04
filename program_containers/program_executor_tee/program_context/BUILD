@@ -55,6 +55,7 @@ py_library(
     srcs = ["program_runner.py"],
     visibility = ["//visibility:public"],
     deps = [
+        ":external_service_handle",
         ":external_service_handle_ledger",
         "@federated-compute//fcp/confidentialcompute/python:program_input_provider",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_py_pb2",
@@ -69,8 +70,6 @@ py_test(
         ":execution_context",
         ":program_runner",
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_py_proto",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
@@ -105,5 +104,23 @@ py_test(
         "@pypi//absl_py",
         "@pypi//numpy",
         "@pypi//portpicker",
+    ],
+)
+
+py_library(
+    name = "external_service_handle",
+    srcs = ["external_service_handle.py"],
+    deps = [
+        "@federated-compute//fcp/confidentialcompute/python:external_service_handle",
+    ],
+)
+
+py_test(
+    name = "external_service_handle_test",
+    srcs = ["external_service_handle_test.py"],
+    tags = ["noasan"],
+    deps = [
+        ":external_service_handle",
+        "@pypi//absl_py",
     ],
 )

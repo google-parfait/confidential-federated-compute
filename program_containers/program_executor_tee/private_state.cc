@@ -33,6 +33,9 @@ absl::StatusOr<std::unique_ptr<PrivateState>> PrivateState::CreatePrivateState(
   } else {
     next_update_state.set_num_runs_remaining(default_max_num_runs);
   }
+  if (next_update_state.num_runs_remaining() <= 0) {
+    return absl::FailedPreconditionError("No budget remaining.");
+  }
   // Decrease the number of runs remaining to account for the program that will
   // run.
   next_update_state.set_num_runs_remaining(
