@@ -15,11 +15,13 @@
 
 #include "absl/numeric/bits.h"
 #include "containers/big_endian.h"
+#include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 
@@ -160,48 +162,94 @@ absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
   }
   return min_max_event_times;
 }
-}  // namespace
 
-absl::StatusOr<KeyValue> MetadataMapFn::Map(KeyValue input,
-                                            Session::Context& context) {
-  FederatedComputeCheckpointParserFactory parser_factory;
-  absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
-      parser_factory.Create(absl::Cord(std::move(input.value.data)));
-  if (!parser.ok()) {
-    return absl::Status(
-        parser.status().code(),
-        absl::StrCat("Failed to deserialize checkpoint: ", parser.status()));
-  }
+// MapFn implementation that computes metadata for each input.
+class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
+ public:
+  explicit MetadataMapFn(
+      const fcp::confidentialcompute::MetadataContainerConfig& config)
+      : config_(config) {};
 
-  FCP_ASSIGN_OR_RETURN(uint64_t upper_64_hashed_privacy_id,
-                       GetUpper64HashedPrivacyId(**parser));
-  FCP_ASSIGN_OR_RETURN(std::optional<MinMaxEventTimes> min_max_event_times,
-                       GetMinMaxEventTimes(**parser));
-
-  PayloadMetadataSet payload_metadata_set;
-  for (auto& [name, metadata_config] : config_.metadata_configs()) {
-    FCP_ASSIGN_OR_RETURN(
-        uint64_t partition_key,
-        ComputePartitionKey(upper_64_hashed_privacy_id, metadata_config));
-    TeePayloadMetadata tee_payload_metadata;
-    tee_payload_metadata.set_partition_key(partition_key);
-
-    if (min_max_event_times.has_value()) {
-      FCP_ASSIGN_OR_RETURN(
-          EventTimeRange event_time_range,
-          GetCoarseEventTimeRange(
-              min_max_event_times->min, min_max_event_times->max,
-              metadata_config.event_time_range_granularity()));
-      *tee_payload_metadata.mutable_event_time_range() =
-          std::move(event_time_range);
+  // Parses the unencrypted data, for each metadata config compute the
+  // corresponding metadata.
+  absl::StatusOr<KeyValue> Map(KeyValue input,
+                               Session::Context& context) override {
+    FederatedComputeCheckpointParserFactory parser_factory;
+    absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
+        parser_factory.Create(absl::Cord(std::move(input.value.data)));
+    if (!parser.ok()) {
+      return absl::Status(
+          parser.status().code(),
+          absl::StrCat("Failed to deserialize checkpoint: ", parser.status()));
     }
 
-    payload_metadata_set.mutable_metadata()->insert(
-        {name, std::move(tee_payload_metadata)});
+    FCP_ASSIGN_OR_RETURN(uint64_t upper_64_hashed_privacy_id,
+                         GetUpper64HashedPrivacyId(**parser));
+    FCP_ASSIGN_OR_RETURN(std::optional<MinMaxEventTimes> min_max_event_times,
+                         GetMinMaxEventTimes(**parser));
+
+    PayloadMetadataSet payload_metadata_set;
+    for (auto& [name, metadata_config] : config_.metadata_configs()) {
+      FCP_ASSIGN_OR_RETURN(
+          uint64_t partition_key,
+          ComputePartitionKey(upper_64_hashed_privacy_id, metadata_config));
+      TeePayloadMetadata tee_payload_metadata;
+      tee_payload_metadata.set_partition_key(partition_key);
+
+      if (min_max_event_times.has_value()) {
+        FCP_ASSIGN_OR_RETURN(
+            EventTimeRange event_time_range,
+            GetCoarseEventTimeRange(
+                min_max_event_times->min, min_max_event_times->max,
+                metadata_config.event_time_range_granularity()));
+        *tee_payload_metadata.mutable_event_time_range() =
+            std::move(event_time_range);
+      }
+
+      payload_metadata_set.mutable_metadata()->insert(
+          {name, std::move(tee_payload_metadata)});
+    }
+
+    KeyValue output;
+    output.key.PackFrom(payload_metadata_set);
+    return output;
   }
 
-  KeyValue output;
-  output.key.PackFrom(payload_metadata_set);
-  return output;
+ private:
+  const fcp::confidentialcompute::MetadataContainerConfig config_;
+};
+
+// Factory for the MetadataMapFn. Thread-safe.
+class MetadataMapFnFactory
+    : public confidential_federated_compute::fns::FnFactory {
+ public:
+  explicit MetadataMapFnFactory(
+      fcp::confidentialcompute::MetadataContainerConfig config)
+      : config_(std::move(config)) {}
+
+  absl::StatusOr<
+      std::unique_ptr<confidential_federated_compute::fns::FnFactory::Fn>>
+  CreateFn() const override {
+    return std::make_unique<MetadataMapFn>(config_);
+  }
+
+ private:
+  const fcp::confidentialcompute::MetadataContainerConfig config_;
+};
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMetadataMapFnFactory(
+    const google::protobuf::Any& /*configuration*/,
+    const google::protobuf::Any& config_constraints) {
+  // We expect to find the configuration that describes what metadata to
+  // generate in the config_constraints. We don't use the untrusted
+  // `configuration` parameter.
+  MetadataContainerConfig config;
+  if (!config_constraints.UnpackTo(&config)) {
+    return absl::InvalidArgumentError(
+        "Config constraints cannot be unpacked to MetadataContainerConfig.");
+  }
+  return std::make_unique<MetadataMapFnFactory>(std::move(config));
 }
+
 }  // namespace confidential_federated_compute::metadata

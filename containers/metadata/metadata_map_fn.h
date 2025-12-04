@@ -18,28 +18,16 @@
 #include <string>
 #include <vector>
 
-#include "containers/fns/map_fn.h"
-#include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
+#include "containers/fns/fn_factory.h"
 
 namespace confidential_federated_compute::metadata {
 
-// MapFn implementation that computes metadata for each input.
-// Not thread-safe.
-class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
- public:
-  explicit MetadataMapFn(
-      const fcp::confidentialcompute::MetadataContainerConfig& config)
-      : config_(config) {};
+// Validates the config constraints and creates a FnFactory for metadata MapFn
+// instances.
+absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMetadataMapFnFactory(
+    const google::protobuf::Any& configuration,
+    const google::protobuf::Any& config_constraints);
 
-  // Parses the unencrypted data, for each metadata config compute the
-  // corresponding metadata.
-  absl::StatusOr<confidential_federated_compute::fns::KeyValue> Map(
-      confidential_federated_compute::fns::KeyValue input,
-      Context& context) override;
-
- private:
-  const fcp::confidentialcompute::MetadataContainerConfig config_;
-};
 }  // namespace confidential_federated_compute::metadata
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_METADATA_METADATA_MAP_FN_H_
