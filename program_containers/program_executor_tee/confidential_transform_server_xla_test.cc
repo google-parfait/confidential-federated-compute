@@ -49,8 +49,7 @@ def trusted_program(input_provider, external_service_handle):
   result = comp()
   result_val, _ = tff.framework.serialize_value(result, federated_language.framework.infer_type(result))
   external_service_handle.release_unencrypted(result_val.SerializeToString(), b"result")
-  )",
-                      UseKms());
+  )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;
   ::fcp::confidentialcompute::SessionResponse session_response;
@@ -65,6 +64,21 @@ def trusted_program(input_provider, external_service_handle):
   released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.array().int32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().int32_list().value().at(0), 10);
+
+  // State changes should only be checked in the KMS case.
+  if (UseKms()) {
+    auto released_state_changes =
+        this->fake_data_read_write_service_.GetReleasedStateChanges();
+    // There is no initial state.
+    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+    // The first release operation triggers a state change that should decrease
+    // the number of remaining runs and increment the counter.
+    BudgetState expected_first_release_budget;
+    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+    expected_first_release_budget.set_counter(1);
+    ASSERT_EQ(released_state_changes["result"].second.value(),
+              expected_first_release_budget.SerializeAsString());
+  }
 
   ASSERT_TRUE(session_response.has_finalize());
 }
@@ -84,8 +98,7 @@ def trusted_program(input_provider, external_service_handle):
     grad = grad.tolist()
     grad_val, _ = tff.framework.serialize_value(grad, federated_language.framework.infer_type(grad))
     external_service_handle.release_unencrypted(grad_val.SerializeToString(), b"result")
-  )",
-                      UseKms());
+  )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;
   ::fcp::confidentialcompute::SessionResponse session_response;
@@ -100,6 +113,21 @@ def trusted_program(input_provider, external_service_handle):
   released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.array().float32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().float32_list().value().at(0), 4.0);
+
+  // State changes should only be checked in the KMS case.
+  if (UseKms()) {
+    auto released_state_changes =
+        this->fake_data_read_write_service_.GetReleasedStateChanges();
+    // There is no initial state.
+    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+    // The first release operation triggers a state change that should decrease
+    // the number of remaining runs and increment the counter.
+    BudgetState expected_first_release_budget;
+    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+    expected_first_release_budget.set_counter(1);
+    ASSERT_EQ(released_state_changes["result"].second.value(),
+              expected_first_release_budget.SerializeAsString());
+  }
 
   ASSERT_TRUE(session_response.has_finalize());
 }

@@ -29,6 +29,8 @@ namespace confidential_federated_compute::program_executor_tee {
 // private state that is persisted via KMS.
 class PrivateState {
  public:
+  virtual ~PrivateState() = default;
+
   // Construct a PrivateState instance based on the initial state, if provided,
   // or the default max number of runs.
   static absl::StatusOr<std::unique_ptr<PrivateState>> CreatePrivateState(

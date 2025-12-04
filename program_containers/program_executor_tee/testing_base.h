@@ -22,6 +22,7 @@
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
@@ -39,6 +40,7 @@ namespace confidential_federated_compute::program_executor_tee {
 
 namespace {
 
+using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
@@ -59,6 +61,7 @@ using ::testing::NiceMock;
 using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
+inline constexpr int kMaxNumRuns = 5;
 
 class PythonEnvironment : public ::testing::Environment {
  public:
@@ -123,7 +126,7 @@ ProgramExecutorTeeConfigConstraints CreateProgramExecutorTeeConfigConstraints(
     config_constraints.set_worker_reference_values(
         absl::Base64Escape(worker_reference_values.SerializeAsString()));
   }
-  config_constraints.set_num_runs(5);
+  config_constraints.set_num_runs(kMaxNumRuns);
   return config_constraints;
 }
 
@@ -154,7 +157,29 @@ class ProgramExecutorTeeTest : public Test {
     stub_ = ConfidentialTransform::NewStub(grpc::CreateChannel(
         localhost + std::to_string(confidential_transform_server_port),
         grpc::InsecureChannelCredentials()));
+  }
 
+  ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
+
+ protected:
+  std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
+  std::unique_ptr<T> service_;
+  std::unique_ptr<Server> server_;
+  std::unique_ptr<ConfidentialTransform::Stub> stub_;
+};
+
+template <typename T>
+class ProgramExecutorTeeSessionTest
+    : public ProgramExecutorTeeTest<T>,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  static std::string TestNameSuffix(
+      const ::testing::TestParamInfo<bool>& info) {
+    return info.param ? "WithKms" : "NoKms";
+  }
+
+  ProgramExecutorTeeSessionTest() : fake_data_read_write_service_(GetParam()) {
+    const std::string localhost = "[::1]:";
     int data_read_write_service_port;
     ServerBuilder data_read_write_builder;
     data_read_write_builder.AddListeningPort(localhost + "0",
@@ -168,31 +193,8 @@ class ProgramExecutorTeeTest : public Test {
               << data_read_write_server_address_ << std::endl;
   }
 
-  ~ProgramExecutorTeeTest() override { server_->Shutdown(); }
-
- protected:
-  std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
-  std::unique_ptr<T> service_;
-  std::unique_ptr<Server> server_;
-  std::unique_ptr<ConfidentialTransform::Stub> stub_;
-
-  std::string data_read_write_server_address_;
-  FakeDataReadWriteService fake_data_read_write_service_;
-  std::unique_ptr<Server> fake_data_read_write_server_;
-};
-
-template <typename T>
-class ProgramExecutorTeeSessionTest
-    : public ProgramExecutorTeeTest<T>,
-      public ::testing::WithParamInterface<bool> {
- public:
-  static std::string TestNameSuffix(
-      const ::testing::TestParamInfo<bool>& info) {
-    return info.param ? "WithKms" : "NoKms";
-  }
-
   void CreateSession(
-      std::string program, bool use_kms,
+      std::string program, std::string kms_private_state = "",
       std::vector<std::string> client_ids = {},
       std::string client_data_dir = "",
       std::map<std::string, std::string> file_id_to_filepath = {}) {
@@ -215,6 +217,16 @@ class ProgramExecutorTeeSessionTest
       file.close();
       requests.push_back(std::move(request));
     }
+    if (UseKms()) {
+      StreamInitializeRequest request;
+      request.mutable_write_configuration()->set_commit(true);
+      request.mutable_write_configuration()->set_data(kms_private_state);
+      ConfigurationMetadata* metadata = request.mutable_write_configuration()
+                                            ->mutable_first_request_metadata();
+      metadata->set_configuration_id(kPrivateStateConfigId);
+      metadata->set_total_size_bytes(kms_private_state.size());
+      requests.push_back(std::move(request));
+    }
 
     ProgramExecutorTeeInitializeConfig config =
         CreateProgramExecutorTeeInitializeConfig(
@@ -225,15 +237,18 @@ class ProgramExecutorTeeSessionTest
         stream_initialize_request.mutable_initialize_request();
     initialize_request->set_max_num_sessions(kMaxNumSessions);
     initialize_request->mutable_configuration()->PackFrom(config);
-    if (use_kms) {
+    if (UseKms()) {
       AuthorizeConfidentialTransformResponse::ProtectedResponse
           protected_response;
-      *protected_response.add_result_encryption_keys() =
-          "result_encryption_key";
+      protected_response.add_result_encryption_keys(
+          fake_data_read_write_service_.GetResultPublicPrivateKeyPair().first);
+      protected_response.add_decryption_keys(
+          fake_data_read_write_service_.GetInputPublicPrivateKeyPair().second);
       AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
       associated_data.mutable_config_constraints()->PackFrom(
           CreateProgramExecutorTeeConfigConstraints(program));
-      associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+      associated_data.add_authorized_logical_pipeline_policies_hashes(
+          kAccessPolicyHash);
       auto encrypted_request =
           this->oak_client_encryptor_
               ->Encrypt(protected_response.SerializeAsString(),
@@ -274,6 +289,10 @@ class ProgramExecutorTeeSessionTest
       stream_;
   std::unique_ptr<NonceGenerator> nonce_generator_;
   std::string public_key_;
+
+  std::string data_read_write_server_address_;
+  FakeDataReadWriteService fake_data_read_write_service_;
+  std::unique_ptr<Server> fake_data_read_write_server_;
 };
 
 }  // namespace

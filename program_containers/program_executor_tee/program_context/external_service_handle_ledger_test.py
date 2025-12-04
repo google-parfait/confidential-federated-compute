@@ -48,9 +48,11 @@ class ExternalServiceHandleForLedgerTest(unittest.TestCase):
     serialized_value = value.SerializeToString()
     handle.release_unencrypted(serialized_value, result_uri)
 
-    released_data = data_read_write_service.get_released_data();
+    released_data = data_read_write_service.get_released_data()
     self.assertEqual(len(released_data), 1)
-    self.assertEqual(released_data["my_result"].encode('latin-1'), serialized_value);
+    self.assertEqual(
+        released_data["my_result"].encode("latin-1"), serialized_value
+    )
 
     server.stop()
 

@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import Optional
 
 from fcp.confidentialcompute.python import program_input_provider
+from program_executor_tee.program_context import external_service_handle
 from program_executor_tee.program_context import external_service_handle_ledger
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
@@ -33,6 +34,8 @@ def run_program(
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
     resolve_uri_to_tensor: Callable[[str, str], tensor_pb2.TensorProto],
+    use_kms: bool,
+    release_unencrypted: Callable[[bytes, bytes], None],
 ):
   """Executes a federated program.
 
@@ -54,6 +57,8 @@ def run_program(
       requests.
     resolve_uri_to_tensor: Function that resolves pointers to data. Expects a
       uri and key and returns an AggCore tensor proto.
+    use_kms: Whether KMS is being used.
+    release_unencrypted: Function for releasing data. Expects a value and key.
 
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
@@ -83,8 +88,17 @@ def run_program(
       model_id_to_zip_file,
       resolve_uri_to_tensor,
   )
-  initialized_external_service_handle = (
-      external_service_handle_ledger.ExternalServiceHandleForLedger(outgoing_server_address)
-  )
+  if use_kms:
+    initialized_external_service_handle = (
+        external_service_handle.ExternalServiceHandle(
+            outgoing_server_address, release_unencrypted
+        )
+    )
+  else:
+    initialized_external_service_handle = (
+        external_service_handle_ledger.ExternalServiceHandleForLedger(
+            outgoing_server_address
+        )
+    )
 
   trusted_program(input_provider, initialized_external_service_handle)
