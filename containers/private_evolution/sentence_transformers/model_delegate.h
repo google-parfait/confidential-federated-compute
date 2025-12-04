@@ -40,6 +40,12 @@ class ModelDelegate {
       std::optional<std::string> prompt) = 0;
 };
 
+// Factory class for creating ModelDelegate.
+class ModelDelegateFactory {
+ public:
+  virtual std::unique_ptr<ModelDelegate> Create() = 0;
+};
+
 }  // namespace confidential_federated_compute::sentence_transformers
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PRIVATE_EVOLUTION_SENTENCE_TRANSFORMERS_MODEL_DELEGATE_H_

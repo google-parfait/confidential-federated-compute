@@ -26,7 +26,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.4.1")
 bazel_dep(name = "boringssl", version = "0.20250514.0")
-bazel_dep(name = "confidential-federated-compute", version = "0.0.6")
+bazel_dep(name = "confidential-federated-compute", version = "0.0.11")
 bazel_dep(name = "flatbuffers", version = "25.2.10")
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
@@ -63,13 +63,13 @@ http_archive(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-jHQ2VFmpHKJPXtyP3qYfHNDDE0CjHMZty8TXUgxfpGg=",
+    integrity = "sha256-zPDF7jOES+/S5SEIMHMhrr3HRObktYSVSSQwEp1svaM=",
     patches = [
         "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
         "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
     ],
-    strip_prefix = "federated-compute-76646c31268009ab6caa24e777d92e5536ccff0f",
-    url = "https://github.com/google/federated-compute/archive/76646c31268009ab6caa24e777d92e5536ccff0f.tar.gz",
+    strip_prefix = "federated-compute-f4aacf7b4e949cf2fb27592823f8e477f719417e",
+    url = "https://github.com/google/federated-compute/archive/f4aacf7b4e949cf2fb27592823f8e477f719417e.tar.gz",
 )
 
 git_repository(
@@ -82,10 +82,10 @@ git_repository(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-D0Osnecy+TOS3dkNIU0t2BDvBX82vzFXpHUqgeczDqQ=",
+    integrity = "sha256-LRtgjagA16SepVffwpMCh8zfT60rzGSYRekKAGaQ2ss=",
     patches = ["//third_party/org_tensorflow_federated:tff.patch"],
-    strip_prefix = "tensorflow-federated-f3e41148a3ea633370edb67cabde0a62c9ee2403",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/f3e41148a3ea633370edb67cabde0a62c9ee2403.tar.gz",
+    strip_prefix = "tensorflow-federated-590104cb7c358ee5c4efa8937e0ccf93a5925265",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/590104cb7c358ee5c4efa8937e0ccf93a5925265.tar.gz",
 )
 
 http_archive(

@@ -41,6 +41,14 @@ class PyModelDelegate : public ModelDelegate {
       std::optional<std::string> prompt) override;
 };
 
+// Factory class for creating ModelDelegate.
+class PyModelDelegateFactory : public ModelDelegateFactory {
+ public:
+  std::unique_ptr<ModelDelegate> Create() override {
+    return std::make_unique<PyModelDelegate>();
+  }
+};
+
 }  // namespace confidential_federated_compute::sentence_transformers
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PRIVATE_EVOLUTION_SENTENCE_TRANSFORMERS_PY_MODEL_DELEGATE_H_
