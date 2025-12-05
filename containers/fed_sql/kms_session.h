@@ -67,7 +67,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-      std::shared_ptr<MessageFactory> message_factory);
+      std::shared_ptr<MessageFactory> message_factory,
+      absl::string_view on_device_query_name);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
@@ -175,6 +176,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Prototype for the logged message. Used to create dynamic messages from
   // serialized message checkpoints.
   std::shared_ptr<MessageFactory> message_factory_;
+  // The name of the query that executes on the device. This is used to prefix
+  // message field-backed column names.
+  std::string on_device_query_name_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

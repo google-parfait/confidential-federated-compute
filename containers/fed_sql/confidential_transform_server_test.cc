@@ -2427,12 +2427,14 @@ class InitializedFedSqlServerKmsWithMessagesTest : public FedSqlServerTest {
     MessageHelper message_helper;
     google::protobuf::FileDescriptorSet descriptor_set;
     message_helper.file_descriptor()->CopyTo(descriptor_set.add_file());
-    init_config.mutable_private_logger_uploads_config()
-        ->mutable_message_description()
+    fcp::confidentialcompute::PrivateLoggerUploadsConfig*
+        private_logger_uploads_config =
+            init_config.mutable_private_logger_uploads_config();
+    private_logger_uploads_config->mutable_message_description()
         ->set_message_descriptor_set(descriptor_set.SerializeAsString());
-    init_config.mutable_private_logger_uploads_config()
-        ->mutable_message_description()
+    private_logger_uploads_config->mutable_message_description()
         ->set_message_name(message_helper.message_name());
+    private_logger_uploads_config->set_on_device_query_name("test_query");
 
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
@@ -2533,7 +2535,7 @@ TEST_F(InitializedFedSqlServerKmsWithMessagesTest, SessionWriteRequestSuccess) {
       message_helper.CreateMessage(8, 1)->SerializeAsString());
   std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
   absl::StatusOr<std::string> message = BuildMessageCheckpoint(
-      std::move(serialized_messages), std::move(event_times));
+      std::move(serialized_messages), std::move(event_times), "test_query");
   ASSERT_THAT(message, IsOk());
 
   BlobHeader header;

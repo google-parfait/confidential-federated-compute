@@ -673,7 +673,7 @@ FedSqlConfidentialTransform::CreateSession() {
         std::move(aggregator), *intrinsics, inference_configuration_,
         dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
         reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
-        GetOakSigningKeyHandle(), message_factory);
+        GetOakSigningKeyHandle(), message_factory, on_device_query_name_);
   } else {
     return std::make_unique<FedSqlSession>(
         std::move(aggregator), *intrinsics, inference_configuration_,
