@@ -65,13 +65,14 @@ cc_library(
     name = "map_fn",
     srcs = ["map_fn.cc"],
     hdrs = ["map_fn.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//containers:session",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:any_cc_proto",
         "@federated-compute//fcp/base:base",
-        "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )
 

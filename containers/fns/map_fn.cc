@@ -13,12 +13,13 @@
 // limitations under the License.
 #include "containers/fns/map_fn.h"
 
-#include <optional>
 #include <string>
-#include <vector>
+#include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "containers/session.h"
-#include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
