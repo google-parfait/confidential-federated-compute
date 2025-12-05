@@ -66,7 +66,8 @@ class MessageHelper {
 // event_time tensor.
 absl::StatusOr<std::string> BuildMessageCheckpoint(
     std::vector<std::string> serialized_messages,
-    std::vector<std::string> event_times);
+    std::vector<std::string> event_times,
+    absl::string_view on_device_query_name);
 
 }  // namespace confidential_federated_compute::fed_sql::testing
 

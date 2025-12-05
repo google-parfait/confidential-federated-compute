@@ -133,21 +133,28 @@ BlobMetadata CreateBlobMetadata(const EncryptMessageResult& encrypted_message,
 
 absl::StatusOr<Input> CreateInputFromMessageCheckpoint(
     BlobHeader blob_header, CheckpointParser* checkpoint,
-    MessageFactory& message_factory) {
+    MessageFactory& message_factory, absl::string_view on_device_query_name) {
+  std::string column_prefix = absl::StrCat(on_device_query_name, "/");
   FCP_ASSIGN_OR_RETURN(Tensor entry_tensor,
-                       checkpoint->GetTensor(kPrivateLoggerEntryKey));
+                       checkpoint->GetTensor(absl::StrCat(
+                           column_prefix, kPrivateLoggerEntryKey)));
   if (entry_tensor.dtype() !=
       tensorflow_federated::aggregation::DataType::DT_STRING) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "`%s` tensor must be a string tensor", kPrivateLoggerEntryKey));
   }
-  FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
-                       checkpoint->GetTensor(kEventTimeColumnName));
+  FCP_ASSIGN_OR_RETURN(
+      Tensor time_tensor,
+      checkpoint->GetTensor(absl::StrCat(column_prefix, kEventTimeColumnName)));
   if (time_tensor.dtype() !=
       tensorflow_federated::aggregation::DataType::DT_STRING) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "`%s` tensor must be a string tensor", kEventTimeColumnName));
   }
+
+  // Rename the time tensor to remove the column prefix. Pipelines that process
+  // Message-based checkpoints don't use the column name prefix.
+  FCP_RETURN_IF_ERROR(time_tensor.set_name(kEventTimeColumnName));
 
   std::vector<std::unique_ptr<google::protobuf::Message>> messages;
   messages.reserve(entry_tensor.num_elements());
@@ -182,7 +189,8 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<PrivateState> private_state,
     const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-    std::shared_ptr<MessageFactory> message_factory)
+    std::shared_ptr<MessageFactory> message_factory,
+    absl::string_view on_device_query_name)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       sensitive_values_key_(sensitive_values_key),
@@ -191,7 +199,8 @@ KmsFedSqlSession::KmsFedSqlSession(
       private_state_(std::move(private_state)),
       signing_key_handle_(signing_key_handle),
       dp_unit_parameters_(dp_unit_parameters),
-      message_factory_(std::move(message_factory)) {
+      message_factory_(std::move(message_factory)),
+      on_device_query_name_(on_device_query_name) {
   CHECK(reencryption_keys_.size() == 2)
       << "KmsFedSqlSession supports exactly two reencryption keys - Merge "
          "and Report.";
@@ -326,8 +335,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   }
   absl::StatusOr<Input> input;
   if (message_factory_ != nullptr) {
-    input = CreateInputFromMessageCheckpoint(blob_header, parser->get(),
-                                             *message_factory_);
+    input = CreateInputFromMessageCheckpoint(
+        blob_header, parser->get(), *message_factory_, on_device_query_name_);
     // TODO: handle sensitive columns for Message checkpoints.
   } else {
     FCP_ASSIGN_OR_RETURN(

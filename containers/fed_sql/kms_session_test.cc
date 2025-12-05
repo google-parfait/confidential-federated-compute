@@ -169,7 +169,7 @@ KmsFedSqlSession CreateDefaultSession() {
       std::vector<std::string>{merge_public_private_key_pair.first,
                                report_public_private_key_pair.first},
       "reencryption_policy_hash", CreatePrivateState("", 1), {},
-      mock_signing_key_handle, /*prototype=*/nullptr);
+      mock_signing_key_handle, /*prototype=*/nullptr, "test_query");
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -310,7 +310,7 @@ class KmsFedSqlSessionWriteTest : public Test {
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, default_budget),
         absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
-        /*prototype=*/nullptr);
+        /*prototype=*/nullptr, "test_query");
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1143,7 +1143,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
-        /*prototype=*/nullptr);
+        /*prototype=*/nullptr, "test_query");
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1356,7 +1356,8 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
-        std::make_shared<TestMessageFactory>(message_helper_.prototype()));
+        std::make_shared<TestMessageFactory>(message_helper_.prototype()),
+        "test_query");
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects
@@ -1430,7 +1431,7 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest,
                                           "2023-01-01T00:00:01Z"};
 
   absl::StatusOr<std::string> data = BuildMessageCheckpoint(
-      std::move(serialized_messages), std::move(event_times));
+      std::move(serialized_messages), std::move(event_times), "test_query");
   ASSERT_THAT(data, IsOk());
 
   // 2. Write, Commit, Finalize, Verify
@@ -1498,7 +1499,7 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
                                           "2023-01-01T00:00:01Z"};
 
   absl::StatusOr<std::string> data = BuildMessageCheckpoint(
-      std::move(serialized_messages), std::move(event_times));
+      std::move(serialized_messages), std::move(event_times), "test_query");
   ASSERT_THAT(data, IsOk());
 
   // 2. Write, Commit

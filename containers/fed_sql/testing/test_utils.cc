@@ -132,9 +132,13 @@ absl::string_view MessageHelper::message_name() const {
 
 absl::StatusOr<std::string> BuildMessageCheckpoint(
     std::vector<std::string> serialized_messages,
-    std::vector<std::string> event_times) {
+    std::vector<std::string> event_times,
+    absl::string_view on_device_query_name) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
+
+  std::string entry_tensor_name =
+      absl::StrCat(on_device_query_name, "/", kPrivateLoggerEntryKey);
 
   // Create entry tensor
   FCP_ASSIGN_OR_RETURN(
@@ -142,17 +146,18 @@ absl::StatusOr<std::string> BuildMessageCheckpoint(
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(serialized_messages.size())},
                      CreateStringTestData(std::move(serialized_messages))));
-  FCP_RETURN_IF_ERROR(
-      builder->Add(kPrivateLoggerEntryKey, std::move(entry_tensor)));
+  FCP_RETURN_IF_ERROR(builder->Add(entry_tensor_name, std::move(entry_tensor)));
 
   // Create event_time tensor
+  std::string event_time_tensor_name =
+      absl::StrCat(on_device_query_name, "/", kEventTimeColumnName);
   FCP_ASSIGN_OR_RETURN(
       auto time_tensor,
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(event_times.size())},
                      CreateStringTestData(std::move(event_times))));
   FCP_RETURN_IF_ERROR(
-      builder->Add(kEventTimeColumnName, std::move(time_tensor)));
+      builder->Add(event_time_tensor_name, std::move(time_tensor)));
 
   FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord, builder->Build());
   return std::string(checkpoint_cord);
