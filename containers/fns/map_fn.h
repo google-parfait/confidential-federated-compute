@@ -14,13 +14,13 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_MAP_FN_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_MAP_FN_H_
 
-#include <optional>
 #include <string>
-#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "containers/session.h"
 #include "fcp/base/monitoring.h"
-#include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
