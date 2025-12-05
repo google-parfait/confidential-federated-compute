@@ -20,13 +20,14 @@
 #include <queue>
 #include <thread>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 
 // A PythonTask stores a function to run and the promise that should be set upon
 // completion.
 struct PythonTask {
   std::function<void()> function;
-  std::promise<void> promise;
+  std::promise<absl::Status> promise;
 };
 
 // The PythonManager guards access to a single execution thread that holds the
@@ -46,7 +47,7 @@ class PythonManager {
   void Stop();
 
   // Add a function to execute to the queue.
-  void ExecuteTask(std::function<void()> function);
+  absl::Status ExecuteTask(std::function<void()> function);
 
  private:
   PythonManager() = default;

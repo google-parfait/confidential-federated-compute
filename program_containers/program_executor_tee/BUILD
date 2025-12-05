@@ -45,6 +45,7 @@ cc_library(
     hdrs = ["python_manager.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
     ],

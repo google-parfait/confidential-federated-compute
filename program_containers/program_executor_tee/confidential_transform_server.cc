@@ -163,14 +163,7 @@ ProgramExecutorTeeSession::Finalize(
   };
 
   // Submit the work to the python execution queue and wait for the result.
-  try {
-    PythonManager::GetInstance().ExecuteTask(python_task);
-  } catch (const pybind11::error_already_set& e) {
-    return absl::InternalError("Failed to execute python function: " +
-                               std::string(e.what()));
-  } catch (...) {
-    return absl::InternalError("Failed to execute python function.");
-  }
+  FCP_RETURN_IF_ERROR(PythonManager::GetInstance().ExecuteTask(python_task));
 
   return fcp::confidentialcompute::FinalizeResponse();
 }
