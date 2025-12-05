@@ -1,0 +1,13 @@
+{
+  "url": "https://github.com/google/confidential-federated-compute/archive/dc4c31fe4cfe66afd78f6a4568bfb22704529045.tar.gz",
+  "integrity": "sha256-ZVOAuO13YZej1tczv4HxZyb0VCn9VhuWxH4pMPud9PA=",
+  "strip_prefix": "confidential-federated-compute-dc4c31fe4cfe66afd78f6a4568bfb22704529045",
+  "overlay": {
+    "BUILD": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+    "extensions.bzl": "sha256-uAUSw7OaXb5dAH9sAlFqChSP2CEftlrU3mC1W1LWhRQ=",
+    "third_party/libcppbor/BUILD": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+    "third_party/libcppbor/libcppbor.patch": "sha256-XclgZAsEIbtNFeMhrGTtBcX7JsKg+gAWKrfDqYzSoy8=",
+    "third_party/federated_compute/libcppbor.patch": "sha256-6TE3Kv+geT899eDeSw2zZpr7Rx+5SV6RNchyBv1mvTU=",
+    "third_party/federated_compute/visibility.patch": "sha256-ECM/E/q/JanIO4V32jAqcQ4WKjQ6sjGG3BVzJMmAs0o="
+  }
+}
