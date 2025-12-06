@@ -67,6 +67,7 @@ class DataParser {
   // TODO: b/451714072 - Remove the nonce arg once the KMS migration is
   // complete.
   absl::StatusOr<std::string> ParseReadResponseToFcCheckpoint(
+      std::string uri,
       const fcp::confidentialcompute::outgoing::ReadResponse& read_response,
       const std::optional<std::string>& nonce);
 
@@ -89,6 +90,11 @@ class DataParser {
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
   // The authorized logical policy hashes for this container.
   std::set<std::string> authorized_logical_pipeline_policies_hashes_;
+
+  // To prevent orchestrator attacks where the same blob is returned for
+  // multiple filenames, we maintain a blob_id -> filename map and check that a
+  // given blob_id is only seen for one filename.
+  absl::flat_hash_map<std::string, std::string> blob_id_to_filename_map_;
 
   // TODO: b/451714072 - Delete the caching and nonce support once the KMS
   // migration is complete.

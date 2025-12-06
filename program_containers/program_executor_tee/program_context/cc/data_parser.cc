@@ -141,7 +141,7 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
   // Add the checkpoint to the cache if the ledger is being used.
   FCP_ASSIGN_OR_RETURN(
       std::string checkpoint,
-      ParseReadResponseToFcCheckpoint(combined_read_response, nonce));
+      ParseReadResponseToFcCheckpoint(uri, combined_read_response, nonce));
   if (!use_kms_) {
     absl::MutexLock lock(&cache_mutex_);
     uri_to_checkpoint_cache_[uri] = checkpoint;
@@ -150,7 +150,7 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
 }
 
 absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
-    const ReadResponse& read_response,
+    std::string uri, const ReadResponse& read_response,
     const std::optional<std::string>& nonce) {
   if (read_response.first_response_metadata().has_unencrypted()) {
     return read_response.data();
@@ -189,6 +189,17 @@ absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
         "BlobHeader.access_policy_sha256 does not match any "
         "authorized_logical_pipeline_policies_hashes returned by "
         "KMS.");
+  }
+
+  // Check that the returned blob has a blob id that has either never been seen
+  // before, or was previously seen for the same filename. A malicious
+  // orchestrator could return the same blob for multiple filenames.
+  if (blob_id_to_filename_map_.find(blob_header.blob_id()) ==
+      blob_id_to_filename_map_.end()) {
+    blob_id_to_filename_map_[blob_header.blob_id()] = uri;
+  } else if (blob_id_to_filename_map_[blob_header.blob_id()] != uri) {
+    return absl::InvalidArgumentError(
+        "This blob id was previously returned for a different filename.");
   }
 
   return blob_decryptor_->DecryptBlob(read_response.first_response_metadata(),
