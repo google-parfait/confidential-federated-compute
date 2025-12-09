@@ -297,6 +297,37 @@ TEST_P(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
                 "No aggregation tensor found for name different_tensor_name"));
 }
 
+TEST_P(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
+  std::string tensor_name = "tensor_name";
+  std::string checkpoint =
+      BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
+
+  if (GetParam()) {
+    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+        "uri_1", checkpoint, "blob_id_1"));
+    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+        "uri_2", checkpoint, "blob_id_2"));
+    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+        "uri_3", checkpoint, "blob_id_1"));
+
+    // There should be no issue with receiving blob_id_1 for a lookup for uri_1.
+    auto tensor_proto = data_parser_->ResolveUriToTensor("uri_1", tensor_name);
+    ASSERT_TRUE(tensor_proto.ok());
+
+    // There should be no issue with receiving blob_id_2 for a lookup for uri_2.
+    tensor_proto = data_parser_->ResolveUriToTensor("uri_2", tensor_name);
+    ASSERT_TRUE(tensor_proto.ok());
+
+    // Receiving blob_id_1 for a lookup for uri_3 should fail because blob_id_1
+    // was previously seen for uri_1.
+    tensor_proto = data_parser_->ResolveUriToTensor("uri_3", tensor_name);
+    EXPECT_EQ(
+        tensor_proto.status(),
+        absl::InvalidArgumentError(
+            "This blob id was previously returned for a different filename."));
+  }
+}
+
 TEST_P(DataParserTest, ReleaseUnencrypted) {
   // This test only applies to KMS.
   if (GetParam()) {

@@ -76,8 +76,9 @@ class FakeDataReadWriteService
   // Encrypts the provided message and stores it within a ReadResponse in an
   // internal map such that the ReadResponse will be returned in response to a
   // later ReadRequest for the given uri.
-  absl::Status StoreEncryptedMessageForKms(absl::string_view uri,
-                                           absl::string_view message);
+  absl::Status StoreEncryptedMessageForKms(
+      absl::string_view uri, absl::string_view message,
+      std::optional<absl::string_view> blob_id = std::nullopt);
 
   // Stores the provided message within a ReadResponse in an internal map such
   // that the ReadResponse will be returned in response to a later ReadRequest

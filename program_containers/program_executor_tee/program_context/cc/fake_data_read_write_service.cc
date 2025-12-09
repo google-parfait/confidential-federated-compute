@@ -147,7 +147,8 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForLedger(
 }
 
 absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
-    absl::string_view uri, absl::string_view message) {
+    absl::string_view uri, absl::string_view message,
+    std::optional<absl::string_view> blob_id) {
   if (!use_kms_) {
     return absl::InvalidArgumentError(
         "This version of the StoreEncryptedMessage* method should only be "
@@ -160,10 +161,14 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
   }
 
   BlobHeader header;
-  std::string blob_id(kBlobIdSize, '\0');
-  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
-                   blob_id.size());
-  header.set_blob_id(blob_id);
+  if (blob_id.has_value()) {
+    header.set_blob_id(std::string(*blob_id));
+  } else {
+    std::string random_blob_id(kBlobIdSize, '\0');
+    (void)RAND_bytes(reinterpret_cast<unsigned char*>(random_blob_id.data()),
+                     random_blob_id.size());
+    header.set_blob_id(random_blob_id);
+  }
   header.set_key_id(kInputKeyId);
   header.set_access_policy_sha256(kAccessPolicyHash);
   std::string associated_data = header.SerializeAsString();
