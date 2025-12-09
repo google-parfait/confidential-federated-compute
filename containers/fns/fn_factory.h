@@ -15,6 +15,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_FACTORY_H_
 
 #include "absl/status/statusor.h"
+#include "containers/fns/fn.h"
 #include "containers/session.h"
 
 namespace confidential_federated_compute::fns {
@@ -22,9 +23,6 @@ namespace confidential_federated_compute::fns {
 // Interface for the factory that creates Fns.
 class FnFactory {
  public:
-  // A Fn instance is a session.
-  using Fn = confidential_federated_compute::Session;
-
   FnFactory() = default;
   virtual ~FnFactory() = default;
   FnFactory(const FnFactory&) = delete;

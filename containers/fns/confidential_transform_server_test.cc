@@ -27,6 +27,7 @@
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/crypto_test_utils.h"
+#include "containers/fns/fn.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -82,13 +83,12 @@ absl::Status WriteInitializeRequest(
   return FromGrpcStatus(stream->Finish());
 }
 
-class MockSession : public Session {
+class MockFn : public Fn {
  public:
-  MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::ConfigureResponse>),
-              Configure,
-              (fcp::confidentialcompute::ConfigureRequest request,
-               Context& context),
-              (override));
+  MOCK_METHOD((absl::Status), InitializeReplica,
+              (google::protobuf::Any config, Context& context), (override));
+  MOCK_METHOD((absl::Status), FinalizeReplica,
+              (google::protobuf::Any config, Context& context), (override));
   MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>),
               Write,
               (fcp::confidentialcompute::WriteRequest request,
@@ -99,17 +99,11 @@ class MockSession : public Session {
               (fcp::confidentialcompute::CommitRequest request,
                Context& context),
               (override));
-  MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>),
-              Finalize,
-              (fcp::confidentialcompute::FinalizeRequest request,
-               fcp::confidentialcompute::BlobMetadata input_metadata,
-               Context& context),
-              (override));
 };
 
 class MockFnFactory : public FnFactory {
  public:
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Session>>, CreateFn, (),
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Fn>>, CreateFn, (),
               (const, override));
 };
 
@@ -275,16 +269,14 @@ TEST_F(FnConfidentialTransformTest, AlreadyInitializedFails) {
 }
 
 TEST_F(FnConfidentialTransformTest, SessionCallsCreateFn) {
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_fn = std::make_unique<MockFn>();
   // Expect the Configure method to be called once and return an OK status.
-  EXPECT_CALL(*mock_session, Configure(_, _))
-      .WillOnce(Return(fcp::confidentialcompute::ConfigureResponse()));
+  EXPECT_CALL(*mock_fn, InitializeReplica).WillOnce(Return(absl::OkStatus()));
 
   // Expect that the FnFactory is called to create a Fn exactly once
   auto mock_fn_factory = std::make_unique<NiceMock<MockFnFactory>>();
-  EXPECT_CALL(*mock_fn_factory, CreateFn())
-      .WillOnce(Return(std::move(mock_session)));
-  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _))
+  EXPECT_CALL(*mock_fn_factory, CreateFn).WillOnce(Return(std::move(mock_fn)));
+  EXPECT_CALL(mock_fn_factory_provider_, Create)
       .WillOnce(Return(std::move(mock_fn_factory)));
 
   grpc::ClientContext context;

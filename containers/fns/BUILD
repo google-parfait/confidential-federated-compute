@@ -19,11 +19,19 @@ package(
 )
 
 cc_library(
-    name = "confidential_transform_server",
-    srcs = ["confidential_transform_server.cc"],
-    hdrs = ["confidential_transform_server.h"],
+    name = "fns",
+    srcs = [
+        "confidential_transform_server.cc",
+        "map_fn.cc",
+    ],
+    hdrs = [
+        "confidential_transform_server.h",
+        "fn.h",
+        "fn_factory.h",
+        "map_fn.h",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
-        ":fn_factory",
         "//containers:confidential_transform_server_base",
         "//containers:session",
         "@com_google_absl//absl/functional:any_invocable",
@@ -31,7 +39,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:any_cc_proto",
-        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/base:base",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )
 
@@ -39,7 +48,7 @@ cc_test(
     name = "confidential_transform_server_test",
     srcs = ["confidential_transform_server_test.cc"],
     deps = [
-        ":confidential_transform_server",
+        ":fns",
         "//containers:crypto_test_utils",
         "//containers:session",
         "//testing:matchers",
@@ -61,26 +70,11 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "map_fn",
-    srcs = ["map_fn.cc"],
-    hdrs = ["map_fn.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//containers:session",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:any_cc_proto",
-        "@federated-compute//fcp/base:base",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-    ],
-)
-
 cc_test(
     name = "map_fn_test",
     srcs = ["map_fn_test.cc"],
     deps = [
-        ":map_fn",
+        ":fns",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -88,14 +82,5 @@ cc_test(
         "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "fn_factory",
-    hdrs = ["fn_factory.h"],
-    deps = [
-        "//containers:session",
-        "@com_google_absl//absl/status:statusor",
     ],
 )

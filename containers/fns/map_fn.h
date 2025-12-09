@@ -16,80 +16,25 @@
 
 #include <string>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/fns/fn.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
 
-struct Value {
-  // The serialized input or output data.
-  std::string data;
-  // Metadata associated with the data descriving how the data was compressed
-  // and encrypted.
-  // TODO: consider hiding the metadata and providing it automatically.
-  fcp::confidentialcompute::BlobMetadata metadata;
-};
-
-struct KeyValue {
-  google::protobuf::Any key;
-  Value value;
-};
-
 // Session base class for MapFns.
-class MapFn : public confidential_federated_compute::Session {
+class MapFn : public Fn {
  protected:
-  // Does any setup work needed for this Map replica.
-  //
-  // Invoked exactly once on each Map replica (one replica per chunk of work)
-  // before all Map() invocations.
-  //
-  // By default, does nothing.
-  virtual absl::Status InitializeReplica(google::protobuf::Any config,
-                                         Context& context) {
-    return absl::OkStatus();
-  };
-
   // Processes an input element. The input Value.data is unencrypted. Returns a
   // KeyValue containing the corresponding output element along with any
   // metadata.
   virtual absl::StatusOr<KeyValue> Map(KeyValue input, Context& context) = 0;
 
-  // Does any shutdown work needed for this Map replica.
-  //
-  // Invoked exactly once on each Map replica (one replica per chunk of work)
-  // after all Map() invocations.
-  //
-  // By default, does nothing.
-  virtual absl::Status FinalizeReplica(google::protobuf::Any config,
-                                       Context& context) {
-    return absl::OkStatus();
-  };
-
  public:
-  absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
-      fcp::confidentialcompute::ConfigureRequest configure_request,
-      Context& context) override {
-    FCP_RETURN_IF_ERROR(
-        InitializeReplica(configure_request.configuration(), context));
-    return fcp::confidentialcompute::ConfigureResponse();
-  }
-
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
       std::string unencrypted_data, Context& context) override final;
-
-  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
-      fcp::confidentialcompute::FinalizeRequest request,
-      fcp::confidentialcompute::BlobMetadata input_metadata,
-      Context& context) override final {
-    FCP_RETURN_IF_ERROR(FinalizeReplica(request.configuration(), context));
-    // TODO: Add support for releasing the results of MapFn.
-    return fcp::confidentialcompute::FinalizeResponse();
-  }
 
   // No-op for MapFn.
   absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
