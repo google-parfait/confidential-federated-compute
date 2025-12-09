@@ -21,9 +21,9 @@ service TestClientService {
 }
 
 message TestClientGenerateRequest {
-  string prompt = 1;
+  repeated string prompts = 1;
 }
 
 message TestClientGenerateResponse {
-  string response = 1;
+  repeated string responses = 1;
 }

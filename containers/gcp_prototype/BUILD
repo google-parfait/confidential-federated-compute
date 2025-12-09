@@ -32,6 +32,29 @@ cc_proto_library(
     deps = [":policy_proto"],
 )
 
+proto_library(
+    name = "inference_proto",
+    srcs = ["inference.proto"],
+    deps = [
+        "@com_google_googleapis//google/rpc:status_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "inference_cc_proto",
+    deps = [":inference_proto"],
+)
+
+cc_proto_library(
+    name = "google_rpc_code_cc_proto",
+    deps = ["@com_google_googleapis//google/rpc:code_proto"],
+)
+
+cc_proto_library(
+    name = "google_rpc_status_cc_proto",
+    deps = ["@com_google_googleapis//google/rpc:status_proto"],
+)
+
 # C++ library for HTTP client utilities
 cc_library(
     name = "http_client",
@@ -103,6 +126,9 @@ cc_library(
     srcs = ["inference_engine.cc"],
     hdrs = ["inference_engine.h"],
     deps = [
+        ":google_rpc_code_cc_proto",
+        ":google_rpc_status_cc_proto",
+        ":inference_cc_proto",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -121,7 +147,7 @@ cc_binary(
         ":inference_engine",
         ":server_session_config_cc",
         ":attestation_cc",
-        ":session_utils",  # Added dependency
+        ":session_utils",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
@@ -240,6 +266,7 @@ cc_binary(
     srcs = ["test_client.cc"],
     deps = [
         ":client_session_config_cc",
+        ":inference_cc_proto",
         ":proto_util",
         ":session_utils",  # Added dependency
         ":test_client_cc_grpc",

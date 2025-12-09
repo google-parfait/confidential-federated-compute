@@ -36,6 +36,7 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "inference.pb.h"
 #include "inference_engine.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
 #include "server_session_config.h"
@@ -175,35 +176,50 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
         continue;
       }
 
-      std::string decrypted_request =
+      // 1. Get the data as a standard C++ string (existing logic)
+      std::string decrypted_data =
           static_cast<std::string>(decrypted_message->value());
-      LOG(INFO) << "Server decrypted application message: \""
-                << decrypted_request << "\"";
 
-      // Run inference.
-      LOG(INFO) << "Running inference...";
-
-      auto start_time =
-          std::chrono::high_resolution_clock::now();  // START TIMER
-
-      absl::StatusOr<std::string> inference_result =
-          inference_engine_->Infer(decrypted_request);
-
-      auto end_time = std::chrono::high_resolution_clock::now();  // END TIMER
-      std::chrono::duration<double> elapsed = end_time - start_time;
-
-      LOG(INFO) << "Inference completed in " << elapsed.count() << " seconds.";
-
-      std::string response_payload;
-      if (inference_result.ok()) {
-        response_payload = *inference_result;
-        LOG(INFO) << "Inference successful.";
-      } else {
-        LOG(ERROR) << "Inference failed: " << inference_result.status();
-        response_payload = "Error: Inference failed.";
+      // 2. Parse the Batched Request Proto
+      gcp_prototype::BatchedInferenceRequest batch_request;
+      if (!batch_request.ParseFromString(decrypted_data)) {
+        std::string error_msg =
+            "Failed to parse BatchedInferenceRequest proto.";
+        LOG(ERROR) << error_msg;
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, error_msg);
       }
 
-      LOG(INFO) << "Server encrypting and sending application reply.";
+      LOG(INFO) << "Received batch with " << batch_request.requests_size()
+                << " requests.";
+
+      // 3. Delegate to Engine
+      // Pass the full proto in, get the full proto out.
+      auto start_time = std::chrono::high_resolution_clock::now();
+
+      absl::StatusOr<gcp_prototype::BatchedInferenceResponse> response_or =
+          inference_engine_->InferBatch(batch_request);
+
+      auto end_time = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = end_time - start_time;
+
+      if (!response_or.ok()) {
+        LOG(ERROR) << "Batch inference failed: " << response_or.status();
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                            std::string(response_or.status().message()));
+      }
+
+      LOG(INFO) << "Batch processing complete (" << elapsed.count() << "s).";
+
+      // 4. Serialize Response
+      std::string response_payload;
+      if (!response_or->SerializeToString(&response_payload)) {
+        std::string error_msg = "Failed to serialize BatchedInferenceResponse.";
+        LOG(ERROR) << error_msg;
+        return grpc::Status(grpc::StatusCode::INTERNAL, error_msg);
+      }
+
+      // 5. Send Reply
+      LOG(INFO) << "Sending reply (" << response_payload.size() << " bytes).";
       absl::Status write_status = server_session->Write(response_payload);
       CHECK_OK(write_status) << "Failed to write reply message";
 

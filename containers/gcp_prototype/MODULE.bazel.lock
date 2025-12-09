@@ -811,7 +811,7 @@
     "@@googleapis+//:extensions.bzl%switched_rules": {
       "general": {
         "bzlTransitiveDigest": "vG6fuTzXD8MMvHWZEQud0MMH7eoC4GXY0va7VrFFh04=",
-        "usagesDigest": "3V9x6tYyqRtaI4m3fr/xeWRhRea0Ocn0Y7P7365Q6xU=",
+        "usagesDigest": "3cBK2niZqDbznEZOLimNpsNdd7zFdW9gR7rIfIeP2O4=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
