@@ -308,5 +308,77 @@ TEST_F(InferenceModelInternalTest, ProcessInferenceOutputWithRegex) {
   EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
 }
 
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputWithDelimiterParserDefault) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_DELIMITER);
+  std::string output_string = "foo,bar,baz";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(3));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result),
+              ElementsAre("foo", "bar", "baz"));
+}
+
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputWithDelimiterParserCustom) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_DELIMITER);
+  prompt.mutable_delimiter_parser()->set_delimiter("||");
+  std::string output_string = "foo||bar||baz";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(3));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result),
+              ElementsAre("foo", "bar", "baz"));
+}
+
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputWithDelimiterParserSingleValue) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_DELIMITER);
+  std::string output_string = "foo";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(1));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo"));
+}
+
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputWithDelimiterParserAndRegex) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_DELIMITER);
+  prompt.set_regex("val:([a-z]+)");
+  std::string output_string = "val:foo,val:bar";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(2));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

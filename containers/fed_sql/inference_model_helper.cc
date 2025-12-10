@@ -70,60 +70,80 @@ absl::StatusOr<size_t> InferenceOutputProcessor::ProcessInferenceOutput(
     }
   }
 
-  if (prompt.parser() != Prompt::PARSER_AUTO) {
-    std::string value = std::move(inference_output);
-    if (regex.has_value()) {
-      value = RegexMatch(value, *regex);
+  switch (prompt.parser()) {
+    case Prompt::PARSER_DELIMITER: {
+      std::string delimiter = ",";
+      if (!prompt.delimiter_parser().delimiter().empty()) {
+        delimiter = prompt.delimiter_parser().delimiter();
+      }
+      std::vector<std::string> values =
+          absl::StrSplit(inference_output, delimiter);
+      for (std::string& value : values) {
+        if (regex.has_value()) {
+          output_string_data->Add(RegexMatch(value, *regex));
+        } else {
+          output_string_data->Add(std::move(value));
+        }
+      }
+      return values.size();
     }
-    output_string_data->Add(std::move(value));
-    return 1;
-  }
+    case Prompt::PARSER_AUTO: {
+      std::string json_string = std::move(inference_output);
+      std::regex json_block_regex("```json\\s*\\n?([\\s\\S]*?)\\n?```");
+      std::smatch match;
+      if (std::regex_search(json_string, match, json_block_regex) &&
+          match.size() > 1) {
+        json_string = match[1].str();
+      }
 
-  std::string json_string = std::move(inference_output);
-  std::regex json_block_regex("```json\\s*\\n?([\\s\\S]*?)\\n?```");
-  std::smatch match;
-  if (std::regex_search(json_string, match, json_block_regex) &&
-      match.size() > 1) {
-    json_string = match[1].str();
-  }
+      Struct json_struct;
+      JsonParseOptions options;
+      options.ignore_unknown_fields = true;
+      absl::Status status =
+          JsonStringToMessage(json_string, &json_struct, options);
 
-  Struct json_struct;
-  JsonParseOptions options;
-  options.ignore_unknown_fields = true;
-  absl::Status status = JsonStringToMessage(json_string, &json_struct, options);
+      if (!status.ok()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Failed to parse model output as JSON: ", status.message()));
+      }
 
-  if (!status.ok()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Failed to parse model output as JSON: ", status.message()));
-  }
+      const auto& fields = json_struct.fields();
+      auto it = fields.find(output_column_name);
+      if (it == fields.end()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Could not find key '", output_column_name, "' in JSON output."));
+      }
 
-  const auto& fields = json_struct.fields();
-  auto it = fields.find(output_column_name);
-  if (it == fields.end()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Could not find key '", output_column_name, "' in JSON output."));
-  }
+      const auto& value = it->second;
+      if (value.kind_case() != Value::kListValue) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Value for key '", output_column_name, "' is not a JSON array."));
+      }
 
-  const auto& value = it->second;
-  if (value.kind_case() != Value::kListValue) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Value for key '", output_column_name, "' is not a JSON array."));
-  }
-
-  size_t num_values_added = 0;
-  for (const auto& element : value.list_value().values()) {
-    if (element.kind_case() != Value::kStringValue) {
-      return absl::InvalidArgumentError(
-          "JSON array contains non-string elements.");
+      size_t num_values_added = 0;
+      for (const auto& element : value.list_value().values()) {
+        if (element.kind_case() != Value::kStringValue) {
+          return absl::InvalidArgumentError(
+              "JSON array contains non-string elements.");
+        }
+        if (regex.has_value()) {
+          output_string_data->Add(RegexMatch(element.string_value(), *regex));
+        } else {
+          output_string_data->Add(std::string(element.string_value()));
+        }
+        num_values_added++;
+      }
+      return num_values_added;
     }
-    if (regex.has_value()) {
-      output_string_data->Add(RegexMatch(element.string_value(), *regex));
-    } else {
-      output_string_data->Add(std::string(element.string_value()));
+    default: {  // PARSER_NONE or unspecified value
+      std::string value = std::move(inference_output);
+      if (regex.has_value()) {
+        value = RegexMatch(value, *regex);
+      }
+      output_string_data->Add(std::move(value));
+      return 1;
     }
-    num_values_added++;
   }
-  return num_values_added;
 }
 
 InferencePromptProcessor::InferencePromptProcessor() {}
