@@ -20,6 +20,7 @@
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -102,15 +103,17 @@ std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
 
 // Creates a checkpoint with a privacy ID and event times.
 std::string BuildCheckpoint(std::string privacy_id_val,
-                            std::vector<std::string> event_times) {
+                            std::vector<std::string> event_times,
+                            absl::string_view on_device_query_name) {
   std::vector<Tensor> tensors;
 
   Tensor privacy_id_tensor =
       BuildStringTensor(kPrivacyIdColumnName, {privacy_id_val});
   tensors.push_back(std::move(privacy_id_tensor));
 
-  Tensor event_times_tensor =
-      BuildStringTensor(kEventTimeColumnName, event_times);
+  Tensor event_times_tensor = BuildStringTensor(
+      absl::StrCat(on_device_query_name, "/", kEventTimeColumnName),
+      event_times);
   tensors.push_back(std::move(event_times_tensor));
   return BuildCheckpointFromTensors(std::move(tensors));
 }
@@ -118,8 +121,10 @@ std::string BuildCheckpoint(std::string privacy_id_val,
 // Creates an encrypted checkpoint with a privacy ID and event times.
 std::pair<BlobMetadata, std::string> BuildEncryptedCheckpoint(
     std::string privacy_id_val, std::vector<std::string> event_times,
-    std::string public_key, std::string associated_data) {
-  std::string checkpoint = BuildCheckpoint(privacy_id_val, event_times);
+    std::string public_key, std::string associated_data,
+    absl::string_view on_device_query_name) {
+  std::string checkpoint =
+      BuildCheckpoint(privacy_id_val, event_times, on_device_query_name);
 
   return EncryptWithKmsKeys(checkpoint, associated_data, public_key);
 }

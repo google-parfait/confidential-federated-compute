@@ -60,6 +60,7 @@ using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::MetadataContainerConfig;
+using ::fcp::confidentialcompute::MetadataContainerInitializationConfig;
 using ::fcp::confidentialcompute::PayloadMetadataSet;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionResponse;
@@ -139,9 +140,13 @@ TEST_F(MetadataConfidentialTransformInitializeTest,
   associated_data.add_authorized_logical_pipeline_policies_hashes(
       allowed_policy_hash_);
 
+  MetadataContainerInitializationConfig init_config;
+  init_config.set_on_device_query_name("test_query");
+
   ClientContext context;
   InitializeRequest request;
   request.set_max_num_sessions(1);
+  request.mutable_configuration()->PackFrom(init_config);
   InitializeResponse response;
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
@@ -206,7 +211,12 @@ class MetadataConfidentialTransformSessionTest
         allowed_policy_hash_);
     associated_data.mutable_config_constraints()->PackFrom(config);
     ClientContext context;
+
+    MetadataContainerInitializationConfig init_config;
+    init_config.set_on_device_query_name(on_device_query_name_);
+
     InitializeRequest request;
+    request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(1);
     InitializeResponse response;
 
@@ -226,6 +236,8 @@ class MetadataConfidentialTransformSessionTest
     ASSERT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
                 IsOk());
   }
+
+  std::string on_device_query_name_ = "test_query";
 };
 
 TEST_F(MetadataConfidentialTransformSessionTest, CreateSessionSucceeds) {
@@ -248,7 +260,7 @@ TEST_F(MetadataConfidentialTransformSessionTest, CreateSessionSucceeds) {
   header.set_access_policy_sha256(allowed_policy_hash_);
   std::pair<BlobMetadata, std::string> checkpoint = BuildEncryptedCheckpoint(
       "privacy_id", {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"},
-      public_key_, header.SerializeAsString());
+      public_key_, header.SerializeAsString(), on_device_query_name_);
   SessionRequest write_request;
   WriteRequest* write = write_request.mutable_write();
   write->set_commit(true);

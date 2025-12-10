@@ -14,6 +14,7 @@
 #include "containers/metadata/metadata_map_fn.h"
 
 #include "absl/numeric/bits.h"
+#include "absl/strings/str_cat.h"
 #include "containers/big_endian.h"
 #include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
@@ -37,6 +38,7 @@ using ::fcp::confidentialcompute::ConvertEventTimeToCivilSecond;
 using ::fcp::confidentialcompute::EventTimeGranularity;
 using ::fcp::confidentialcompute::MetadataConfig;
 using ::fcp::confidentialcompute::MetadataContainerConfig;
+using ::fcp::confidentialcompute::MetadataContainerInitializationConfig;
 using ::fcp::confidentialcompute::PayloadMetadataSet;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::TeePayloadMetadata;
@@ -124,11 +126,13 @@ absl::StatusOr<EventTimeRange> GetCoarseEventTimeRange(
   }
 }
 
-absl::StatusOr<Tensor> GetEventTime(CheckpointParser& parser) {
+absl::StatusOr<Tensor> GetEventTime(CheckpointParser& parser,
+                                    absl::string_view on_device_query_name) {
   // All checkpoints, including message-based ones, represent the event time as
   // a scalar string Tensor.
   FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
-                       parser.GetTensor(kEventTimeColumnName));
+                       parser.GetTensor(absl::StrCat(on_device_query_name, "/",
+                                                     kEventTimeColumnName)));
   if (time_tensor.dtype() !=
       tensorflow_federated::aggregation::DataType::DT_STRING) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -147,8 +151,9 @@ struct MinMaxEventTimes {
 };
 
 absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
-    CheckpointParser& parser) {
-  FCP_ASSIGN_OR_RETURN(Tensor time_tensor, GetEventTime(parser));
+    CheckpointParser& parser, absl::string_view on_device_query_name) {
+  FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
+                       GetEventTime(parser, on_device_query_name));
   if (time_tensor.num_elements() == 0) {
     return std::nullopt;
   }
@@ -166,9 +171,10 @@ absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
 // MapFn implementation that computes metadata for each input.
 class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
  public:
-  explicit MetadataMapFn(
-      const fcp::confidentialcompute::MetadataContainerConfig& config)
-      : config_(config) {};
+  explicit MetadataMapFn(const MetadataContainerConfig& config,
+                         std::string on_device_query_name)
+      : config_(config),
+        on_device_query_name_(std::move(on_device_query_name)) {}
 
   // Parses the unencrypted data, for each metadata config compute the
   // corresponding metadata.
@@ -186,7 +192,7 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
     FCP_ASSIGN_OR_RETURN(uint64_t upper_64_hashed_privacy_id,
                          GetUpper64HashedPrivacyId(**parser));
     FCP_ASSIGN_OR_RETURN(std::optional<MinMaxEventTimes> min_max_event_times,
-                         GetMinMaxEventTimes(**parser));
+                         GetMinMaxEventTimes(**parser, on_device_query_name_));
 
     PayloadMetadataSet payload_metadata_set;
     for (auto& [name, metadata_config] : config_.metadata_configs()) {
@@ -216,38 +222,51 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
   }
 
  private:
-  const fcp::confidentialcompute::MetadataContainerConfig config_;
+  const MetadataContainerConfig config_;
+  const std::string on_device_query_name_;
 };
 
 // Factory for the MetadataMapFn. Thread-safe.
 class MetadataMapFnFactory
     : public confidential_federated_compute::fns::FnFactory {
  public:
-  explicit MetadataMapFnFactory(
-      fcp::confidentialcompute::MetadataContainerConfig config)
-      : config_(std::move(config)) {}
+  explicit MetadataMapFnFactory(MetadataContainerConfig config,
+                                std::string on_device_query_name)
+      : config_(std::move(config)),
+        on_device_query_name_(std::move(on_device_query_name)) {}
 
   absl::StatusOr<std::unique_ptr<fns::Fn>> CreateFn() const override {
-    return std::make_unique<MetadataMapFn>(config_);
+    return std::make_unique<MetadataMapFn>(config_, on_device_query_name_);
   }
 
  private:
-  const fcp::confidentialcompute::MetadataContainerConfig config_;
+  const MetadataContainerConfig config_;
+  const std::string on_device_query_name_;
 };
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMetadataMapFnFactory(
-    const google::protobuf::Any& /*configuration*/,
+    const google::protobuf::Any& configuration,
     const google::protobuf::Any& config_constraints) {
   // We expect to find the configuration that describes what metadata to
-  // generate in the config_constraints. We don't use the untrusted
-  // `configuration` parameter.
+  // generate in the trusted config_constraints.
   MetadataContainerConfig config;
   if (!config_constraints.UnpackTo(&config)) {
     return absl::InvalidArgumentError(
         "Config constraints cannot be unpacked to MetadataContainerConfig.");
   }
-  return std::make_unique<MetadataMapFnFactory>(std::move(config));
+  MetadataContainerInitializationConfig init_config;
+  if (!configuration.UnpackTo(&init_config)) {
+    return absl::InvalidArgumentError(
+        "Configuration cannot be unpacked to "
+        "MetadataContainerInitializationConfig.");
+  }
+  if (init_config.on_device_query_name().empty()) {
+    return absl::InvalidArgumentError(
+        "on_device_query_name must be set in the initialization config.");
+  }
+  return std::make_unique<MetadataMapFnFactory>(
+      std::move(config), std::move(init_config.on_device_query_name()));
 }
 
 }  // namespace confidential_federated_compute::metadata

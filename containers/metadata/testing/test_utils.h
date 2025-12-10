@@ -80,14 +80,18 @@ std::string BuildCheckpointFromTensors(std::vector<Tensor> tensors);
 std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
     std::string message, std::string associated_data, std::string public_key);
 
-// Creates a checkpoint with a privacy ID and event times.
+// Creates a checkpoint with a privacy ID and event times. The
+// on_device_query_name is used to prefix the event times tensor name.
 std::string BuildCheckpoint(std::string privacy_id_val,
-                            std::vector<std::string> event_times);
+                            std::vector<std::string> event_times,
+                            absl::string_view on_device_query_name);
 
-// Creates an encrypted checkpoint with a privacy ID and event times.
+// Creates an encrypted checkpoint with a privacy ID and event times. The
+// on_device_query_name is used to prefix the event times tensor name.
 std::pair<BlobMetadata, std::string> BuildEncryptedCheckpoint(
     std::string privacy_id_val, std::vector<std::string> event_times,
-    std::string public_key, std::string associated_data);
+    std::string public_key, std::string associated_data,
+    absl::string_view on_device_query_name);
 
 }  // namespace confidential_federated_compute::metadata::testing
 

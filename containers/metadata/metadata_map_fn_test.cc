@@ -20,6 +20,7 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "containers/fns/map_fn.h"
 #include "containers/metadata/testing/test_utils.h"
 #include "fcp/confidentialcompute/constants.h"
@@ -51,6 +52,7 @@ using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::MetadataContainerConfig;
+using ::fcp::confidentialcompute::MetadataContainerInitializationConfig;
 using ::fcp::confidentialcompute::PayloadMetadataSet;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
@@ -75,7 +77,19 @@ class MetadataMapFnFactoryTest : public Test {};
 
 TEST_F(MetadataMapFnFactoryTest,
        ProvideMetadataMapFnFactoryFailsWithInvalidConfigConstraints) {
+  MetadataContainerInitializationConfig init_config;
+  init_config.set_on_device_query_name("test_query");
+  Any init_config_any;
+  init_config_any.PackFrom(init_config);
+  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, Any()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(MetadataMapFnFactoryTest,
+       ProvideMetadataMapFnFactoryFailsWithInvalidInitConfig) {
+  MetadataContainerConfig config;
   Any config_constraints;
+  config_constraints.PackFrom(config);
   EXPECT_THAT(ProvideMetadataMapFnFactory(Any(), config_constraints),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -84,7 +98,12 @@ TEST_F(MetadataMapFnFactoryTest, ProvideMetadataMapFnFactorySuccess) {
   MetadataContainerConfig config;
   Any config_constraints;
   config_constraints.PackFrom(config);
-  EXPECT_THAT(ProvideMetadataMapFnFactory(Any(), config_constraints), IsOk());
+  MetadataContainerInitializationConfig init_config;
+  init_config.set_on_device_query_name("test_query");
+  Any init_config_any;
+  init_config_any.PackFrom(init_config);
+  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, config_constraints),
+              IsOk());
 }
 
 TEST_F(MetadataMapFnFactoryTest, CreateFnSuccess) {
@@ -92,8 +111,13 @@ TEST_F(MetadataMapFnFactoryTest, CreateFnSuccess) {
   Any config_constraints;
   config_constraints.PackFrom(config);
 
+  MetadataContainerInitializationConfig init_config;
+  init_config.set_on_device_query_name("test_query");
+  Any init_config_any;
+  init_config_any.PackFrom(init_config);
+
   absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
-      ProvideMetadataMapFnFactory(Any(), config_constraints);
+      ProvideMetadataMapFnFactory(init_config_any, config_constraints);
   EXPECT_THAT(factory, IsOk());
   // A single factory can create multiple Fns.
   EXPECT_THAT((*factory)->CreateFn(), IsOk());
@@ -101,11 +125,18 @@ TEST_F(MetadataMapFnFactoryTest, CreateFnSuccess) {
 }
 
 std::unique_ptr<fns::Fn> CreateMetadataMapFn(
-    const MetadataContainerConfig& config) {
+    const MetadataContainerConfig& config,
+    absl::string_view on_device_query_name) {
   Any config_constraints;
   config_constraints.PackFrom(config);
+
+  MetadataContainerInitializationConfig init_config;
+  init_config.set_on_device_query_name(on_device_query_name);
+  Any init_config_any;
+  init_config_any.PackFrom(init_config);
+
   absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
-      ProvideMetadataMapFnFactory(/*configuration=*/Any(), config_constraints);
+      ProvideMetadataMapFnFactory(init_config_any, config_constraints);
   CHECK_OK(factory.status());
   absl::StatusOr<std::unique_ptr<fns::Fn>> fn = (*factory)->CreateFn();
   CHECK_OK(fn.status());
@@ -129,12 +160,13 @@ class MetadataMapFnTest : public Test {
         }
       }
     )pb");
-    fn_ = CreateMetadataMapFn(config_);
+    fn_ = CreateMetadataMapFn(config_, on_device_query_name_);
   }
 
   MetadataContainerConfig config_;
   std::unique_ptr<fns::Fn> fn_;
   StrictMock<MockContext> context_;
+  std::string on_device_query_name_ = "test_query";
 };
 
 TEST_F(MetadataMapFnTest, ConfigureIsNoOp) {
@@ -156,7 +188,8 @@ TEST_F(MetadataMapFnTest, CommitIsNoOp) {
 TEST_F(MetadataMapFnTest, MapSucceeds) {
   std::string checkpoint = BuildCheckpoint(
       "16byteprivacyid1",
-      {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"});
+      {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"},
+      on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -186,7 +219,8 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithTimezone) {
   // (2025-01-02T02:00:00Z), but have different local dates.
   std::string checkpoint = BuildCheckpoint(
       "16byteprivacyid1",
-      {"2025-01-01T18:00:00-08:00", "2025-01-02T10:00:00+08:00"});
+      {"2025-01-01T18:00:00-08:00", "2025-01-02T10:00:00+08:00"},
+      on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -222,9 +256,10 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithOnePartition) {
       }
     }
   )pb");
-  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
-  std::string checkpoint =
-      BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
+  std::unique_ptr<fns::Fn> fn =
+      CreateMetadataMapFn(config, on_device_query_name_);
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -259,9 +294,10 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithMultipleConfigs) {
       }
     }
   )pb");
-  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
-  std::string checkpoint =
-      BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
+  std::unique_ptr<fns::Fn> fn =
+      CreateMetadataMapFn(config, on_device_query_name_);
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -290,9 +326,10 @@ TEST_F(MetadataMapFnTest, MapFailsWithZeroPartitions) {
       }
     }
   )pb");
-  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
-  std::string checkpoint =
-      BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
+  std::unique_ptr<fns::Fn> fn =
+      CreateMetadataMapFn(config, on_device_query_name_);
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
   absl::StatusOr<WriteFinishedResponse> result =
       fn->Write(WriteRequest(), checkpoint, context_);
@@ -303,8 +340,8 @@ TEST_F(MetadataMapFnTest, MapFailsWithZeroPartitions) {
 }
 
 TEST_F(MetadataMapFnTest, MapSucceedsWithSingleEventTime) {
-  std::string checkpoint =
-      BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -324,7 +361,8 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithSingleEventTime) {
 }
 
 TEST_F(MetadataMapFnTest, MapWithNoEventTimesDoesNotSetEventTimeRange) {
-  std::string checkpoint = BuildCheckpoint("16byteprivacyid1", {});
+  std::string checkpoint =
+      BuildCheckpoint("16byteprivacyid1", {}, on_device_query_name_);
 
   ReadResponse read_response;
   EXPECT_CALL(context_, Emit(_))
@@ -343,8 +381,8 @@ TEST_F(MetadataMapFnTest, MapWithNoEventTimesDoesNotSetEventTimeRange) {
 }
 
 TEST_F(MetadataMapFnTest, MapFailsWithInvalidEventTimeFormat) {
-  std::string checkpoint =
-      BuildCheckpoint("16byteprivacyid1", {"invalid-time-format"});
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"invalid-time-format"}, on_device_query_name_);
 
   auto result = fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
@@ -354,8 +392,9 @@ TEST_F(MetadataMapFnTest, MapFailsWithInvalidEventTimeFormat) {
 }
 
 TEST_F(MetadataMapFnTest, MapFailsIfPrivacyIdIsMissing) {
-  Tensor event_times_tensor =
-      BuildStringTensor(kEventTimeColumnName, {"2025-01-01T12:00:00+00:00"});
+  Tensor event_times_tensor = BuildStringTensor(
+      absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName),
+      {"2025-01-01T12:00:00+00:00"});
   std::vector<Tensor> tensors;
   tensors.push_back(std::move(event_times_tensor));
   std::string checkpoint = BuildCheckpointFromTensors(std::move(tensors));
@@ -380,13 +419,30 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeIsMissing) {
   EXPECT_THAT(result->status().code(), Eq(google::rpc::Code::NOT_FOUND));
   EXPECT_THAT(result->status().message(),
               HasSubstr("No aggregation tensor found for name "
-                        "confidential_compute_event_time"));
+                        "test_query/confidential_compute_event_time"));
+}
+
+TEST_F(MetadataMapFnTest, MapFailsIfOnDeviceQueryNameDoesNotMatch) {
+  // Build a checkpoint with a different on_device_query_name than what the
+  // map fn was configured with.
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1",
+      {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"},
+      "wrong_query_name");
+
+  auto result = fn_->Write(WriteRequest(), checkpoint, context_);
+  ASSERT_THAT(result, IsOk());
+  EXPECT_THAT(result->status().code(), Eq(google::rpc::Code::NOT_FOUND));
+  EXPECT_THAT(result->status().message(),
+              HasSubstr("No aggregation tensor found for name "
+                        "test_query/confidential_compute_event_time"));
 }
 
 TEST_F(MetadataMapFnTest, MapFailsIfPrivacyIdHasWrongType) {
   Tensor privacy_id_tensor = BuildIntTensor(kPrivacyIdColumnName, {123});
-  Tensor event_times_tensor =
-      BuildStringTensor(kEventTimeColumnName, {"2025-01-01T12:00:00+00:00"});
+  Tensor event_times_tensor = BuildStringTensor(
+      absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName),
+      {"2025-01-01T12:00:00+00:00"});
   std::vector<Tensor> tensors;
   tensors.push_back(std::move(privacy_id_tensor));
   tensors.push_back(std::move(event_times_tensor));
@@ -403,7 +459,8 @@ TEST_F(MetadataMapFnTest, MapFailsIfPrivacyIdHasWrongType) {
 TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongType) {
   Tensor privacy_id_tensor =
       BuildStringTensor(kPrivacyIdColumnName, {"16byteprivacyid1"});
-  Tensor event_times_tensor = BuildIntTensor(kEventTimeColumnName, {123});
+  Tensor event_times_tensor = BuildIntTensor(
+      absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName), {123});
   std::vector<Tensor> tensors;
   tensors.push_back(std::move(privacy_id_tensor));
   tensors.push_back(std::move(event_times_tensor));
@@ -420,8 +477,9 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongType) {
 TEST_F(MetadataMapFnTest, MapFailsIfPrivacyIdHasWrongShape) {
   Tensor privacy_id_tensor = BuildStringTensor(
       kPrivacyIdColumnName, {"16byteprivacyid1", "16byteprivacyid2"});
-  Tensor event_times_tensor =
-      BuildStringTensor(kEventTimeColumnName, {"2025-01-01T12:00:00+00:00"});
+  Tensor event_times_tensor = BuildStringTensor(
+      absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName),
+      {"2025-01-01T12:00:00+00:00"});
   std::vector<Tensor> tensors;
   tensors.push_back(std::move(privacy_id_tensor));
   tensors.push_back(std::move(event_times_tensor));
@@ -442,7 +500,9 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongShape) {
   data->Add("2025-01-01T12:00:00+00:00");
   absl::StatusOr<Tensor> event_times_tensor =
       Tensor::Create(DataType::DT_STRING, {1, 1}, std::move(data));
-  ASSERT_THAT(event_times_tensor->set_name(kEventTimeColumnName), IsOk());
+  ASSERT_THAT(event_times_tensor->set_name(absl::StrCat(
+                  on_device_query_name_, "/", kEventTimeColumnName)),
+              IsOk());
   std::vector<Tensor> tensors;
   tensors.push_back(std::move(privacy_id_tensor));
   tensors.push_back(*std::move(event_times_tensor));
