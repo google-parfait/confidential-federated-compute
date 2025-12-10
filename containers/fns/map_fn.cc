@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/fns/map_fn.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -27,11 +28,12 @@ namespace confidential_federated_compute::fns {
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
     fcp::confidentialcompute::WriteRequest write_request,
     std::string unencrypted_data, Context& context) {
+  int64_t unencrypted_data_size = unencrypted_data.size();
   KeyValue input;
-  input.value.data = unencrypted_data;
-  input.value.metadata = write_request.first_request_metadata();
-  input.key = write_request.first_request_configuration();
-  absl::StatusOr<KeyValue> output = Map(input, context);
+  input.value.data = std::move(unencrypted_data);
+  input.value.metadata = std::move(write_request.first_request_metadata());
+  input.key = std::move(write_request.first_request_configuration());
+  absl::StatusOr<KeyValue> output = Map(std::move(input), context);
   // TODO: Handle output encryption more generally. Currently Map is responsible
   // for encrypting the output properly.
   if (!output.ok()) {
@@ -44,10 +46,9 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
       std::move(output->value.metadata);
   *read_response.mutable_first_response_configuration() =
       std::move(output->key);
-  read_response.set_finish_read(true);
   context.Emit(read_response);
   fcp::confidentialcompute::WriteFinishedResponse response;
-  response.set_committed_size_bytes(unencrypted_data.size());
+  response.set_committed_size_bytes(unencrypted_data_size);
   return response;
 }
 

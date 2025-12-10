@@ -100,15 +100,14 @@ TEST_F(MetadataMapFnFactoryTest, CreateFnSuccess) {
   EXPECT_THAT((*factory)->CreateFn(), IsOk());
 }
 
-std::unique_ptr<fns::FnFactory::Fn> CreateMetadataMapFn(
+std::unique_ptr<fns::Fn> CreateMetadataMapFn(
     const MetadataContainerConfig& config) {
   Any config_constraints;
   config_constraints.PackFrom(config);
   absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
       ProvideMetadataMapFnFactory(/*configuration=*/Any(), config_constraints);
   CHECK_OK(factory.status());
-  absl::StatusOr<std::unique_ptr<fns::FnFactory::Fn>> fn =
-      (*factory)->CreateFn();
+  absl::StatusOr<std::unique_ptr<fns::Fn>> fn = (*factory)->CreateFn();
   CHECK_OK(fn.status());
   return *std::move(fn);
 }
@@ -134,7 +133,7 @@ class MetadataMapFnTest : public Test {
   }
 
   MetadataContainerConfig config_;
-  std::unique_ptr<fns::FnFactory::Fn> fn_;
+  std::unique_ptr<fns::Fn> fn_;
   StrictMock<MockContext> context_;
 };
 
@@ -223,7 +222,7 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithOnePartition) {
       }
     }
   )pb");
-  std::unique_ptr<fns::FnFactory::Fn> fn = CreateMetadataMapFn(config);
+  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
   std::string checkpoint =
       BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
 
@@ -260,7 +259,7 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithMultipleConfigs) {
       }
     }
   )pb");
-  std::unique_ptr<fns::FnFactory::Fn> fn = CreateMetadataMapFn(config);
+  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
   std::string checkpoint =
       BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
 
@@ -291,7 +290,7 @@ TEST_F(MetadataMapFnTest, MapFailsWithZeroPartitions) {
       }
     }
   )pb");
-  std::unique_ptr<fns::FnFactory::Fn> fn = CreateMetadataMapFn(config);
+  std::unique_ptr<fns::Fn> fn = CreateMetadataMapFn(config);
   std::string checkpoint =
       BuildCheckpoint("16byteprivacyid1", {"2025-01-01T12:00:00+00:00"});
 

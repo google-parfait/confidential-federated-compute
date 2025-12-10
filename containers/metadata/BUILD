@@ -29,9 +29,7 @@ cc_test(
         ":metadata_map_fn",
         "//containers:crypto",
         "//containers:crypto_test_utils",
-        "//containers/fns:confidential_transform_server",
-        "//containers/fns:fn_factory",
-        "//containers/fns:map_fn",
+        "//containers/fns",
         "//containers/metadata/testing:test_utils",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
@@ -68,8 +66,7 @@ cc_library(
     hdrs = ["metadata_map_fn.h"],
     deps = [
         "//containers:big_endian",
-        "//containers/fns:fn_factory",
-        "//containers/fns:map_fn",
+        "//containers/fns",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -91,7 +88,7 @@ cc_test(
     srcs = ["metadata_map_fn_test.cc"],
     deps = [
         ":metadata_map_fn",
-        "//containers/fns:map_fn",
+        "//containers/fns",
         "//containers/metadata/testing:test_utils",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/log:check",
@@ -116,7 +113,7 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":metadata_map_fn",
-        "//containers/fns:confidential_transform_server",
+        "//containers/fns",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

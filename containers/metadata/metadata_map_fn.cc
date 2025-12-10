@@ -227,9 +227,7 @@ class MetadataMapFnFactory
       fcp::confidentialcompute::MetadataContainerConfig config)
       : config_(std::move(config)) {}
 
-  absl::StatusOr<
-      std::unique_ptr<confidential_federated_compute::fns::FnFactory::Fn>>
-  CreateFn() const override {
+  absl::StatusOr<std::unique_ptr<fns::Fn>> CreateFn() const override {
     return std::make_unique<MetadataMapFn>(config_);
   }
 
