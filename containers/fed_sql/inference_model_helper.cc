@@ -16,11 +16,18 @@
 
 #include <regex>
 #include <string>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "google/protobuf/struct.pb.h"
+#include "google/protobuf/util/json_util.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -29,6 +36,10 @@ namespace {
 
 using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::Prompt;
+using ::google::protobuf::Struct;
+using ::google::protobuf::Value;
+using ::google::protobuf::util::JsonParseOptions;
+using ::google::protobuf::util::JsonStringToMessage;
 using ::tensorflow_federated::aggregation::DataType;
 
 }  // namespace
@@ -44,19 +55,75 @@ std::string InferenceOutputProcessor::RegexMatch(const std::string& text,
   return text;
 }
 
-absl::StatusOr<std::string> InferenceOutputProcessor::ApplyRegex(
-    const Prompt& prompt, const std::string& output_string) {
+absl::StatusOr<size_t> InferenceOutputProcessor::ProcessInferenceOutput(
+    const Prompt& prompt, std::string&& inference_output,
+    const std::string& output_column_name,
+    tensorflow_federated::aggregation::MutableStringData* output_string_data) {
+  std::optional<std::regex> regex;
   if (!prompt.regex().empty()) {
     try {
-      std::regex regex(prompt.regex());
-      return RegexMatch(output_string, regex);
+      regex.emplace(prompt.regex());
     } catch (const std::regex_error& e) {
       return absl::InvalidArgumentError(
           absl::StrCat("Invalid regex provided in prompt: '", prompt.regex(),
                        "': ", e.what()));
     }
   }
-  return output_string;
+
+  if (prompt.parser() != Prompt::PARSER_AUTO) {
+    std::string value = std::move(inference_output);
+    if (regex.has_value()) {
+      value = RegexMatch(value, *regex);
+    }
+    output_string_data->Add(std::move(value));
+    return 1;
+  }
+
+  std::string json_string = std::move(inference_output);
+  std::regex json_block_regex("```json\\s*\\n?([\\s\\S]*?)\\n?```");
+  std::smatch match;
+  if (std::regex_search(json_string, match, json_block_regex) &&
+      match.size() > 1) {
+    json_string = match[1].str();
+  }
+
+  Struct json_struct;
+  JsonParseOptions options;
+  options.ignore_unknown_fields = true;
+  absl::Status status = JsonStringToMessage(json_string, &json_struct, options);
+
+  if (!status.ok()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse model output as JSON: ", status.message()));
+  }
+
+  const auto& fields = json_struct.fields();
+  auto it = fields.find(output_column_name);
+  if (it == fields.end()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Could not find key '", output_column_name, "' in JSON output."));
+  }
+
+  const auto& value = it->second;
+  if (value.kind_case() != Value::kListValue) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Value for key '", output_column_name, "' is not a JSON array."));
+  }
+
+  size_t num_values_added = 0;
+  for (const auto& element : value.list_value().values()) {
+    if (element.kind_case() != Value::kStringValue) {
+      return absl::InvalidArgumentError(
+          "JSON array contains non-string elements.");
+    }
+    if (regex.has_value()) {
+      output_string_data->Add(RegexMatch(element.string_value(), *regex));
+    } else {
+      output_string_data->Add(std::string(element.string_value()));
+    }
+    num_values_added++;
+  }
+  return num_values_added;
 }
 
 InferencePromptProcessor::InferencePromptProcessor() {}

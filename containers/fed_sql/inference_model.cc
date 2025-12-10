@@ -174,6 +174,7 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
   std::unique_ptr<MutableStringData> output_string_data =
       std::make_unique<MutableStringData>(
           static_cast<long>(input.GetRowCount()));
+  size_t num_output_rows = 0;
 
   TimingInfo timing_info;
   std::mt19937 gen;
@@ -228,15 +229,23 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
                     timing_info);
 
     std::string output_string = output_stream.str();
-    // Apply regex matching to the output string if configured.
-    FCP_ASSIGN_OR_RETURN(output_string,
-                         output_processor_.ApplyRegex(prompt, output_string));
-
-    output_string_data->Add(std::move(output_string));
+    absl::StatusOr<size_t> num_rows_added_status =
+        output_processor_.ProcessInferenceOutput(
+            prompt, std::move(output_string), output_column_name,
+            output_string_data.get());
+    if (!num_rows_added_status.ok()) {
+      LOG(WARNING) << "Failed to process inference output: "
+                   << num_rows_added_status.status()
+                   << ". Outputting empty string.";
+      output_string_data->Add("");
+      num_output_rows++;
+    } else {
+      num_output_rows += *num_rows_added_status;
+    }
   }
 
   return Tensor::Create(DataType::DT_STRING,
-                        TensorShape({static_cast<long>(input.GetRowCount())}),
+                        TensorShape({static_cast<long>(num_output_rows)}),
                         std::move(output_string_data), output_column_name);
 }
 
@@ -397,6 +406,7 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
   std::unique_ptr<MutableStringData> output_string_data =
       std::make_unique<MutableStringData>(
           static_cast<long>(input.GetRowCount()));
+  size_t num_output_rows = 0;
   // For each row of the input columns, we first populate the prompt template
   // to create a combined prompt matching the column values, then run inference
   // over the combined prompt. Each element in the output tensor corresponds
@@ -413,15 +423,23 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
         std::string output_string,
         RunLlamaCppInferencePerRow(combined_prompt, llama_model, vocab));
 
-    // Apply regex matching to the output string if configured.
-    FCP_ASSIGN_OR_RETURN(output_string,
-                         output_processor_.ApplyRegex(prompt, output_string));
-
-    output_string_data->Add(std::move(output_string));
+    absl::StatusOr<size_t> num_rows_added_status =
+        output_processor_.ProcessInferenceOutput(
+            prompt, std::move(output_string), output_column_name,
+            output_string_data.get());
+    if (!num_rows_added_status.ok()) {
+      LOG(WARNING) << "Failed to process inference output: "
+                   << num_rows_added_status.status()
+                   << ". Outputting empty string.";
+      output_string_data->Add("");
+      num_output_rows++;
+    } else {
+      num_output_rows += *num_rows_added_status;
+    }
   }
 
   return Tensor::Create(DataType::DT_STRING,
-                        TensorShape({static_cast<long>(input.GetRowCount())}),
+                        TensorShape({static_cast<long>(num_output_rows)}),
                         std::move(output_string_data), output_column_name);
 }
 
