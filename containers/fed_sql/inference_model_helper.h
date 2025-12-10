@@ -17,10 +17,12 @@
 
 #include <regex>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -29,12 +31,13 @@ class InferenceOutputProcessor {
  public:
   InferenceOutputProcessor();
 
-  // Applies the regex from the Prompt configuration to the output string.
-  // Returns the modified string if a match is found, otherwise returns the
-  // original string.
-  absl::StatusOr<std::string> ApplyRegex(
+  // Applies JSON parsing (if PARSER_AUTO) and regex matching to the inference
+  // output and writes the results directly to `output_string_data`. Returns the
+  // number of values added.
+  absl::StatusOr<size_t> ProcessInferenceOutput(
       const fcp::confidentialcompute::Prompt& prompt,
-      const std::string& output_string);
+      std::string&& inference_output, const std::string& output_column_name,
+      tensorflow_federated::aggregation::MutableStringData* output_string_data);
 
  private:
   // Apply a regex matching to the given text. Returns only the first match. If

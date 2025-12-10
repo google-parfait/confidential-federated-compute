@@ -15,11 +15,15 @@
 #include "containers/fed_sql/inference_model_helper.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "containers/sql/input.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 
@@ -32,9 +36,12 @@ using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::Prompt;
 using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class InferenceModelInternalTest : public ::testing::Test {
  protected:
@@ -47,32 +54,6 @@ class InferenceModelInternalTest : public ::testing::Test {
         std::make_unique<MutableVectorData<absl::string_view>>(values), name);
   }
 };
-
-TEST_F(InferenceModelInternalTest, ApplyRegexMatchExact) {
-  Prompt prompt;
-  // This regex looks for "Result:" followed by space, then extracts any
-  // characters within <angled brackets>.
-  prompt.set_regex("Result: <([^>]+)>");
-
-  InferenceOutputProcessor output_processor;
-  std::string text = "Result: <success>";
-  EXPECT_THAT(output_processor.ApplyRegex(prompt, text),
-              IsOkAndHolds("success"));
-}
-
-TEST_F(InferenceModelInternalTest, ApplyRegexNoMatchFullString) {
-  Prompt prompt;
-  // This regex looks for "Result:" followed by space, then extracts any
-  // characters within <angled brackets>.
-  prompt.set_regex("Result: <([^>]+)>");
-
-  InferenceOutputProcessor output_processor;
-  std::string text = "Some prefix Result: <success> some suffix";
-  // Note that the entire text should match this regex in order for it to work.
-  // Since the text in this case has "Some prefix" and "some suffix",  the regex
-  // is not applied.
-  EXPECT_THAT(output_processor.ApplyRegex(prompt, text), IsOkAndHolds(text));
-}
 
 TEST_F(InferenceModelInternalTest, PopulatePromptTemplateSuccess) {
   Prompt prompt;
@@ -184,5 +165,148 @@ TEST_F(InferenceModelInternalTest, PopulatePromptTemplateTruncation) {
                   max_prompt_size),
               IsOkAndHolds(expected_prompt));
 }
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputNoAutoParser) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  std::string output_string = R"({"topic": ["foo", "bar"]})";
+  const std::string expected_output = output_string;
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(1));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre(expected_output));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputSuccess) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": ["foo", "bar"]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(2));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputWithMarkdown) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string =
+      "Here is the result:\n```json\n{\"topic\": [\"foo\"]}\n```";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(1));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo"));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputInvalidJson) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": ["foo", "bar"]invalid})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Failed to parse model output as JSON"));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputNotAnObject) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"(["foo", "bar"])";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Failed to parse model output as JSON"));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputMissingKey) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"wrong_key": ["foo", "bar"]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Could not find key 'topic' in JSON output."));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputValueNotArray) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": "foo"})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Value for key 'topic' is not a JSON array."));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputArrayWithNonString) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": ["foo", 123]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("JSON array contains non-string elements."));
+}
+
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputWithRegex) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  prompt.set_regex("Result: <([^>]+)>");
+  std::string output_string =
+      R"({"topic": ["Result: <foo>", "Result: <bar>"]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(2));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql
