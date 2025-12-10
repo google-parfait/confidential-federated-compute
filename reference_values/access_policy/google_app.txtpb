@@ -1,0 +1,46 @@
+# Copyright 2025 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+endorsement_reference_values: {
+  endorser: {
+    keys: {
+      type: KEY_TYPE_ECDSA_P256_SHA256
+      key_id: 1
+      # This key's fingerprint (its SHA2-256 digest) is:
+      # 4d41c79b700237452f8f5f041a679b7b38eeafe01457f0f51edbc4b6df284d3a
+      raw: "0Y0\x13\x06\x07*\x86H\xCE=\x02\x01\x06\x08*\x86H\xCE=\x03\x01\x07\x03\x42\x00\x04\x63\x8C\xED\xE9\x11\x01j\xD4\x01\x9C\xE7\xEF\x93\xD5\xBBV\x1A\x94\x64\x61\x87\xE8\xEB\xE7\x8D\xA5<\x93\xDF'Y&\xC3T\x14#\xA8\xB9N+\x98\x97\x91\x00=2f\x84:\x93\xA3PN\\\t\xFC\xC3\xFC\xF0\x43\xC2G\xE6g"
+    }
+  }
+  required_claims: {
+  }
+  rekor {
+    verify {
+      keys {
+        type: KEY_TYPE_ECDSA_P256_SHA256
+        key_id: 1
+        # This key's fingerprint (its SHA2-256 digest) is:
+        # c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d
+        raw: "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00\x04\xd8\x6d\x98\xfb\x6b\x5a\x6d\xd4\xd5\xe4\x17\x06\x88\x12\x31\xd1\xaf\x5f\x00\x5c\x2b\x90\x16\xe6\x2d\x21\xad\x92\xce\x0b\xde\xa5\xfa\xc9\x86\x34\xce\xe7\xc1\x9e\x10\xbc\x52\xbf\xe2\xcb\x9e\x46\x85\x63\xff\xf4\x0f\xdb\x63\x62\xe1\x0b\x7d\x0c\xf7\xe4\x58\xb7"
+      }
+      signed_timestamp {
+        not_before_absolute: {
+          seconds: 1739577600  # 2025-02-15 00:00:00 UTC
+        }
+        not_before_relative: {
+          seconds: -7776000  # 90 days
+        }
+      }
+    }
+  }
+}
