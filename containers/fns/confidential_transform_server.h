@@ -28,7 +28,7 @@
 #include "containers/confidential_transform_server_base.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "google/protobuf/any.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
 // FnFactoryProvider creates a FnFactory once when the container is
