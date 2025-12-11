@@ -13,16 +13,49 @@
 // limitations under the License.
 #include "containers/fns/confidential_transform_server.h"
 
+#include <filesystem>
+#include <fstream>
+#include <ios>
 #include <string>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute::fns {
+namespace {
+
+std::string CreateTempFilePath(std::string directory,
+                               std::string basename_prefix,
+                               uint32_t basename_id) {
+  // Created temp file will be in <directory>/<basename_prefix>_<basename_id>.
+  return absl::StrCat(directory, "/", basename_prefix, "_",
+                      std::to_string(basename_id));
+}
+
+absl::Status AppendBytesToTempFile(std::string& file_path,
+                                   std::ios_base::openmode mode,
+                                   const char* data,
+                                   std::streamsize data_size) {
+  // Write or append binary content to file depending on mode.
+  std::ofstream temp_file(file_path, mode);
+  if (!temp_file.is_open()) {
+    return absl::DataLossError(
+        absl::StrCat("Failed to open temp file for writing: ", file_path));
+  }
+  temp_file.write(data, data_size);
+  temp_file.close();
+  return absl::OkStatus();
+}
+
+}  // anonymous namespace
 
 absl::Status FnConfidentialTransform::StreamInitializeTransformWithKms(
     const google::protobuf::Any& configuration,
@@ -33,8 +66,18 @@ absl::Status FnConfidentialTransform::StreamInitializeTransformWithKms(
   if (fn_factory_.has_value()) {
     return absl::FailedPreconditionError("Fn container already initialized.");
   }
+  absl::flat_hash_map<std::string, std::string> write_configuration_map;
+  for (auto& [key, value] : write_configuration_map_) {
+    if (value.commit) {
+      write_configuration_map[key] = value.file_path;
+    } else {
+      return absl::InvalidArgumentError(
+          "Malformed configuration file is found.");
+    }
+  }
   FCP_ASSIGN_OR_RETURN(std::unique_ptr<FnFactory> fn_factory,
-                       fn_factory_provider_(configuration, config_constraints));
+                       fn_factory_provider_(configuration, config_constraints,
+                                            write_configuration_map));
   fn_factory_.emplace(std::move(fn_factory));
   return absl::OkStatus();
 }
@@ -76,6 +119,71 @@ absl::StatusOr<std::string> FnConfidentialTransform::GetKeyId(
         "authorized_logical_pipeline_policies_hashes returned by KMS.");
   }
   return blob_header.key_id();
+}
+
+absl::Status FnConfidentialTransform::ReadWriteConfigurationRequest(
+    const fcp::confidentialcompute::WriteConfigurationRequest&
+        write_configuration) {
+  std::ios_base::openmode file_open_mode;
+  // First request metadata is set for the first WriteConfigurationRequest of a
+  // new data blob.
+  if (write_configuration.has_first_request_metadata()) {
+    // Create a new file.
+    file_open_mode = std::ios::binary;
+    current_configuration_id_ =
+        write_configuration.first_request_metadata().configuration_id();
+    if (write_configuration_map_.find(current_configuration_id_) !=
+        write_configuration_map_.end()) {
+      return absl::InvalidArgumentError(
+          "Duplicated configuration_id found in WriteConfigurationRequest.");
+    }
+    // Create a new temp files. Temp files are saved as
+    // /tmp/write_configuration_1, /tmp/write_configuration_2, etc. Use
+    // `write_configuration_map_.size() + 1` to distinguish different temp file
+    // names.
+    std::string temp_file_path = CreateTempFilePath(
+        "/tmp", "write_configuration", write_configuration_map_.size() + 1);
+
+    LOG(INFO) << "Start writing bytes for configuration_id: "
+              << current_configuration_id_ << " to " << temp_file_path;
+
+    write_configuration_map_[current_configuration_id_] =
+        WriteConfigurationMetadata{
+            .file_path = std::move(temp_file_path),
+            .total_size_bytes = static_cast<uint64_t>(
+                write_configuration.first_request_metadata()
+                    .total_size_bytes()),
+            .commit = write_configuration.commit()};
+  } else {
+    // If the current write_configuration is not the first
+    // WriteConfigurationRequest of a data blob, append to existing file.
+    file_open_mode = std::ios::binary | std::ios::app;
+  }
+
+  auto& [current_file_path, expected_total_size_bytes, commit] =
+      write_configuration_map_[current_configuration_id_];
+  FCP_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
+                                            write_configuration.data().data(),
+                                            write_configuration.data().size()));
+  // Update the commit status of the data blob in write_configuration_map_.
+  commit = write_configuration.commit();
+
+  // When it's the last WriteConfigurationRequest of a blob, check the size of
+  // the file matches the expectation.
+  if (commit) {
+    if (std::filesystem::file_size(current_file_path) !=
+        expected_total_size_bytes) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("The total size of the data blob does not match "
+                       "expected size. Expecting ",
+                       expected_total_size_bytes, ", got ",
+                       std::filesystem::file_size(current_file_path)));
+    }
+    LOG(INFO) << "Successfully wrote all " << expected_total_size_bytes
+              << " bytes to " << current_file_path;
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace confidential_federated_compute::fns

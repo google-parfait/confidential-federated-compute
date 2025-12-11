@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "containers/fns/fn_factory.h"
 
 namespace confidential_federated_compute::metadata {
@@ -26,7 +27,9 @@ namespace confidential_federated_compute::metadata {
 // instances.
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMetadataMapFnFactory(
     const google::protobuf::Any& configuration,
-    const google::protobuf::Any& config_constraints);
+    const google::protobuf::Any& config_constraints,
+    const confidential_federated_compute::fns::WriteConfigurationMap&
+        write_configuration_map);
 
 }  // namespace confidential_federated_compute::metadata
 

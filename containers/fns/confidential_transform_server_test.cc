@@ -14,11 +14,16 @@
 
 #include "containers/fns/confidential_transform_server.h"
 
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -66,6 +71,7 @@ using ::testing::_;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::testing::SaveArg;
 
 // Write the InitializeRequest to the client stream and then close
 // the stream, returning the status of Finish.
@@ -110,7 +116,8 @@ class MockFnFactory : public FnFactory {
 class MockFnFactoryProvider {
  public:
   MOCK_METHOD((absl::StatusOr<std::unique_ptr<FnFactory>>), Create,
-              (const Any&, const Any&));
+              (const Any&, const Any&,
+               (const absl::flat_hash_map<std::string, std::string>&)));
 };
 
 class FnConfidentialTransformTest : public ::testing::Test {
@@ -126,8 +133,10 @@ class FnConfidentialTransformTest : public ::testing::Test {
             .value();
     service_ = std::make_unique<FnConfidentialTransform>(
         std::make_unique<NiceMock<MockSigningKeyHandle>>(),
-        [this](const Any& config, const Any& config_constraints) {
-          return mock_fn_factory_provider_.Create(config, config_constraints);
+        [this](const Any& config, const Any& config_constraints,
+               const WriteConfigurationMap& write_configuration_map) {
+          return mock_fn_factory_provider_.Create(config, config_constraints,
+                                                  write_configuration_map);
         },
         std::move(encryption_key_handle));
 
@@ -168,8 +177,36 @@ absl::StatusOr<EncryptedRequest> CreateEncryptedProtectedResponse(
                                       associated_data.SerializeAsString());
 }
 
+StreamInitializeRequest CreateWriteConfigurationRequest(
+    absl::string_view data, bool commit,
+    std::optional<std::string> configuration_id,
+    std::optional<int64_t> total_size_bytes) {
+  StreamInitializeRequest request;
+  auto write_configuration = request.mutable_write_configuration();
+  *write_configuration->mutable_data() = std::string(data);
+  write_configuration->set_commit(commit);
+  if (configuration_id.has_value()) {
+    auto first_request_metadata =
+        write_configuration->mutable_first_request_metadata();
+    first_request_metadata->set_configuration_id(*configuration_id);
+    CHECK(total_size_bytes.has_value());
+    first_request_metadata->set_total_size_bytes(*total_size_bytes);
+  }
+  return request;
+}
+
+std::string ReadFileContent(const std::string& file_path) {
+  std::ifstream file(file_path);
+  CHECK(file.is_open());
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  std::string content = buffer.str();
+  file.close();
+  return content;
+}
+
 TEST_F(FnConfidentialTransformTest, InitializeWithKmsSucceeds) {
-  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _))
+  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
       .WillOnce(Return(std::make_unique<NiceMock<MockFnFactory>>()));
 
   grpc::ClientContext context;
@@ -187,25 +224,140 @@ TEST_F(FnConfidentialTransformTest, InitializeWithKmsSucceeds) {
               IsOk());
 }
 
-TEST_F(FnConfidentialTransformTest, WriteConfigurationRequestFails) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-  StreamInitializeRequest write_configuration;
-  write_configuration.mutable_write_configuration()->set_commit(true);
+TEST_F(FnConfidentialTransformTest, WriteConfigurationRequestSucceeds) {
+  std::string configuration_id = "configuration_id";
+  std::string data =
+      "some really data file with random content? maybe, maybe not";
+  int64_t total_size_bytes = data.size();
+  std::string first_part = data.substr(0, 20);
+  std::string second_part = data.substr(20);
+  StreamInitializeRequest write_configuration_1 =
+      CreateWriteConfigurationRequest(first_part, false, configuration_id,
+                                      total_size_bytes);
+  StreamInitializeRequest write_configuration_2 =
+      CreateWriteConfigurationRequest(second_part, true, std::nullopt,
+                                      std::nullopt);
 
+  WriteConfigurationMap write_configuration_map;
+  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&write_configuration_map),
+                      Return(std::make_unique<NiceMock<MockFnFactory>>())));
+
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  absl::StatusOr<EncryptedRequest> encrypted_request =
+      CreateEncryptedProtectedResponse("result_encryption_key",
+                                       *oak_client_encryptor_);
+  ASSERT_THAT(encrypted_request, IsOk());
+  *request.mutable_protected_response() = *encrypted_request;
   auto writer = stub_->StreamInitialize(&context, &response);
 
-  ASSERT_TRUE(writer->Write(write_configuration));
-  EXPECT_THAT(
-      FromGrpcStatus(writer->Finish()),
-      StatusIs(
-          absl::StatusCode::kUnimplemented,
-          HasSubstr(
-              "Fn container does not support WriteConfigurationRequests yet")));
+  ASSERT_TRUE(writer->Write(write_configuration_1));
+  ASSERT_TRUE(writer->Write(write_configuration_2));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
+
+  EXPECT_TRUE(write_configuration_map.contains(configuration_id));
+  EXPECT_THAT(ReadFileContent(write_configuration_map[configuration_id]), data);
+}
+
+TEST_F(FnConfidentialTransformTest,
+       WriteConfigurationRequestSucceedsWithTwoFiles) {
+  std::string configuration_id_1 = "configuration_id_1";
+  std::string configuration_id_2 = "configuration_id_2";
+  std::string data_1 = "some really data file with random content?";
+  std::string data_2 = "maybe, maybe not";
+  StreamInitializeRequest write_configuration_1 =
+      CreateWriteConfigurationRequest(data_1, true, configuration_id_1,
+                                      data_1.size());
+  StreamInitializeRequest write_configuration_2 =
+      CreateWriteConfigurationRequest(data_2, true, configuration_id_2,
+                                      data_2.size());
+
+  WriteConfigurationMap write_configuration_map;
+  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&write_configuration_map),
+                      Return(std::make_unique<NiceMock<MockFnFactory>>())));
+
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  absl::StatusOr<EncryptedRequest> encrypted_request =
+      CreateEncryptedProtectedResponse("result_encryption_key",
+                                       *oak_client_encryptor_);
+  ASSERT_THAT(encrypted_request, IsOk());
+  *request.mutable_protected_response() = *encrypted_request;
+  auto writer = stub_->StreamInitialize(&context, &response);
+
+  ASSERT_TRUE(writer->Write(write_configuration_1));
+  ASSERT_TRUE(writer->Write(write_configuration_2));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
+
+  EXPECT_TRUE(write_configuration_map.contains(configuration_id_1));
+  EXPECT_THAT(ReadFileContent(write_configuration_map[configuration_id_1]),
+              data_1);
+  EXPECT_TRUE(write_configuration_map.contains(configuration_id_2));
+  EXPECT_THAT(ReadFileContent(write_configuration_map[configuration_id_2]),
+              data_2);
+}
+
+TEST_F(FnConfidentialTransformTest,
+       WriteConfigurationRequestFailWithDuplicatedId) {
+  std::string configuration_id = "configuration_id_1";
+  std::string data_1 = "some data";
+  std::string data_2 = "some other data";
+  StreamInitializeRequest write_configuration_1 =
+      CreateWriteConfigurationRequest(data_1, true, configuration_id,
+                                      data_1.size());
+  StreamInitializeRequest write_configuration_2 =
+      CreateWriteConfigurationRequest(data_2, true, configuration_id,
+                                      data_2.size());
+
+  grpc::ClientContext context;
+  InitializeResponse response;
+  auto writer = stub_->StreamInitialize(&context, &response);
+
+  EXPECT_TRUE(writer->Write(write_configuration_1));
+  EXPECT_TRUE(writer->Write(write_configuration_2));
+  EXPECT_THAT(FromGrpcStatus(writer->Finish()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Duplicated configuration_id found")));
+}
+
+TEST_F(FnConfidentialTransformTest,
+       IncompleteConfigurationFileCausingSessionFails) {
+  std::string configuration_id_1 = "configuration_id_1";
+  std::string configuration_id_2 = "configuration_id_2";
+  std::string data_1 = "some really data file with random content?";
+  std::string data_2 = "maybe, maybe not";
+  StreamInitializeRequest write_configuration_1 =
+      CreateWriteConfigurationRequest(data_1, true, configuration_id_1,
+                                      data_1.size());
+  // Incomplete second configuration file.
+  StreamInitializeRequest write_configuration_2 =
+      CreateWriteConfigurationRequest(data_2, false, configuration_id_2,
+                                      data_2.size() + 10);
+
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  absl::StatusOr<EncryptedRequest> encrypted_request =
+      CreateEncryptedProtectedResponse("result_encryption_key",
+                                       *oak_client_encryptor_);
+  ASSERT_THAT(encrypted_request, IsOk());
+  *request.mutable_protected_response() = *encrypted_request;
+  auto writer = stub_->StreamInitialize(&context, &response);
+
+  ASSERT_TRUE(writer->Write(write_configuration_1));
+  ASSERT_TRUE(writer->Write(write_configuration_2));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FnConfidentialTransformTest, FnFactoryCreationFails) {
-  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _))
+  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
       .WillOnce(
           Return(absl::InternalError("This FnFactory cannot be created.")));
 
@@ -239,7 +391,7 @@ TEST_F(FnConfidentialTransformTest, NonKmsInitializeFails) {
 TEST_F(FnConfidentialTransformTest, AlreadyInitializedFails) {
   // Expect the FnFactory to be created once. The second attempted
   // initialization should fail before calling the FnFactory factory again.
-  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _))
+  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
       .WillOnce(Return(std::make_unique<NiceMock<MockFnFactory>>()));
   grpc::ClientContext context;
   InitializeRequest request;

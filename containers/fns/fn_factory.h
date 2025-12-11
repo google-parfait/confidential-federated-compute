@@ -14,11 +14,19 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_FACTORY_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_FACTORY_H_
 
+#include <memory>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "containers/fns/fn.h"
 #include "containers/session.h"
 
 namespace confidential_federated_compute::fns {
+// WriteConfigurationMap contains information about files written to disk during
+// stream initialization. The key is configuration id.  The value is the path to
+// the file for the given configuration id.
+using WriteConfigurationMap = absl::flat_hash_map<std::string, std::string>;
 
 // Interface for the factory that creates Fns.
 class FnFactory {

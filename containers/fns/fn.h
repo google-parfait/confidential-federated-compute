@@ -40,6 +40,7 @@ struct KeyValue {
 
 // Common base class for functions
 class Fn : public confidential_federated_compute::Session {
+ public:
   // Does any setup work needed for this Fn replica.
   //
   // Invoked exactly once on each Fn replica (one replica per chunk of
@@ -62,7 +63,6 @@ class Fn : public confidential_federated_compute::Session {
     return absl::OkStatus();
   }
 
- public:
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
       fcp::confidentialcompute::ConfigureRequest configure_request,
       Context& context) override final {

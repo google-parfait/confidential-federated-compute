@@ -25,13 +25,12 @@ namespace confidential_federated_compute::fns {
 
 // Session base class for MapFns.
 class MapFn : public Fn {
- protected:
+ public:
   // Processes an input element. The input Value.data is unencrypted. Returns a
   // KeyValue containing the corresponding output element along with any
   // metadata.
   virtual absl::StatusOr<KeyValue> Map(KeyValue input, Context& context) = 0;
 
- public:
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
       std::string unencrypted_data, Context& context) override final;

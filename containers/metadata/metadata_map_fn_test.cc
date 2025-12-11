@@ -41,6 +41,7 @@ using ::absl::StatusCode;
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fns::KeyValue;
+using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::confidential_federated_compute::metadata::testing::BuildCheckpoint;
 using ::confidential_federated_compute::metadata::testing::
     BuildCheckpointFromTensors;
@@ -79,9 +80,11 @@ TEST_F(MetadataMapFnFactoryTest,
        ProvideMetadataMapFnFactoryFailsWithInvalidConfigConstraints) {
   MetadataContainerInitializationConfig init_config;
   init_config.set_on_device_query_name("test_query");
+
   Any init_config_any;
   init_config_any.PackFrom(init_config);
-  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, Any()),
+  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, Any(),
+                                          WriteConfigurationMap{}),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -89,8 +92,8 @@ TEST_F(MetadataMapFnFactoryTest,
        ProvideMetadataMapFnFactoryFailsWithInvalidInitConfig) {
   MetadataContainerConfig config;
   Any config_constraints;
-  config_constraints.PackFrom(config);
-  EXPECT_THAT(ProvideMetadataMapFnFactory(Any(), config_constraints),
+  EXPECT_THAT(ProvideMetadataMapFnFactory(Any(), config_constraints,
+                                          WriteConfigurationMap{}),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -102,7 +105,8 @@ TEST_F(MetadataMapFnFactoryTest, ProvideMetadataMapFnFactorySuccess) {
   init_config.set_on_device_query_name("test_query");
   Any init_config_any;
   init_config_any.PackFrom(init_config);
-  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, config_constraints),
+  EXPECT_THAT(ProvideMetadataMapFnFactory(init_config_any, config_constraints,
+                                          WriteConfigurationMap{}),
               IsOk());
 }
 
@@ -117,7 +121,8 @@ TEST_F(MetadataMapFnFactoryTest, CreateFnSuccess) {
   init_config_any.PackFrom(init_config);
 
   absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
-      ProvideMetadataMapFnFactory(init_config_any, config_constraints);
+      ProvideMetadataMapFnFactory(init_config_any, config_constraints,
+                                  WriteConfigurationMap{});
   EXPECT_THAT(factory, IsOk());
   // A single factory can create multiple Fns.
   EXPECT_THAT((*factory)->CreateFn(), IsOk());
@@ -136,7 +141,8 @@ std::unique_ptr<fns::Fn> CreateMetadataMapFn(
   init_config_any.PackFrom(init_config);
 
   absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
-      ProvideMetadataMapFnFactory(init_config_any, config_constraints);
+      ProvideMetadataMapFnFactory(init_config_any, config_constraints,
+                                  WriteConfigurationMap{});
   CHECK_OK(factory.status());
   absl::StatusOr<std::unique_ptr<fns::Fn>> fn = (*factory)->CreateFn();
   CHECK_OK(fn.status());

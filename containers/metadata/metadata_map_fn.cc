@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "containers/metadata/metadata_map_fn.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "containers/big_endian.h"
@@ -30,6 +31,7 @@ namespace confidential_federated_compute::metadata {
 namespace {
 using ::confidential_federated_compute::Session;
 using ::confidential_federated_compute::fns::KeyValue;
+using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::client::EventTimeRange;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
@@ -247,7 +249,8 @@ class MetadataMapFnFactory
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMetadataMapFnFactory(
     const google::protobuf::Any& configuration,
-    const google::protobuf::Any& config_constraints) {
+    const google::protobuf::Any& config_constraints,
+    const WriteConfigurationMap& /*write_configuration_map*/) {
   // We expect to find the configuration that describes what metadata to
   // generate in the trusted config_constraints.
   MetadataContainerConfig config;
