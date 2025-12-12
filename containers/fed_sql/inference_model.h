@@ -64,6 +64,12 @@ class InferenceModel {
   const std::optional<SessionInferenceConfiguration>&
   GetInferenceConfiguration() const;
 
+  struct InferenceOutput {
+    ::tensorflow_federated::aggregation::Tensor tensor;
+    // Number of output rows generated for each input row.
+    std::vector<size_t> per_row_output_counts;
+  };
+
  private:
   struct NoModel {};
   struct GemmaCppModel {
@@ -97,23 +103,33 @@ class InferenceModel {
   virtual absl::Status BuildLlamaCppModel(
       const SessionLlamaCppConfiguration& llama_config);
 
-  // Runs inference with the gemma.cpp model using given prompt over all
-  // rows and returns a 1-D string tensor of results representing the output
-  // column.
-  virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
-  RunGemmaCppInference(const fcp::confidentialcompute::Prompt& prompt,
-                       const sql::Input& input,
-                       absl::Span<const size_t> input_column_indices,
-                       const std::string& output_column_name);
+  // Runs inference with the gemma.cpp model using given prompt over all rows
+  // and returns an InferenceOutput containing the results representing the
+  // output column.
+  virtual absl::StatusOr<InferenceOutput> RunGemmaCppInference(
+      const fcp::confidentialcompute::Prompt& prompt, const sql::Input& input,
+      absl::Span<const size_t> input_column_indices,
+      const std::string& output_column_name);
 
-  // Runs inference with the llama.cpp model using given prompt over all
-  // rows and returns a 1-D string tensor of results representing the output
-  // column.
-  virtual absl::StatusOr<::tensorflow_federated::aggregation::Tensor>
-  RunLlamaCppInference(const fcp::confidentialcompute::Prompt& prompt,
-                       const sql::Input& input,
-                       absl::Span<const size_t> input_column_indices,
-                       const std::string& output_column_name);
+  // Runs inference with the llama.cpp model using given prompt over all rows
+  // and returns an InferenceOutput containing the results representing the
+  // output column.
+  virtual absl::StatusOr<InferenceOutput> RunLlamaCppInference(
+      const fcp::confidentialcompute::Prompt& prompt, const sql::Input& input,
+      absl::Span<const size_t> input_column_indices,
+      const std::string& output_column_name);
+
+  // Duplicates rows in the input columns to match the number of rows in the
+  // output columns, which may be greater than one per input row. For now, only
+  // one output column duplication is supported (only supports a single output
+  // column in the per_row_output_counts_map). Once this is extended to multiple
+  // output columns, this will handle the cartesian product of multiple outputs.
+  absl::Status DuplicateColumnsForMultipleRows(
+      sql::Input& input,
+      std::map<std::string, ::tensorflow_federated::aggregation::Tensor>&
+          output_columns,
+      const std::map<std::string, std::vector<size_t>>&
+          per_row_output_counts_map);
 
   // Helpter function that runs inference with the llama.cpp model using
   // given prompt over a single row.

@@ -296,14 +296,25 @@ class FedSqlServerTest : public Test {
 
     ON_CALL(*mock_inference_model_, BuildGemmaCppModel)
         .WillByDefault(Return(absl::OkStatus()));
-    ON_CALL(*mock_inference_model_, RunGemmaCppInference).WillByDefault([]() {
-      std::initializer_list<absl::string_view> topic_values = {"topic_value"};
-      return Tensor::Create(
-          DataType::DT_STRING,
-          TensorShape({static_cast<int64_t>(topic_values.size())}),
-          std::make_unique<MutableVectorData<absl::string_view>>(topic_values),
-          /*name=*/"topic");
-    });
+    ON_CALL(*mock_inference_model_, RunGemmaCppInference)
+        .WillByDefault([](const fcp::confidentialcompute::Prompt&,
+                          const sql::Input&, absl::Span<const size_t>,
+                          const std::string&)
+                           -> absl::StatusOr<InferenceModel::InferenceOutput> {
+          std::initializer_list<absl::string_view> topic_values = {
+              "topic_value"};
+          absl::StatusOr<Tensor> tensor = Tensor::Create(
+              DataType::DT_STRING,
+              TensorShape({static_cast<int64_t>(topic_values.size())}),
+              std::make_unique<MutableVectorData<absl::string_view>>(
+                  topic_values),
+              /*name=*/"topic");
+          if (!tensor.ok()) {
+            return tensor.status();
+          }
+          return InferenceModel::InferenceOutput{.tensor = std::move(*tensor),
+                                                 .per_row_output_counts = {1}};
+        });
     auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
         EncryptionKeyProvider::Create().value());
     oak_client_encryptor_ =

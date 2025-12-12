@@ -122,14 +122,26 @@ absl::StatusOr<size_t> InferenceOutputProcessor::ProcessInferenceOutput(
 
       size_t num_values_added = 0;
       for (const auto& element : value.list_value().values()) {
-        if (element.kind_case() != Value::kStringValue) {
-          return absl::InvalidArgumentError(
-              "JSON array contains non-string elements.");
+        std::string string_element;
+        switch (element.kind_case()) {
+          case Value::kStringValue:
+            string_element = element.string_value();
+            break;
+          case Value::kNumberValue:
+            string_element = absl::StrCat(element.number_value());
+            break;
+          case Value::kBoolValue:
+            string_element = element.bool_value() ? "true" : "false";
+            break;
+          default:
+            return absl::InvalidArgumentError(absl::StrCat(
+                "JSON array contains an unsupported element of type ",
+                element.kind_case()));
         }
         if (regex.has_value()) {
-          output_string_data->Add(RegexMatch(element.string_value(), *regex));
+          output_string_data->Add(RegexMatch(string_element, *regex));
         } else {
-          output_string_data->Add(std::string(element.string_value()));
+          output_string_data->Add(std::move(string_element));
         }
         num_values_added++;
       }

@@ -31,18 +31,18 @@ class MockInferenceModel : public InferenceModel {
               (const SessionGemmaCppConfiguration& gemma_config), (override));
   MOCK_METHOD(absl::Status, BuildLlamaCppModel,
               (const SessionLlamaCppConfiguration& llama_config), (override));
-  MOCK_METHOD(absl::StatusOr<tensorflow_federated::aggregation::Tensor>,
+  MOCK_METHOD(absl::StatusOr<InferenceModel::InferenceOutput>,
               RunGemmaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,
                const sql::Input& input,
                absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));
-  MOCK_METHOD(absl::StatusOr<tensorflow_federated::aggregation::Tensor>,
+  MOCK_METHOD(absl::StatusOr<InferenceModel::InferenceOutput>,
               RunLlamaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,
                const sql::Input& input,
-               const absl::Span<const size_t> input_column_indices,
+               absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));
 };
