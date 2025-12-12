@@ -275,11 +275,30 @@ TEST_F(InferenceModelInternalTest, ProcessInferenceOutputValueNotArray) {
               HasSubstr("Value for key 'topic' is not a JSON array."));
 }
 
-TEST_F(InferenceModelInternalTest, ProcessInferenceOutputArrayWithNonString) {
+TEST_F(InferenceModelInternalTest, ProcessInferenceOutputArrayWithMixedTypes) {
   InferenceOutputProcessor processor;
   Prompt prompt;
   prompt.set_parser(Prompt::PARSER_AUTO);
-  std::string output_string = R"({"topic": ["foo", 123]})";
+  std::string output_string =
+      R"({"topic": ["foo", 123, 45.6, true, false, -7]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(6));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result),
+              ElementsAre("foo", "123", "45.6", "true", "false", "-7"));
+}
+
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputArrayWithUnsupportedType) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": ["foo", null]})";
   std::string output_column_name = "topic";
   auto output_string_data = std::make_unique<MutableStringData>(0);
   auto result = processor.ProcessInferenceOutput(
@@ -287,7 +306,7 @@ TEST_F(InferenceModelInternalTest, ProcessInferenceOutputArrayWithNonString) {
       output_string_data.get());
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(),
-              HasSubstr("JSON array contains non-string elements."));
+              HasSubstr("JSON array contains an unsupported element of type"));
 }
 
 TEST_F(InferenceModelInternalTest, ProcessInferenceOutputWithRegex) {

@@ -14,6 +14,7 @@
 
 #include "containers/fed_sql/inference_model.h"
 
+#include <algorithm>
 #include <regex>
 
 #include "absl/container/flat_hash_set.h"
@@ -65,7 +66,9 @@ using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
+using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
 
 constexpr size_t kMaxPromptSize = 10000;
@@ -73,6 +76,38 @@ constexpr size_t kMaxPromptSize = 10000;
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
 constexpr size_t kNumTokensPerBatch = 2048;
+
+// Duplicates the data in a single column based on the per_row_output_counts.
+// T is the C++ type of the data in the column.
+template <typename T>
+void DuplicateVectorData(const Tensor& original_column,
+                         size_t original_row_count,
+                         const std::vector<size_t>& per_row_output_counts,
+                         TensorData* new_data_ptr) {
+  auto* new_data = static_cast<MutableVectorData<T>*>(new_data_ptr);
+  const auto original_span = original_column.AsSpan<T>();
+  for (size_t i = 0; i < original_row_count; ++i) {
+    const T& val = original_span[i];
+    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
+      new_data->push_back(val);
+    }
+  }
+}
+
+// Overload for DT_STRING.
+void DuplicateStringData(const Tensor& original_column,
+                         size_t original_row_count,
+                         const std::vector<size_t>& per_row_output_counts,
+                         TensorData* new_data_ptr) {
+  auto* new_data = static_cast<MutableStringData*>(new_data_ptr);
+  const auto original_span = original_column.AsSpan<absl::string_view>();
+  for (size_t i = 0; i < original_row_count; ++i) {
+    const absl::string_view val = original_span[i];
+    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
+      new_data->Add(std::string(val));
+    }
+  }
+}
 
 }  // namespace
 
@@ -151,14 +186,17 @@ absl::Status InferenceModel::BuildModel(
   return absl::OkStatus();
 }
 
-absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
+absl::StatusOr<InferenceModel::InferenceOutput>
+InferenceModel::RunGemmaCppInference(
     const Prompt& prompt, const Input& input,
     absl::Span<const size_t> input_column_indices,
     const std::string& output_column_name) {
   if (input_column_indices.empty()) {
-    return Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                          std::make_unique<MutableStringData>(0),
-                          output_column_name);
+    FCP_ASSIGN_OR_RETURN(Tensor tensor,
+                         Tensor::Create(DataType::DT_STRING, TensorShape({0}),
+                                        std::make_unique<MutableStringData>(0),
+                                        output_column_name));
+    return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
   // Only need to initialize this once.
   GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
@@ -175,6 +213,8 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
       std::make_unique<MutableStringData>(
           static_cast<long>(input.GetRowCount()));
   size_t num_output_rows = 0;
+  std::vector<size_t> per_row_output_counts;
+  per_row_output_counts.reserve(input.GetRowCount());
 
   TimingInfo timing_info;
   std::mt19937 gen;
@@ -239,14 +279,20 @@ absl::StatusOr<Tensor> InferenceModel::RunGemmaCppInference(
                    << ". Outputting empty string.";
       output_string_data->Add("");
       num_output_rows++;
+      per_row_output_counts.push_back(1);
     } else {
       num_output_rows += *num_rows_added_status;
+      per_row_output_counts.push_back(*num_rows_added_status);
     }
   }
 
-  return Tensor::Create(DataType::DT_STRING,
-                        TensorShape({static_cast<long>(num_output_rows)}),
-                        std::move(output_string_data), output_column_name);
+  FCP_ASSIGN_OR_RETURN(
+      Tensor output_tensor,
+      Tensor::Create(DataType::DT_STRING,
+                     TensorShape({static_cast<long>(num_output_rows)}),
+                     std::move(output_string_data), output_column_name));
+  return InferenceOutput{std::move(output_tensor),
+                         std::move(per_row_output_counts)};
 }
 
 absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
@@ -382,14 +428,17 @@ absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
   return output_stream.str();
 }
 
-absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
+absl::StatusOr<InferenceModel::InferenceOutput>
+InferenceModel::RunLlamaCppInference(
     const Prompt& prompt, const Input& input,
     absl::Span<const size_t> input_column_indices,
     const std::string& output_column_name) {
   if (input_column_indices.empty()) {
-    return Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                          std::make_unique<MutableStringData>(0),
-                          output_column_name);
+    FCP_ASSIGN_OR_RETURN(Tensor tensor,
+                         Tensor::Create(DataType::DT_STRING, TensorShape({0}),
+                                        std::make_unique<MutableStringData>(0),
+                                        output_column_name));
+    return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
   LlamaCppModel& llama_model = std::get<LlamaCppModel>(model_);
   const llama_vocab* vocab = llama_model_get_vocab(llama_model.llama_.get());
@@ -407,6 +456,8 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
       std::make_unique<MutableStringData>(
           static_cast<long>(input.GetRowCount()));
   size_t num_output_rows = 0;
+  std::vector<size_t> per_row_output_counts;
+  per_row_output_counts.reserve(input.GetRowCount());
   // For each row of the input columns, we first populate the prompt template
   // to create a combined prompt matching the column values, then run inference
   // over the combined prompt. Each element in the output tensor corresponds
@@ -433,14 +484,111 @@ absl::StatusOr<Tensor> InferenceModel::RunLlamaCppInference(
                    << ". Outputting empty string.";
       output_string_data->Add("");
       num_output_rows++;
+      per_row_output_counts.push_back(1);
     } else {
       num_output_rows += *num_rows_added_status;
+      per_row_output_counts.push_back(*num_rows_added_status);
     }
   }
 
-  return Tensor::Create(DataType::DT_STRING,
-                        TensorShape({static_cast<long>(num_output_rows)}),
-                        std::move(output_string_data), output_column_name);
+  FCP_ASSIGN_OR_RETURN(
+      Tensor output_tensor,
+      Tensor::Create(DataType::DT_STRING,
+                     TensorShape({static_cast<long>(num_output_rows)}),
+                     std::move(output_string_data), output_column_name));
+  return InferenceOutput{std::move(output_tensor),
+                         std::move(per_row_output_counts)};
+}
+
+absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
+    sql::Input& input, std::map<std::string, Tensor>& output_columns,
+    const std::map<std::string, std::vector<size_t>>&
+        per_row_output_counts_map) {
+  if (output_columns.size() != 1) {
+    // This function is called per-task, so there is always one output column.
+    return absl::InternalError(
+        "DuplicateColumnsForMultipleRows called with multiple output columns");
+  }
+  const size_t original_row_count = input.GetRowCount();
+  if (original_row_count == 0) {
+    return absl::OkStatus();
+  }
+
+  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
+                       std::move(input).MoveToTensors());
+
+  const auto& per_row_output_counts = per_row_output_counts_map.begin()->second;
+
+  size_t total_new_rows = 0;
+  for (size_t count : per_row_output_counts) {
+    total_new_rows += count;
+  }
+
+  std::vector<std::unique_ptr<TensorData>> new_original_data;
+  new_original_data.reserve(original_columns.size());
+  for (const auto& col : original_columns) {
+    switch (col.dtype()) {
+      case DataType::DT_STRING: {
+        auto new_data = std::make_unique<MutableStringData>(total_new_rows);
+        DuplicateStringData(col, original_row_count, per_row_output_counts,
+                            new_data.get());
+        new_original_data.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_INT64: {
+        auto new_data = std::make_unique<MutableVectorData<int64_t>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<int64_t>(col, original_row_count,
+                                     per_row_output_counts, new_data.get());
+        new_original_data.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_INT32: {
+        auto new_data = std::make_unique<MutableVectorData<int32_t>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<int32_t>(col, original_row_count,
+                                     per_row_output_counts, new_data.get());
+        new_original_data.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_FLOAT: {
+        auto new_data = std::make_unique<MutableVectorData<float>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<float>(col, original_row_count,
+                                   per_row_output_counts, new_data.get());
+        new_original_data.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_DOUBLE: {
+        auto new_data = std::make_unique<MutableVectorData<double>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<double>(col, original_row_count,
+                                    per_row_output_counts, new_data.get());
+        new_original_data.push_back(std::move(new_data));
+        break;
+      }
+      default:
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported data type for duplication: ",
+                         DataType_Name(col.dtype())));
+    }
+  }
+
+  std::vector<Tensor> final_columns;
+  final_columns.reserve(original_columns.size());
+  for (size_t i = 0; i < original_columns.size(); ++i) {
+    FCP_ASSIGN_OR_RETURN(Tensor t,
+                         Tensor::Create(original_columns[i].dtype(),
+                                        TensorShape({(long)total_new_rows}),
+                                        std::move(new_original_data[i]),
+                                        original_columns[i].name()));
+    final_columns.push_back(std::move(t));
+  }
+  FCP_ASSIGN_OR_RETURN(sql::Input new_input,
+                       sql::Input::CreateFromTensors(std::move(final_columns),
+                                                     {}));  // blob_header
+  input = std::move(new_input);
+  return absl::OkStatus();
 }
 
 absl::Status InferenceModel::RunInference(Input& input) {
@@ -448,6 +596,7 @@ absl::Status InferenceModel::RunInference(Input& input) {
     return absl::UnimplementedError(
         "Model must be initialized before running inference.");
   }
+
   for (const auto& inference_task :
        inference_configuration_->initialize_configuration.inference_config()
            .inference_task()) {
@@ -473,10 +622,8 @@ absl::Status InferenceModel::RunInference(Input& input) {
     std::vector<size_t> input_column_indices;
     for (const auto& input_column_name : input_column_names) {
       const auto it =
-          find_if(input.GetColumnNames().begin(), input.GetColumnNames().end(),
-                  [&input_column_name](const std::string& column) {
-                    return column == input_column_name;
-                  });
+          std::find(input.GetColumnNames().begin(),
+                    input.GetColumnNames().end(), input_column_name);
       if (it == input.GetColumnNames().end()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Couldn't find an input column ", input_column_name,
@@ -485,22 +632,41 @@ absl::Status InferenceModel::RunInference(Input& input) {
       input_column_indices.push_back(it - input.GetColumnNames().begin());
     }
 
-    Tensor output_column;
+    InferenceOutput inference_output;
     if (std::holds_alternative<GemmaCppModel>(model_)) {
       FCP_ASSIGN_OR_RETURN(
-          output_column,
+          inference_output,
           RunGemmaCppInference(inference_task.prompt(), input,
                                input_column_indices, output_column_name));
     } else if (std::holds_alternative<LlamaCppModel>(model_)) {
       FCP_ASSIGN_OR_RETURN(
-          output_column,
+          inference_output,
           RunLlamaCppInference(inference_task.prompt(), input,
                                input_column_indices, output_column_name));
     } else {
       return absl::UnimplementedError(
           absl::StrCat("Unsupported inference model type."));
     }
-    input.AddColumn(std::move(output_column));
+
+    std::map<std::string, Tensor> current_output_column;
+    current_output_column.emplace(output_column_name,
+                                  std::move(inference_output.tensor));
+
+    // If any of the rows generated multiple outputs, duplicate the columns to
+    // match the new row count.
+    if (std::any_of(inference_output.per_row_output_counts.begin(),
+                    inference_output.per_row_output_counts.end(),
+                    [](size_t count) { return count != 1; })) {
+      std::map<std::string, std::vector<size_t>> per_row_output_counts_map;
+      per_row_output_counts_map.emplace(
+          output_column_name,
+          std::move(inference_output.per_row_output_counts));
+
+      FCP_RETURN_IF_ERROR(DuplicateColumnsForMultipleRows(
+          input, current_output_column, per_row_output_counts_map));
+    }
+
+    input.AddColumn(std::move(current_output_column.begin()->second));
   }
 
   return absl::OkStatus();
