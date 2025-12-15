@@ -40,7 +40,6 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
-#include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
@@ -97,17 +96,12 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
 
-constexpr size_t kBlobIdSize = 16;
-
 absl::StatusOr<std::string> CreateAssociatedData(
     absl::string_view reencryption_key,
     absl::string_view reencryption_policy_hash) {
   FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
   BlobHeader header;
-  std::string blob_id(kBlobIdSize, '\0');
-  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
-                   blob_id.size());
-  header.set_blob_id(blob_id);
+  header.set_blob_id(RandomBlobId());
   header.set_key_id(okp_key.key_id);
   header.set_access_policy_sha256(std::string(reencryption_policy_hash));
   return header.SerializeAsString();

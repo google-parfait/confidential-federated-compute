@@ -18,13 +18,13 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "cc/crypto/server_encryptor.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
@@ -37,6 +37,7 @@
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/support/status.h"
+
 namespace confidential_federated_compute {
 
 using ::fcp::base::ToGrpcStatus;
@@ -61,46 +62,96 @@ using ::grpc::ServerContext;
 using ::oak::crypto::DecryptionResult;
 using ::oak::crypto::ServerEncryptor;
 
-// Callable struct that provides functionality of chunked writing of
-// ReadResponse to the stream.
+// Provides implementation of methods to emit the data into the session
+// stream with an ability to encrypt and chunk the data.
 class ChunkedStreamWriter : public Session::Context {
  public:
-  ChunkedStreamWriter(SessionStream* stream, uint32_t chunk_size)
-      : stream_(stream), chunk_size_(chunk_size) {}
+  ChunkedStreamWriter(SessionStream* stream, uint32_t chunk_size,
+                      const std::optional<KmsEncryptor>& encryptor)
+      : stream_(stream), chunk_size_(chunk_size), encryptor_(encryptor) {}
 
  private:
-  bool Emit(ReadResponse read_response) override {
-    SessionResponse response;
-    ReadResponse* mutable_read = response.mutable_read();
-    *mutable_read = std::move(read_response);
-    mutable_read->set_finish_read(mutable_read->data().size() <= chunk_size_);
-    if (!mutable_read->finish_read()) {
-      // Chunked write implemented by splitting the provided
-      // ReadResponse.
-      absl::Cord data(std::move(*mutable_read->mutable_data()));
-      do {
-        absl::CopyCordToString(data.Subcord(0, chunk_size_),
-                               mutable_read->mutable_data());
-        data.RemovePrefix(chunk_size_);
-        if (!stream_->Write(response)) {
-          return false;
-        }
-        mutable_read->clear_first_response_configuration();
-        mutable_read->clear_first_response_metadata();
-      } while (data.size() > chunk_size_);
+  // Implementation of Session::Context - private because these
+  // methods can be called only via the Context interface.
+  bool Emit(ReadResponse read_response) override;
+  bool EmitUnencrypted(Session::KV kv) override;
+  bool EmitEncrypted(int reencryption_key_index, Session::KV kv) override;
 
-      absl::CopyCordToString(data, mutable_read->mutable_data());
-      mutable_read->set_finish_read(true);
-    }
-
-    // Final chunk of data (or the only chunk if the data was smaller or
-    // equal than the chunk size).
-    return stream_->Write(response);
-  }
+  bool Emit(std::string data, google::protobuf::Any config,
+            BlobMetadata metadata);
 
   SessionStream* stream_;
   uint32_t chunk_size_;
+  const std::optional<KmsEncryptor>& encryptor_;
 };
+
+bool ChunkedStreamWriter::Emit(ReadResponse read_response) {
+  SessionResponse response;
+  ReadResponse* mutable_read = response.mutable_read();
+  *mutable_read = std::move(read_response);
+  mutable_read->set_finish_read(mutable_read->data().size() <= chunk_size_);
+  if (!mutable_read->finish_read()) {
+    // Chunked write implemented by splitting the provided
+    // ReadResponse.
+    absl::Cord data(std::move(*mutable_read->mutable_data()));
+    do {
+      absl::CopyCordToString(data.Subcord(0, chunk_size_),
+                             mutable_read->mutable_data());
+      data.RemovePrefix(chunk_size_);
+      if (!stream_->Write(response)) {
+        return false;
+      }
+      mutable_read->clear_first_response_configuration();
+      mutable_read->clear_first_response_metadata();
+    } while (data.size() > chunk_size_);
+
+    absl::CopyCordToString(data, mutable_read->mutable_data());
+    mutable_read->set_finish_read(true);
+  }
+
+  // Final chunk of data (or the only chunk if the data was smaller or
+  // equal than the chunk size).
+  return stream_->Write(response);
+}
+
+bool ChunkedStreamWriter::Emit(std::string data, google::protobuf::Any key,
+                               BlobMetadata metadata) {
+  ReadResponse response;
+  *response.mutable_data() = std::move(data);
+  *response.mutable_first_response_configuration() = std::move(key);
+  *response.mutable_first_response_metadata() = std::move(metadata);
+  return Emit(std::move(response));
+}
+
+bool ChunkedStreamWriter::EmitUnencrypted(Session::KV kv) {
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(kv.data.size());
+  metadata.mutable_unencrypted()->set_blob_id(kv.blob_id);
+  return Emit(std::move(kv.data), std::move(kv.key), std::move(metadata));
+}
+
+bool ChunkedStreamWriter::EmitEncrypted(int reencryption_key_index,
+                                        Session::KV kv) {
+  if (!encryptor_.has_value()) {
+    LOG(ERROR) << "KMS reencryption context isn't initialized";
+    return false;
+  }
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor_->EncryptIntermediateResult(reencryption_key_index, kv.data,
+                                            kv.blob_id);
+  if (!encrypted_result.ok()) {
+    LOG(ERROR) << "Failed to encrypt intermediate result: "
+               << encrypted_result.status();
+    return false;
+  }
+
+  BlobMetadata metadata = std::move(encrypted_result->metadata);
+
+  return Emit(std::move(encrypted_result->ciphertext), std::move(kv.key),
+              std::move(metadata));
+}
 
 // Decrypts and parses a record and incorporates the record into the session.
 //
@@ -122,7 +173,7 @@ absl::Status ConfidentialTransformBase::HandleWrite(
   // Get the key ID if KMS is enabled. For legacy ledger, the key ID is not
   // needed.
   absl::StatusOr<std::string> key_id =
-      kms_enabled_ ? GetKeyId(request.first_request_metadata()) : "";
+      KmsEnabled() ? GetKeyId(request.first_request_metadata()) : "";
 
   if (!key_id.ok()) {
     stream->Write(ToSessionWriteFinishedResponse(key_id.status()));
@@ -175,9 +226,9 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             request.initialize_request();
         max_num_sessions = initialize_request.max_num_sessions();
 
-        kms_enabled_ = initialize_request.has_protected_response() &&
-                       oak_encryption_key_handle_ != nullptr;
-        if (kms_enabled_) {
+        bool kms_enabled = initialize_request.has_protected_response() &&
+                           oak_encryption_key_handle_ != nullptr;
+        if (kms_enabled) {
           ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
           FCP_ASSIGN_OR_RETURN(DecryptionResult decryption_result,
                                server_encryptor.Decrypt(
@@ -199,6 +250,14 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             return absl::InvalidArgumentError(
                 "Expected at least one policy hash but none were supplied.");
           }
+
+          // Pick any of the authorized_logical_pipeline_policies_hashes as the
+          // reencryption_policy_hash. For convenience, we pick the first one.
+          kms_encryptor_.emplace(
+              std::vector<std::string>(
+                  protected_response.result_encryption_keys().begin(),
+                  protected_response.result_encryption_keys().end()),
+              associated_data.authorized_logical_pipeline_policies_hashes(0));
           for (const auto& policy_hash :
                associated_data.authorized_logical_pipeline_policies_hashes()) {
             authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
@@ -208,15 +267,14 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
                protected_response.decryption_keys().end()},
               {associated_data.omitted_decryption_key_ids().begin(),
                associated_data.omitted_decryption_key_ids().end()}));
-          // Pick any of the authorized_logical_pipeline_policies_hashes as the
-          // reencryption_policy_hash. For convenience, we pick the first one.
+
+          // TODO: stop passing reencryption context to the derived class and
+          // instead use Session::Context to encrypt the outputs
           FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
               initialize_request.configuration(),
               associated_data.config_constraints(),
-              std::vector<std::string>(
-                  protected_response.result_encryption_keys().begin(),
-                  protected_response.result_encryption_keys().end()),
-              associated_data.authorized_logical_pipeline_policies_hashes(0)));
+              kms_encryptor_->reencryption_keys(),
+              kms_encryptor_->reencryption_policy_hash()));
         } else {
           FCP_ASSIGN_OR_RETURN(config_properties,
                                StreamInitializeTransform(&initialize_request));
@@ -275,7 +333,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
   }
 
   // Returning the public key is only needed with the legacy ledger.
-  if (!kms_enabled_) {
+  if (!KmsEnabled()) {
     FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
                          blob_decryptor->GetPublicKey());
   }
@@ -334,8 +392,9 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
         "chunk_size must be specified in the session ConfigureRequest.");
   }
 
-  // This provides the context for writing of ReadResponse messages.
-  ChunkedStreamWriter context(stream, chunk_size);
+  // This provides the context for encryption and writing of ReadResponse
+  // messages.
+  ChunkedStreamWriter context(stream, chunk_size, kms_encryptor_);
 
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
@@ -347,7 +406,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   SessionResponse response;
   std::optional<NonceChecker> nonce_checker = std::nullopt;
   // Nonces only need to be verified for the legacy ledger.
-  if (!kms_enabled_) {
+  if (!KmsEnabled()) {
     nonce_checker = NonceChecker();
     *configure_response.mutable_nonce() = nonce_checker->GetSessionNonce();
   }
@@ -395,7 +454,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
           // encrypting any results. This is only needed for the legacy ledger.
           // With KMS, the re-encryption keys are shared upfront with the worker
           // as part of initialization.
-          if (!kms_enabled_) {
+          if (!KmsEnabled()) {
             absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
                 EarliestExpirationTimeMetadata(
                     result_blob_metadata,

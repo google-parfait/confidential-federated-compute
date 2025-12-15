@@ -17,11 +17,15 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SESSION_H_
 
+#include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute {
@@ -72,6 +76,37 @@ class Session {
  public:
   virtual ~Session() = default;
 
+  // A struct that describes an input or output key/value pair with an
+  // optional metadata
+  struct KV {
+    // Optional key associated with the data.
+    // If not specified the key has the default value.
+    google::protobuf::Any key;
+    // Plaintext (unencrypted) data
+    std::string data;
+    // Blob ID associated with the data, if available; otherwise empty.
+    std::string blob_id;
+
+    // Implicit constructor that constructs KV from data.
+    // This allows passing a string or literal in place of KV, for example
+    // EmitUnencrypted("plaintext")
+    template <typename T>
+    KV(T&& data) : KV(google::protobuf::Any(), std::forward<T>(data)) {}
+
+    // Explicit constructor
+    KV(google::protobuf::Any key, std::string data,
+       std::string blob_id = RandomBlobId())
+        : key(std::move(key)),
+          data(std::move(data)),
+          blob_id(std::move(blob_id)) {}
+
+    KV() = default;
+    KV(const KV&) = default;
+    KV(KV&&) = default;
+    KV& operator=(const KV&) = default;
+    KV& operator=(KV&&) = default;
+  };
+
   // Context interface that provides ability to emit an an arbitrary number of
   // ReadResponse messages to the session stream.
   class Context {
@@ -80,7 +115,19 @@ class Session {
 
     // Emits a single ReadResponse message to the session stream. If necessary
     // the message may be chunked.
+    // This is the raw level method that takes the prepared ReadResponse and
+    // emits it as is without any further processing other than chunking.
+    // If the data needs to be encrypted, that has to be done in advance.
     virtual bool Emit(fcp::confidentialcompute::ReadResponse read_response) = 0;
+
+    // Emits the provided key/value as plaintext, without encryption.
+    virtual bool EmitUnencrypted(KV kv) = 0;
+
+    // Encrypts and emits the provided key/value using the specified
+    // reencryption key. This methods is appropriate only for temporary
+    // encryption, for blobs that will be consumed by other parts of the
+    // pipeline. This method doesn't support encryption for releasable results.
+    virtual bool EmitEncrypted(int reencryption_key_index, KV kv) = 0;
   };
 
   // Initialize the session with the given configuration.

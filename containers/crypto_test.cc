@@ -55,6 +55,14 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
 
+TEST(CryptoTest, RandomBlobId) {
+  std::string blob_id1 = RandomBlobId();
+  std::string blob_id2 = RandomBlobId();
+  EXPECT_EQ(blob_id1.size(), 16);
+  EXPECT_EQ(blob_id2.size(), 16);
+  EXPECT_NE(blob_id1, blob_id2);
+}
+
 TEST(CryptoTest, KeyedHashSuccess) {
   absl::string_view input = "The quick brown fox jumps over the lazy dog";
   absl::string_view key = "key";

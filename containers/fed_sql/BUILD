@@ -442,6 +442,7 @@ cc_test(
         "//containers:crypto_test_utils",
         "//containers/fed_sql/testing:mocks",
         "//containers/fed_sql/testing:test_utils",
+        "//containers/testing",
         "//testing:matchers",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/log",
