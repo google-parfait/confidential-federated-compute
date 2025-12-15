@@ -1,0 +1,59 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package gcp_prototype;
+
+import "google/rpc/status.proto";
+
+// Configuration for the inference generation.
+message InferenceParameters {
+  // The maximum number of tokens to generate.
+  int32 max_output_tokens = 1;
+
+  // Sampling temperature (0.0 - 1.0).
+  float temperature = 2;
+
+  // Nucleus sampling probability.
+  float top_p = 3;
+
+  // Top-k sampling.
+  int32 top_k = 4;
+}
+
+// A single input inference request in a batch.
+message InferenceRequest {
+  string text = 1;
+}
+
+// A single request's output result in a batch.
+message InferenceResult {
+  // The status of this specific inference attempt.
+  google.rpc.Status status = 1;
+
+  // The generated text. Populated only if status is OK.
+  string text = 2;
+}
+
+// Top-level request for batched processing.
+message BatchedInferenceRequest {
+  repeated InferenceRequest requests = 1;
+  InferenceParameters params = 2;
+}
+
+// Top-level response for batched processing.
+message BatchedInferenceResponse {
+  repeated InferenceResult results = 1;
+}

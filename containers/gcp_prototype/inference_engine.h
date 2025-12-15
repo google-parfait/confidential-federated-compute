@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "include/llama.h"
+#include "inference.pb.h"
 
 namespace gcp_prototype {
 
@@ -65,14 +66,24 @@ class InferenceEngine {
    */
   absl::StatusOr<std::string> Infer(const std::string& prompt);
 
+  /**
+   * @brief Performs batched inference on a list of prompts.
+   *
+   * This method processes multiple prompts in parallel using llama.cpp's
+   * batch decoding capabilities.
+   *
+   * @param request The proto containing the list of prompts and parameters.
+   * @return A response proto with results for every prompt.
+   */
+  absl::StatusOr<BatchedInferenceResponse> InferBatch(
+      const BatchedInferenceRequest& request);
+
  private:
   // Private constructor used by Create().
   InferenceEngine(llama_model* model, const llama_vocab* vocab);
 
-  // Helper to perform the actual generation loop, requiring the mutex to be
-  // held.
-  absl::StatusOr<std::string> InferInternal(const std::string& prompt)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // Helper to tokenize a prompt (including chat template application).
+  absl::StatusOr<std::vector<llama_token>> Tokenize(const std::string& prompt);
 
   llama_model* model_;        // Owned by this class.
   const llama_vocab* vocab_;  // Owned by model_.
@@ -83,6 +94,9 @@ class InferenceEngine {
   // to ensure stateless request handling.
   llama_context* ctx_ ABSL_GUARDED_BY(mutex_) = nullptr;
   llama_sampler* sampler_ ABSL_GUARDED_BY(mutex_) = nullptr;
+
+  // Reusable batch structure for llama.cpp to avoid frequent allocations.
+  llama_batch batch_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gcp_prototype

@@ -29,6 +29,7 @@
 #include "client_session_config.h"
 #include "google/protobuf/text_format.h"
 #include "grpcpp/grpcpp.h"
+#include "inference.pb.h"
 #include "policy.pb.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
 #include "proto_util.h"
@@ -85,7 +86,8 @@ class TestClientServiceImpl final : public TestClientService::Service {
   grpc::Status Generate(grpc::ServerContext* context,
                         const TestClientGenerateRequest* request,
                         TestClientGenerateResponse* response) override {
-    LOG(INFO) << "Received Generate request with prompt: " << request->prompt();
+    LOG(INFO) << "Received Generate request with " << request->prompts_size()
+              << " prompts.";
 
     using gcp_prototype::session_utils::ExchangeHandshakeMessages;
     using gcp_prototype::session_utils::PumpOutgoingMessages;
@@ -123,31 +125,75 @@ class TestClientServiceImpl final : public TestClientService::Service {
     // callback.
     ExchangeHandshakeMessages(&client_session, stream.get());
 
-    LOG(INFO) << "Client encrypting and sending application message.";
-    CHECK_OK(client_session.Write(request->prompt()));
+    LOG(INFO) << "Client constructing and encrypting batched request.";
+
+    gcp_prototype::BatchedInferenceRequest batch_request;
+
+    // Iterate over the repeated prompts from the gRPC request
+    for (const auto& prompt : request->prompts()) {
+      auto* req_item = batch_request.add_requests();
+      req_item->set_text(prompt);
+    }
+
+    // Set default parameters
+    batch_request.mutable_params()->set_max_output_tokens(1024);
+
+    std::string serialized_request;
+    if (!batch_request.SerializeToString(&serialized_request)) {
+      return grpc::Status(grpc::StatusCode::INTERNAL,
+                          "Failed to serialize request proto");
+    }
+
+    CHECK_OK(client_session.Write(serialized_request));
     CHECK_OK(PumpOutgoingMessages(&client_session, stream.get()));
 
     LOG(INFO) << "Waiting for server reply...";
-    std::string final_response_text;
-    bool got_response = false;
 
     while (true) {
       SessionResponse session_response;
       if (!stream->Read(&session_response)) {
         LOG(ERROR)
             << "Server closed stream while waiting for application reply.";
-        break;
+        return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                            "Server closed stream unexpectedly");
       }
+
       LOG(INFO) << "gRPC -> Oak: " << session_response.DebugString();
       CHECK_OK(client_session.PutIncomingMessage(session_response));
       auto decrypted_message = client_session.ReadToRustBytes();
       CHECK_OK(decrypted_message.status()) << "Failed to read from session";
 
       if (decrypted_message->has_value()) {
-        final_response_text =
+        std::string payload =
             static_cast<std::string>(decrypted_message->value());
-        LOG(INFO) << "Client decrypted message: " << final_response_text;
-        got_response = true;
+
+        gcp_prototype::BatchedInferenceResponse batch_response;
+        if (!batch_response.ParseFromString(payload)) {
+          LOG(ERROR) << "Failed to parse BatchedInferenceResponse.";
+          return grpc::Status(grpc::StatusCode::INTERNAL,
+                              "Failed to parse GCP response");
+        }
+
+        if (batch_response.results_size() != request->prompts_size()) {
+          LOG(ERROR) << "Size mismatch: sent " << request->prompts_size()
+                     << ", got " << batch_response.results_size();
+          return grpc::Status(grpc::StatusCode::INTERNAL,
+                              "GCP returned mismatching result count");
+        }
+
+        for (const auto& result : batch_response.results()) {
+          if (result.status().code() == 0) {  // OK
+            response->add_responses(result.text());
+          } else {
+            std::string err = "[Error: " + result.status().message() + "]";
+            response->add_responses(err);
+            LOG(ERROR) << "Prompt failed: " << result.status().message();
+          }
+        }
+        LOG(INFO) << "Successfully processed batch of "
+                  << response->responses_size();
+
+        // Success! We received the batch response.
         break;
       }
       CHECK_OK(PumpOutgoingMessages(&client_session, stream.get()));
@@ -156,19 +202,14 @@ class TestClientServiceImpl final : public TestClientService::Service {
     LOG(INFO) << "Closing stream to GCP.";
     stream->WritesDone();
     grpc::Status status = stream->Finish();
+
     if (status.ok()) {
       LOG(INFO) << "RPC to GCP finished successfully.";
+      return grpc::Status::OK;
     } else {
       LOG(ERROR) << "RPC to GCP failed: " << status.error_code() << ": "
                  << status.error_message();
-    }
-
-    if (got_response) {
-      response->set_response(final_response_text);
-      return grpc::Status::OK;
-    } else {
-      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
-                          "Did not receive valid response from GCP");
+      return status;
     }
   }
 
@@ -179,13 +220,11 @@ class TestClientServiceImpl final : public TestClientService::Service {
 void RunServer(MyVerifier* verifier) {
   std::string server_address = absl::StrFormat("[::]:%d", CLIENT_PORT);
   TestClientServiceImpl service(verifier);
-
   grpc::ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   LOG(INFO) << "Test Client Server listening on " << server_address;
-
   // Initialize orchestrator client
   OrchestratorClient orchestrator_client;
   // Notify host we are ready to receive requests.
@@ -198,12 +237,10 @@ void RunServer(MyVerifier* verifier) {
 
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
-
   // 1. Configure & Initialize Verifier ONCE at startup
   MyVerifier verifier;
   verifier.SetPolicy(ReadPolicyOrDie());
   verifier.SetDumpJwt(absl::GetFlag(FLAGS_dump_jwt));
-
   // Fetch JWKS (or load from file) and prepare Tink for verification.
   CHECK_OK(verifier.Initialize(absl::GetFlag(FLAGS_jwks_path)))
       << "Failed to initialize attestation verifier";
