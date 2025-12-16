@@ -1,0 +1,129 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+module(
+    name = "nn_histogram",
+    version = "0.0.1",
+    compatibility_level = 1,
+)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+# Keep sorted
+bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.4.1")
+bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "confidential-federated-compute", version = "0.0.11")
+bazel_dep(name = "flatbuffers", version = "25.2.10")
+bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "protobuf", version = "29.5", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "rules_distroless", version = "0.5.1")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "riegeli")
+archive_override(
+    module_name = "riegeli",
+    strip_prefix = "riegeli-a9be707bf24ad44fca8d42be4f8d72c7d8a94f30",
+    url = "https://github.com/google/riegeli/archive/a9be707bf24ad44fca8d42be4f8d72c7d8a94f30.tar.gz",
+)
+
+bazel_dep(name = "oak")
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-ayZil41/X2ieLpdpJNvuHdRyeWNqVPtoEMCrDL23YjU=",
+    strip_prefix = "oak-7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a",
+    url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
+)
+
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "294cdd859e57fcaf101d4301978c408c88683fbc46fbc1a3829da92afbea55fb",
+    strip_prefix = "bazel-toolchains-8c717f8258cd5f6c7a45b97d974292755852b658",
+    url = "https://github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
+)
+
+http_archive(
+    name = "federated-compute",
+    integrity = "sha256-H+wHrajZfFtelZoqIgMaiKPplfH4V9G+3VLrZEwUk5k=",
+    patches = [
+        "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
+        "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
+    ],
+    strip_prefix = "federated-compute-44abeccf2be9e3affc5d2864ac48071a841396f3",
+    url = "https://github.com/google/federated-compute/archive/44abeccf2be9e3affc5d2864ac48071a841396f3.tar.gz",
+)
+
+git_repository(
+    name = "libcppbor",
+    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
+    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
+    patches = ["@confidential-federated-compute//third_party/libcppbor:libcppbor.patch"],
+    remote = "https://android.googlesource.com/platform/external/libcppbor",
+)
+
+http_archive(
+    name = "org_tensorflow_federated",
+    integrity = "sha256-LRtgjagA16SepVffwpMCh8zfT60rzGSYRekKAGaQ2ss=",
+    patches = ["//third_party/org_tensorflow_federated:tff.patch"],
+    strip_prefix = "tensorflow-federated-590104cb7c358ee5c4efa8937e0ccf93a5925265",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/590104cb7c358ee5c4efa8937e0ccf93a5925265.tar.gz",
+)
+
+http_archive(
+    name = "sysroot",
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
+)
+
+stub_tf_proto_library = use_repo_rule("@confidential-federated-compute//:stub_tf_proto_library.bzl", "stub_tf_proto_library")
+
+stub_tf_proto_library(
+    name = "org_tensorflow",
+)
+
+# Set up cc toolchain
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    # clang version lower than 19.1.0 requires libtinfo.so.5 when building CUDA
+    llvm_version = "19.1.0",
+    stdlib = {"linux-x86_64": "stdc++"},
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base")
