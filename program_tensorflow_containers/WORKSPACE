@@ -56,9 +56,9 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-gcJ9XSat2NeDsZcYD7zKptPJqcHUKABfExw6AuWBv3E=",
-    strip_prefix = "confidential-federated-compute-67cbd6648b360976396a6f3b574979c7e1f0fc1a/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/67cbd6648b360976396a6f3b574979c7e1f0fc1a.tar.gz",
+    integrity = "sha256-ezs5AHOHM1VviKa9zJ/1qNvVjJG0FCNJkYt+5k9yTrg=",
+    strip_prefix = "confidential-federated-compute-fef9ecd79094a59d37ba45a88a67842e74120662/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/fef9ecd79094a59d37ba45a88a67842e74120662.tar.gz",
 )
 
 http_archive(
