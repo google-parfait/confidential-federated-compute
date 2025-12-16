@@ -38,6 +38,7 @@ using ::oak::session::v1::SessionResponse;
 namespace confidential_federated_compute::program_executor_tee {
 
 absl::Status NoiseClientSession::OpenSession() {
+  absl::Time start_time = absl::Now();
   while (!client_session_->IsOpen()) {
     FCP_ASSIGN_OR_RETURN(auto init_request,
                          client_session_->GetOutgoingMessage());
@@ -65,6 +66,8 @@ absl::Status NoiseClientSession::OpenSession() {
       FCP_RETURN_IF_ERROR(client_session_->PutIncomingMessage(init_response));
     }
   }
+  LOG(INFO) << "NoiseClientSession::OpenSession took "
+            << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   return absl::OkStatus();
 }
 
@@ -82,12 +85,15 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   request.set_worker_bns(worker_bns_);
   ComputationResponse response;
   {
+    absl::Time start_time = absl::Now();
     grpc::ClientContext client_context;
     auto status = stub_->Execute(&client_context, request, &response);
     if (!status.ok()) {
       return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
                           status.error_message());
     }
+    LOG(INFO) << "NoiseClientSession::DelegateComputation took "
+              << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   }
   if (!response.has_result()) {
     return absl::InternalError("Response doesn't have result.");
@@ -104,6 +110,7 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
 
 absl::StatusOr<SessionRequest> NoiseClientSession::EncryptRequest(
     const PlaintextMessage& plaintext_request) {
+  absl::Time start_time = absl::Now();
   FCP_RETURN_IF_ERROR(client_session_->Write(plaintext_request));
   FCP_ASSIGN_OR_RETURN(auto session_request,
                        client_session_->GetOutgoingMessage());
@@ -111,17 +118,22 @@ absl::StatusOr<SessionRequest> NoiseClientSession::EncryptRequest(
     return absl::InvalidArgumentError(
         "Could not generate SessionRequest for the plaintext request.");
   }
+  LOG(INFO) << "NoiseClientSession::EncryptRequest took "
+            << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   return session_request.value();
 }
 
 absl::StatusOr<PlaintextMessage> NoiseClientSession::DecryptResponse(
     const SessionResponse& session_response) {
+  absl::Time start_time = absl::Now();
   FCP_RETURN_IF_ERROR(client_session_->PutIncomingMessage(session_response));
   FCP_ASSIGN_OR_RETURN(auto plaintext_response, client_session_->Read());
   if (!plaintext_response.has_value()) {
     return absl::InvalidArgumentError(
         "Could not read plaintext message from the response.");
   }
+  LOG(INFO) << "NoiseClientSession::DecryptResponse took "
+            << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   return plaintext_response.value();
 }
 
