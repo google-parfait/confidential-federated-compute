@@ -100,6 +100,9 @@ class BlobEncryptor {
 absl::StatusOr<std::string> KeyedHash(absl::string_view input,
                                       absl::string_view key);
 
+// Returns a random 16 byte Blob ID
+std::string RandomBlobId();
+
 }  // namespace confidential_federated_compute
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_H_

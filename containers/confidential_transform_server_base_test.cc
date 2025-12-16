@@ -35,7 +35,6 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
-#include "google/protobuf/repeated_ptr_field.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -1253,9 +1252,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure)
       .WillOnce([](ConfigureRequest request, Session::Context& context) {
-        context.Emit(PARSE_TEXT_PROTO(
-            R"pb(first_response_configuration { type_url: "xyz" }
-                 data: "abc")pb"));
+        context.EmitUnencrypted(Session::KV(
+            PARSE_TEXT_PROTO(R"pb(type_url: "xyz")pb"), "abc", "key_id"));
         return ConfigureResponse{};
       });
   service_->AddSession(std::move(mock_session));
@@ -1272,9 +1270,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
   EXPECT_THAT(
       read_response,
       EqualsProto(R"pb(read {
-                         first_response_configuration { type_url: "xyz" }
+                         first_response_metadata {
+                           total_size_bytes: 3
+                           compression_type: COMPRESSION_TYPE_NONE
+                           unencrypted { blob_id: "key_id" }
+                         }
                          finish_read: true
                          data: "abc"
+                         first_response_configuration { type_url: "xyz" }
                        })pb"));
 }
 
@@ -1451,6 +1454,8 @@ class InitializedConfidentialTransformServerBaseTestWithKms
     public_key_ = public_private_key_pair.first;
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
+    *protected_response.add_result_encryption_keys() =
+        public_private_key_pair.first;
     *protected_response.add_decryption_keys() = public_private_key_pair.second;
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
     associated_data.add_authorized_logical_pipeline_policies_hashes(
@@ -1556,6 +1561,45 @@ TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
   ASSERT_TRUE(stream_->Read(&response));
   ASSERT_EQ(response.write().status().code(), grpc::OK);
   ASSERT_EQ(response.write().committed_size_bytes(), message.size());
+}
+
+TEST_F(InitializedConfidentialTransformServerBaseTestWithKms, EmitEncrypted) {
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure)
+      .WillOnce(
+          [](ConfigureRequest request,
+             Session::Context& context) -> absl::StatusOr<ConfigureResponse> {
+            if (!context.EmitEncrypted(0, "foobar")) {
+              LOG(ERROR) << "EmitEncrypted failed";
+              return absl::InternalError("EmitEncrypted failed");
+            }
+            return ConfigureResponse{};
+          });
+  service_->AddSession(std::move(mock_session));
+
+  SessionRequest configure_request;
+  SessionResponse read_response, configure_response;
+
+  configure_request.mutable_configure()->set_chunk_size(1000);
+  stream_ = stub_->Session(&session_context_);
+  CHECK(stream_->Write(configure_request));
+  CHECK(stream_->Read(&read_response));
+  CHECK(stream_->Read(&configure_response));
+
+  // Verify that encrypted blob has been read
+  EXPECT_TRUE(read_response.has_read());
+  EXPECT_TRUE(
+      read_response.read().first_response_metadata().has_hpke_plus_aead_data());
+  const auto& hpke_plus_aead_data =
+      read_response.read().first_response_metadata().hpke_plus_aead_data();
+  EXPECT_GT(hpke_plus_aead_data.ciphertext_associated_data().size(), 0);
+  EXPECT_GT(hpke_plus_aead_data.encrypted_symmetric_key().size(), 0);
+  EXPECT_GT(hpke_plus_aead_data.kms_symmetric_key_associated_data()
+                .record_header()
+                .size(),
+            0);
+  // Random blob ID is present
+  EXPECT_GT(hpke_plus_aead_data.blob_id().size(), 0);
 }
 
 }  // namespace

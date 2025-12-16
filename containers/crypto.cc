@@ -47,7 +47,6 @@ using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
-constexpr size_t kNonceSize = 16;
 constexpr size_t kBlobIdSize = 16;
 
 // See https://www.iana.org/assignments/cose/cose.xhtml.
@@ -79,6 +78,15 @@ absl::StatusOr<std::string> Decompress(
 }
 
 }  // namespace
+
+std::string RandomBlobId() {
+  std::string blob_id(kBlobIdSize, '\0');
+  // BoringSSL documentation says that it always returns 1 so we don't check
+  // the return value.
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  return blob_id;
+}
 
 BlobDecryptor::BlobDecryptor(
     oak::crypto::SigningKeyHandle& signing_key,
@@ -165,12 +173,7 @@ BlobEncryptor::EncryptBlob(absl::string_view plaintext,
   }
   BlobHeader header;
 
-  std::string blob_id(kBlobIdSize, '\0');
-  // BoringSSL documentation says that it always returns 1 so we don't check
-  // the return value.
-  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
-                   blob_id.size());
-  header.set_blob_id(blob_id);
+  header.set_blob_id(RandomBlobId());
   header.set_key_id(cwt.public_key->key_id);
   header.set_access_policy_node_id(access_policy_node_id);
   header.set_access_policy_sha256(std::string(access_policy_sha256));

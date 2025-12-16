@@ -91,6 +91,7 @@ cc_test(
         ":metadata_map_fn",
         "//containers/fns",
         "//containers/metadata/testing:test_utils",
+        "//containers/testing",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

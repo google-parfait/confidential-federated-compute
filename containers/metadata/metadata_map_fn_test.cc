@@ -23,6 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "containers/fns/map_fn.h"
 #include "containers/metadata/testing/test_utils.h"
+#include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
@@ -148,11 +149,6 @@ std::unique_ptr<fns::Fn> CreateMetadataMapFn(
   CHECK_OK(fn.status());
   return *std::move(fn);
 }
-
-class MockContext : public confidential_federated_compute::Session::Context {
- public:
-  MOCK_METHOD(bool, Emit, (ReadResponse), (override));
-};
 
 class MetadataMapFnTest : public Test {
  protected:

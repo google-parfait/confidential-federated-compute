@@ -29,6 +29,7 @@
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
+#include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -189,12 +190,6 @@ BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
       blob_header.SerializeAsString();
   return metadata;
 }
-
-class MockContext final
-    : public confidential_federated_compute::Session::Context {
- public:
-  MOCK_METHOD(bool, Emit, (ReadResponse), (override));
-};
 
 TEST(KmsFedSqlSessionConfigureTest, ConfigureSucceeds) {
   KmsFedSqlSession session = CreateDefaultSession();

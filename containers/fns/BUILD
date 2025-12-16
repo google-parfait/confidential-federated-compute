@@ -81,6 +81,7 @@ cc_test(
     srcs = ["map_fn_test.cc"],
     deps = [
         ":fns",
+        "//containers/testing",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

@@ -19,6 +19,7 @@
 #include "absl/time/clock.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/any.pb.h"
 #include "grpcpp/support/status.h"
 #include "gtest/gtest.h"
 
@@ -197,6 +198,25 @@ TEST(SessionTest, MaximumSessionsReachedConcurrentAddRemove) {
   });
   EXPECT_THAT(session_tracker.AddSession(), IsOk());
   t.join();
+}
+
+TEST(SessionKVTest, Construct) {
+  google::protobuf::Any key;
+  key.set_type_url("foo");
+  auto kv = Session::KV(key, "v", "id");
+  EXPECT_EQ(kv.key.type_url(), "foo");
+  EXPECT_EQ(kv.data, "v");
+  EXPECT_EQ(kv.blob_id, "id");
+}
+
+TEST(SessionKVTest, ConstructWithRandomBlobId) {
+  Session::KV kv(google::protobuf::Any(), "bar");
+  EXPECT_GT(kv.blob_id.size(), 0);
+}
+
+TEST(SessionKVTest, ConstructFromString) {
+  Session::KV kv = "foobar";
+  EXPECT_EQ(kv.data, "foobar");
 }
 
 }  // namespace

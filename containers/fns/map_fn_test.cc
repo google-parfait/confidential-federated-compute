@@ -18,6 +18,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "containers/testing/mocks.h"
 #include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
@@ -41,12 +42,8 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Return;
 using ::testing::SaveArg;
+using ::testing::StrictMock;
 using ::testing::Test;
-
-class MockContext : public confidential_federated_compute::Session::Context {
- public:
-  MOCK_METHOD(bool, Emit, (ReadResponse), (override));
-};
 
 class MockMapFn : public MapFn {
  public:
@@ -63,7 +60,7 @@ class MapFnTest : public Test {
   void SetUp() override { session_ = std::make_unique<MockMapFn>(); }
 
   std::unique_ptr<MockMapFn> session_;
-  testing::StrictMock<MockContext> context_;
+  StrictMock<MockContext> context_;
 };
 
 TEST_F(MapFnTest, ConfigureCallsInitialize) {

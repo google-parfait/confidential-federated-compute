@@ -21,10 +21,12 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "cc/crypto/encryption_key.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
+#include "containers/kms_encryptor.h"
 #include "containers/session.h"
 #include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -96,7 +98,7 @@ class ConfidentialTransformBase
   // - Validate that they are configured with properties permitted by the KMS
   // - Track their own privacy budget.
   // - Release only encrypted results along with a release token.
-  bool KmsEnabled() const { return kms_enabled_; }
+  bool KmsEnabled() const { return kms_encryptor_.has_value(); }
 
   // Returns the authorized logical policy hashes for this container.
   absl::flat_hash_set<std::string>&
@@ -149,7 +151,7 @@ class ConfidentialTransformBase
   // TODO: Refactor ConfidentialTransformBase so it's not aware of either the
   // Ledger nor KMS. Future applications may not be based on either Ledger nor
   // KMS.
-  bool kms_enabled_;
+  std::optional<KmsEncryptor> kms_encryptor_;
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
   absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
