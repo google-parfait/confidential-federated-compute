@@ -314,7 +314,7 @@ TEST(RangeTrackerTest, MergeDifferentExpiredKeys) {
   )pb");
   RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 7 values: 9 }
-    buckets { key: "bar" values: 1 values: 2 }
+    buckets { key: "bar" values: 4 values: 10 }
     partition_index: 123
     expired_keys: "expired_key2"
   )pb");
@@ -322,7 +322,16 @@ TEST(RangeTrackerTest, MergeDifferentExpiredKeys) {
   auto range_tracker2 = RangeTracker::Parse(state2);
   EXPECT_THAT(range_tracker1, IsOk());
   EXPECT_THAT(range_tracker2, IsOk());
-  EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+  EXPECT_TRUE(range_tracker1->Merge(*range_tracker2));
+
+  EXPECT_THAT(range_tracker1->Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" values: 1 values: 5 values: 7 values: 9 }
+                buckets { key: "bar" values: 0 values: 10 }
+                partition_index: 123
+                expired_keys: "expired_key1"
+                expired_keys: "expired_key2"
+              )pb"));
 }
 
 TEST(RangeTrackerTest, MergeWithEmptyRangeTracker) {

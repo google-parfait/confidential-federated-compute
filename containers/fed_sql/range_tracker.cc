@@ -118,11 +118,16 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     return false;
   }
 
-  if (!expired_keys_.has_value()) {
-    expired_keys_ = other.expired_keys_;
-  } else if (expired_keys_ != other.expired_keys_) {
-    LOG(ERROR) << "Expired keys for RangeTracker are not identical";
-    return false;
+  // Merge expired keys. If a key expires while a pipeline is still running,
+  // it's possible that different partitions hold different
+  // `expired_keys_` so we merge the sets here.
+  if (other.expired_keys_.has_value()) {
+    if (!expired_keys_.has_value()) {
+      expired_keys_ = other.expired_keys_;
+    } else {
+      expired_keys_->insert(other.expired_keys_->begin(),
+                            other.expired_keys_->end());
+    }
   }
 
   for (const auto& [key, interval_set] : other.per_key_ranges_) {
