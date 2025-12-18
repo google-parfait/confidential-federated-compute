@@ -49,7 +49,7 @@ use kms_proto::fcp::confidentialcompute::{
     DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
     GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
     RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
-    ReleaseResultsResponse, RotateKeysetRequest,
+    ReleaseResultsResponse, RotateKeysetRequest, RotateKeysetResponse,
 };
 use oak_crypto::{encryptor::ServerEncryptor, signer::Signer};
 use oak_proto_rust::oak::crypto::v1::Signature;
@@ -254,8 +254,8 @@ async fn rotate_and_get_keyset() {
             keyset_id: 1234,
             ttl: Some(Duration { seconds: 100 * i, nanos: 0 }),
         };
-        let response = kms.rotate_keyset(request.into_request()).await;
-        assert_that!(response, ok(anything()));
+        let response = kms.rotate_keyset(request.into_request()).await.map(Response::into_inner);
+        assert_that!(response, ok(matches_pattern!(RotateKeysetResponse { key_id: not(empty()) })));
     }
 
     let request = GetKeysetRequest { keyset_id: 1234 };

@@ -466,7 +466,11 @@ where
                 })
                 .await;
             match result {
-                Ok(_) => return Ok(Response::new(RotateKeysetResponse::default())),
+                Ok(_) => {
+                    return Ok(Response::new(RotateKeysetResponse {
+                        key_id: key_id.to_be_bytes().to_vec(),
+                    }))
+                }
                 Err(err) if err.downcast_ref::<Code>() == Some(&Code::FailedPrecondition) => {
                     // The `exists: false` precondition failed, so the key
                     // already exists. Try again with a different key id.
