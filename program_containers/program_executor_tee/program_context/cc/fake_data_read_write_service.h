@@ -39,9 +39,8 @@ constexpr char kAccessPolicyHash[] = "access_policy_hash";
 class FakeDataReadWriteService
     : public fcp::confidentialcompute::outgoing::DataReadWrite::Service {
  public:
-  FakeDataReadWriteService(bool use_kms = false)
-      : use_kms_(use_kms),
-        input_public_private_key_pair_(
+  FakeDataReadWriteService()
+      : input_public_private_key_pair_(
             crypto_test_utils::GenerateKeyPair(kInputKeyId)),
         result_public_private_key_pair_(
             crypto_test_utils::GenerateKeyPair("result")),
@@ -61,17 +60,6 @@ class FakeDataReadWriteService
       ::grpc::ServerReader<fcp::confidentialcompute::outgoing::WriteRequest>*
           request_reader,
       fcp::confidentialcompute::outgoing::WriteResponse*) override;
-
-  // Encrypts the provided message and stores it within a ReadResponse in an
-  // internal map such that the ReadResponse will be returned in response to a
-  // later ReadRequest for the given uri.
-  // TODO: b/451714072 - This method is specific to the ledger and will be
-  // deleted once the KMS migration is complete. The method below will persist.
-  absl::Status StoreEncryptedMessageForLedger(
-      absl::string_view uri, absl::string_view message,
-      absl::string_view ciphertext_associated_data,
-      absl::string_view recipient_public_key, absl::string_view nonce,
-      absl::string_view reencryption_public_key);
 
   // Encrypts the provided message and stores it within a ReadResponse in an
   // internal map such that the ReadResponse will be returned in response to a
@@ -110,10 +98,6 @@ class FakeDataReadWriteService
   }
 
  private:
-  // Whether or not KMS is being used.
-  // TODO: b/451714072 - Delete this once the KMS migration is complete.
-  bool use_kms_;
-
   // The keypair to use when storing uploads in the KMS case.
   std::pair<std::string, std::string> input_public_private_key_pair_;
 

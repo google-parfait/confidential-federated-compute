@@ -29,12 +29,10 @@ namespace {
 ::testing::Environment* const python_env =
     ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
-class ProgramExecutorTeeConfidentialTransformXlaSessionTest
-    : public ProgramExecutorTeeSessionTest<
-          XLAProgramExecutorTeeConfidentialTransform> {};
+TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
+                 ::testing::Types<XLAProgramExecutorTeeConfidentialTransform>);
 
-TEST_P(ProgramExecutorTeeConfidentialTransformXlaSessionTest,
-       ProgramWithJAXComputation) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXComputation) {
   this->CreateSession(R"(
 from federated_language_jax.computation import jax_computation
 import tensorflow_federated as tff
@@ -65,26 +63,22 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_EQ(released_value.array().int32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().int32_list().value().at(0), 10);
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    // There is no initial state.
-    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_first_release_budget.set_counter(1);
-    ASSERT_EQ(released_state_changes["result"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["result"].second.value(),
+            expected_first_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformXlaSessionTest,
-       ProgramWithJAXPrivacy) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXPrivacy) {
   this->CreateSession(R"(
 import numpy as np
 import jax_privacy
@@ -114,29 +108,20 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_EQ(released_value.array().float32_list().value().size(), 1);
   ASSERT_EQ(released_value.array().float32_list().value().at(0), 4.0);
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    // There is no initial state.
-    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_first_release_budget.set_counter(1);
-    ASSERT_EQ(released_state_changes["result"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["result"].second.value(),
+            expected_first_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    KmsParam, ProgramExecutorTeeConfidentialTransformXlaSessionTest,
-    ::testing::Bool(),  // Generates {false, true}
-    ProgramExecutorTeeSessionTest<
-        ProgramExecutorTeeConfidentialTransform>::TestNameSuffix);
 
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

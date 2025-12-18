@@ -20,9 +20,7 @@ from unittest import mock
 from absl.testing import absltest
 import federated_language
 import numpy as np
-import portpicker
 from program_executor_tee.program_context import program_runner
-from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
@@ -44,47 +42,6 @@ def trusted_program(input_provider, external_service_handle):
 
 class ProgramRunnerTest(unittest.TestCase):
 
-  # TODO: b/451714072 - Delete this test once the KMS migration is complete.
-  def test_run_program_ledger(self):
-    untrusted_root_port = portpicker.pick_unused_port()
-    self.assertIsNotNone(untrusted_root_port, "Failed to pick an unused port.")
-    data_read_write_service = (
-        fake_service_bindings_jax.FakeDataReadWriteService()
-    )
-    server = fake_service_bindings_jax.FakeServer(
-        untrusted_root_port, data_read_write_service, None
-    )
-    server.start()
-
-    program_runner.run_program(
-        initialize_fn=None,
-        program=base64.b64encode(_TRUSTED_PROGRAM_STRING.encode("utf-8")),
-        client_ids=[],
-        client_data_directory="",
-        model_id_to_zip_file={},
-        outgoing_server_address=f"[::1]:{untrusted_root_port}",
-        resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
-        use_kms=False,
-        release_unencrypted=lambda value, key: None,
-    )
-
-    released_data = data_read_write_service.get_released_data()
-    self.assertEqual(len(released_data), 2)
-    value_3, _ = tff.framework.serialize_value(
-        3, federated_language.TensorType(np.int32)
-    )
-    self.assertEqual(
-        released_data["result1"].encode("latin-1"), value_3.SerializeToString()
-    )
-    value_2, _ = tff.framework.serialize_value(
-        2, federated_language.TensorType(np.int32)
-    )
-    self.assertEqual(
-        released_data["result2"].encode("latin-1"), value_2.SerializeToString()
-    )
-
-    server.stop()
-
   def test_run_program(self):
     mock_release_fn = mock.MagicMock(spec=Callable)
     program_runner.run_program(
@@ -95,7 +52,6 @@ class ProgramRunnerTest(unittest.TestCase):
         model_id_to_zip_file={},
         outgoing_server_address="fake_address",
         resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
-        use_kms=True,
         release_unencrypted=mock_release_fn,
     )
 
@@ -126,7 +82,6 @@ def incorrectly_named_trusted_program(input_provider, external_service_handle):
           model_id_to_zip_file={},
           outgoing_server_address="",
           resolve_uri_to_tensor=lambda uri, key: tensor_pb2.TensorProto(),
-          use_kms=True,
           release_unencrypted=lambda value, key: None,
       )
     self.assertEqual(

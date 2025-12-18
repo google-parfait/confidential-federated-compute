@@ -37,16 +37,12 @@ class DataParser {
  public:
   DataParser(
       confidential_federated_compute::BlobDecryptor* blob_decryptor,
-      std::string outgoing_server_address, bool use_kms = false,
-      std::string reencryption_key = "",
+      std::string outgoing_server_address, std::string reencryption_key = "",
       std::string reencryption_policy_hash = "",
       PrivateState* private_state = nullptr,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle =
           nullptr,
-      std::set<std::string> authorized_logical_pipeline_policies_hashes = {},
-      std::function<std::string()> nonce_generator = []() {
-        return fcp::RandomToken::Generate().ToString();
-      });
+      std::set<std::string> authorized_logical_pipeline_policies_hashes = {});
 
   // Retrieves the TensorProto that is described by the provided uri and
   // FcCheckpoint key.
@@ -61,24 +57,15 @@ class DataParser {
   // sending a ReadRequest to the DataReadWrite service.
   absl::StatusOr<std::string> ResolveUriToFcCheckpoint(std::string uri);
 
-  // Parse a ReadResponse message into a FC checkpoint, decrypting it and
-  // checking that the nonce matches (only necessary when the ledger is being
-  // used).
-  // TODO: b/451714072 - Remove the nonce arg once the KMS migration is
-  // complete.
+  // Parse a ReadResponse message into a FC checkpoint.
   absl::StatusOr<std::string> ParseReadResponseToFcCheckpoint(
       std::string uri,
-      const fcp::confidentialcompute::outgoing::ReadResponse& read_response,
-      const std::optional<std::string>& nonce);
+      const fcp::confidentialcompute::outgoing::ReadResponse& read_response);
 
   BlobDecryptor* blob_decryptor_;
   std::unique_ptr<
       fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface>
       stub_;
-
-  // Whether or not KMS is being used.
-  // TODO: b/451714072 - Delete this once the KMS migration is complete.
-  bool use_kms_;
 
   // The reencryption keys used to re-encrypt the final blobs.
   std::string reencryption_key_;
@@ -95,12 +82,6 @@ class DataParser {
   // multiple filenames, we maintain a blob_id -> filename map and check that a
   // given blob_id is only seen for one filename.
   absl::flat_hash_map<std::string, std::string> blob_id_to_filename_map_;
-
-  // TODO: b/451714072 - Delete the caching and nonce support once the KMS
-  // migration is complete.
-  absl::Mutex cache_mutex_;
-  absl::flat_hash_map<std::string, std::string> uri_to_checkpoint_cache_;
-  std::function<std::string()> nonce_generator_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

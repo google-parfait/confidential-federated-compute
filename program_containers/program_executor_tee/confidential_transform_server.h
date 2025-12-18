@@ -125,9 +125,12 @@ class ProgramExecutorTeeConfidentialTransform
                                   std::move(encryption_key_handle)) {}
 
  protected:
+  // This method is only used for ledger integrations, and the ledger is
+  // now deprecated.
   absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override;
 
+  // This method is only used for KMS integrations.
   absl::Status StreamInitializeTransformWithKms(
       const google::protobuf::Any& configuration,
       const google::protobuf::Any& config_constraints,

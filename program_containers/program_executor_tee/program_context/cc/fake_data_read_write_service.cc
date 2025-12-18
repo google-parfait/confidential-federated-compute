@@ -74,87 +74,42 @@ grpc::Status FakeDataReadWriteService::Write(
                         "Chunked WriteRequests are not supported by the "
                         "FakeDataReadWriteService");
   }
-  if (use_kms_) {
-    BlobMetadata metadata = requests[0].first_request_metadata();
-    auto ciphertext = requests[0].data();
-    BlobHeader blob_header;
-    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                    .kms_symmetric_key_associated_data()
-                                    .record_header());
-    absl::StatusOr<std::string> plaintext_message = message_decryptor_.Decrypt(
-        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-        metadata.hpke_plus_aead_data()
-            .kms_symmetric_key_associated_data()
-            .record_header(),
-        metadata.hpke_plus_aead_data().encapsulated_public_key(),
-        blob_header.key_id());
-    if (!plaintext_message.ok()) {
-      return grpc::Status(
-          grpc::StatusCode::INVALID_ARGUMENT,
-          "Decryption failed: " +
-              std::string(plaintext_message.status().message()));
-    }
-    released_data_[requests[0].key()] = *plaintext_message;
-
-    absl::StatusOr<ReleaseToken> token =
-        ReleaseToken::Decode(requests[0].release_token());
-    if (!token.ok()) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "Decoding release token failed: " +
-                              std::string(token.status().message()));
-    }
-    released_state_changes_[requests[0].key()] = {token->src_state,
-                                                  token->dst_state};
-
-  } else {
-    // In the ledger case, the WriteRequest is unencrypted and the blob_id field
-    // is used to store the key.
-    released_data_
-        [requests[0].first_request_metadata().unencrypted().blob_id()] =
-            requests[0].data();
+  BlobMetadata metadata = requests[0].first_request_metadata();
+  auto ciphertext = requests[0].data();
+  BlobHeader blob_header;
+  blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                  .kms_symmetric_key_associated_data()
+                                  .record_header());
+  absl::StatusOr<std::string> plaintext_message = message_decryptor_.Decrypt(
+      ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+      metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+      metadata.hpke_plus_aead_data()
+          .kms_symmetric_key_associated_data()
+          .record_header(),
+      metadata.hpke_plus_aead_data().encapsulated_public_key(),
+      blob_header.key_id());
+  if (!plaintext_message.ok()) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "Decryption failed: " +
+                            std::string(plaintext_message.status().message()));
   }
+  released_data_[requests[0].key()] = *plaintext_message;
+
+  absl::StatusOr<ReleaseToken> token =
+      ReleaseToken::Decode(requests[0].release_token());
+  if (!token.ok()) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "Decoding release token failed: " +
+                            std::string(token.status().message()));
+  }
+  released_state_changes_[requests[0].key()] = {token->src_state,
+                                                token->dst_state};
   return grpc::Status::OK;
-}
-
-absl::Status FakeDataReadWriteService::StoreEncryptedMessageForLedger(
-    absl::string_view uri, absl::string_view message,
-    absl::string_view ciphertext_associated_data,
-    absl::string_view recipient_public_key, absl::string_view nonce,
-    absl::string_view reencryption_public_key) {
-  if (use_kms_) {
-    return absl::InvalidArgumentError(
-        "This version of the StoreEncryptedMessage* method should only be "
-        "called when the ledger is being used.");
-  }
-
-  if (uri_to_read_response_.find(std::string(uri)) !=
-      uri_to_read_response_.end()) {
-    return absl::InvalidArgumentError("Uri already set.");
-  }
-
-  ReadResponse response;
-  FCP_ASSIGN_OR_RETURN(
-      std::tie(*response.mutable_first_response_metadata(),
-               *response.mutable_data()),
-      crypto_test_utils::CreateRewrappedBlob(
-          message, ciphertext_associated_data, recipient_public_key, nonce,
-          reencryption_public_key));
-  response.set_finish_read(true);
-
-  uri_to_read_response_[std::string(uri)] = std::move(response);
-  return absl::OkStatus();
 }
 
 absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
     absl::string_view uri, absl::string_view message,
     std::optional<absl::string_view> blob_id) {
-  if (!use_kms_) {
-    return absl::InvalidArgumentError(
-        "This version of the StoreEncryptedMessage* method should only be "
-        "called when KMS is being used.");
-  }
-
   if (uri_to_read_response_.find(std::string(uri)) !=
       uri_to_read_response_.end()) {
     return absl::InvalidArgumentError("Uri already set.");

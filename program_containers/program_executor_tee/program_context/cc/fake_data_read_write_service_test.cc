@@ -62,16 +62,11 @@ using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Test;
 
-class FakeDataReadWriteServiceTest : public ::testing::TestWithParam<bool> {
+class FakeDataReadWriteServiceTest : public ::testing::Test {
  public:
-  static std::string TestNameSuffix(
-      const ::testing::TestParamInfo<bool>& info) {
-    return info.param ? "WithKms" : "NoKms";
-  }
-
   void SetUp() override {
     fake_data_read_write_service_ =
-        std::make_unique<FakeDataReadWriteService>(GetParam());
+        std::make_unique<FakeDataReadWriteService>();
     google::protobuf::Struct config_properties;
     input_blob_decryptor_ =
         std::make_unique<confidential_federated_compute::BlobDecryptor>(
@@ -108,68 +103,34 @@ class FakeDataReadWriteServiceTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<DataReadWrite::Stub> stub_;
 };
 
-TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
+  // Prepopulate the FakeDataReadWriteService with the encrypted data.
   std::string uri = "uri";
   std::string message = "message";
-  if (GetParam()) {
-    // Prepopulate the FakeDataReadWriteService with the encrypted data.
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, message));
+  CHECK_OK(
+      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message));
 
-    // Make a ReadRequest for the uri.
-    ReadRequest read_request;
-    read_request.set_uri(uri);
-    ClientContext client_context;
-    std::unique_ptr<ClientReader<ReadResponse>> reader(
-        stub_->Read(&client_context, read_request));
+  // Make a ReadRequest for the uri.
+  ReadRequest read_request;
+  read_request.set_uri(uri);
+  ClientContext client_context;
+  std::unique_ptr<ClientReader<ReadResponse>> reader(
+      stub_->Read(&client_context, read_request));
 
-    // Read the response and check that decrypted message matches.
-    ReadResponse read_response;
-    ASSERT_TRUE(reader->Read(&read_response));
-    ASSERT_TRUE(read_response.has_first_response_metadata());
-    BlobHeader blob_header;
-    EXPECT_TRUE(
-        blob_header.ParseFromString(read_response.first_response_metadata()
-                                        .hpke_plus_aead_data()
-                                        .kms_symmetric_key_associated_data()
-                                        .record_header()));
-    EXPECT_THAT(input_blob_decryptor_->DecryptBlob(
-                    read_response.first_response_metadata(),
-                    read_response.data(), blob_header.key_id()),
-                message);
-
-  } else {
-    // Prepopulate the FakeDataReadWriteService with the encrypted data.
-    std::string nonce = "nonce";
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, message, "ciphertext associated data", *recipient_public_key,
-        nonce, "reencryption_public_key"));
-
-    // Make a ReadRequest for the uri.
-    ReadRequest read_request;
-    read_request.set_uri(uri);
-    read_request.set_nonce(nonce);
-    ClientContext client_context;
-    std::unique_ptr<ClientReader<ReadResponse>> reader(
-        stub_->Read(&client_context, read_request));
-
-    // Read the response and check that the nonce and decrypted message match.
-    ReadResponse read_response;
-    ASSERT_TRUE(reader->Read(&read_response));
-    ASSERT_TRUE(read_response.has_first_response_metadata());
-    EXPECT_EQ(read_response.first_response_metadata()
-                  .hpke_plus_aead_data()
-                  .rewrapped_symmetric_key_associated_data()
-                  .nonce(),
-              nonce);
-    EXPECT_THAT(
-        input_blob_decryptor_->DecryptBlob(
-            read_response.first_response_metadata(), read_response.data()),
-        message);
-  }
+  // Read the response and check that decrypted message matches.
+  ReadResponse read_response;
+  ASSERT_TRUE(reader->Read(&read_response));
+  ASSERT_TRUE(read_response.has_first_response_metadata());
+  BlobHeader blob_header;
+  EXPECT_TRUE(
+      blob_header.ParseFromString(read_response.first_response_metadata()
+                                      .hpke_plus_aead_data()
+                                      .kms_symmetric_key_associated_data()
+                                      .record_header()));
+  EXPECT_THAT(input_blob_decryptor_->DecryptBlob(
+                  read_response.first_response_metadata(), read_response.data(),
+                  blob_header.key_id()),
+              message);
 
   // Check that the DataReadWrite service logged the uri.
   std::vector<std::string> requested_uris =
@@ -178,7 +139,7 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
   EXPECT_EQ(requested_uris[0], uri);
 }
 
-TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
   // Prepopulate the FakeDataReadWriteService with the plaintext data.
   std::string uri = "uri";
   std::string message = "message";
@@ -206,7 +167,7 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
   EXPECT_EQ(requested_uris[0], uri);
 }
 
-TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
   // Prepopulate the FakeDataReadWriteService with some data.
   std::vector<std::string> storage_uris = {"uri_1", "uri_2"};
   std::string base_message = "message";
@@ -245,7 +206,7 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
   EXPECT_EQ(requested_uris[2], read_uris[2]);
 }
 
-TEST_P(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
   // Prepopulate the FakeDataReadWriteService with the plaintext data.
   std::string message = "message";
   CHECK_OK(
@@ -265,7 +226,7 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
               HasSubstr("Requested uri other_uri not found"));
 }
 
-TEST_P(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
   // Populate the FakeDataReadWriteService with a plaintext message.
   std::string uri = "uri";
   std::string message = "message";
@@ -277,48 +238,26 @@ TEST_P(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
   EXPECT_EQ(store_result, absl::InvalidArgumentError("Uri already set."));
 
   // Check that adding an encrypted message with the same uri fails.
-  if (GetParam()) {
-    store_result = fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, message);
-  } else {
-    std::string nonce = "nonce";
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    store_result =
-        fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-            uri, message, "ciphertext associated data", *recipient_public_key,
-            nonce, "reencryption_public_key");
-  }
+  store_result =
+      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message);
   EXPECT_EQ(store_result, absl::InvalidArgumentError("Uri already set."));
 }
 
-TEST_P(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
+TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   WriteRequest write_request_1;
   WriteRequest write_request_2;
-  if (GetParam()) {
-    auto result_public_key =
-        fake_data_read_write_service_->GetResultPublicPrivateKeyPair().first;
-    ASSERT_TRUE(CreateWriteRequestForRelease(
-                    &write_request_1, mock_signing_key_handle_,
-                    result_public_key, "key_1", "write_request_1",
-                    kAccessPolicyHash, "state_a", "state_b")
-                    .ok());
-    ASSERT_TRUE(CreateWriteRequestForRelease(
-                    &write_request_2, mock_signing_key_handle_,
-                    result_public_key, "key_2", "write_request_2",
-                    kAccessPolicyHash, "state_b", "state_c")
-                    .ok());
-  } else {
-    write_request_1.mutable_first_request_metadata()
-        ->mutable_unencrypted()
-        ->set_blob_id("key_1");
-    write_request_1.set_data("write_request_1");
-    write_request_2.mutable_first_request_metadata()
-        ->mutable_unencrypted()
-        ->set_blob_id("key_2");
-    write_request_2.set_data("write_request_2");
-  }
+  auto result_public_key =
+      fake_data_read_write_service_->GetResultPublicPrivateKeyPair().first;
+  ASSERT_TRUE(CreateWriteRequestForRelease(
+                  &write_request_1, mock_signing_key_handle_, result_public_key,
+                  "key_1", "write_request_1", kAccessPolicyHash, "state_a",
+                  "state_b")
+                  .ok());
+  ASSERT_TRUE(CreateWriteRequestForRelease(
+                  &write_request_2, mock_signing_key_handle_, result_public_key,
+                  "key_2", "write_request_2", kAccessPolicyHash, "state_b",
+                  "state_c")
+                  .ok());
 
   for (const auto& write_request : {write_request_1, write_request_2}) {
     ClientContext client_context;
@@ -337,25 +276,19 @@ TEST_P(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   ASSERT_EQ(released_data["key_1"], "write_request_1");
   ASSERT_EQ(released_data["key_2"], "write_request_2");
 
-  // In the KMS case, check the recorded state transitions as well.
-  if (GetParam()) {
-    std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
-                                    std::optional<std::string>>>
-        released_state_changes =
-            fake_data_read_write_service_->GetReleasedStateChanges();
-    ASSERT_EQ(released_state_changes.size(), 2);
-    auto state_change_1 = released_state_changes["key_1"];
-    ASSERT_EQ(state_change_1.first.value().value(), "state_a");
-    ASSERT_EQ(state_change_1.second.value(), "state_b");
-    auto state_change_2 = released_state_changes["key_2"];
-    ASSERT_EQ(state_change_2.first.value().value(), "state_b");
-    ASSERT_EQ(state_change_2.second.value(), "state_c");
-  }
+  // Check the recorded state transitions as well.
+  std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
+                                  std::optional<std::string>>>
+      released_state_changes =
+          fake_data_read_write_service_->GetReleasedStateChanges();
+  ASSERT_EQ(released_state_changes.size(), 2);
+  auto state_change_1 = released_state_changes["key_1"];
+  ASSERT_EQ(state_change_1.first.value().value(), "state_a");
+  ASSERT_EQ(state_change_1.second.value(), "state_b");
+  auto state_change_2 = released_state_changes["key_2"];
+  ASSERT_EQ(state_change_2.first.value().value(), "state_b");
+  ASSERT_EQ(state_change_2.second.value(), "state_c");
 }
-
-INSTANTIATE_TEST_SUITE_P(KmsParam, FakeDataReadWriteServiceTest,
-                         ::testing::Bool(),  // Generates {false, true}
-                         FakeDataReadWriteServiceTest::TestNameSuffix);
 
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

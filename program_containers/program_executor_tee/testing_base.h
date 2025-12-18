@@ -41,7 +41,6 @@ namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
 using ::fcp::confidential_compute::kPrivateStateConfigId;
-using ::fcp::confidential_compute::NonceGenerator;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
 using ::fcp::confidentialcompute::ConfigurationMetadata;
@@ -169,16 +168,9 @@ class ProgramExecutorTeeTest : public Test {
 };
 
 template <typename T>
-class ProgramExecutorTeeSessionTest
-    : public ProgramExecutorTeeTest<T>,
-      public ::testing::WithParamInterface<bool> {
+class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
  public:
-  static std::string TestNameSuffix(
-      const ::testing::TestParamInfo<bool>& info) {
-    return info.param ? "WithKms" : "NoKms";
-  }
-
-  ProgramExecutorTeeSessionTest() : fake_data_read_write_service_(GetParam()) {
+  ProgramExecutorTeeSessionTest() {
     const std::string localhost = "[::1]:";
     int data_read_write_service_port;
     ServerBuilder data_read_write_builder;
@@ -217,16 +209,14 @@ class ProgramExecutorTeeSessionTest
       file.close();
       requests.push_back(std::move(request));
     }
-    if (UseKms()) {
-      StreamInitializeRequest request;
-      request.mutable_write_configuration()->set_commit(true);
-      request.mutable_write_configuration()->set_data(kms_private_state);
-      ConfigurationMetadata* metadata = request.mutable_write_configuration()
-                                            ->mutable_first_request_metadata();
-      metadata->set_configuration_id(kPrivateStateConfigId);
-      metadata->set_total_size_bytes(kms_private_state.size());
-      requests.push_back(std::move(request));
-    }
+    StreamInitializeRequest request;
+    request.mutable_write_configuration()->set_commit(true);
+    request.mutable_write_configuration()->set_data(kms_private_state);
+    ConfigurationMetadata* metadata =
+        request.mutable_write_configuration()->mutable_first_request_metadata();
+    metadata->set_configuration_id(kPrivateStateConfigId);
+    metadata->set_total_size_bytes(kms_private_state.size());
+    requests.push_back(std::move(request));
 
     ProgramExecutorTeeInitializeConfig config =
         CreateProgramExecutorTeeInitializeConfig(
@@ -237,26 +227,24 @@ class ProgramExecutorTeeSessionTest
         stream_initialize_request.mutable_initialize_request();
     initialize_request->set_max_num_sessions(kMaxNumSessions);
     initialize_request->mutable_configuration()->PackFrom(config);
-    if (UseKms()) {
-      AuthorizeConfidentialTransformResponse::ProtectedResponse
-          protected_response;
-      protected_response.add_result_encryption_keys(
-          fake_data_read_write_service_.GetResultPublicPrivateKeyPair().first);
-      protected_response.add_decryption_keys(
-          fake_data_read_write_service_.GetInputPublicPrivateKeyPair().second);
-      AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-      associated_data.mutable_config_constraints()->PackFrom(
-          CreateProgramExecutorTeeConfigConstraints(program));
-      associated_data.add_authorized_logical_pipeline_policies_hashes(
-          kAccessPolicyHash);
-      auto encrypted_request =
-          this->oak_client_encryptor_
-              ->Encrypt(protected_response.SerializeAsString(),
-                        associated_data.SerializeAsString())
-              .value();
-      *initialize_request->mutable_protected_response() =
-          std::move(encrypted_request);
-    }
+    AuthorizeConfidentialTransformResponse::ProtectedResponse
+        protected_response;
+    protected_response.add_result_encryption_keys(
+        fake_data_read_write_service_.GetResultPublicPrivateKeyPair().first);
+    protected_response.add_decryption_keys(
+        fake_data_read_write_service_.GetInputPublicPrivateKeyPair().second);
+    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.mutable_config_constraints()->PackFrom(
+        CreateProgramExecutorTeeConfigConstraints(program));
+    associated_data.add_authorized_logical_pipeline_policies_hashes(
+        kAccessPolicyHash);
+    auto encrypted_request =
+        this->oak_client_encryptor_
+            ->Encrypt(protected_response.SerializeAsString(),
+                      associated_data.SerializeAsString())
+            .value();
+    *initialize_request->mutable_protected_response() =
+        std::move(encrypted_request);
     requests.push_back(std::move(stream_initialize_request));
 
     InitializeResponse response;
@@ -277,17 +265,12 @@ class ProgramExecutorTeeSessionTest
     stream_ = this->stub_->Session(&session_context_);
     CHECK(stream_->Write(session_request));
     CHECK(stream_->Read(&session_response));
-    nonce_generator_ =
-        std::make_unique<NonceGenerator>(session_response.configure().nonce());
   }
 
  protected:
-  bool UseKms() const { return GetParam(); }
-
   grpc::ClientContext session_context_;
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream_;
-  std::unique_ptr<NonceGenerator> nonce_generator_;
   std::string public_key_;
 
   std::string data_read_write_server_address_;

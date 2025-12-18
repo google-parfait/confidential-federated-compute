@@ -33,8 +33,6 @@
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
-constexpr char kNonce[] = "nonce";
-
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
@@ -61,16 +59,11 @@ class MockPrivateState : public PrivateState {
   MOCK_METHOD(std::string, GetReleaseUpdateState, (), (override));
 };
 
-class DataParserTest : public ::testing::TestWithParam<bool> {
+class DataParserTest : public ::testing::Test {
  public:
-  static std::string TestNameSuffix(
-      const ::testing::TestParamInfo<bool>& info) {
-    return info.param ? "WithKms" : "NoKms";
-  }
-
   void SetUp() override {
     fake_data_read_write_service_ =
-        std::make_unique<FakeDataReadWriteService>(GetParam());
+        std::make_unique<FakeDataReadWriteService>();
 
     const std::string localhost = "[::1]:";
     int data_read_write_service_port;
@@ -96,14 +89,12 @@ class DataParserTest : public ::testing::TestWithParam<bool> {
 
     data_parser_ = std::make_unique<DataParser>(
         input_blob_decryptor_.get(), data_read_write_server_address_,
-        GetParam(),
         absl::Base64Escape(
             fake_data_read_write_service_->GetResultPublicPrivateKeyPair()
                 .first),
         absl::Base64Escape(kAccessPolicyHash), &mock_private_state_,
         mock_signing_key_handle_,
-        std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}),
-        [&]() { return kNonce; });
+        std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}));
   }
 
   void TearDown() override { fake_data_read_write_server_->Shutdown(); }
@@ -119,21 +110,7 @@ class DataParserTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<DataParser> data_parser_;
 };
 
-TEST_P(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
-  std::string tensor_name = "tensor_name";
-  std::string uri = "test_uri";
-  CHECK_OK(this->fake_data_read_write_service_->StorePlaintextMessage(
-      uri, BuildClientCheckpointFromInts({4, 5, 6}, tensor_name)));
-
-  auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
-  ASSERT_TRUE(tensor_proto.ok());
-  auto tensor = Tensor::FromProto(std::move(*tensor_proto));
-  ASSERT_TRUE(tensor.ok());
-  EXPECT_THAT(tensor->AsAggVector<int>(),
-              ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
-}
-
-TEST_P(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpointWithCaching) {
+TEST_F(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
   std::string tensor_name = "tensor_name";
   std::string uri_1 = "test_uri_1";
   std::string uri_2 = "test_uri_2";
@@ -162,40 +139,21 @@ TEST_P(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpointWithCaching) {
   EXPECT_THAT(tensor->AsAggVector<int>(),
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
 
-  // Due to caching, the FakeDataReadWriteService should have only recorded
-  // requests for uri_1 followed by uri_2, but only if the ledger is being used.
   std::vector<std::string> requested_uris =
       fake_data_read_write_service_->GetReadRequestUris();
-  if (GetParam()) {
-    EXPECT_EQ(requested_uris.size(), 3);
-    EXPECT_EQ(requested_uris[0], uri_1);
-    EXPECT_EQ(requested_uris[1], uri_2);
-    EXPECT_EQ(requested_uris[2], uri_1);
-  } else {
-    EXPECT_EQ(requested_uris.size(), 2);
-    EXPECT_EQ(requested_uris[0], uri_1);
-    EXPECT_EQ(requested_uris[1], uri_2);
-  }
+  EXPECT_EQ(requested_uris.size(), 3);
+  EXPECT_EQ(requested_uris[0], uri_1);
+  EXPECT_EQ(requested_uris[1], uri_2);
+  EXPECT_EQ(requested_uris[2], uri_1);
 }
 
-TEST_P(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
+TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
   std::string tensor_name = "tensor_name";
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
   std::string uri = "test_uri";
-
-  if (GetParam()) {
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, checkpoint));
-  } else {
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, checkpoint, "ciphertext associated data", *recipient_public_key,
-        kNonce, "reencryption_public_key"));
-  }
-
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      uri, checkpoint));
   auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   auto tensor = Tensor::FromProto(std::move(*tensor_proto));
@@ -204,24 +162,13 @@ TEST_P(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
 }
 
-TEST_P(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
+TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
   std::string tensor_name = "tensor_name";
   std::string checkpoint = BuildClientCheckpointFromStrings(
       {"serialized_example_1", "serialized_example_2"}, tensor_name);
   std::string uri = "test_uri";
-
-  if (GetParam()) {
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, checkpoint));
-  } else {
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, checkpoint, "ciphertext associated data", *recipient_public_key,
-        kNonce, "reencryption_public_key"));
-  }
-
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      uri, checkpoint));
   auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   auto tensor = Tensor::FromProto(std::move(*tensor_proto));
@@ -231,41 +178,11 @@ TEST_P(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
                           Pair<absl::string_view>{1, "serialized_example_2"}));
 }
 
-TEST_P(DataParserTest, ResolveUriToTensor_MismatchedNonce) {
-  std::string tensor_name = "tensor_name";
-  std::string checkpoint =
-      BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
-  std::string uri = "test_uri";
-
-  if (!GetParam()) {
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, checkpoint, "ciphertext associated data", *recipient_public_key,
-        "different nonce", "reencryption_public_key"));
-    auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
-    EXPECT_EQ(tensor_proto.status(),
-              absl::InvalidArgumentError("ReadResponse nonce does not match"));
-  }
-}
-
-TEST_P(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
+TEST_F(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
   std::string message = "not a fc checkpoint";
   std::string uri = "test_uri";
-
-  if (GetParam()) {
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, message));
-  } else {
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, message, "ciphertext associated data", *recipient_public_key,
-        kNonce, "reencryption_public_key"));
-  }
-
+  CHECK_OK(
+      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message));
   auto tensor_proto =
       data_parser_->ResolveUriToTensor(uri, "unused_tensor_name");
   EXPECT_EQ(tensor_proto.status().code(), absl::StatusCode::kInvalidArgument);
@@ -273,23 +190,12 @@ TEST_P(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
               HasSubstr("Unsupported checkpoint format"));
 }
 
-TEST_P(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
+TEST_F(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, "tensor_name");
   std::string uri = "test_uri";
-
-  if (GetParam()) {
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        uri, checkpoint));
-  } else {
-    absl::StatusOr<absl::string_view> recipient_public_key =
-        input_blob_decryptor_->GetPublicKey();
-    ASSERT_TRUE(recipient_public_key.ok());
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForLedger(
-        uri, checkpoint, "ciphertext associated data", *recipient_public_key,
-        kNonce, "reencryption_public_key"));
-  }
-
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      uri, checkpoint));
   auto tensor_proto =
       data_parser_->ResolveUriToTensor(uri, "different_tensor_name");
   EXPECT_EQ(tensor_proto.status(),
@@ -297,88 +203,78 @@ TEST_P(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
                 "No aggregation tensor found for name different_tensor_name"));
 }
 
-TEST_P(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
+TEST_F(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
   std::string tensor_name = "tensor_name";
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      "uri_1", checkpoint, "blob_id_1"));
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      "uri_2", checkpoint, "blob_id_2"));
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      "uri_3", checkpoint, "blob_id_1"));
 
-  if (GetParam()) {
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        "uri_1", checkpoint, "blob_id_1"));
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        "uri_2", checkpoint, "blob_id_2"));
-    CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-        "uri_3", checkpoint, "blob_id_1"));
+  // There should be no issue with receiving blob_id_1 for a lookup for uri_1.
+  auto tensor_proto = data_parser_->ResolveUriToTensor("uri_1", tensor_name);
+  ASSERT_TRUE(tensor_proto.ok());
 
-    // There should be no issue with receiving blob_id_1 for a lookup for uri_1.
-    auto tensor_proto = data_parser_->ResolveUriToTensor("uri_1", tensor_name);
-    ASSERT_TRUE(tensor_proto.ok());
+  // There should be no issue with receiving blob_id_2 for a lookup for uri_2.
+  tensor_proto = data_parser_->ResolveUriToTensor("uri_2", tensor_name);
+  ASSERT_TRUE(tensor_proto.ok());
 
-    // There should be no issue with receiving blob_id_2 for a lookup for uri_2.
-    tensor_proto = data_parser_->ResolveUriToTensor("uri_2", tensor_name);
-    ASSERT_TRUE(tensor_proto.ok());
-
-    // Receiving blob_id_1 for a lookup for uri_3 should fail because blob_id_1
-    // was previously seen for uri_1.
-    tensor_proto = data_parser_->ResolveUriToTensor("uri_3", tensor_name);
-    EXPECT_EQ(
-        tensor_proto.status(),
-        absl::InvalidArgumentError(
-            "This blob id was previously returned for a different filename."));
-  }
+  // Receiving blob_id_1 for a lookup for uri_3 should fail because blob_id_1
+  // was previously seen for uri_1.
+  tensor_proto = data_parser_->ResolveUriToTensor("uri_3", tensor_name);
+  EXPECT_EQ(
+      tensor_proto.status(),
+      absl::InvalidArgumentError(
+          "This blob id was previously returned for a different filename."));
 }
 
-TEST_P(DataParserTest, ReleaseUnencrypted) {
-  // This test only applies to KMS.
-  if (GetParam()) {
-    std::string kStateAfterFirstRelease = "state_after_first_release";
-    std::string kStateAfterSecondRelease = "state_after_second_release";
+TEST_F(DataParserTest, ReleaseUnencrypted) {
+  std::string kStateAfterFirstRelease = "state_after_first_release";
+  std::string kStateAfterSecondRelease = "state_after_second_release";
 
-    Sequence s;
-    EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-        .InSequence(s)
-        .WillOnce(Return(kStateAfterFirstRelease));
-    EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-        .InSequence(s)
-        .WillOnce(Return(std::nullopt));
-    EXPECT_CALL(mock_private_state_,
-                SetReleaseInitialState(kStateAfterFirstRelease))
-        .InSequence(s);
-    EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-        .InSequence(s)
-        .WillOnce(Return(kStateAfterSecondRelease));
-    EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-        .InSequence(s)
-        .WillOnce(Return(kStateAfterFirstRelease));
-    EXPECT_CALL(mock_private_state_,
-                SetReleaseInitialState(kStateAfterSecondRelease))
-        .InSequence(s);
+  Sequence s;
+  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterFirstRelease));
+  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
+      .InSequence(s)
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(mock_private_state_,
+              SetReleaseInitialState(kStateAfterFirstRelease))
+      .InSequence(s);
+  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterSecondRelease));
+  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterFirstRelease));
+  EXPECT_CALL(mock_private_state_,
+              SetReleaseInitialState(kStateAfterSecondRelease))
+      .InSequence(s);
 
-    ASSERT_TRUE(data_parser_->ReleaseUnencrypted("abc", "my_key_1").ok());
-    ASSERT_TRUE(data_parser_->ReleaseUnencrypted("def", "my_key_2").ok());
+  ASSERT_TRUE(data_parser_->ReleaseUnencrypted("abc", "my_key_1").ok());
+  ASSERT_TRUE(data_parser_->ReleaseUnencrypted("def", "my_key_2").ok());
 
-    auto released_data = fake_data_read_write_service_->GetReleasedData();
-    EXPECT_EQ(released_data.size(), 2);
-    EXPECT_EQ(released_data["my_key_1"], "abc");
-    EXPECT_EQ(released_data["my_key_2"], "def");
+  auto released_data = fake_data_read_write_service_->GetReleasedData();
+  EXPECT_EQ(released_data.size(), 2);
+  EXPECT_EQ(released_data["my_key_1"], "abc");
+  EXPECT_EQ(released_data["my_key_2"], "def");
 
-    std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
-                                    std::optional<std::string>>>
-        released_state_changes =
-            fake_data_read_write_service_->GetReleasedStateChanges();
-    ASSERT_EQ(released_state_changes.size(), 2);
-    auto state_change_1 = released_state_changes["my_key_1"];
-    ASSERT_EQ(state_change_1.first.value(), std::nullopt);
-    ASSERT_EQ(state_change_1.second.value(), kStateAfterFirstRelease);
-    auto state_change_2 = released_state_changes["my_key_2"];
-    ASSERT_EQ(state_change_2.first.value().value(), kStateAfterFirstRelease);
-    ASSERT_EQ(state_change_2.second.value(), kStateAfterSecondRelease);
-  }
+  std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
+                                  std::optional<std::string>>>
+      released_state_changes =
+          fake_data_read_write_service_->GetReleasedStateChanges();
+  ASSERT_EQ(released_state_changes.size(), 2);
+  auto state_change_1 = released_state_changes["my_key_1"];
+  ASSERT_EQ(state_change_1.first.value(), std::nullopt);
+  ASSERT_EQ(state_change_1.second.value(), kStateAfterFirstRelease);
+  auto state_change_2 = released_state_changes["my_key_2"];
+  ASSERT_EQ(state_change_2.first.value().value(), kStateAfterFirstRelease);
+  ASSERT_EQ(state_change_2.second.value(), kStateAfterSecondRelease);
 }
-
-INSTANTIATE_TEST_SUITE_P(KmsParam, DataParserTest,
-                         ::testing::Bool(),  // Generates {false, true}
-                         DataParserTest::TestNameSuffix);
 
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

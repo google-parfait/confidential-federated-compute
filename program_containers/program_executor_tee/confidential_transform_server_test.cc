@@ -79,21 +79,6 @@ absl::Status WriteInitializeRequest(
 TYPED_TEST_SUITE(ProgramExecutorTeeTest,
                  ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
 
-TYPED_TEST(ProgramExecutorTeeTest, InvalidStreamInitialize) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-
-  InitializeRequest request;
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  absl::Status status = WriteInitializeRequest(
-      this->stub_->StreamInitialize(&context, &response), std::move(request));
-  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
-  ASSERT_THAT(
-      status.message(),
-      HasSubstr("ProgramExecutorTeeInitializeConfig cannot be unpacked"));
-}
-
 TYPED_TEST(ProgramExecutorTeeTest,
            StreamInitializeWithKmsInvalidInitializeConfig) {
   grpc::ClientContext context;
@@ -283,46 +268,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsInvalidBudget) {
               HasSubstr("Failed to parse initial budget state"));
 }
 
-TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigure) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-  StreamInitializeRequest request;
-
-  ProgramExecutorTeeInitializeConfig config;
-  config.set_program("fake_program");
-  *config.mutable_reference_values() = PARSE_TEXT_PROTO(R"pb(
-    oak_containers {
-      root_layer {
-        amd_sev { stage0 { skip {} } }
-        insecure {}
-      }
-    }
-  )pb");
-
-  InitializeRequest* initialize_request = request.mutable_initialize_request();
-  initialize_request->set_max_num_sessions(kMaxNumSessions);
-  initialize_request->mutable_configuration()->PackFrom(config);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      this->stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_TRUE(writer->Finish().ok());
-
-  grpc::ClientContext session_context;
-  SessionRequest session_request;
-  SessionResponse session_response;
-  session_request.mutable_configure()->set_chunk_size(1000);
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = this->stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(session_request));
-  ASSERT_TRUE(stream->Read(&session_response));
-
-  ASSERT_TRUE(session_response.has_configure());
-  ASSERT_GT(session_response.configure().nonce().size(), 0);
-}
-
 TYPED_TEST(ProgramExecutorTeeTest,
            ValidStreamInitializeWithKmsNoReferenceValueConstraints) {
   grpc::ClientContext context;
@@ -399,12 +344,10 @@ TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigureWithKms) {
   ASSERT_TRUE(session_response.has_configure());
 }
 
-class ProgramExecutorTeeConfidentialTransformSessionTest
-    : public ProgramExecutorTeeSessionTest<
-          ProgramExecutorTeeConfidentialTransform> {};
+TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
+                 ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
 
-TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
-       SessionWriteFailsUnsupported) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
   this->CreateSession("unused program");
   SessionRequest session_request;
   SessionResponse session_response;
@@ -427,8 +370,7 @@ TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
           "Writing to a session is not supported in program executor TEE"));
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
-       InvalidProgramFails) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, InvalidProgramFails) {
   this->CreateSession(R"(
 def incorrectly_named_trusted_program(input_provider, external_service_handle):
   return 10
@@ -450,8 +392,8 @@ def incorrectly_named_trusted_program(input_provider, external_service_handle):
       HasSubstr("The provided program must have a trusted_program function"));
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
-       ValidFinalizeSessionWithoutStartingState) {
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           ValidFinalizeSessionWithoutStartingState) {
   this->CreateSession(R"(
 def trusted_program(input_provider, external_service_handle):
   result_1 = "a" + "b" + "c"
@@ -470,35 +412,32 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_EQ(released_data["result_1"], "abc");
   ASSERT_EQ(released_data["result_2"], "def");
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    // There is no initial state.
-    ASSERT_FALSE(released_state_changes["result_1"].first.value().has_value());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_first_release_budget.set_counter(1);
-    ASSERT_EQ(released_state_changes["result_1"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-    ASSERT_EQ(released_state_changes["result_2"].first.value().value(),
-              expected_first_release_budget.SerializeAsString());
-    // The second release operations triggers a state change that should keep
-    // the number of remaining runs the same and further increment the counter.
-    BudgetState expected_second_release_budget;
-    expected_second_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_second_release_budget.set_counter(2);
-    ASSERT_EQ(released_state_changes["result_2"].second.value(),
-              expected_second_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(released_state_changes["result_1"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["result_1"].second.value(),
+            expected_first_release_budget.SerializeAsString());
+  ASSERT_EQ(released_state_changes["result_2"].first.value().value(),
+            expected_first_release_budget.SerializeAsString());
+  // The second release operations triggers a state change that should keep
+  // the number of remaining runs the same and further increment the counter.
+  BudgetState expected_second_release_budget;
+  expected_second_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_second_release_budget.set_counter(2);
+  ASSERT_EQ(released_state_changes["result_2"].second.value(),
+            expected_second_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
-       ValidFinalizeSessionWithStartingState) {
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           ValidFinalizeSessionWithStartingState) {
   int initial_num_runs = 3;
   int initial_counter = 10;
   BudgetState initial_budget;
@@ -524,35 +463,31 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_EQ(released_data["result_1"], "abc");
   ASSERT_EQ(released_data["result_2"], "def");
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    ASSERT_EQ(released_state_changes["result_1"].first.value().value(),
-              initial_budget.SerializeAsString());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(initial_num_runs - 1);
-    expected_first_release_budget.set_counter(initial_counter + 1);
-    ASSERT_EQ(released_state_changes["result_1"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-    ASSERT_EQ(released_state_changes["result_2"].first.value().value(),
-              expected_first_release_budget.SerializeAsString());
-    // The second release operations triggers a state change that should keep
-    // the number of remaining runs the same and further increment the counter.
-    BudgetState expected_second_release_budget;
-    expected_second_release_budget.set_num_runs_remaining(initial_num_runs - 1);
-    expected_second_release_budget.set_counter(initial_counter + 2);
-    ASSERT_EQ(released_state_changes["result_2"].second.value(),
-              expected_second_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  ASSERT_EQ(released_state_changes["result_1"].first.value().value(),
+            initial_budget.SerializeAsString());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(initial_num_runs - 1);
+  expected_first_release_budget.set_counter(initial_counter + 1);
+  ASSERT_EQ(released_state_changes["result_1"].second.value(),
+            expected_first_release_budget.SerializeAsString());
+  ASSERT_EQ(released_state_changes["result_2"].first.value().value(),
+            expected_first_release_budget.SerializeAsString());
+  // The second release operations triggers a state change that should keep
+  // the number of remaining runs the same and further increment the counter.
+  BudgetState expected_second_release_budget;
+  expected_second_release_budget.set_num_runs_remaining(initial_num_runs - 1);
+  expected_second_release_budget.set_counter(initial_counter + 2);
+  ASSERT_EQ(released_state_changes["result_2"].second.value(),
+            expected_second_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
-       ValidFinalizeSessionWithInputs) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSessionWithInputs) {
   using InputData = std::tuple<std::string, std::string>;
   InputData input_1{"client_1",
                     BuildClientCheckpointFromInts({10, 20}, "my_key_name")};
@@ -560,13 +495,8 @@ TEST_P(ProgramExecutorTeeConfidentialTransformSessionTest,
                     BuildClientCheckpointFromInts({30, 40}, "my_key_name")};
 
   for (auto [client_id, data] : {input_1, input_2}) {
-    if (UseKms()) {
-      CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
-          client_id, data));
-    } else {
-      CHECK_OK(this->fake_data_read_write_service_.StorePlaintextMessage(
-          client_id, data));
-    }
+    CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
+        client_id, data));
   }
 
   this->CreateSession(R"(
@@ -603,12 +533,6 @@ def trusted_program(input_provider, external_service_handle):
   std::memcpy(&result, released_data["result"].data(), sizeof(int32_t));
   ASSERT_EQ(result, 100);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    KmsParam, ProgramExecutorTeeConfidentialTransformSessionTest,
-    ::testing::Bool(),  // Generates {false, true}
-    ProgramExecutorTeeSessionTest<
-        ProgramExecutorTeeConfidentialTransform>::TestNameSuffix);
 
 }  // namespace
 

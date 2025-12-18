@@ -50,35 +50,30 @@ using ::tensorflow_federated::aggregation::TensorProto;
 
 DataParser::DataParser(
     confidential_federated_compute::BlobDecryptor* blob_decryptor,
-    std::string outgoing_server_address, bool use_kms,
-    std::string reencryption_key, std::string reencryption_policy_hash,
-    PrivateState* private_state,
+    std::string outgoing_server_address, std::string reencryption_key,
+    std::string reencryption_policy_hash, PrivateState* private_state,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-    std::set<std::string> authorized_logical_pipeline_policies_hashes,
-    std::function<std::string()> nonce_generator)
+    std::set<std::string> authorized_logical_pipeline_policies_hashes)
     : blob_decryptor_(blob_decryptor),
-      use_kms_(use_kms),
       private_state_(private_state),
-      signing_key_handle_(signing_key_handle),
-      nonce_generator_(nonce_generator) {
+      signing_key_handle_(signing_key_handle) {
   // All hashes and encryption keys are Base64Escaped before being passed over
   // the pybind boundary, so they must be decoded here.
-  if (use_kms_) {
-    std::string decoded_reencryption_key;
-    absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
-    reencryption_key_ = decoded_reencryption_key;
+  std::string decoded_reencryption_key;
+  absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
+  reencryption_key_ = decoded_reencryption_key;
 
-    std::string decoded_reencryption_policy_hash;
-    absl::Base64Unescape(reencryption_policy_hash,
-                         &decoded_reencryption_policy_hash);
-    reencryption_policy_hash_ = reencryption_policy_hash;
+  std::string decoded_reencryption_policy_hash;
+  absl::Base64Unescape(reencryption_policy_hash,
+                       &decoded_reencryption_policy_hash);
+  reencryption_policy_hash_ = reencryption_policy_hash;
 
-    for (const auto& hash : authorized_logical_pipeline_policies_hashes) {
-      std::string decoded_hash;
-      absl::Base64Unescape(hash, &decoded_hash);
-      authorized_logical_pipeline_policies_hashes_.insert(decoded_hash);
-    }
+  for (const auto& hash : authorized_logical_pipeline_policies_hashes) {
+    std::string decoded_hash;
+    absl::Base64Unescape(hash, &decoded_hash);
+    authorized_logical_pipeline_policies_hashes_.insert(decoded_hash);
   }
+
   grpc::ChannelArguments args;
   args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
   args.SetMaxReceiveMessageSize(kMaxGrpcMessageSize);
@@ -102,25 +97,9 @@ absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
 
 absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
     std::string uri) {
-  // Check whether the uri is already in the cache if the ledger is being used.
-  if (!use_kms_) {
-    absl::MutexLock lock(&cache_mutex_);
-    auto it = uri_to_checkpoint_cache_.find(uri);
-    if (it != uri_to_checkpoint_cache_.end()) {
-      return it->second;
-    }
-  }
-
-  // Make a ReadRequest for the uri and reconstruct a combined ReadResponse.
-  // Only use a nonce if the ledger is being used.
   ClientContext client_context;
   ReadRequest read_request;
   read_request.set_uri(uri);
-  std::optional<std::string> nonce = std::nullopt;
-  if (!use_kms_) {
-    nonce = nonce_generator_();
-    read_request.set_nonce(*nonce);
-  }
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse combined_read_response;
   std::string combined_data = "";
@@ -137,35 +116,13 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
     }
   }
   FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
-
-  // Add the checkpoint to the cache if the ledger is being used.
-  FCP_ASSIGN_OR_RETURN(
-      std::string checkpoint,
-      ParseReadResponseToFcCheckpoint(uri, combined_read_response, nonce));
-  if (!use_kms_) {
-    absl::MutexLock lock(&cache_mutex_);
-    uri_to_checkpoint_cache_[uri] = checkpoint;
-  }
-  return checkpoint;
+  return ParseReadResponseToFcCheckpoint(uri, combined_read_response);
 }
 
 absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
-    std::string uri, const ReadResponse& read_response,
-    const std::optional<std::string>& nonce) {
+    std::string uri, const ReadResponse& read_response) {
   if (read_response.first_response_metadata().has_unencrypted()) {
     return read_response.data();
-  }
-
-  // Check the nonce if the ledger is being used.
-  if (!use_kms_) {
-    if (read_response.first_response_metadata()
-            .hpke_plus_aead_data()
-            .rewrapped_symmetric_key_associated_data()
-            .nonce() != *nonce) {
-      return absl::InvalidArgumentError("ReadResponse nonce does not match");
-    }
-    return blob_decryptor_->DecryptBlob(read_response.first_response_metadata(),
-                                        read_response.data());
   }
 
   // Parse the BlobHeader to get the access policy hash and key ID.

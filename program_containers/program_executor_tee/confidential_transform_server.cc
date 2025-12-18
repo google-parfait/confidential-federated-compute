@@ -70,7 +70,7 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
       m, "SigningKeyHandle");
 
   pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<BlobDecryptor*, std::string&, bool, std::string&,
+      .def(pybind11::init<BlobDecryptor*, std::string&, std::string&,
                           std::string&, PrivateState*,
                           std::shared_ptr<oak::crypto::SigningKeyHandle>,
                           std::set<std::string>>())
@@ -144,12 +144,11 @@ ProgramExecutorTeeSession::Finalize(
             .attr("run_program");
 
     // Create a DataParser object bound to the BlobDecryptor pointer.
-    bool use_kms = !reencryption_key_.empty();
     pybind11::object data_parser_instance =
         pybind11::module::import("data_parser")
             .attr("DataParser")(
                 blob_decryptor_, initialize_config_.outgoing_server_address(),
-                use_kms, absl::Base64Escape(reencryption_key_),
+                absl::Base64Escape(reencryption_key_),
                 absl::Base64Escape(reencryption_policy_hash_), private_state_,
                 signing_key_handle_, authorized_hashes_set);
 
@@ -158,7 +157,7 @@ ProgramExecutorTeeSession::Finalize(
                 pybind11::bytes(initialize_config_.program()), client_ids,
                 initialize_config_.client_data_dir(), model_id_to_zip_file_,
                 initialize_config_.outgoing_server_address(),
-                data_parser_instance.attr("resolve_uri_to_tensor"), use_kms,
+                data_parser_instance.attr("resolve_uri_to_tensor"),
                 data_parser_instance.attr("release_unencrypted"));
   };
 
@@ -171,26 +170,8 @@ ProgramExecutorTeeSession::Finalize(
 absl::StatusOr<google::protobuf::Struct>
 ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
     const fcp::confidentialcompute::InitializeRequest* request) {
-  ProgramExecutorTeeInitializeConfig config;
-  if (!request->configuration().UnpackTo(&config)) {
-    return absl::InvalidArgumentError(
-        "ProgramExecutorTeeInitializeConfig cannot be unpacked.");
-  }
-  initialize_config_ = std::move(config);
-
-  worker_bns_addresses_.reserve(
-      initialize_config_.worker_bns_addresses().size());
-  for (const auto& address : initialize_config_.worker_bns_addresses()) {
-    worker_bns_addresses_.push_back(address);
-  }
-
-  Struct config_properties;
-  (*config_properties.mutable_fields())["program"].set_string_value(
-      initialize_config_.program());
-  (*config_properties.mutable_fields())["worker_reference_values"]
-      .set_string_value(absl::Base64Escape(
-          initialize_config_.reference_values().SerializeAsString()));
-  return config_properties;
+  return absl::UnimplementedError(
+      "The program executor TEE cannot be used with the ledger.");
 }
 
 absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
