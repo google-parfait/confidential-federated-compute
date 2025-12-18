@@ -41,12 +41,11 @@ using ::fcp::confidentialcompute::SessionResponse;
     new ::confidential_federated_compute::program_executor_tee::
         PythonEnvironment());
 
-class ProgramExecutorTeeConfidentialTransformTensorflowSessionTest
-    : public ProgramExecutorTeeSessionTest<
-          TensorflowProgramExecutorTeeConfidentialTransform> {};
+TYPED_TEST_SUITE(
+    ProgramExecutorTeeSessionTest,
+    ::testing::Types<TensorflowProgramExecutorTeeConfidentialTransform>);
 
-TEST_P(ProgramExecutorTeeConfidentialTransformTensorflowSessionTest,
-       ProgramWithDataSource) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
   std::vector<std::string> client_ids = {"client1", "client2", "client3",
                                          "client4"};
   std::string client_data_dir = "data_dir";
@@ -54,13 +53,8 @@ TEST_P(ProgramExecutorTeeConfidentialTransformTensorflowSessionTest,
   for (int i = 0; i < client_ids.size(); i++) {
     std::string data = BuildClientCheckpointFromInts(
         {1 + i * 3, 2 + i * 3, 3 + i * 3}, tensor_name);
-    if (UseKms()) {
-      CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
-          client_data_dir + "/" + client_ids[i], data));
-    } else {
-      CHECK_OK(this->fake_data_read_write_service_.StorePlaintextMessage(
-          client_data_dir + "/" + client_ids[i], data));
-    }
+    CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
+        client_data_dir + "/" + client_ids[i], data));
   }
 
   this->CreateSession(R"(
@@ -164,27 +158,23 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_THAT(released_client_count.array().int32_list().value(),
               ::testing::ElementsAreArray({8}));
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    // There is no initial state.
-    ASSERT_FALSE(
-        released_state_changes["resulting_sum"].first.value().has_value());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_first_release_budget.set_counter(1);
-    ASSERT_EQ(released_state_changes["resulting_sum"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(
+      released_state_changes["resulting_sum"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["resulting_sum"].second.value(),
+            expected_first_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
 
-TEST_P(ProgramExecutorTeeConfidentialTransformTensorflowSessionTest,
-       ProgramWithModelLoading) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithModelLoading) {
   this->CreateSession(
       R"(
 import os
@@ -240,29 +230,20 @@ def trusted_program(input_provider, external_service_handle):
   released_value.ParseFromString(released_data["result"]);
   ASSERT_EQ(released_value.struct_().element().size(), 5);
 
-  // State changes should only be checked in the KMS case.
-  if (UseKms()) {
-    auto released_state_changes =
-        this->fake_data_read_write_service_.GetReleasedStateChanges();
-    // There is no initial state.
-    ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
-    // The first release operation triggers a state change that should decrease
-    // the number of remaining runs and increment the counter.
-    BudgetState expected_first_release_budget;
-    expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
-    expected_first_release_budget.set_counter(1);
-    ASSERT_EQ(released_state_changes["result"].second.value(),
-              expected_first_release_budget.SerializeAsString());
-  }
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["result"].second.value(),
+            expected_first_release_budget.SerializeAsString());
 
   ASSERT_TRUE(session_response.has_finalize());
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    KmsParam, ProgramExecutorTeeConfidentialTransformTensorflowSessionTest,
-    ::testing::Bool(),  // Generates {false, true}
-    ProgramExecutorTeeSessionTest<
-        ProgramExecutorTeeConfidentialTransform>::TestNameSuffix);
 
 }  // namespace
 
