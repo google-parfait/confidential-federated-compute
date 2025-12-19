@@ -22,10 +22,12 @@ cc_library(
     name = "fns",
     srcs = [
         "confidential_transform_server.cc",
+        "do_fn.cc",
         "map_fn.cc",
     ],
     hdrs = [
         "confidential_transform_server.h",
+        "do_fn.h",
         "fn.h",
         "fn_factory.h",
         "map_fn.h",
@@ -86,6 +88,24 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_protobuf//:any_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "do_fn_test",
+    srcs = ["do_fn_test.cc"],
+    deps = [
+        ":fns",
+        "//containers/testing",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
