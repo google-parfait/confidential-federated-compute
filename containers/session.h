@@ -109,6 +109,9 @@ class Session {
 
   // Context interface that provides ability to emit an an arbitrary number of
   // ReadResponse messages to the session stream.
+  // TODO: Add EmitError method for emitting ignorable errors so they can be
+  // counted on the untrusted Flume side. Also add an AbortReplica method for
+  // fatal errors.
   class Context {
    public:
     virtual ~Context() = default;
