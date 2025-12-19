@@ -24,6 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "cc/crypto/server_encryptor.h"
 #include "containers/blob_metadata.h"
@@ -185,6 +186,9 @@ absl::Status ConfidentialTransformBase::HandleWrite(
   absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
       request.first_request_metadata(), blob_data.Flatten(), key_id.value());
   if (!unencrypted_data.ok()) {
+    LOG_EVERY_N(WARNING, 1000) << "Blob decryption failed for key_id "
+                               << absl::BytesToHexString(key_id.value())
+                               << " with status: " << unencrypted_data.status();
     stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
     return absl::OkStatus();
   }
