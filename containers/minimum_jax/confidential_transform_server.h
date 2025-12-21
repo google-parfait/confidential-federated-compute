@@ -62,8 +62,10 @@ class SimpleConfidentialTransform final
     : public confidential_federated_compute::ConfidentialTransformBase {
  public:
   explicit SimpleConfidentialTransform(
-      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
-      : ConfidentialTransformBase(std::move(signing_key_handle)) {}
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
+      : ConfidentialTransformBase(std::move(signing_key_handle),
+                                  std::move(encryption_key_handle)) {}
 
  protected:
   // No-op

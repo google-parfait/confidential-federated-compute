@@ -43,8 +43,7 @@ class FedSqlConfidentialTransform final
  public:
   FedSqlConfidentialTransform(
       std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
-          nullptr);
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle);
 
  private:
   absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(

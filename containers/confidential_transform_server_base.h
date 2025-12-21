@@ -28,7 +28,6 @@
 #include "containers/crypto.h"
 #include "containers/kms_encryptor.h"
 #include "containers/session.h"
-#include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -58,8 +57,7 @@ class ConfidentialTransformBase
  protected:
   ConfidentialTransformBase(
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
-          nullptr)
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
       : oak_signing_key_handle_(std::move(signing_key_handle)),
         oak_encryption_key_handle_(std::move(encryption_key_handle)) {}
 
@@ -93,13 +91,6 @@ class ConfidentialTransformBase
   virtual absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) = 0;
 
-  // Transforms that have KMS enabled are meant to be used with the KMS. They
-  // must
-  // - Validate that they are configured with properties permitted by the KMS
-  // - Track their own privacy budget.
-  // - Release only encrypted results along with a release token.
-  bool KmsEnabled() const { return kms_encryptor_.has_value(); }
-
   // Returns the authorized logical policy hashes for this container.
   absl::flat_hash_set<std::string>&
   GetAuthorizedLogicalPipelinePoliciesHashes() {
@@ -129,12 +120,10 @@ class ConfidentialTransformBase
 
   absl::Status SessionImpl(SessionStream* stream);
 
-  absl::Status HandleWrite(
-      confidential_federated_compute::Session* session,
-      fcp::confidentialcompute::WriteRequest request, absl::Cord blob_data,
-      BlobDecryptor* blob_decryptor,
-      std::optional<fcp::confidential_compute::NonceChecker>& nonce_checker,
-      SessionStream* stream, Session::Context& context);
+  absl::Status HandleWrite(confidential_federated_compute::Session* session,
+                           fcp::confidentialcompute::WriteRequest request,
+                           absl::Cord blob_data, BlobDecryptor* blob_decryptor,
+                           SessionStream* stream, Session::Context& context);
 
   absl::Status SetActiveKeyIds(
       const std::vector<absl::string_view>& decryption_keys,
@@ -148,9 +137,8 @@ class ConfidentialTransformBase
       ABSL_GUARDED_BY(mutex_);
   std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);
-  // TODO: Refactor ConfidentialTransformBase so it's not aware of either the
-  // Ledger nor KMS. Future applications may not be based on either Ledger nor
-  // KMS.
+  // TODO: Refactor ConfidentialTransformBase so it's not aware of KMS.
+  // Future applications may not be based on KMS.
   std::optional<KmsEncryptor> kms_encryptor_;
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;

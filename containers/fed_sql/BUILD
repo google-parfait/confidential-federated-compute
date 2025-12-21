@@ -27,7 +27,6 @@ cc_library(
     deps = [
         ":inference_model",
         ":kms_session",
-        ":ledger_session",
         ":private_state",
         ":sensitive_columns",
         ":session_utils",
@@ -350,32 +349,6 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-    ],
-)
-
-cc_library(
-    name = "ledger_session",
-    srcs = ["ledger_session.cc"],
-    hdrs = ["ledger_session.h"],
-    deps = [
-        ":inference_model",
-        ":sensitive_columns",
-        ":session_utils",
-        "//containers:session",
-        "//containers/sql:row_set",
-        "//containers/sql:sqlite_adapter",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:cord",
-        "@federated-compute//fcp/base:base",
-        "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:dp_fedsql_constants",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
     ],
 )
 

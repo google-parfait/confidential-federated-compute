@@ -28,9 +28,6 @@
 #include "containers/crypto_test_utils.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/confidentialcompute/cose.h"
-#include "fcp/confidentialcompute/crypto.h"
-#include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
@@ -52,11 +49,7 @@ namespace {
 using ::absl_testing::IsOk;
 using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
-using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
-using ::fcp::confidential_compute::NonceAndCounter;
-using ::fcp::confidential_compute::NonceGenerator;
-using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -173,23 +166,24 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
   }
 
  protected:
-  absl::StatusOr<google::protobuf::Struct> InitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) {
+  absl::Status StreamInitializeTransformWithKms(
+      const ::google::protobuf::Any& configuration,
+      const ::google::protobuf::Any& config_constraints,
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash) override {
     google::rpc::Status config_status;
-    if (!request->configuration().UnpackTo(&config_status)) {
+    if (!configuration.UnpackTo(&config_status)) {
       return absl::InvalidArgumentError("Config cannot be unpacked.");
     }
     if (config_status.code() != grpc::StatusCode::OK) {
       return absl::InvalidArgumentError("Invalid config.");
     }
-    return google::protobuf::Struct();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
       const fcp::confidentialcompute::InitializeRequest* request) override {
-    FCP_ASSIGN_OR_RETURN(google::protobuf::Struct config_properties,
-                         InitializeTransform(request));
-    return config_properties;
+    return google::protobuf::Struct();
   }
 
   absl::Status ReadWriteConfigurationRequest(
@@ -247,10 +241,98 @@ class ConfidentialTransformServerBaseTest : public Test {
   ~ConfidentialTransformServerBaseTest() override { server_->Shutdown(); }
 
  protected:
+  StreamInitializeRequest CreateStreamInitializeRequest() {
+    google::rpc::Status config_status;
+    config_status.set_code(grpc::StatusCode::OK);
+    auto public_private_key_pair =
+        crypto_test_utils::GenerateKeyPair(std::string(kKeyId));
+    public_key_ = public_private_key_pair.first;
+    AuthorizeConfidentialTransformResponse::ProtectedResponse
+        protected_response;
+    *protected_response.add_result_encryption_keys() =
+        public_private_key_pair.first;
+    *protected_response.add_decryption_keys() = public_private_key_pair.second;
+    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.add_authorized_logical_pipeline_policies_hashes(
+        "policy_hash");
+    associated_data.add_omitted_decryption_key_ids("omitted_key_id");
+    auto encrypted_request =
+        oak_client_encryptor_
+            ->Encrypt(protected_response.SerializeAsString(),
+                      associated_data.SerializeAsString())
+            .value();
+
+    StreamInitializeRequest request;
+    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+        config_status);
+    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
+    *request.mutable_initialize_request()->mutable_protected_response() =
+        encrypted_request;
+    return request;
+  }
+
+  void InitializeTransform() {
+    auto request = CreateStreamInitializeRequest();
+    grpc::ClientContext configure_context;
+    InitializeResponse response;
+    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+        stub_->StreamInitialize(&configure_context, &response);
+    CHECK(writer->Write(request));
+    CHECK(writer->WritesDone());
+    CHECK(writer->Finish().ok());
+    auto key_ids = service_->GetActiveKeyIds();
+    CHECK_EQ(key_ids.size(), 2);
+    CHECK(key_ids.contains(kKeyId));
+    CHECK(key_ids.contains("omitted_key_id"));
+  }
+
+  std::unique_ptr<SessionStream> StartSession(grpc::ClientContext* context,
+                                              uint32_t chunk_size = 1000) {
+    SessionRequest session_request;
+    SessionResponse session_response;
+    session_request.mutable_configure()->set_chunk_size(chunk_size);
+
+    auto stream = stub_->Session(context);
+    CHECK(stream->Write(session_request));
+    CHECK(stream->Read(&session_response));
+    return stream;
+  }
+
+  std::pair<BlobMetadata, std::string> Encrypt(
+      std::string blob_id, std::string message,
+      std::string policy_hash = "policy_hash") {
+    BlobHeader header;
+    header.set_blob_id(blob_id);
+    header.set_key_id(std::string(kKeyId));
+    header.set_access_policy_sha256(policy_hash);
+    std::string associated_data = header.SerializeAsString();
+
+    MessageEncryptor encryptor;
+    absl::StatusOr<EncryptMessageResult> encrypt_result =
+        encryptor.Encrypt(message, public_key_, associated_data);
+    CHECK(encrypt_result.ok()) << encrypt_result.status();
+
+    BlobMetadata metadata;
+    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+    metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
+    BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+        metadata.mutable_hpke_plus_aead_data();
+    encryption_metadata->set_ciphertext_associated_data(associated_data);
+    encryption_metadata->set_encrypted_symmetric_key(
+        encrypt_result.value().encrypted_symmetric_key);
+    encryption_metadata->set_encapsulated_public_key(
+        encrypt_result.value().encapped_key);
+    encryption_metadata->mutable_kms_symmetric_key_associated_data()
+        ->set_record_header(associated_data);
+
+    return {metadata, encrypt_result.value().ciphertext};
+  }
+
   std::unique_ptr<FakeConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
   std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
+  std::string public_key_;
 };
 
 TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
@@ -268,14 +350,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   write_configuration.mutable_write_configuration()->set_commit(true);
 
   // An initialize_request.
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  StreamInitializeRequest initialize_request = CreateStreamInitializeRequest();
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
@@ -286,62 +361,19 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   // Finish is called to get the server's response and final status of the
   // stream.
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
-  ASSERT_THAT(OkpCwt::Decode(response.public_key()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
        ValidStreamInitializeNoWriteConfiguration) {
   grpc::ClientContext context;
   InitializeResponse response;
-
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
+  StreamInitializeRequest initialize_request = CreateStreamInitializeRequest();
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(initialize_request));
   ASSERT_TRUE(writer->WritesDone());
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
-  ASSERT_THAT(OkpCwt::Decode(response.public_key()), IsOk());
-}
-
-TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitializeKmsEnabled) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
-
-  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
-  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-  *associated_data.add_authorized_logical_pipeline_policies_hashes() =
-      "policy_hash";
-  auto encrypted_request = oak_client_encryptor_
-                               ->Encrypt(protected_response.SerializeAsString(),
-                                         associated_data.SerializeAsString())
-                               .value();
-  *initialize_request.mutable_initialize_request()
-       ->mutable_protected_response() = encrypted_request;
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&context, &response);
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
-  ASSERT_EQ(response.public_key(), "");
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
@@ -349,15 +381,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   grpc::ClientContext context;
   InitializeResponse response;
 
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
-
+  StreamInitializeRequest initialize_request = CreateStreamInitializeRequest();
   StreamInitializeRequest write_configuration;
   ConfigurationMetadata* metadata =
       write_configuration.mutable_write_configuration()
@@ -385,7 +409,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   grpc::ClientContext context;
   google::protobuf::Value value;
   InitializeResponse response;
-  StreamInitializeRequest request;
+  StreamInitializeRequest request = CreateStreamInitializeRequest();
   request.mutable_initialize_request()->mutable_configuration()->PackFrom(
       value);
 
@@ -416,12 +440,8 @@ TEST_F(ConfidentialTransformServerBaseTest,
 TEST_F(ConfidentialTransformServerBaseTest, StreamInitializeMoreThanOnce) {
   grpc::ClientContext context;
   InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
+  StreamInitializeRequest request = CreateStreamInitializeRequest();
 
-  StreamInitializeRequest request;
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      config_status);
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
   ASSERT_TRUE(writer->Write(request));
@@ -429,8 +449,6 @@ TEST_F(ConfidentialTransformServerBaseTest, StreamInitializeMoreThanOnce) {
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
 
   grpc::ClientContext second_context;
-  request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-      config_status);
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> second_writer =
       stub_->StreamInitialize(&second_context, &response);
   ASSERT_TRUE(second_writer->Write(request));
@@ -471,13 +489,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
        StreamInitializeMoreThanOneInitializeRequest) {
   grpc::ClientContext context;
   InitializeResponse response;
-
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
+  StreamInitializeRequest initialize_request = CreateStreamInitializeRequest();
 
   std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
       stub_->StreamInitialize(&context, &response);
@@ -510,24 +522,8 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionBeforeInitialize) {
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
-       StreamInitializeSessionConfigureGeneratesNonce) {
-  grpc::ClientContext configure_context;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&configure_context, &response);
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
-
+       StreamInitializeAndConfigureSession) {
+  InitializeTransform();
   grpc::ClientContext session_context;
   SessionRequest session_request;
   SessionResponse session_response;
@@ -543,9 +539,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
   std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
   ASSERT_TRUE(stream->Write(session_request));
   ASSERT_TRUE(stream->Read(&session_response));
-
   ASSERT_TRUE(session_response.has_configure());
-  ASSERT_GT(session_response.configure().nonce().size(), 0);
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
@@ -560,23 +554,7 @@ TEST_F(ConfidentialTransformServerBaseTest,
 }
 
 TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
-  grpc::ClientContext configure_context;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&configure_context, &response);
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
-
+  InitializeTransform();
   grpc::ClientContext session_context;
   SessionRequest configure_request;
   SessionResponse configure_response;
@@ -593,22 +571,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
 
 TEST_F(ConfidentialTransformServerBaseTest,
        StreamInitializeSessionRejectsMoreThanMaximumNumSessions) {
-  grpc::ClientContext configure_context;
-  InitializeResponse response;
-  google::rpc::Status config_status;
-  config_status.set_code(grpc::StatusCode::OK);
-  StreamInitializeRequest initialize_request;
-  initialize_request.mutable_initialize_request()
-      ->mutable_configuration()
-      ->PackFrom(config_status);
-  initialize_request.mutable_initialize_request()->set_max_num_sessions(
-      kMaxNumSessions);
-
-  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-      stub_->StreamInitialize(&configure_context, &response);
-  ASSERT_TRUE(writer->Write(initialize_request));
-  ASSERT_TRUE(writer->WritesDone());
-  ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
+  InitializeTransform();
 
   std::vector<std::unique_ptr<SessionStream>> streams;
   std::vector<std::unique_ptr<grpc::ClientContext>> contexts;
@@ -642,48 +605,9 @@ TEST_F(ConfidentialTransformServerBaseTest,
             grpc::StatusCode::FAILED_PRECONDITION);
 }
 
-class InitializedConfidentialTransformServerBaseTest
-    : public ConfidentialTransformServerBaseTest {
- public:
-  InitializedConfidentialTransformServerBaseTest() {
-    grpc::ClientContext configure_context;
-    InitializeResponse response;
-
-    google::rpc::Status config_status;
-    config_status.set_code(grpc::StatusCode::OK);
-    StreamInitializeRequest request;
-    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-        config_status);
-    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
-
-    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-        stub_->StreamInitialize(&configure_context, &response);
-    CHECK(writer->Write(request));
-    CHECK(writer->WritesDone());
-    CHECK(writer->Finish().ok());
-    public_key_ = response.public_key();
-  }
-
- protected:
-  void StartSession(uint32_t chunk_size = 1000) {
-    SessionRequest session_request;
-    SessionResponse session_response;
-    session_request.mutable_configure()->set_chunk_size(chunk_size);
-
-    stream_ = stub_->Session(&session_context_);
-    CHECK(stream_->Write(session_request));
-    CHECK(stream_->Read(&session_response));
-    nonce_generator_ =
-        std::make_unique<NonceGenerator>(session_response.configure().nonce());
-  }
-  grpc::ClientContext session_context_;
-  std::unique_ptr<SessionStream> stream_;
-  std::unique_ptr<NonceGenerator> nonce_generator_;
-  std::string public_key_;
-};
-
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionWritesAndFinalizes) {
+TEST_F(ConfidentialTransformServerBaseTest,
+       SessionWriteFinalizeUnencryptedBlob) {
+  InitializeTransform();
   std::string data = "test data";
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
@@ -699,13 +623,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   // Accumulate the same unencrypted blob twice.
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
@@ -713,10 +638,10 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&read_response));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 
   ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
@@ -731,8 +656,62 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
+TEST_F(ConfidentialTransformServerBaseTest, SessionWriteFinalizeEncryptedBlob) {
+  InitializeTransform();
+  std::string message = "test data";
+  auto mock_session = std::make_unique<MockLegacySession>();
+  EXPECT_CALL(*mock_session, ConfigureSession(_))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock_session, SessionWrite(_, _))
+      .WillOnce(Return(
+          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
+  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
+      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  service_->AddSession(std::move(mock_session));
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
+
+  auto [metadata, ciphertext] = Encrypt("blob_id", message);
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
+
+  SessionResponse response;
+  ASSERT_TRUE(stream->Write(request));
+  ASSERT_TRUE(stream->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::OK);
+  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
+
+  SessionRequest finalize_request;
+  SessionResponse read_response, finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+
+  ASSERT_THAT(read_response,
+              EqualsProto(R"pb(read {
+                                 first_response_metadata {
+                                   total_size_bytes: 11
+                                   compression_type: COMPRESSION_TYPE_NONE
+                                   unencrypted {}
+                                 }
+                                 finish_read: true
+                                 data: "test result"
+                               })pb"));
+  ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
+}
+
+TEST_F(ConfidentialTransformServerBaseTest,
        SessionWritesChunkedBlobAndFinalizes) {
+  InitializeTransform();
+
   std::string chunk1 = "abcdef";
   std::string chunk2 = "ghijkl";
   std::string chunk3 = "mno";
@@ -749,7 +728,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
     compression_type: COMPRESSION_TYPE_NONE
@@ -759,19 +739,19 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionRequest write_request1;
   *write_request1.mutable_write()->mutable_first_request_metadata() = metadata;
   write_request1.mutable_write()->set_data(chunk1);
-  ASSERT_TRUE(stream_->Write(write_request1));
+  ASSERT_TRUE(stream->Write(write_request1));
 
   SessionRequest write_request2;
   write_request2.mutable_write()->set_data(chunk2);
-  ASSERT_TRUE(stream_->Write(write_request2));
+  ASSERT_TRUE(stream->Write(write_request2));
 
   SessionRequest write_request3;
   write_request3.mutable_write()->set_data(chunk3);
   write_request3.mutable_write()->set_commit(true);
-  ASSERT_TRUE(stream_->Write(write_request3));
+  ASSERT_TRUE(stream->Write(write_request3));
 
   SessionResponse write_response;
-  ASSERT_TRUE(stream_->Read(&write_response));
+  ASSERT_TRUE(stream->Read(&write_response));
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
@@ -779,10 +759,10 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&read_response));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 
   ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
@@ -797,8 +777,9 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
+TEST_F(ConfidentialTransformServerBaseTest,
        SessionFinalizesWithChunkedReadResponse) {
+  InitializeTransform();
   std::string data = "test data";
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
@@ -809,7 +790,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetFinalizeReadResponse("abcdefghijklmno")));
   service_->AddSession(std::move(mock_session));
-  StartSession(/*chunk_size=*/6);
+  grpc::ClientContext context;
+  auto stream = StartSession(&context, /*chunk_size=*/6);
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
@@ -818,12 +800,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
       finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&read_response1));
-  ASSERT_TRUE(stream_->Read(&read_response2));
-  ASSERT_TRUE(stream_->Read(&read_response3));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
-  ASSERT_THAT(FromGrpcStatus(stream_->Finish()), IsOk());
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response1));
+  ASSERT_TRUE(stream->Read(&read_response2));
+  ASSERT_TRUE(stream->Read(&read_response3));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 
   ASSERT_THAT(read_response1,
               EqualsProto(R"pb(read {
@@ -840,8 +822,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionIgnoresInvalidInputs) {
+TEST_F(ConfidentialTransformServerBaseTest, SessionIgnoresInvalidInputs) {
+  InitializeTransform();
   std::string data = "test data";
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
@@ -856,19 +838,20 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest(data);
   SessionResponse write_response_1;
 
-  ASSERT_TRUE(stream_->Write(write_request_1));
-  ASSERT_TRUE(stream_->Read(&write_response_1));
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_TRUE(stream->Read(&write_response_1));
 
   SessionRequest write_request_2 = CreateDefaultWriteRequest(data);
   SessionResponse write_response_2;
 
-  ASSERT_TRUE(stream_->Write(write_request_2));
-  ASSERT_TRUE(stream_->Read(&write_response_2));
+  ASSERT_TRUE(stream->Write(write_request_2));
+  ASSERT_TRUE(stream->Read(&write_response_2));
 
   ASSERT_TRUE(write_response_2.has_write());
   ASSERT_EQ(write_response_2.write().committed_size_bytes(), 0);
@@ -880,9 +863,9 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionResponse read_response, finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&read_response));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
 
   ASSERT_THAT(read_response,
               EqualsProto(R"pb(read {
@@ -897,90 +880,96 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionFailsIfWriteFails) {
+TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfWriteFails) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest("test data");
   SessionResponse write_response_1;
 
-  ASSERT_TRUE(stream_->Write(write_request_1));
-  ASSERT_FALSE(stream_->Read(&write_response_1));
-  ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_FALSE(stream->Read(&write_response_1));
+  ASSERT_EQ(stream->Finish().error_code(), grpc::StatusCode::INTERNAL);
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
+TEST_F(ConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByWrite) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest write_request_1 = CreateDefaultWriteRequest("test data");
   SessionRequest write_request_2 = CreateDefaultWriteRequest("test data");
   SessionResponse write_response;
 
   write_request_1.mutable_write()->set_commit(false);
-  ASSERT_TRUE(stream_->Write(write_request_1));
-  ASSERT_TRUE(stream_->Write(write_request_2));
-  ASSERT_FALSE(stream_->Read(&write_response));
-  ASSERT_EQ(stream_->Finish().error_code(),
+  ASSERT_TRUE(stream->Write(write_request_1));
+  ASSERT_TRUE(stream->Write(write_request_2));
+  ASSERT_FALSE(stream->Read(&write_response));
+  ASSERT_EQ(stream->Finish().error_code(),
             grpc::StatusCode::FAILED_PRECONDITION);
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
+TEST_F(ConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByFinalize) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest write_request = CreateDefaultWriteRequest("test data");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
 
   write_request.mutable_write()->set_commit(false);
-  ASSERT_TRUE(stream_->Write(write_request));
+  ASSERT_TRUE(stream->Write(write_request));
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_FALSE(stream_->Read(&finalize_response));
-  ASSERT_EQ(stream_->Finish().error_code(),
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_FALSE(stream->Read(&finalize_response));
+  ASSERT_EQ(stream->Finish().error_code(),
             grpc::StatusCode::FAILED_PRECONDITION);
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionFailsIfCommitFails) {
+TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfCommitFails) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest commit_request;
   commit_request.mutable_commit();
   SessionResponse commit_response;
 
-  ASSERT_TRUE(stream_->Write(commit_request));
-  ASSERT_FALSE(stream_->Read(&commit_response));
-  ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_TRUE(stream->Write(commit_request));
+  ASSERT_FALSE(stream->Read(&commit_response));
+  ASSERT_EQ(stream->Finish().error_code(), grpc::StatusCode::INTERNAL);
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionFailsIfFinalizeFails) {
+TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfFinalizeFails) {
+  InitializeTransform();
   std::string data = "test data";
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
@@ -997,13 +986,14 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   // Accumulate the same unencrypted blob twice.
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
-  ASSERT_TRUE(stream_->Write(write_request));
-  ASSERT_TRUE(stream_->Read(&write_response));
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
 
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::INTERNAL);
@@ -1011,221 +1001,53 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionResponse finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_FALSE(stream_->Read(&finalize_response));
-  ASSERT_EQ(stream_->Finish().error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_FALSE(stream->Read(&finalize_response));
+  ASSERT_EQ(stream->Finish().error_code(), grpc::StatusCode::INTERNAL);
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       SessionDecryptsMultipleRecords) {
-  std::string message_0 = "test data 0";
-  std::string message_1 = "test data 1";
-  std::string message_2 = "test data 2";
-
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message_0.size())))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message_1.size())))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message_2.size())));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
-  service_->AddSession(std::move(mock_session));
-  StartSession();
-
-  MessageDecryptor decryptor;
-  absl::StatusOr<std::string> reencryption_public_key =
-      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_THAT(reencryption_public_key, IsOk());
-  std::string ciphertext_associated_data =
-      BlobHeader::default_instance().SerializeAsString();
-
-  absl::StatusOr<NonceAndCounter> nonce_0 =
-      nonce_generator_->GetNextBlobNonce();
-  ASSERT_THAT(nonce_0, IsOk());
-  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
-      crypto_test_utils::CreateRewrappedBlob(
-          message_0, ciphertext_associated_data, public_key_,
-          nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_THAT(rewrapped_blob_0, IsOk());
-
-  SessionRequest request_0;
-  WriteRequest* write_request_0 = request_0.mutable_write();
-  google::rpc::Status config;
-  config.set_code(grpc::StatusCode::OK);
-  *write_request_0->mutable_first_request_metadata() =
-      std::get<0>(*rewrapped_blob_0);
-  write_request_0->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_0->counter);
-  write_request_0->mutable_first_request_configuration()->PackFrom(config);
-  write_request_0->set_commit(true);
-  write_request_0->set_data(std::get<1>(*rewrapped_blob_0));
-
-  SessionResponse response_0;
-
-  ASSERT_TRUE(stream_->Write(request_0));
-  ASSERT_TRUE(stream_->Read(&response_0));
-  ASSERT_EQ(response_0.write().status().code(), grpc::OK);
-
-  absl::StatusOr<NonceAndCounter> nonce_1 =
-      nonce_generator_->GetNextBlobNonce();
-  ASSERT_THAT(nonce_1, IsOk());
-  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
-      crypto_test_utils::CreateRewrappedBlob(
-          message_1, ciphertext_associated_data, public_key_,
-          nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_THAT(rewrapped_blob_1, IsOk());
-
-  SessionRequest request_1;
-  WriteRequest* write_request_1 = request_1.mutable_write();
-  *write_request_1->mutable_first_request_metadata() =
-      std::get<0>(*rewrapped_blob_1);
-  write_request_1->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_1->counter);
-  write_request_1->mutable_first_request_configuration()->PackFrom(config);
-  write_request_1->set_commit(true);
-  write_request_1->set_data(std::get<1>(*rewrapped_blob_1));
-
-  SessionResponse response_1;
-
-  ASSERT_TRUE(stream_->Write(request_1));
-  ASSERT_TRUE(stream_->Read(&response_1));
-  ASSERT_EQ(response_1.write().status().code(), grpc::OK);
-
-  absl::StatusOr<NonceAndCounter> nonce_2 =
-      nonce_generator_->GetNextBlobNonce();
-  ASSERT_THAT(nonce_2, IsOk());
-  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_2 =
-      crypto_test_utils::CreateRewrappedBlob(
-          message_2, ciphertext_associated_data, public_key_,
-          nonce_2->blob_nonce, *reencryption_public_key);
-  ASSERT_THAT(rewrapped_blob_2, IsOk());
-
-  SessionRequest request_2;
-  WriteRequest* write_request_2 = request_2.mutable_write();
-  *write_request_2->mutable_first_request_metadata() =
-      std::get<0>(*rewrapped_blob_2);
-  write_request_2->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_2->counter);
-  write_request_2->mutable_first_request_configuration()->PackFrom(config);
-  write_request_2->set_commit(true);
-  write_request_2->set_data(std::get<1>(*rewrapped_blob_2));
-
-  SessionResponse response_2;
-
-  ASSERT_TRUE(stream_->Write(request_2));
-  ASSERT_TRUE(stream_->Read(&response_2));
-  ASSERT_EQ(response_2.write().status().code(), grpc::OK);
-
-  google::rpc::Status finalize_config;
-  finalize_config.set_code(grpc::StatusCode::OK);
-  SessionRequest finalize_request;
-  SessionResponse finalize_response;
-  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
-      finalize_config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
-
-  ASSERT_THAT(finalize_response,
-              EqualsProto(R"pb(read {
-                                 first_response_metadata {
-                                   total_size_bytes: 11
-                                   compression_type: COMPRESSION_TYPE_NONE
-                                   unencrypted {}
-                                 }
-                                 finish_read: true
-                                 data: "test result"
-                               })pb"));
-}
-
-TEST_F(InitializedConfidentialTransformServerBaseTest,
+TEST_F(ConfidentialTransformServerBaseTest,
        TransformIgnoresUndecryptableInputs) {
-  std::string message_1 = "test data 1";
-
+  InitializeTransform();
+  std::string message = "test data";
   auto mock_session = std::make_unique<MockLegacySession>();
   EXPECT_CALL(*mock_session, ConfigureSession(_))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session, SessionWrite(_, _))
       .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message_1.size())));
+          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
   EXPECT_CALL(*mock_session, SessionCommit(_))
       .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
   EXPECT_CALL(*mock_session, FinalizeSession(_, _))
       .WillOnce(Return(GetDefaultFinalizeReadResponse()));
   service_->AddSession(std::move(mock_session));
-  StartSession();
-
-  MessageDecryptor decryptor;
-  absl::StatusOr<std::string> reencryption_public_key =
-      decryptor.GetPublicKey([](absl::string_view) { return ""; }, 0);
-  ASSERT_THAT(reencryption_public_key, IsOk());
-  std::string ciphertext_associated_data = "ciphertext associated data";
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   // Create one blob that will fail to decrypt and one blob that can be
   // successfully decrypted.
-  std::string message_0 = "test data 0";
-  absl::StatusOr<NonceAndCounter> nonce_0 =
-      nonce_generator_->GetNextBlobNonce();
-  ASSERT_THAT(nonce_0, IsOk());
-  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_0 =
-      crypto_test_utils::CreateRewrappedBlob(
-          message_0, ciphertext_associated_data, public_key_,
-          nonce_0->blob_nonce, *reencryption_public_key);
-  ASSERT_THAT(rewrapped_blob_0, IsOk());
-
-  SessionRequest request_0;
-  WriteRequest* write_request_0 = request_0.mutable_write();
+  auto [metadata, ciphertext] = Encrypt("blob_id", message);
+  SessionRequest request;
+  WriteRequest* write_request = request.mutable_write();
   google::rpc::Status config;
   config.set_code(grpc::StatusCode::OK);
-  *write_request_0->mutable_first_request_metadata() =
-      std::get<0>(*rewrapped_blob_0);
-  write_request_0->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_0->counter);
-  write_request_0->mutable_first_request_configuration()->PackFrom(config);
-  write_request_0->set_commit(true);
-  write_request_0->set_data("undecryptable");
+  *write_request->mutable_first_request_metadata() = metadata;
+  write_request->mutable_first_request_configuration()->PackFrom(config);
+  write_request->set_commit(true);
+  write_request->set_data(ciphertext);
 
-  SessionResponse response_0;
+  SessionResponse response;
+  ASSERT_TRUE(stream->Write(request));
+  ASSERT_TRUE(stream->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::OK);
+  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
 
-  ASSERT_TRUE(stream_->Write(request_0));
-  ASSERT_TRUE(stream_->Read(&response_0));
-  ASSERT_EQ(response_0.write().status().code(), grpc::INVALID_ARGUMENT);
-
-  absl::StatusOr<NonceAndCounter> nonce_1 =
-      nonce_generator_->GetNextBlobNonce();
-  ASSERT_THAT(nonce_1, IsOk());
-  absl::StatusOr<std::tuple<BlobMetadata, std::string>> rewrapped_blob_1 =
-      crypto_test_utils::CreateRewrappedBlob(
-          message_1, ciphertext_associated_data, public_key_,
-          nonce_1->blob_nonce, *reencryption_public_key);
-  ASSERT_THAT(rewrapped_blob_1, IsOk());
-
-  SessionRequest request_1;
-  WriteRequest* write_request_1 = request_1.mutable_write();
-  *write_request_1->mutable_first_request_metadata() =
-      std::get<0>(*rewrapped_blob_1);
-  write_request_1->mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_counter(nonce_1->counter);
-  write_request_1->mutable_first_request_configuration()->PackFrom(config);
-  write_request_1->set_commit(true);
-  write_request_1->set_data(std::get<1>(*rewrapped_blob_1));
-
-  SessionResponse response_1;
-
-  ASSERT_TRUE(stream_->Write(request_1));
-  ASSERT_TRUE(stream_->Read(&response_1));
-  ASSERT_EQ(response_1.write().status().code(), grpc::OK);
+  metadata.mutable_hpke_plus_aead_data()->set_ciphertext_associated_data(
+      "invalid associated data");
+  *write_request->mutable_first_request_metadata() = metadata;
+  ASSERT_TRUE(stream->Write(request));
+  ASSERT_TRUE(stream->Read(&response));
+  ASSERT_EQ(response.write().status().code(), grpc::INVALID_ARGUMENT);
 
   google::rpc::Status finalize_config;
   finalize_config.set_code(grpc::StatusCode::OK);
@@ -1233,8 +1055,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   SessionResponse finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       finalize_config);
-  ASSERT_TRUE(stream_->Write(finalize_request));
-  ASSERT_TRUE(stream_->Read(&finalize_response));
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&finalize_response));
 
   ASSERT_THAT(finalize_response,
               EqualsProto(R"pb(read {
@@ -1248,7 +1070,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
                                })pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
+TEST_F(ConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure)
       .WillOnce([](ConfigureRequest request, Session::Context& context) {
@@ -1257,7 +1080,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
         return ConfigureResponse{};
       });
   service_->AddSession(std::move(mock_session));
-  auto stream = stub_->Session(&session_context_);
+  grpc::ClientContext context;
+  auto stream = stub_->Session(&context);
 
   SessionRequest configure_request;
   configure_request.mutable_configure()->set_chunk_size(/*chunk_size=*/1000);
@@ -1281,7 +1105,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnConfigure) {
                        })pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
+TEST_F(ConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   EXPECT_CALL(*mock_session, Write)
@@ -1298,14 +1123,15 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
         return WriteFinishedResponse{};
       });
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest write_request = CreateDefaultWriteRequest("foo");
-  CHECK(stream_->Write(write_request));
+  CHECK(stream->Write(write_request));
 
   SessionResponse read_response, write_response;
-  CHECK(stream_->Read(&read_response));
-  CHECK(stream_->Read(&write_response));
+  CHECK(stream->Read(&read_response));
+  CHECK(stream->Read(&write_response));
 
   EXPECT_THAT(
       read_response,
@@ -1321,7 +1147,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnWrite) {
                        })pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
+TEST_F(ConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   EXPECT_CALL(*mock_session, Commit)
@@ -1337,15 +1164,16 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
         return CommitResponse{};
       });
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest commit_request;
   commit_request.mutable_commit();
-  CHECK(stream_->Write(commit_request));
+  CHECK(stream->Write(commit_request));
 
   SessionResponse read_response, commit_response;
-  CHECK(stream_->Read(&read_response));
-  CHECK(stream_->Read(&commit_response));
+  CHECK(stream->Read(&read_response));
+  CHECK(stream->Read(&commit_response));
 
   EXPECT_THAT(
       read_response,
@@ -1361,8 +1189,8 @@ TEST_F(InitializedConfidentialTransformServerBaseTest, ReadBlobOnCommit) {
                        })pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest,
-       ReadMultipleBlobsOnFinalize) {
+TEST_F(ConfidentialTransformServerBaseTest, ReadMultipleBlobsOnFinalize) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   EXPECT_CALL(*mock_session, Finalize)
@@ -1387,16 +1215,17 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
         return FinalizeResponse{};
       });
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest finalize_request;
   finalize_request.mutable_finalize();
-  CHECK(stream_->Write(finalize_request));
+  CHECK(stream->Write(finalize_request));
 
   SessionResponse read_response1, read_response2, finalize_response;
-  CHECK(stream_->Read(&read_response1));
-  CHECK(stream_->Read(&read_response2));
-  CHECK(stream_->Read(&finalize_response));
+  CHECK(stream->Read(&read_response1));
+  CHECK(stream->Read(&read_response2));
+  CHECK(stream->Read(&finalize_response));
 
   EXPECT_THAT(
       read_response1,
@@ -1425,145 +1254,27 @@ TEST_F(InitializedConfidentialTransformServerBaseTest,
   ASSERT_THAT(finalize_response, EqualsProto(R"pb(finalize {})pb"));
 }
 
-TEST_F(InitializedConfidentialTransformServerBaseTest, ReadNoBlobsOnFinalize) {
+TEST_F(ConfidentialTransformServerBaseTest, ReadNoBlobsOnFinalize) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   EXPECT_CALL(*mock_session, Finalize)
       .WillOnce([](FinalizeRequest request, BlobMetadata unused,
                    Session::Context& context) { return FinalizeResponse{}; });
   service_->AddSession(std::move(mock_session));
-  StartSession();
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
 
   SessionRequest finalize_request;
   finalize_request.mutable_finalize();
-  CHECK(stream_->Write(finalize_request));
-
+  CHECK(stream->Write(finalize_request));
   SessionResponse finalize_response;
-  CHECK(stream_->Read(&finalize_response));
+  CHECK(stream->Read(&finalize_response));
   EXPECT_TRUE(finalize_response.has_finalize());
 }
 
-class InitializedConfidentialTransformServerBaseTestWithKms
-    : public ConfidentialTransformServerBaseTest {
- public:
-  InitializedConfidentialTransformServerBaseTestWithKms() {
-    google::rpc::Status config_status;
-    config_status.set_code(grpc::StatusCode::OK);
-    auto public_private_key_pair =
-        crypto_test_utils::GenerateKeyPair(std::string(kKeyId));
-    public_key_ = public_private_key_pair.first;
-    AuthorizeConfidentialTransformResponse::ProtectedResponse
-        protected_response;
-    *protected_response.add_result_encryption_keys() =
-        public_private_key_pair.first;
-    *protected_response.add_decryption_keys() = public_private_key_pair.second;
-    AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-    associated_data.add_authorized_logical_pipeline_policies_hashes(
-        "policy_hash");
-    associated_data.add_omitted_decryption_key_ids("omitted_key_id");
-    auto encrypted_request =
-        oak_client_encryptor_
-            ->Encrypt(protected_response.SerializeAsString(),
-                      associated_data.SerializeAsString())
-            .value();
-
-    StreamInitializeRequest request;
-    request.mutable_initialize_request()->mutable_configuration()->PackFrom(
-        config_status);
-    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
-    *request.mutable_initialize_request()->mutable_protected_response() =
-        encrypted_request;
-
-    grpc::ClientContext configure_context;
-    InitializeResponse response;
-    std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
-        stub_->StreamInitialize(&configure_context, &response);
-    CHECK(writer->Write(request));
-    CHECK(writer->WritesDone());
-    CHECK(writer->Finish().ok());
-    auto key_ids = service_->GetActiveKeyIds();
-    CHECK_EQ(key_ids.size(), 2);
-    CHECK(key_ids.contains(kKeyId));
-    CHECK(key_ids.contains("omitted_key_id"));
-  }
-
- protected:
-  void StartSession(uint32_t chunk_size = 1000) {
-    SessionRequest session_request;
-    SessionResponse session_response;
-    session_request.mutable_configure()->set_chunk_size(chunk_size);
-
-    stream_ = stub_->Session(&session_context_);
-    CHECK(stream_->Write(session_request));
-    CHECK(stream_->Read(&session_response));
-    CHECK(session_response.configure().nonce().empty());
-  }
-
-  std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
-      std::string blob_id, std::string message,
-      std::string policy_hash = "policy_hash") {
-    BlobHeader header;
-    header.set_blob_id(blob_id);
-    header.set_key_id(std::string(kKeyId));
-    header.set_access_policy_sha256(policy_hash);
-    std::string associated_data = header.SerializeAsString();
-
-    MessageEncryptor encryptor;
-    absl::StatusOr<EncryptMessageResult> encrypt_result =
-        encryptor.Encrypt(message, public_key_, associated_data);
-    CHECK(encrypt_result.ok()) << encrypt_result.status();
-
-    BlobMetadata metadata;
-    metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-    metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
-    BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
-        metadata.mutable_hpke_plus_aead_data();
-    encryption_metadata->set_ciphertext_associated_data(associated_data);
-    encryption_metadata->set_encrypted_symmetric_key(
-        encrypt_result.value().encrypted_symmetric_key);
-    encryption_metadata->set_encapsulated_public_key(
-        encrypt_result.value().encapped_key);
-    encryption_metadata->mutable_kms_symmetric_key_associated_data()
-        ->set_record_header(associated_data);
-
-    return {metadata, encrypt_result.value().ciphertext};
-  }
-
-  grpc::ClientContext session_context_;
-  std::unique_ptr<SessionStream> stream_;
-  std::string public_key_;
-};
-
-TEST_F(InitializedConfidentialTransformServerBaseTestWithKms,
-       SessionDecryptsBlobSuccess) {
-  std::string message = "test data";
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
-  service_->AddSession(std::move(mock_session));
-  StartSession();
-
-  auto [metadata, ciphertext] = EncryptWithKmsKeys("blob_id", message);
-  SessionRequest request;
-  WriteRequest* write_request = request.mutable_write();
-  google::rpc::Status config;
-  config.set_code(grpc::StatusCode::OK);
-  *write_request->mutable_first_request_metadata() = metadata;
-  write_request->mutable_first_request_configuration()->PackFrom(config);
-  write_request->set_commit(true);
-  write_request->set_data(ciphertext);
-
-  SessionResponse response;
-  ASSERT_TRUE(stream_->Write(request));
-  ASSERT_TRUE(stream_->Read(&response));
-  ASSERT_EQ(response.write().status().code(), grpc::OK);
-  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
-}
-
-TEST_F(InitializedConfidentialTransformServerBaseTestWithKms, EmitEncrypted) {
+TEST_F(ConfidentialTransformServerBaseTest, EmitEncrypted) {
+  InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();
   EXPECT_CALL(*mock_session, Configure)
       .WillOnce(
@@ -1581,10 +1292,12 @@ TEST_F(InitializedConfidentialTransformServerBaseTestWithKms, EmitEncrypted) {
   SessionResponse read_response, configure_response;
 
   configure_request.mutable_configure()->set_chunk_size(1000);
-  stream_ = stub_->Session(&session_context_);
-  CHECK(stream_->Write(configure_request));
-  CHECK(stream_->Read(&read_response));
-  CHECK(stream_->Read(&configure_response));
+  grpc::ClientContext context;
+  auto stream = stub_->Session(&context);
+
+  CHECK(stream->Write(configure_request));
+  CHECK(stream->Read(&read_response));
+  CHECK(stream->Read(&configure_response));
 
   // Verify that encrypted blob has been read
   EXPECT_TRUE(read_response.has_read());

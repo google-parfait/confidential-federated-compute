@@ -32,7 +32,6 @@
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/cose.h"
-#include "fcp/confidentialcompute/nonce.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
@@ -42,7 +41,6 @@
 namespace confidential_federated_compute {
 
 using ::fcp::base::ToGrpcStatus;
-using ::fcp::confidential_compute::NonceChecker;
 using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -159,23 +157,11 @@ bool ChunkedStreamWriter::EmitEncrypted(int reencryption_key_index,
 // Reports status to the client in WriteFinishedResponse.
 absl::Status ConfidentialTransformBase::HandleWrite(
     confidential_federated_compute::Session* session, WriteRequest request,
-    absl::Cord blob_data, BlobDecryptor* blob_decryptor,
-    std::optional<NonceChecker>& nonce_checker, SessionStream* stream,
+    absl::Cord blob_data, BlobDecryptor* blob_decryptor, SessionStream* stream,
     Session::Context& context) {
-  if (nonce_checker.has_value()) {
-    absl::Status nonce_status =
-        nonce_checker->CheckBlobNonce(request.first_request_metadata());
-    if (!nonce_status.ok()) {
-      stream->Write(ToSessionWriteFinishedResponse(nonce_status));
-      return absl::OkStatus();
-    }
-  }
-
-  // Get the key ID if KMS is enabled. For legacy ledger, the key ID is not
-  // needed.
+  // Get the key ID from the metadata.
   absl::StatusOr<std::string> key_id =
-      KmsEnabled() ? GetKeyId(request.first_request_metadata()) : "";
-
+      GetKeyId(request.first_request_metadata());
   if (!key_id.ok()) {
     stream->Write(ToSessionWriteFinishedResponse(key_id.status()));
     return absl::OkStatus();
@@ -229,60 +215,49 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         const InitializeRequest& initialize_request =
             request.initialize_request();
         max_num_sessions = initialize_request.max_num_sessions();
-
-        bool kms_enabled = initialize_request.has_protected_response() &&
-                           oak_encryption_key_handle_ != nullptr;
-        if (kms_enabled) {
-          ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
-          FCP_ASSIGN_OR_RETURN(DecryptionResult decryption_result,
-                               server_encryptor.Decrypt(
-                                   initialize_request.protected_response()));
-          if (!protected_response.ParseFromString(
-                  decryption_result.plaintext)) {
-            return absl::InvalidArgumentError(
-                "Failed to parse ProtectedResponse from decrypted data.");
-          }
-          AuthorizeConfidentialTransformResponse::AssociatedData
-              associated_data;
-          if (!associated_data.ParseFromString(
-                  decryption_result.associated_data)) {
-            return absl::InvalidArgumentError(
-                "Failed to parse AssociatedData from decrypted data.");
-          }
-          if (associated_data
-                  .authorized_logical_pipeline_policies_hashes_size() == 0) {
-            return absl::InvalidArgumentError(
-                "Expected at least one policy hash but none were supplied.");
-          }
-
-          // Pick any of the authorized_logical_pipeline_policies_hashes as the
-          // reencryption_policy_hash. For convenience, we pick the first one.
-          kms_encryptor_.emplace(
-              std::vector<std::string>(
-                  protected_response.result_encryption_keys().begin(),
-                  protected_response.result_encryption_keys().end()),
-              associated_data.authorized_logical_pipeline_policies_hashes(0));
-          for (const auto& policy_hash :
-               associated_data.authorized_logical_pipeline_policies_hashes()) {
-            authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
-          }
-          FCP_RETURN_IF_ERROR(SetActiveKeyIds(
-              {protected_response.decryption_keys().begin(),
-               protected_response.decryption_keys().end()},
-              {associated_data.omitted_decryption_key_ids().begin(),
-               associated_data.omitted_decryption_key_ids().end()}));
-
-          // TODO: stop passing reencryption context to the derived class and
-          // instead use Session::Context to encrypt the outputs
-          FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
-              initialize_request.configuration(),
-              associated_data.config_constraints(),
-              kms_encryptor_->reencryption_keys(),
-              kms_encryptor_->reencryption_policy_hash()));
-        } else {
-          FCP_ASSIGN_OR_RETURN(config_properties,
-                               StreamInitializeTransform(&initialize_request));
+        ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
+        FCP_ASSIGN_OR_RETURN(
+            DecryptionResult decryption_result,
+            server_encryptor.Decrypt(initialize_request.protected_response()));
+        if (!protected_response.ParseFromString(decryption_result.plaintext)) {
+          return absl::InvalidArgumentError(
+              "Failed to parse ProtectedResponse from decrypted data.");
         }
+        AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+        if (!associated_data.ParseFromString(
+                decryption_result.associated_data)) {
+          return absl::InvalidArgumentError(
+              "Failed to parse AssociatedData from decrypted data.");
+        }
+        if (associated_data
+                .authorized_logical_pipeline_policies_hashes_size() == 0) {
+          return absl::InvalidArgumentError(
+              "Expected at least one policy hash but none were supplied.");
+        }
+        // Pick any of the authorized_logical_pipeline_policies_hashes as the
+        // reencryption_policy_hash. For convenience, we pick the first one.
+        kms_encryptor_.emplace(
+            std::vector<std::string>(
+                protected_response.result_encryption_keys().begin(),
+                protected_response.result_encryption_keys().end()),
+            associated_data.authorized_logical_pipeline_policies_hashes(0));
+        for (const auto& policy_hash :
+             associated_data.authorized_logical_pipeline_policies_hashes()) {
+          authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
+        }
+        FCP_RETURN_IF_ERROR(SetActiveKeyIds(
+            {protected_response.decryption_keys().begin(),
+             protected_response.decryption_keys().end()},
+            {associated_data.omitted_decryption_key_ids().begin(),
+             associated_data.omitted_decryption_key_ids().end()}));
+
+        // TODO: stop passing reencryption context to the derived class and
+        // instead use Session::Context to encrypt the outputs
+        FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
+            initialize_request.configuration(),
+            associated_data.config_constraints(),
+            kms_encryptor_->reencryption_keys(),
+            kms_encryptor_->reencryption_policy_hash()));
         contain_initialize_request = true;
         break;
       }
@@ -315,7 +290,6 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         "InitializeRequest, found zero."));
   }
 
-  const BlobDecryptor* blob_decryptor;
   {
     absl::MutexLock l(&mutex_);
     if (blob_decryptor_ != std::nullopt) {
@@ -327,20 +301,8 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
                                 protected_response.decryption_keys().begin(),
                                 protected_response.decryption_keys().end()));
     session_tracker_.emplace(max_num_sessions);
-
-    // Since blob_decryptor_ is set once in Initialize or StreamInitialize and
-    // never modified, and the underlying object is threadsafe, it is safe to
-    // store a local pointer to it and access the object without a lock after we
-    // check under the mutex that a value has been set for the std::optional
-    // wrapper.
-    blob_decryptor = &*blob_decryptor_;
   }
 
-  // Returning the public key is only needed with the legacy ledger.
-  if (!KmsEnabled()) {
-    FCP_ASSIGN_OR_RETURN(*response->mutable_public_key(),
-                         blob_decryptor->GetPublicKey());
-  }
   return absl::OkStatus();
 }
 
@@ -408,12 +370,6 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
       session->Configure(std::move(*configure_request.mutable_configure()),
                          context));
   SessionResponse response;
-  std::optional<NonceChecker> nonce_checker = std::nullopt;
-  // Nonces only need to be verified for the legacy ledger.
-  if (!KmsEnabled()) {
-    nonce_checker = NonceChecker();
-    *configure_response.mutable_nonce() = nonce_checker->GetSessionNonce();
-  }
   *response.mutable_configure() = std::move(configure_response);
   stream->Write(response);
 
@@ -453,36 +409,14 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
           // This is a write request for a new blob i.e. the first chunk of a
           // multi-chunk blob or a small blob consisting of a single chunk of
           // data.
-
-          // Use the metadata with the earliest expiration timestamp for
-          // encrypting any results. This is only needed for the legacy ledger.
-          // With KMS, the re-encryption keys are shared upfront with the worker
-          // as part of initialization.
-          if (!KmsEnabled()) {
-            absl::StatusOr<BlobMetadata> earliest_expiration_metadata =
-                EarliestExpirationTimeMetadata(
-                    result_blob_metadata,
-                    write_request.first_request_metadata());
-            if (!earliest_expiration_metadata.ok()) {
-              stream->Write(ToSessionWriteFinishedResponse(absl::Status(
-                  earliest_expiration_metadata.status().code(),
-                  absl::StrCat(
-                      "Failed to extract expiration timestamp from "
-                      "BlobMetadata with encryption: ",
-                      earliest_expiration_metadata.status().message()))));
-              break;
-            }
-            std::swap(result_blob_metadata, *earliest_expiration_metadata);
-          }
           absl::Cord data(std::move(*write_request.mutable_data()));
           write_state = WriteState{.first_request = std::move(write_request),
                                    .data = std::move(data)};
         }
         if (is_commit) {
-          FCP_RETURN_IF_ERROR(
-              HandleWrite(session.get(), std::move(write_state->first_request),
-                          std::move(write_state->data), blob_decryptor,
-                          nonce_checker, stream, context));
+          FCP_RETURN_IF_ERROR(HandleWrite(
+              session.get(), std::move(write_state->first_request),
+              std::move(write_state->data), blob_decryptor, stream, context));
           write_state.reset();
         }
         break;

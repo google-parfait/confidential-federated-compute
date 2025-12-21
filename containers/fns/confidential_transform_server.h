@@ -50,8 +50,7 @@ class FnConfidentialTransform final
   FnConfidentialTransform(
       std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
       FnFactoryProvider fn_factory_provider,
-      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle =
-          nullptr)
+      std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
       : confidential_federated_compute::ConfidentialTransformBase(
             std::move(signing_key_handle), std::move(encryption_key_handle)),
         fn_factory_provider_(std::move(fn_factory_provider)) {};

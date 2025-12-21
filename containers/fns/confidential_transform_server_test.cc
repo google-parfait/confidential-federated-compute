@@ -378,16 +378,6 @@ TEST_F(FnConfidentialTransformTest, FnFactoryCreationFails) {
                        HasSubstr("This FnFactory cannot be created.")));
 }
 
-TEST_F(FnConfidentialTransformTest, NonKmsInitializeFails) {
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-
-  auto writer = stub_->StreamInitialize(&context, &response);
-  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
-
 TEST_F(FnConfidentialTransformTest, AlreadyInitializedFails) {
   // Expect the FnFactory to be created once. The second attempted
   // initialization should fail before calling the FnFactory factory again.

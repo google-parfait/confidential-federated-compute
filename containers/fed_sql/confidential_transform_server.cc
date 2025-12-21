@@ -27,7 +27,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "containers/fed_sql/kms_session.h"
-#include "containers/fed_sql/ledger_session.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
 #include "containers/sql/sqlite_adapter.h"
@@ -664,29 +663,22 @@ FedSqlConfidentialTransform::CreateSession() {
   }
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  if (KmsEnabled()) {
-    CHECK(reencryption_keys_.has_value())
-        << "Reencryption keys must be set when KMS is enabled.";
-    CHECK(reencryption_policy_hash_.has_value())
-        << "Reencryption policy hash must be set when KMS is enabled.";
-    return std::make_unique<KmsFedSqlSession>(
-        std::move(aggregator), *intrinsics, inference_configuration_,
-        dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
-        reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
-        GetOakSigningKeyHandle(), message_factory, on_device_query_name_);
-  } else {
-    return std::make_unique<FedSqlSession>(
-        std::move(aggregator), *intrinsics, inference_configuration_,
-        serialize_output_access_policy_node_id_,
-        report_output_access_policy_node_id_, sensitive_values_key_);
-  }
+  CHECK(reencryption_keys_.has_value())
+      << "Reencryption keys must be set when KMS is enabled.";
+  CHECK(reencryption_policy_hash_.has_value())
+      << "Reencryption policy hash must be set when KMS is enabled.";
+  return std::make_unique<KmsFedSqlSession>(
+      std::move(aggregator), *intrinsics, inference_configuration_,
+      dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
+      reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
+      GetOakSigningKeyHandle(), message_factory, on_device_query_name_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(
     const fcp::confidentialcompute::BlobMetadata& metadata) {
-  // For legacy ledger or unencrypted payloads, the key_id is not used, so we
+  // For unencrypted payloads, the key_id is not used, so we
   // return an empty string.
-  if (!KmsEnabled() || metadata.has_unencrypted()) {
+  if (metadata.has_unencrypted()) {
     return "";
   }
 

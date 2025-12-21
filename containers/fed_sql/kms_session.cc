@@ -333,12 +333,22 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         blob_header, parser->get(), *message_factory_, on_device_query_name_);
     // TODO: handle sensitive columns for Message checkpoints.
   } else {
-    FCP_ASSIGN_OR_RETURN(
-        std::vector<Tensor> contents,
+    absl::StatusOr<std::vector<Tensor>> contents =
         Deserialize(sql_configuration_->input_schema, parser->get(),
-                    inference_model_.GetInferenceConfiguration()));
-    FCP_RETURN_IF_ERROR(HashSensitiveColumns(contents, sensitive_values_key_));
-    input = Input::CreateFromTensors(std::move(contents), blob_header);
+                    inference_model_.GetInferenceConfiguration());
+    if (!contents.ok()) {
+      return ToWriteFinishedResponse(
+          PrependMessage("Failed to deserialize checkpoint for "
+                         "AGGREGATION_TYPE_ACCUMULATE: ",
+                         contents.status()));
+    }
+    absl::Status status =
+        HashSensitiveColumns(contents.value(), sensitive_values_key_);
+    if (!status.ok()) {
+      return ToWriteFinishedResponse(
+          PrependMessage("Failed to hash sensitive columns: ", status));
+    }
+    input = Input::CreateFromTensors(std::move(contents.value()), blob_header);
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(

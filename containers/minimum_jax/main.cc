@@ -42,7 +42,8 @@ void RunServer() {
   std::string server_address("[::]:8080");
 
   SimpleConfidentialTransform service(
-      std::make_unique<InstanceSigningKeyHandle>());
+      std::make_unique<InstanceSigningKeyHandle>(),
+      std::make_unique<InstanceEncryptionKeyHandle>());
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
   builder.SetMaxSendMessageSize(kChannelMaxMessageSize);
