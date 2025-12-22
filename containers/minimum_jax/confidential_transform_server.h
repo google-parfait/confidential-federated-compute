@@ -22,7 +22,6 @@
 #include "absl/synchronization/mutex.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/confidential_transform_server_base.h"
-#include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -32,7 +31,10 @@ namespace confidential_federated_compute::minimum_jax {
 class SimpleSession final
     : public confidential_federated_compute::LegacySession {
  public:
-  SimpleSession() {};
+  SimpleSession(std::vector<std::string> reencryption_keys,
+                absl::string_view reencryption_policy_hash)
+      : reencryption_keys_(std::move(reencryption_keys)),
+        reencryption_policy_hash_(reencryption_policy_hash) {}
 
   absl::Status ConfigureSession(
       fcp::confidentialcompute::SessionRequest configure_request) override {
@@ -54,8 +56,14 @@ class SimpleSession final
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
+  absl::StatusOr<
+      std::tuple<fcp::confidentialcompute::BlobMetadata, std::string>>
+  EncryptSessionResult(absl::string_view plaintext);
+
   std::vector<std::string> data_ ABSL_GUARDED_BY(mutex_);
   absl::Mutex mutex_;
+  std::vector<std::string> reencryption_keys_;
+  std::string reencryption_policy_hash_;
 };
 
 class SimpleConfidentialTransform final
@@ -73,6 +81,17 @@ class SimpleConfidentialTransform final
       const fcp::confidentialcompute::InitializeRequest* request) override {
     return google::protobuf::Struct();
   }
+
+  absl::Status StreamInitializeTransformWithKms(
+      const google::protobuf::Any& configuration,
+      const google::protobuf::Any& config_constraints,
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash) override {
+    reencryption_keys_ = std::move(reencryption_keys);
+    reencryption_policy_hash_ = reencryption_policy_hash;
+    return absl::OkStatus();
+  }
+
   // No-op
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
@@ -82,13 +101,17 @@ class SimpleConfidentialTransform final
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override {
-    return std::make_unique<SimpleSession>();
+    return std::make_unique<SimpleSession>(reencryption_keys_,
+                                           reencryption_policy_hash_);
   }
 
   absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) override;
-};
 
+ private:
+  std::vector<std::string> reencryption_keys_;
+  std::string reencryption_policy_hash_;
+};
 }  // namespace confidential_federated_compute::minimum_jax
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_MINIMUM_JAX_CONFIDENTIAL_TRANSFORM_SERVER_H_

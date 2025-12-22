@@ -107,24 +107,6 @@ absl::StatusOr<std::vector<Tensor>> Deserialize(
   return columns;
 }
 
-absl::StatusOr<std::tuple<BlobMetadata, std::string>> EncryptSessionResult(
-    const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
-    uint32_t output_access_policy_node_id) {
-  BlobEncryptor encryptor;
-  BlobHeader input_header;
-  if (!input_header.ParseFromString(
-          input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
-    return absl::InvalidArgumentError(
-        "Failed to parse the BlobHeader when trying to encrypt outputs.");
-  }
-  return encryptor.EncryptBlob(unencrypted_result,
-                               input_metadata.hpke_plus_aead_data()
-                                   .rewrapped_symmetric_key_associated_data()
-                                   .reencryption_public_key(),
-                               input_header.access_policy_sha256(),
-                               output_access_policy_node_id);
-}
-
 // Creates a RowLocation for each row in an input that contains `num_rows`.
 std::vector<RowLocation> CreateRowLocationsForAllRows(size_t num_rows) {
   if (num_rows == 0) {

@@ -27,13 +27,15 @@
 #include "cc/crypto/signing_key.h"
 #include "containers/blob_metadata.h"
 #include "containers/confidential_transform_server_base.h"
-#include "containers/crypto.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/cose.h"
+#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
+#include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -43,6 +45,9 @@
 namespace confidential_federated_compute::minimum_jax {
 
 using ::fcp::base::ToGrpcStatus;
+using ::fcp::confidential_compute::EncryptMessageResult;
+using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
@@ -60,6 +65,9 @@ using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
 
 namespace {
+
+constexpr size_t kBlobIdSize = 16;
+
 // Similar to StringTensorDataAdapter but stores the original value in a vector.
 class StringVectorTensorDataAdapter : public TensorData {
  public:
@@ -86,22 +94,39 @@ absl::StatusOr<Tensor> ConvertStringTensor(
 
 }  // namespace
 
-absl::StatusOr<std::tuple<BlobMetadata, std::string>> EncryptSessionResult(
-    const BlobMetadata& input_metadata, absl::string_view unencrypted_result,
-    uint32_t output_access_policy_node_id) {
-  BlobEncryptor encryptor;
-  BlobHeader input_header;
-  if (!input_header.ParseFromString(
-          input_metadata.hpke_plus_aead_data().ciphertext_associated_data())) {
-    return absl::InvalidArgumentError(
-        "Failed to parse the BlobHeader when trying to encrypt outputs.");
-  }
-  return encryptor.EncryptBlob(unencrypted_result,
-                               input_metadata.hpke_plus_aead_data()
-                                   .rewrapped_symmetric_key_associated_data()
-                                   .reencryption_public_key(),
-                               input_header.access_policy_sha256(),
-                               output_access_policy_node_id);
+absl::StatusOr<std::tuple<BlobMetadata, std::string>>
+SimpleSession::EncryptSessionResult(absl::string_view plaintext) {
+  FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_keys_[0]));
+  BlobHeader header;
+  std::string blob_id(kBlobIdSize, '\0');
+  (void)RAND_bytes(reinterpret_cast<unsigned char*>(blob_id.data()),
+                   blob_id.size());
+  header.set_blob_id(blob_id);
+  header.set_key_id(okp_key.key_id);
+  header.set_access_policy_sha256(std::string(reencryption_policy_hash_));
+  std::string associated_data = header.SerializeAsString();
+
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(EncryptMessageResult encrypted_message,
+                       message_encryptor.Encrypt(
+                           plaintext, reencryption_keys_[0], associated_data));
+
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_metadata->set_ciphertext_associated_data(
+      std::string(associated_data));
+  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+      encrypted_message.encrypted_symmetric_key);
+  hpke_plus_aead_metadata->set_encapsulated_public_key(
+      encrypted_message.encapped_key);
+  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(associated_data);
+
+  return std::make_tuple(std::move(metadata),
+                         std::move(encrypted_message.ciphertext));
 }
 
 absl::StatusOr<fcp::confidentialcompute::SessionResponse>
@@ -193,9 +218,8 @@ SimpleSession::FinalizeSession(
       FCP_RETURN_IF_ERROR(builder->Add("data", tensor));
       FCP_ASSIGN_OR_RETURN(absl::Cord ckpt, builder->Build());
 
-      FCP_ASSIGN_OR_RETURN(
-          std::tie(result_metadata, result),
-          EncryptSessionResult(input_metadata, std::string(ckpt), 0));
+      FCP_ASSIGN_OR_RETURN(std::tie(result_metadata, result),
+                           EncryptSessionResult(std::string(ckpt)));
       break;
     }
 

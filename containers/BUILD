@@ -33,16 +33,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_protobuf//:struct_cc_proto",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:compression",
         "@federated-compute//fcp/base:status_converters",
-        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@oak//cc/crypto:signing_key",
-        "@oak//proto/crypto:crypto_cc_proto",
     ],
 )
 

@@ -36,9 +36,7 @@ TEST(KmsEncryptorTest, EncryptIntermediateResult) {
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
       "reencryption_policy_hash");
 
-  NiceMock<crypto_test_utils::MockSigningKeyHandle> mock_signing_key_handle;
-  BlobDecryptor blob_decryptor(mock_signing_key_handle, {},
-                               {key_pair_1.second, key_pair_2.second});
+  BlobDecryptor blob_decryptor({key_pair_1.second, key_pair_2.second});
 
   // Encrypt using the first key
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =

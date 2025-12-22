@@ -71,12 +71,6 @@ class InMemoryCheckpointParser
       tensors_;
 };
 
-absl::StatusOr<std::tuple<fcp::confidentialcompute::BlobMetadata, std::string>>
-EncryptSessionResult(
-    const fcp::confidentialcompute::BlobMetadata& input_metadata,
-    absl::string_view unencrypted_result,
-    uint32_t output_access_policy_node_id);
-
 // Creates a RowLocation for each row in `columns`. All columns must have the
 // same number of rows.
 // Helper function for creating RowLocations for the contents of a single

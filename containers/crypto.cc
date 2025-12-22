@@ -24,40 +24,25 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "cc/crypto/signing_key.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "google/protobuf/struct.pb.h"
 #include "openssl/err.h"
 #include "openssl/evp.h"
 #include "openssl/hmac.h"
 #include "openssl/rand.h"
-#include "proto/crypto/crypto.pb.h"
 
 namespace confidential_federated_compute {
 namespace {
 
 using ::fcp::confidential_compute::EncryptMessageResult;
-using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 constexpr size_t kBlobIdSize = 16;
-
-// See https://www.iana.org/assignments/cose/cose.xhtml.
-constexpr int64_t kAlgorithmES256 = -7;
-
-absl::StatusOr<std::string> SignWithOakSigningKey(
-    oak::crypto::SigningKeyHandle& signing_key, absl::string_view message) {
-  FCP_ASSIGN_OR_RETURN(oak::crypto::v1::Signature signature,
-                       signing_key.Sign(message));
-  return std::move(*signature.mutable_signature());
-}
 
 absl::StatusOr<std::string> Decompress(
     absl::string_view input, BlobMetadata::CompressionType compression_type) {
@@ -89,23 +74,8 @@ std::string RandomBlobId() {
 }
 
 BlobDecryptor::BlobDecryptor(
-    oak::crypto::SigningKeyHandle& signing_key,
-    const google::protobuf::Struct& config_properties,
     const std::vector<absl::string_view>& decryption_keys)
-    : message_decryptor_(config_properties.SerializeAsString(),
-                         decryption_keys),
-      signed_public_key_(message_decryptor_.GetPublicKey(
-          [&signing_key](absl::string_view message) {
-            return SignWithOakSigningKey(signing_key, message);
-          },
-          kAlgorithmES256)) {}
-
-absl::StatusOr<absl::string_view> BlobDecryptor::GetPublicKey() const {
-  if (!signed_public_key_.ok()) {
-    return signed_public_key_.status();
-  }
-  return *signed_public_key_;
-}
+    : message_decryptor_("", decryption_keys) {}
 
 absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
     const BlobMetadata& metadata, absl::string_view blob,
@@ -114,89 +84,31 @@ absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
   switch (metadata.encryption_metadata_case()) {
     case BlobMetadata::kUnencrypted:
       return Decompress(blob, metadata.compression_type());
-    case BlobMetadata::kHpkePlusAeadData:
-      if (metadata.hpke_plus_aead_data()
-              .has_rewrapped_symmetric_key_associated_data()) {
-        std::string associated_data =
-            absl::StrCat(metadata.hpke_plus_aead_data()
-                             .rewrapped_symmetric_key_associated_data()
-                             .reencryption_public_key(),
-                         metadata.hpke_plus_aead_data()
-                             .rewrapped_symmetric_key_associated_data()
-                             .nonce());
-        FCP_ASSIGN_OR_RETURN(
-            decrypted,
-            message_decryptor_.Decrypt(
-                blob,
-                metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-                metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-                associated_data,
-                metadata.hpke_plus_aead_data().encapsulated_public_key()));
-      } else if (metadata.hpke_plus_aead_data()
-                     .has_kms_symmetric_key_associated_data()) {
-        FCP_ASSIGN_OR_RETURN(
-            decrypted,
-            message_decryptor_.Decrypt(
-                blob,
-                metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-                metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-                metadata.hpke_plus_aead_data()
-                    .kms_symmetric_key_associated_data()
-                    .record_header(),
-                metadata.hpke_plus_aead_data().encapsulated_public_key(),
-                key_id));
-      } else {
+    case BlobMetadata::kHpkePlusAeadData: {
+      if (!metadata.hpke_plus_aead_data()
+               .has_kms_symmetric_key_associated_data()) {
         return absl::InvalidArgumentError(
-            "Blob to decrypt must contain either "
-            "rewrapped_symmetric_key_associated_data or "
-            "kms_symmetric_key_associated_data");
+            "Blob to decrypt must contain kms_symmetric_key_associated_data");
       }
+      FCP_ASSIGN_OR_RETURN(
+          decrypted,
+          message_decryptor_.Decrypt(
+              blob, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+              metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
+              metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .record_header(),
+              metadata.hpke_plus_aead_data().encapsulated_public_key(),
+              key_id));
       break;
+    }
     default:
       return absl::InvalidArgumentError(
-          "Blob to decrypt must contain unencrypted_data,  "
-          "rewrapped_symmetric_key_associated_data or "
+          "Blob to decrypt must contain unencrypted_data or "
           "kms_symmetric_key_associated_data");
   }
 
   return Decompress(decrypted, metadata.compression_type());
-}
-
-absl::StatusOr<std::tuple<BlobMetadata, std::string>>
-BlobEncryptor::EncryptBlob(absl::string_view plaintext,
-                           absl::string_view public_key,
-                           absl::string_view access_policy_sha256,
-                           uint32_t access_policy_node_id) {
-  FCP_ASSIGN_OR_RETURN(OkpCwt cwt, OkpCwt::Decode(public_key));
-  if (!cwt.public_key.has_value()) {
-    return absl::InvalidArgumentError("public key is invalid");
-  }
-  BlobHeader header;
-
-  header.set_blob_id(RandomBlobId());
-  header.set_key_id(cwt.public_key->key_id);
-  header.set_access_policy_node_id(access_policy_node_id);
-  header.set_access_policy_sha256(std::string(access_policy_sha256));
-  std::string serialized_header = header.SerializeAsString();
-
-  FCP_ASSIGN_OR_RETURN(
-      EncryptMessageResult encrypted_message,
-      message_encryptor_.Encrypt(plaintext, public_key, serialized_header));
-
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
-  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  hpke_plus_aead_metadata->set_ciphertext_associated_data(serialized_header);
-  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
-      std::move(encrypted_message.encrypted_symmetric_key));
-  hpke_plus_aead_metadata->set_encapsulated_public_key(
-      std::move(encrypted_message.encapped_key));
-  hpke_plus_aead_metadata->mutable_ledger_symmetric_key_associated_data()
-      ->set_record_header(std::move(serialized_header));
-  return std::make_tuple(std::move(metadata),
-                         std::move(encrypted_message.ciphertext));
 }
 
 absl::StatusOr<std::string> KeyedHash(absl::string_view input,
