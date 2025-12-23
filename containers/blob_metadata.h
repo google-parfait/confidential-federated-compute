@@ -21,17 +21,6 @@
 
 namespace confidential_federated_compute {
 
-// Returns the BlobMetadata with the earliest expiration time encoded in its
-// reencryption public key.
-//
-// Metadata for unencrypted data and an OkpCwt without an expiration time is
-// considered to have an expiration time of infinity. Returns an error if either
-// of the reencryption public keys cannot be decoded.
-absl::StatusOr<fcp::confidentialcompute::BlobMetadata>
-EarliestExpirationTimeMetadata(
-    const fcp::confidentialcompute::BlobMetadata& metadata,
-    const fcp::confidentialcompute::BlobMetadata& other);
-
 // Returns the `key_id` from the BlobMetadata if it is present.
 // To get the key_id, the implementation assumes that the associated data in the
 // BlobMetadata can be parsed into `fcp::confidentialcompute::BlobHeader`.

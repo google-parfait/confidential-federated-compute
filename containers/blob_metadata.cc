@@ -14,45 +14,12 @@
 #include "containers/blob_metadata.h"
 
 #include "fcp/base/monitoring.h"
-#include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 
 namespace confidential_federated_compute {
 
-using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
-
-absl::StatusOr<BlobMetadata> EarliestExpirationTimeMetadata(
-    const BlobMetadata& metadata, const BlobMetadata& other) {
-  absl::Time metadata_time = absl::InfiniteFuture();
-  absl::Time other_time = absl::InfiniteFuture();
-  if (metadata.has_hpke_plus_aead_data()) {
-    FCP_ASSIGN_OR_RETURN(
-        OkpCwt metadata_cwt,
-        OkpCwt::Decode(metadata.hpke_plus_aead_data()
-                           .rewrapped_symmetric_key_associated_data()
-                           .reencryption_public_key()));
-
-    if (metadata_cwt.expiration_time.has_value()) {
-      metadata_time = *metadata_cwt.expiration_time;
-    }
-  }
-  if (other.has_hpke_plus_aead_data()) {
-    FCP_ASSIGN_OR_RETURN(
-        OkpCwt other_cwt,
-        OkpCwt::Decode(other.hpke_plus_aead_data()
-                           .rewrapped_symmetric_key_associated_data()
-                           .reencryption_public_key()));
-    if (other_cwt.expiration_time.has_value()) {
-      other_time = *other_cwt.expiration_time;
-    }
-  }
-  if (metadata_time < other_time) {
-    return metadata;
-  }
-  return other;
-}
 
 absl::StatusOr<std::string> GetKeyIdFromMetadata(
     const fcp::confidentialcompute::BlobMetadata& metadata) {

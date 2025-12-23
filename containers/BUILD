@@ -82,8 +82,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status:statusor",
         "@federated-compute//fcp/base",
-        "@federated-compute//fcp/confidentialcompute:cose",
-        "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
@@ -97,8 +95,6 @@ cc_test(
         ":blob_metadata",
         "@com_google_absl//absl/status:status_matchers",
         "@federated-compute//fcp/base",
-        "@federated-compute//fcp/confidentialcompute:cose",
-        "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
