@@ -52,8 +52,8 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
+using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
-using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::
@@ -129,13 +129,12 @@ SimpleSession::EncryptSessionResult(absl::string_view plaintext) {
                          std::move(encrypted_message.ciphertext));
 }
 
-absl::StatusOr<fcp::confidentialcompute::SessionResponse>
-SimpleSession::SessionWrite(
-    const fcp::confidentialcompute::WriteRequest& write_request,
-    std::string unencrypted_data) {
+absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+SimpleSession::Write(fcp::confidentialcompute::WriteRequest write_request,
+                     std::string unencrypted_data, Context& context) {
   FedSqlContainerWriteConfiguration write_config;
   if (!write_request.first_request_configuration().UnpackTo(&write_config)) {
-    return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(
         "Failed to parse FedSqlContainerWriteConfiguration."));
   }
   FederatedComputeCheckpointParserFactory parser_factory;
@@ -168,19 +167,19 @@ SimpleSession::SessionWrite(
     }
 
     default:
-      return ToSessionWriteFinishedResponse(absl::InvalidArgumentError(
+      return ToWriteFinishedResponse(absl::InvalidArgumentError(
           "AggCoreAggregationType must be specified."));
   }
 
-  return ToSessionWriteFinishedResponse(
+  return ToWriteFinishedResponse(
       absl::OkStatus(),
       write_request.first_request_metadata().total_size_bytes());
 }
 
-absl::StatusOr<fcp::confidentialcompute::SessionResponse>
-SimpleSession::FinalizeSession(
-    const fcp::confidentialcompute::FinalizeRequest& request,
-    const fcp::confidentialcompute::BlobMetadata& input_metadata) {
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+SimpleSession::Finalize(fcp::confidentialcompute::FinalizeRequest request,
+                        fcp::confidentialcompute::BlobMetadata input_metadata,
+                        Context& context) {
   absl::MutexLock mutexlock(mutex_);
   FedSqlContainerFinalizeConfiguration finalize_config;
   if (!request.configuration().UnpackTo(&finalize_config)) {
@@ -228,12 +227,13 @@ SimpleSession::FinalizeSession(
           "Finalize configuration must specify the finalization type.");
   }
 
-  SessionResponse session_response;
-  ReadResponse* response = session_response.mutable_read();
-  response->set_finish_read(true);
-  *(response->mutable_data()) = result;
-  *(response->mutable_first_response_metadata()) = result_metadata;
-  return session_response;
+  ReadResponse response;
+  response.set_finish_read(true);
+  *(response.mutable_data()) = result;
+  *(response.mutable_first_response_metadata()) = result_metadata;
+  context.Emit(std::move(response));
+
+  return FinalizeResponse{};
 }
 
 absl::StatusOr<std::string> SimpleConfidentialTransform::GetKeyId(

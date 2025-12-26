@@ -28,32 +28,34 @@
 
 namespace confidential_federated_compute::minimum_jax {
 
-class SimpleSession final
-    : public confidential_federated_compute::LegacySession {
+class SimpleSession final : public confidential_federated_compute::Session {
  public:
   SimpleSession(std::vector<std::string> reencryption_keys,
                 absl::string_view reencryption_policy_hash)
       : reencryption_keys_(std::move(reencryption_keys)),
         reencryption_policy_hash_(reencryption_policy_hash) {}
 
-  absl::Status ConfigureSession(
-      fcp::confidentialcompute::SessionRequest configure_request) override {
-    return absl::OkStatus();
+  absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
+      fcp::confidentialcompute::ConfigureRequest request,
+      Context& context) override {
+    return fcp::confidentialcompute::ConfigureResponse();
   }
   // Adds a data blob from a given URI into the session and caches it.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionWrite(
-      const fcp::confidentialcompute::WriteRequest& write_request,
-      std::string unencrypted_data) override ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
+      fcp::confidentialcompute::WriteRequest request,
+      std::string unencrypted_data, Context& context) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
   // No-op
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> SessionCommit(
-      const fcp::confidentialcompute::CommitRequest& commit_request) override {
-    return ToSessionCommitResponse(absl::OkStatus());
+  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
+      fcp::confidentialcompute::CommitRequest request,
+      Context& context) override {
+    return ToCommitResponse(absl::OkStatus());
   }
   // Perform computation on all cached data.
-  absl::StatusOr<fcp::confidentialcompute::SessionResponse> FinalizeSession(
-      const fcp::confidentialcompute::FinalizeRequest& request,
-      const fcp::confidentialcompute::BlobMetadata& input_metadata) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Finalize(
+      fcp::confidentialcompute::FinalizeRequest request,
+      fcp::confidentialcompute::BlobMetadata input_metadata,
+      Context& context) override ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   absl::StatusOr<

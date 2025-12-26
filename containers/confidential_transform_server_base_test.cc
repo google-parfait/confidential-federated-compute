@@ -101,21 +101,6 @@ class MockSession final : public confidential_federated_compute::Session {
               (override));
 };
 
-class MockLegacySession final : public LegacySession {
- public:
-  MOCK_METHOD(absl::Status, ConfigureSession,
-              (SessionRequest configure_request), (override));
-  MOCK_METHOD(absl::StatusOr<SessionResponse>, SessionWrite,
-              (const WriteRequest& write_request, std::string unencrypted_data),
-              (override));
-  MOCK_METHOD(absl::StatusOr<SessionResponse>, SessionCommit,
-              (const CommitRequest& commit_request), (override));
-  MOCK_METHOD(absl::StatusOr<SessionResponse>, FinalizeSession,
-              (const FinalizeRequest& request,
-               const BlobMetadata& input_metadata),
-              (override));
-};
-
 SessionRequest CreateDefaultWriteRequest(std::string data) {
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
     compression_type: COMPRESSION_TYPE_NONE
@@ -130,21 +115,20 @@ SessionRequest CreateDefaultWriteRequest(std::string data) {
   return request;
 }
 
-SessionResponse GetFinalizeReadResponse(const std::string& result) {
-  SessionResponse response;
-  ReadResponse* read_response = response.mutable_read();
-  read_response->set_finish_read(true);
-  *(read_response->mutable_data()) = result;
+ReadResponse GetFinalizeReadResponse(const std::string& result) {
+  ReadResponse read_response;
+  read_response.set_finish_read(true);
+  *(read_response.mutable_data()) = result;
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
     compression_type: COMPRESSION_TYPE_NONE
     unencrypted {}
   )pb");
   metadata.set_total_size_bytes(result.size());
-  *(read_response->mutable_first_response_metadata()) = metadata;
-  return response;
+  *(read_response.mutable_first_response_metadata()) = metadata;
+  return read_response;
 }
 
-SessionResponse GetDefaultFinalizeReadResponse() {
+ReadResponse GetDefaultFinalizeReadResponse() {
   return GetFinalizeReadResponse("test result");
 }
 
@@ -195,9 +179,8 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override {
     if (session_ == nullptr) {
-      auto session = std::make_unique<MockLegacySession>();
-      EXPECT_CALL(*session, ConfigureSession)
-          .WillOnce(Return(absl::OkStatus()));
+      auto session = std::make_unique<MockSession>();
+      EXPECT_CALL(*session, Configure).WillOnce(Return(ConfigureResponse{}));
       return std::move(session);
     }
     return std::move(session_);
@@ -529,11 +512,14 @@ TEST_F(ConfidentialTransformServerBaseTest,
   SessionResponse session_response;
   session_request.mutable_configure()->set_chunk_size(1000);
 
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
 
   std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
@@ -612,16 +598,19 @@ TEST_F(ConfidentialTransformServerBaseTest,
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillRepeatedly(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillRepeatedly(
+          Return(ToWriteFinishedResponse(absl::OkStatus(), data.size())));
+  EXPECT_CALL(*mock_session, Commit)
+      .WillRepeatedly(Return(ToCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -659,14 +648,17 @@ TEST_F(ConfidentialTransformServerBaseTest,
 TEST_F(ConfidentialTransformServerBaseTest, SessionWriteFinalizeEncryptedBlob) {
   InitializeTransform();
   std::string message = "test data";
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillOnce(
+          Return(ToWriteFinishedResponse(absl::OkStatus(), message.size())));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -717,16 +709,18 @@ TEST_F(ConfidentialTransformServerBaseTest,
   std::string chunk3 = "mno";
   std::string data = chunk1 + chunk2 + chunk3;
 
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, data))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write(_, data, _))
+      .WillOnce(Return(ToWriteFinishedResponse(absl::OkStatus(), data.size())));
+  EXPECT_CALL(*mock_session, Commit)
+      .WillRepeatedly(Return(ToCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -784,11 +778,14 @@ TEST_F(ConfidentialTransformServerBaseTest,
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetFinalizeReadResponse("abcdefghijklmno")));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetFinalizeReadResponse("abcdefghijklmno"));
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context, /*chunk_size=*/6);
@@ -825,18 +822,20 @@ TEST_F(ConfidentialTransformServerBaseTest,
 TEST_F(ConfidentialTransformServerBaseTest, SessionIgnoresInvalidInputs) {
   InitializeTransform();
   std::string data = "test data";
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillOnce(
-          Return(ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())))
-      .WillOnce(Return(ToSessionWriteFinishedResponse(
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillOnce(Return(ToWriteFinishedResponse(absl::OkStatus(), data.size())))
+      .WillOnce(Return(ToWriteFinishedResponse(
           absl::InvalidArgumentError("Invalid argument"), 0)));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  EXPECT_CALL(*mock_session, Commit)
+      .WillRepeatedly(Return(ToCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -882,10 +881,9 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionIgnoresInvalidInputs) {
 
 TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfWriteFails) {
   InitializeTransform();
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
@@ -902,9 +900,8 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfWriteFails) {
 TEST_F(ConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByWrite) {
   InitializeTransform();
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -924,9 +921,8 @@ TEST_F(ConfidentialTransformServerBaseTest,
 TEST_F(ConfidentialTransformServerBaseTest,
        SessionFailsIfIncompleteChunkedBlobWriteFollowedByFinalize) {
   InitializeTransform();
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
@@ -950,10 +946,9 @@ TEST_F(ConfidentialTransformServerBaseTest,
 
 TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfCommitFails) {
   InitializeTransform();
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Commit)
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
@@ -974,16 +969,15 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionFailsIfFinalizeFails) {
   SessionRequest write_request = CreateDefaultWriteRequest(data);
   SessionResponse write_response;
 
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillRepeatedly(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), data.size())));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillRepeatedly(
+          Return(ToWriteFinishedResponse(absl::OkStatus(), data.size())));
 
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
+  EXPECT_CALL(*mock_session, Commit)
+      .WillRepeatedly(Return(ToCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, Finalize)
       .WillOnce(Return(absl::InternalError("Internal Error")));
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
@@ -1010,16 +1004,19 @@ TEST_F(ConfidentialTransformServerBaseTest,
        TransformIgnoresUndecryptableInputs) {
   InitializeTransform();
   std::string message = "test data";
-  auto mock_session = std::make_unique<MockLegacySession>();
-  EXPECT_CALL(*mock_session, ConfigureSession(_))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*mock_session, SessionWrite(_, _))
-      .WillOnce(Return(
-          ToSessionWriteFinishedResponse(absl::OkStatus(), message.size())));
-  EXPECT_CALL(*mock_session, SessionCommit(_))
-      .WillRepeatedly(Return(ToSessionCommitResponse(absl::OkStatus())));
-  EXPECT_CALL(*mock_session, FinalizeSession(_, _))
-      .WillOnce(Return(GetDefaultFinalizeReadResponse()));
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Write)
+      .WillOnce(
+          Return(ToWriteFinishedResponse(absl::OkStatus(), message.size())));
+  EXPECT_CALL(*mock_session, Commit)
+      .WillRepeatedly(Return(ToCommitResponse(absl::OkStatus())));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
   grpc::ClientContext context;
   auto stream = StartSession(&context);
