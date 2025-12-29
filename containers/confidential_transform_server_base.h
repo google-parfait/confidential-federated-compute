@@ -61,21 +61,13 @@ class ConfidentialTransformBase
       : oak_signing_key_handle_(std::move(signing_key_handle)),
         oak_encryption_key_handle_(std::move(encryption_key_handle)) {}
 
-  // Initialize the transform with legacy ledger.
-  // Either one of `StreamInitializeTransform` or
-  // `StreamInitializeTransformWithKms` should be invoked but never both.
-  virtual absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) = 0;
-  // Initialize the transform when KMS is enabled for this worker.
-  // Either one of `StreamInitializeTransform` or
-  // `StreamInitializeTransformWithKms` should be invoked but never both.
+  // Initialize the transform for this worker.
   virtual absl::Status StreamInitializeTransformWithKms(
       const ::google::protobuf::Any& configuration,
       const ::google::protobuf::Any& config_constraints,
       std::vector<std::string> reencryption_keys,
-      absl::string_view reencryption_policy_hash) {
-    return absl::OkStatus();
-  };
+      absl::string_view reencryption_policy_hash) = 0;
+
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
   // blob used for container initialization. Must be implemented by a subclass.
   // The first WriteConfigurationRequest for each blob must contain the metadata

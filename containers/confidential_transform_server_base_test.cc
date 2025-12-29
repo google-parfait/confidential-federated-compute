@@ -165,11 +165,6 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
     return absl::OkStatus();
   }
 
-  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    return google::protobuf::Struct();
-  }
-
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override {

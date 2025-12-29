@@ -72,12 +72,6 @@ class FnConfidentialTransform final
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
 
-  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override {
-    return absl::FailedPreconditionError(
-        "Fn container must be initialized with KMS.");
-  }
-
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
   std::string current_configuration_id_;

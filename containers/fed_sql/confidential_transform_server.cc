@@ -227,48 +227,6 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(
   return absl::OkStatus();
 }
 
-absl::StatusOr<Struct> FedSqlConfidentialTransform::GetConfigConstraints(
-    const FedSqlContainerInitializeConfiguration& config) {
-  const std::vector<Intrinsic>* intrinsics;
-  {
-    absl::MutexLock l(&mutex_);
-    if (intrinsics_ == std::nullopt) {
-      return absl::FailedPreconditionError(
-          "Intrinsics have not been initialized.");
-    }
-    intrinsics = &*intrinsics_;
-  }
-
-  const Intrinsic& fedsql_intrinsic = intrinsics->at(0);
-  Struct config_properties;
-  (*config_properties.mutable_fields())["intrinsic_uri"].set_string_value(
-      fedsql_intrinsic.uri);
-  if (fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPGroupByUri ||
-      fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
-    double epsilon =
-        fedsql_intrinsic.parameters.at(kEpsilonIndex).CastToScalar<double>();
-    double delta =
-        fedsql_intrinsic.parameters.at(kDeltaIndex).CastToScalar<double>();
-    (*config_properties.mutable_fields())["epsilon"].set_number_value(epsilon);
-    (*config_properties.mutable_fields())["delta"].set_number_value(delta);
-  }
-  if (config.serialize_output_access_policy_node_id() > 0) {
-    (*config_properties.mutable_fields())["serialize_dest"].set_number_value(
-        config.serialize_output_access_policy_node_id());
-    serialize_output_access_policy_node_id_.emplace(
-        config.serialize_output_access_policy_node_id());
-  }
-  if (config.report_output_access_policy_node_id() > 0) {
-    (*config_properties.mutable_fields())["report_dest"].set_number_value(
-        config.report_output_access_policy_node_id());
-    report_output_access_policy_node_id_.emplace(
-        config.report_output_access_policy_node_id());
-  }
-  return config_properties;
-}
-
 absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
     const FedSqlContainerConfigConstraints& config_constraints) {
   const std::vector<Intrinsic>* intrinsics;
@@ -508,22 +466,6 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
   reencryption_keys_ = std::move(reencryption_keys);
   reencryption_policy_hash_ = reencryption_policy_hash;
   return absl::OkStatus();
-}
-
-absl::StatusOr<Struct> FedSqlConfidentialTransform::StreamInitializeTransform(
-    const InitializeRequest* request) {
-  FedSqlContainerInitializeConfiguration config;
-  if (!request->configuration().UnpackTo(&config)) {
-    return absl::InvalidArgumentError(
-        "FedSqlContainerInitializeConfiguration cannot be unpacked.");
-  }
-  FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(config));
-  FCP_ASSIGN_OR_RETURN(Struct config_properties, GetConfigConstraints(config));
-  if (config.has_inference_init_config()) {
-    FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
-        config.inference_init_config()));
-  }
-  return config_properties;
 }
 
 absl::Status FedSqlConfidentialTransform::ReadWriteConfigurationRequest(

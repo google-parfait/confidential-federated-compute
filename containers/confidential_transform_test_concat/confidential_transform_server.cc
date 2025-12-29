@@ -84,10 +84,12 @@ TestConcatConfidentialTransform::TestConcatConfidentialTransform(
     : ConfidentialTransformBase(std::move(signing_key_handle),
                                 std::move(encryption_key_handle)) {};
 
-absl::StatusOr<google::protobuf::Struct>
-TestConcatConfidentialTransform::StreamInitializeTransform(
-    const fcp::confidentialcompute::InitializeRequest* request) {
-  return google::protobuf::Struct();
+absl::Status TestConcatConfidentialTransform::StreamInitializeTransformWithKms(
+    const google::protobuf::Any& configuration,
+    const google::protobuf::Any& config_constraints,
+    std::vector<std::string> reencryption_keys,
+    absl::string_view reencryption_policy_hash) {
+  return absl::OkStatus();
 }
 
 absl::Status TestConcatConfidentialTransform::ReadWriteConfigurationRequest(

@@ -46,8 +46,6 @@ class FedSqlConfidentialTransform final
       std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle);
 
  private:
-  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override;
   absl::Status StreamInitializeTransformWithKms(
       const google::protobuf::Any& configuration,
       const google::protobuf::Any& config_constraints,
@@ -67,12 +65,6 @@ class FedSqlConfidentialTransform final
           config);
   //  Set the intrinsics based on the initialization configuration.
   absl::Status SetAndValidateIntrinsics(
-      const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
-          config);
-  // Returns the configuration constraints for this worker. These must be
-  // validated by the Ledger. This function is not used when KMS is enabled for
-  // this worker.
-  absl::StatusOr<google::protobuf::Struct> GetConfigConstraints(
       const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
           config);
   // Validates the configuration constraints received from KMS.
