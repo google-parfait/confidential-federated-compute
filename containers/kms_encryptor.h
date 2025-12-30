@@ -21,6 +21,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "cc/crypto/signing_key.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
@@ -30,23 +31,31 @@ namespace confidential_federated_compute {
 // to encrypt emitted results.
 class KmsEncryptor {
  public:
-  // The encrypted intermediate or final result.
+  // The encrypted intermediate or final releasable result.
   struct EncryptedResult {
     std::string ciphertext;
     fcp::confidentialcompute::BlobMetadata metadata;
-    // The configuration for the final result. This is not populated for
+    // The release token for the final result. This is not populated for
     // intermediate results.
-    std::optional<fcp::confidentialcompute::FinalizeResponse> finalize_response;
+    std::optional<std::string> release_token;
   };
 
-  KmsEncryptor(std::vector<std::string> reencryption_keys,
-               std::string reencryption_policy_hash)
+  KmsEncryptor(
+      std::vector<std::string> reencryption_keys,
+      std::string reencryption_policy_hash,
+      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
       : reencryption_keys_(std::move(reencryption_keys)),
-        reencryption_policy_hash_(std::move(reencryption_policy_hash)) {}
+        reencryption_policy_hash_(std::move(reencryption_policy_hash)),
+        signing_key_handle_(std::move(signing_key_handle)) {}
 
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
       int reencryption_key_index, absl::string_view plaintext,
       absl::string_view blob_id) const;
+
+  absl::StatusOr<EncryptedResult> EncryptReleasableResult(
+      int reencryption_key_index, absl::string_view plaintext,
+      absl::string_view blob_id, std::optional<absl::string_view> src_state,
+      absl::string_view dst_state) const;
 
   // The reencryption keys used to re-encrypt the intermediate and final blobs.
   const std::vector<std::string>& reencryption_keys() const {
@@ -69,6 +78,7 @@ class KmsEncryptor {
   std::vector<std::string> reencryption_keys_;
   std::string reencryption_policy_hash_;
   const fcp::confidential_compute::MessageEncryptor message_encryptor_;
+  std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
 };
 
 }  // namespace confidential_federated_compute

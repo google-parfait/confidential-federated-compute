@@ -16,6 +16,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "gmock/gmock.h"
@@ -27,14 +28,18 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
+using ::testing::_;
 using ::testing::NiceMock;
+using ::testing::Return;
 
 TEST(KmsEncryptorTest, EncryptIntermediateResult) {
   auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash");
+      "reencryption_policy_hash",
+      std::make_unique<NiceMock<MockSigningKeyHandle>>());
 
   BlobDecryptor blob_decryptor({key_pair_1.second, key_pair_2.second});
 
@@ -54,11 +59,51 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultInvalidReencryptionIndex) {
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_pair_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash");
+      "reencryption_policy_hash",
+      std::make_unique<NiceMock<MockSigningKeyHandle>>());
   EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo"),
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(encryptor.EncryptIntermediateResult(-1, "plaintext", "bar"),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(KmsEncryptorTest, EncryptReleasableResult) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
+  auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
+  auto signing_key_handle = std::make_unique<NiceMock<MockSigningKeyHandle>>();
+  EXPECT_CALL(*signing_key_handle, Sign(_))
+      .WillOnce(Return(oak::crypto::v1::Signature::default_instance()));
+  KmsEncryptor encryptor(
+      std::vector<std::string>{key_pair_1.first, key_pair_2.first},
+      "reencryption_policy_hash", std::move(signing_key_handle));
+
+  BlobDecryptor blob_decryptor({key_pair_1.second, key_pair_2.second});
+
+  // Encrypt using the first key
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor.EncryptReleasableResult(0, "plaintext", "foo", "src", "dst");
+  ASSERT_THAT(encrypted_result, IsOk());
+  ASSERT_TRUE(encrypted_result->release_token.has_value());
+
+  // Decrypt using the same key
+  EXPECT_THAT(blob_decryptor.DecryptBlob(encrypted_result->metadata,
+                                         encrypted_result->ciphertext, "key_1"),
+              IsOkAndHolds("plaintext"));
+}
+
+TEST(KmsEncryptorTest, EncryptReleasableResultInvalidReencryptionIndex) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_pair_1");
+  auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_pair_2");
+  KmsEncryptor encryptor(
+      std::vector<std::string>{key_pair_1.first, key_pair_2.first},
+      "reencryption_policy_hash",
+      std::make_unique<NiceMock<MockSigningKeyHandle>>());
+  EXPECT_THAT(
+      encryptor.EncryptReleasableResult(3, "plaintext", "foo", "src", "dst"),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      encryptor.EncryptReleasableResult(-1, "plaintext", "bar", "src", "dst"),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -75,6 +75,10 @@ class ChunkedStreamWriter : public Session::Context {
   bool Emit(ReadResponse read_response) override;
   bool EmitUnencrypted(Session::KV kv) override;
   bool EmitEncrypted(int reencryption_key_index, Session::KV kv) override;
+  bool EmitReleasable(int reencryption_key_index, Session::KV kv,
+                      std::optional<absl::string_view> src_state,
+                      absl::string_view dst_state,
+                      std::string& release_token) override;
 
   bool Emit(std::string data, google::protobuf::Any config,
             BlobMetadata metadata);
@@ -145,6 +149,37 @@ bool ChunkedStreamWriter::EmitEncrypted(int reencryption_key_index,
                << encrypted_result.status();
     return false;
   }
+
+  BlobMetadata metadata = std::move(encrypted_result->metadata);
+
+  return Emit(std::move(encrypted_result->ciphertext), std::move(kv.key),
+              std::move(metadata));
+}
+
+bool ChunkedStreamWriter::EmitReleasable(
+    int reencryption_key_index, Session::KV kv,
+    std::optional<absl::string_view> src_state, absl::string_view dst_state,
+    std::string& release_token) {
+  if (!encryptor_.has_value()) {
+    LOG(ERROR) << "KMS reencryption context isn't initialized";
+    return false;
+  }
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor_->EncryptReleasableResult(reencryption_key_index, kv.data,
+                                          kv.blob_id, src_state, dst_state);
+
+  if (!encrypted_result.ok()) {
+    LOG(ERROR) << "Failed to encrypt releasable result: "
+               << encrypted_result.status();
+    return false;
+  }
+
+  if (!encrypted_result->release_token.has_value()) {
+    LOG(ERROR) << "EncryptReleasableResult did not return a release token";
+    return false;
+  }
+  release_token = std::move(encrypted_result->release_token.value());
 
   BlobMetadata metadata = std::move(encrypted_result->metadata);
 
@@ -240,7 +275,8 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             std::vector<std::string>(
                 protected_response.result_encryption_keys().begin(),
                 protected_response.result_encryption_keys().end()),
-            associated_data.authorized_logical_pipeline_policies_hashes(0));
+            associated_data.authorized_logical_pipeline_policies_hashes(0),
+            oak_signing_key_handle_);
         for (const auto& policy_hash :
              associated_data.authorized_logical_pipeline_policies_hashes()) {
           authorized_logical_pipeline_policies_hashes_.insert(policy_hash);

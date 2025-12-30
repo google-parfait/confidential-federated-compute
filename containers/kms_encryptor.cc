@@ -92,4 +92,33 @@ KmsEncryptor::EncryptIntermediateResult(int reencryption_key_index,
                          .metadata = std::move(metadata)};
 }
 
+absl::StatusOr<KmsEncryptor::EncryptedResult>
+KmsEncryptor::EncryptReleasableResult(
+    int reencryption_key_index, absl::string_view plaintext,
+    absl::string_view blob_id, std::optional<absl::string_view> src_state,
+    absl::string_view dst_state) const {
+  FCP_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
+                       GetReencryptionKey(reencryption_key_index));
+  FCP_ASSIGN_OR_RETURN(std::string associated_data,
+                       CreateAssociatedData(reencryption_key, blob_id));
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor_.EncryptForRelease(
+          plaintext, reencryption_key, associated_data, src_state, dst_state,
+          [this](absl::string_view message) -> absl::StatusOr<std::string> {
+            FCP_ASSIGN_OR_RETURN(auto signature,
+                                 signing_key_handle_->Sign(message));
+            return std::move(*signature.mutable_signature());
+          }));
+
+  BlobMetadata metadata =
+      CreateMetadata(encrypted_message, blob_id, associated_data);
+
+  return EncryptedResult{
+      .ciphertext = std::move(encrypted_message.ciphertext),
+      .metadata = std::move(metadata),
+      .release_token = std::move(encrypted_message.release_token)};
+}
+
 }  // namespace confidential_federated_compute

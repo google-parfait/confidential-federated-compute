@@ -1307,6 +1307,57 @@ TEST_F(ConfidentialTransformServerBaseTest, EmitEncrypted) {
   EXPECT_GT(hpke_plus_aead_data.blob_id().size(), 0);
 }
 
+TEST_F(ConfidentialTransformServerBaseTest, EmitReleasable) {
+  InitializeTransform();
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce(
+          [](FinalizeRequest request, BlobMetadata unused,
+             Session::Context& context) -> absl::StatusOr<FinalizeResponse> {
+            std::string release_token;
+            if (!context.EmitReleasable(0, "foobar", "src", "dst",
+                                        release_token)) {
+              LOG(ERROR) << "EmitReleasable failed";
+              return absl::InternalError("EmitReleasable failed");
+            }
+            FinalizeResponse response;
+            *response.mutable_release_token() = std::move(release_token);
+            return response;
+          });
+  service_->AddSession(std::move(mock_session));
+
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
+
+  SessionRequest finalize_request;
+  finalize_request.mutable_finalize();
+  SessionResponse read_response, finalize_response;
+
+  CHECK(stream->Write(finalize_request));
+  CHECK(stream->Read(&read_response));
+  CHECK(stream->Read(&finalize_response));
+
+  // Verify that encrypted blob has been read
+  EXPECT_TRUE(read_response.has_read());
+  EXPECT_TRUE(
+      read_response.read().first_response_metadata().has_hpke_plus_aead_data());
+  const auto& hpke_plus_aead_data =
+      read_response.read().first_response_metadata().hpke_plus_aead_data();
+  EXPECT_GT(hpke_plus_aead_data.ciphertext_associated_data().size(), 0);
+  EXPECT_GT(hpke_plus_aead_data.encrypted_symmetric_key().size(), 0);
+  EXPECT_GT(hpke_plus_aead_data.kms_symmetric_key_associated_data()
+                .record_header()
+                .size(),
+            0);
+  // Random blob ID is present
+  EXPECT_GT(hpke_plus_aead_data.blob_id().size(), 0);
+
+  // Verify that release token is present
+  EXPECT_TRUE(finalize_response.has_finalize());
+  EXPECT_GT(finalize_response.finalize().release_token().size(), 0);
+}
+
 }  // namespace
 
 }  // namespace confidential_federated_compute

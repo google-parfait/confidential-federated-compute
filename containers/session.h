@@ -124,8 +124,17 @@ class Session {
     // Encrypts and emits the provided key/value using the specified
     // reencryption key. This methods is appropriate only for temporary
     // encryption, for blobs that will be consumed by other parts of the
-    // pipeline. This method doesn't support encryption for releasable results.
+    // pipeline. Use `EmitReleasable` for emitting the final releasable result.
     virtual bool EmitEncrypted(int reencryption_key_index, KV kv) = 0;
+
+    // Encrypts and emits the releasable result using the provided key/value and
+    // the specified reencryption key. Also, saves the `release_token` in the
+    // passed in field. The `release_token` should be passed back to the host
+    // via FinalizeResponse.
+    virtual bool EmitReleasable(int reencryption_key_index, KV kv,
+                                std::optional<absl::string_view> src_state,
+                                absl::string_view dst_state,
+                                std::string& release_token) = 0;
   };
 
   // Initialize the session with the given configuration.

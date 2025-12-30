@@ -165,6 +165,7 @@ cc_library(
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@oak//cc/crypto:signing_key",
     ],
 )
 
@@ -179,6 +180,7 @@ cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@oak//cc/crypto:signing_key",
     ],
 )
 
