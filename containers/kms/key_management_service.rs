@@ -807,6 +807,7 @@ where
             authorized_logical_pipeline_policies_hashes: state
                 .authorized_logical_pipeline_policies_hashes,
             omitted_decryption_key_ids,
+            invocation_id: request.invocation_id.clone(),
         };
         let encrypted_message =
             ClientEncryptor::create(&authorized_transform.encryption_public_key)

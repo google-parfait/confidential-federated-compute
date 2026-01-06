@@ -726,6 +726,7 @@ async fn authorize_confidential_transform_success() {
         endorsements: Some(get_test_endorsements()),
         tag: "tag".into(),
     };
+    let invocation_id = request.invocation_id.clone();
     let response = kms
         .authorize_confidential_transform(request.into_request())
         .await
@@ -768,6 +769,7 @@ async fn authorize_confidential_transform_success() {
                 &logical_pipeline_policies.encode_to_vec()
             ))],
             omitted_decryption_key_ids: empty(),
+            invocation_id: eq(invocation_id),
         }))
     );
 }
