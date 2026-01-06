@@ -152,7 +152,7 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-yfeNsA/1ehZ/Vx/GthZkD//1hOnTvTzMWc8CpzcG5sY=",
+    integrity = "sha256-RE8/72IJqG2K+94bUTcVFrzlMPJ+aZrLo/V2q8Rn7IE=",
     patches = [
         "@federated_language_jax//third_party/tensorflow_federated:cpp_to_python_executor_visibility.patch",
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
@@ -160,8 +160,8 @@ http_archive(
         "//third_party/org_tensorflow_federated:vizier.patch",
         "@confidential-federated-compute-program//third_party/org_tensorflow_federated:executor.patch",
     ],
-    strip_prefix = "tensorflow-federated-f9b451b46a39c540266a752bbf2dd2b4ff16e229",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/f9b451b46a39c540266a752bbf2dd2b4ff16e229.tar.gz",
+    strip_prefix = "tensorflow-federated-aa505bf4a0eebd7fe190d8f2ff57404ff8098ef8",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/aa505bf4a0eebd7fe190d8f2ff57404ff8098ef8.tar.gz",
 )
 
 # Required by `pybind11_bazel`.
@@ -305,7 +305,7 @@ py_repositories()
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = "3.10",  # Keep in sync with repo env set in .bazelrc
+    python_version = "3.11",  # Keep in sync with repo env set in .bazelrc
 )
 
 load("@python//:defs.bzl", "interpreter")
@@ -349,7 +349,7 @@ python_init_repositories(
     ],
     local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
-        "3.10": "@org_tensorflow//:requirements_lock_3_10.txt",
+        "3.11": "@org_tensorflow//:requirements_lock_3_11.txt",
     },
 )
 
@@ -468,8 +468,8 @@ oci_pull(
 )
 
 oci_pull(
-    name = "python_3_10_slim_bookworm",
-    digest = "sha256:9dd6774a1276178f94b0cc1fb1f0edd980825d0ea7634847af9940b1b6273c13",
+    name = "python_3_11_slim_bookworm",
+    digest = "sha256:bb8a6de08828375d5ea5b0950d979cfd930d852c48ee209cf8d0bf208c50f369",
     image = "python",
     platforms = ["linux/amd64"],
 )

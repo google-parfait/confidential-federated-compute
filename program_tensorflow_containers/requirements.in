@@ -17,7 +17,6 @@ typing-extensions~=4.5
 dp-accounting==0.4.3
 tensorflow>=2.14.0,==2.14.*
 tensorflow-privacy==0.9.0
-tensorflow-model-optimization==0.7.5
 tqdm~=4.64
 
 # Additional dependencies required for federated_language_jax.

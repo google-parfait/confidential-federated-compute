@@ -44,6 +44,7 @@ py_library(
     deps = [
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//tensorflow",
     ],
 )
 
@@ -216,7 +217,7 @@ oci_image(
     name = "oci_image",
     # Use a base image that provides the same version of python we reference
     # in the WORKSPACE file.
-    base = "@python_3_10_slim_bookworm",
+    base = "@python_3_11_slim_bookworm",
     # Set the workdir and entrypoint so that the main binary will be executed
     # from within the runfiles directory. This ensures that the main binary
     # will be able to find its runfiles properly.
