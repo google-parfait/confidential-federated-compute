@@ -61,16 +61,7 @@ class TestConcatSession final : public confidential_federated_compute::Session {
       fcp::confidentialcompute::FinalizeRequest request,
       fcp::confidentialcompute::BlobMetadata input_metadata,
       Context& context) override {
-    fcp::confidentialcompute::ReadResponse read_response;
-    *(read_response.mutable_data()) = state_;
-
-    fcp::confidentialcompute::BlobMetadata result_metadata;
-    result_metadata.mutable_unencrypted();
-    result_metadata.set_total_size_bytes(state_.length());
-    result_metadata.set_compression_type(
-        fcp::confidentialcompute::BlobMetadata::COMPRESSION_TYPE_NONE);
-    *(read_response.mutable_first_response_metadata()) = result_metadata;
-    context.Emit(read_response);
+    context.EmitUnencrypted(state_);
     return fcp::confidentialcompute::FinalizeResponse{};
   }
 

@@ -82,8 +82,6 @@ class FedSqlConfidentialTransform final
   absl::Mutex mutex_;
   std::optional<const std::vector<tensorflow_federated::aggregation::Intrinsic>>
       intrinsics_ ABSL_GUARDED_BY(mutex_);
-  std::optional<uint32_t> serialize_output_access_policy_node_id_;
-  std::optional<uint32_t> report_output_access_policy_node_id_;
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
@@ -101,11 +99,6 @@ class FedSqlConfidentialTransform final
   };
   absl::flat_hash_map<std::string, WriteConfigurationMetadata>
       write_configuration_map_;
-  // Reencryption keys for the resultant outputs.
-  // The below fields are only set when KMS is enabled for this worker.
-  std::optional<std::vector<std::string>> reencryption_keys_;
-  // The policy hash used to re-encrypt the intermediate and final blobs with.
-  std::optional<std::string> reencryption_policy_hash_;
   // Initial private state shared between all sessions.
   std::shared_ptr<PrivateState> private_state_;
   // Key ids that have already expired and must be removed from the budget.
