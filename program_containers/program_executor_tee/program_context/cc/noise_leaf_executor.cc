@@ -77,22 +77,17 @@ NoiseLeafExecutor::NoiseLeafExecutor(
 
 absl::StatusOr<PlaintextMessage> NoiseLeafExecutor::DecryptRequest(
     const SessionRequest& session_request) {
-  absl::Time start_time = absl::Now();
   FCP_RETURN_IF_ERROR(server_session_->PutIncomingMessage(session_request));
   FCP_ASSIGN_OR_RETURN(auto plaintext_request, server_session_->Read());
   if (!plaintext_request.has_value()) {
     return absl::InvalidArgumentError(
         "Could not read plaintext message from the request.");
   }
-  absl::Duration duration = absl::Now() - start_time;
-  LOG(INFO) << "NoiseLeafExecutor::DecryptRequest took "
-            << absl::ToDoubleSeconds(duration) << " seconds";
   return plaintext_request.value();
 }
 
 absl::StatusOr<SessionResponse> NoiseLeafExecutor::EncryptResult(
     const PlaintextMessage& plaintext_response) {
-  absl::Time start_time = absl::Now();
   FCP_RETURN_IF_ERROR(server_session_->Write(plaintext_response));
   FCP_ASSIGN_OR_RETURN(auto session_response,
                        server_session_->GetOutgoingMessage());
@@ -100,8 +95,6 @@ absl::StatusOr<SessionResponse> NoiseLeafExecutor::EncryptResult(
     return absl::InvalidArgumentError(
         "Could not generate SessionResponse for the request.");
   }
-  LOG(INFO) << "NoiseLeafExecutor::EncryptResult took "
-            << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   return session_response.value();
 }
 
@@ -165,7 +158,6 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
   if (!plaintext_request.ok()) {
     return ToGrpcStatus(plaintext_request.status());
   }
-  absl::Time start_time = absl::Now();
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   bool parse_success =
       executor_group_request.ParseFromString(plaintext_request->plaintext());
@@ -255,8 +247,6 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
                           "ExecutorGroupRequest missing request.");
     }
   }
-  LOG(INFO) << "NoiseLeafExecutor::Execute computation execution took "
-            << absl::ToDoubleSeconds(absl::Now() - start_time) << " seconds";
   PlaintextMessage plaintext_result;
   plaintext_result.set_plaintext(executor_group_response.SerializeAsString());
   auto session_response = EncryptResult(plaintext_result);
