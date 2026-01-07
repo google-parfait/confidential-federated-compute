@@ -428,9 +428,8 @@ class FedSqlServerTest : public Test {
 
     auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
     public_key_ = public_private_key_pair.first;
-    message_decryptor_ = std::make_unique<MessageDecryptor>(
-        /*config_properties=*/"",
-        std::vector<absl::string_view>(
+    message_decryptor_ =
+        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
             {public_private_key_pair.second, public_private_key_pair.second}));
 
     AuthorizeConfidentialTransformResponse::ProtectedResponse

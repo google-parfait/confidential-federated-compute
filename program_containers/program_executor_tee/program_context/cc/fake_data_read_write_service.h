@@ -44,10 +44,8 @@ class FakeDataReadWriteService
             crypto_test_utils::GenerateKeyPair(kInputKeyId)),
         result_public_private_key_pair_(
             crypto_test_utils::GenerateKeyPair("result")),
-        message_decryptor_(
-            /*config_properties=*/"",
-            std::vector<absl::string_view>(
-                {result_public_private_key_pair_.second})) {}
+        message_decryptor_(std::vector<absl::string_view>(
+            {result_public_private_key_pair_.second})) {}
 
   grpc::Status Read(
       ::grpc::ServerContext*,

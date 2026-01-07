@@ -42,7 +42,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::fcp::confidential_compute::EncryptMessageResult;
-using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::OkpCwt;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -191,7 +190,7 @@ TEST(CryptoTest, EncryptAndDecryptBlobWrongKeyId) {
   EXPECT_THAT(
       blob_decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
                                  "invalid key id"),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+      StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CryptoTest, DecryptUnencryptedBlob) {

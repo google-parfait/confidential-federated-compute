@@ -75,7 +75,7 @@ std::string RandomBlobId() {
 
 BlobDecryptor::BlobDecryptor(
     const std::vector<absl::string_view>& decryption_keys)
-    : message_decryptor_("", decryption_keys) {}
+    : message_decryptor_(decryption_keys) {}
 
 absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
     const BlobMetadata& metadata, absl::string_view blob,

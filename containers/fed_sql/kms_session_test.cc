@@ -282,10 +282,10 @@ class KmsFedSqlSessionWriteTest : public Test {
         crypto_test_utils::GenerateKeyPair("merge");
     auto report_public_private_key_pair =
         crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ = std::make_unique<MessageDecryptor>(
-        /*config_properties=*/"", std::vector<absl::string_view>(
-                                      {merge_public_private_key_pair.second,
-                                       report_public_private_key_pair.second}));
+    message_decryptor_ =
+        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
+            {merge_public_private_key_pair.second,
+             report_public_private_key_pair.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -1108,9 +1108,8 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         crypto_test_utils::GenerateKeyPair("merge");
     report_public_private_key_pair_ =
         crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ = std::make_unique<MessageDecryptor>(
-        /*config_properties=*/"",
-        std::vector<absl::string_view>(
+    message_decryptor_ =
+        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
             {merge_public_private_key_pair_.second,
              report_public_private_key_pair_.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
@@ -1327,9 +1326,8 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         crypto_test_utils::GenerateKeyPair("merge");
     report_public_private_key_pair_ =
         crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ = std::make_unique<MessageDecryptor>(
-        /*config_properties=*/"",
-        std::vector<absl::string_view>(
+    message_decryptor_ =
+        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
             {merge_public_private_key_pair_.second,
              report_public_private_key_pair_.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(

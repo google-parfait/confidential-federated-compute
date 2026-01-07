@@ -37,7 +37,6 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 using ::fcp::confidential_compute::EncryptMessageResult;
-using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
