@@ -287,13 +287,9 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
             {associated_data.omitted_decryption_key_ids().begin(),
              associated_data.omitted_decryption_key_ids().end()}));
 
-        // TODO: stop passing reencryption context to the derived class and
-        // instead use Session::Context to encrypt the outputs
-        FCP_RETURN_IF_ERROR(StreamInitializeTransformWithKms(
-            initialize_request.configuration(),
-            associated_data.config_constraints(),
-            kms_encryptor_->reencryption_keys(),
-            kms_encryptor_->reencryption_policy_hash()));
+        FCP_RETURN_IF_ERROR(
+            StreamInitializeTransform(initialize_request.configuration(),
+                                      associated_data.config_constraints()));
         contain_initialize_request = true;
         break;
       }

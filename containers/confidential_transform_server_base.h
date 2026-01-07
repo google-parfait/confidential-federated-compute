@@ -62,11 +62,9 @@ class ConfidentialTransformBase
         oak_encryption_key_handle_(std::move(encryption_key_handle)) {}
 
   // Initialize the transform for this worker.
-  virtual absl::Status StreamInitializeTransformWithKms(
+  virtual absl::Status StreamInitializeTransform(
       const ::google::protobuf::Any& configuration,
-      const ::google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys,
-      absl::string_view reencryption_policy_hash) = 0;
+      const ::google::protobuf::Any& config_constraints) = 0;
 
   // Handles a WriteConfigurationRequest that contains a blob or a chunk of a
   // blob used for container initialization. Must be implemented by a subclass.
@@ -75,6 +73,8 @@ class ConfidentialTransformBase
   virtual absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) = 0;
+
+  // Creates a new Session instance.
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() = 0;
@@ -102,6 +102,12 @@ class ConfidentialTransformBase
   const std::shared_ptr<oak::crypto::SigningKeyHandle>& GetOakSigningKeyHandle()
       const {
     return oak_signing_key_handle_;
+  }
+
+  // Returns the KMS reencryption keys. These can be used if the derived classes
+  // use specialized re-encryption logic, not supported by `Session::Context`.
+  const std::vector<std::string>& GetReencryptionKeys() const {
+    return kms_encryptor_->reencryption_keys();
   }
 
  private:
