@@ -56,15 +56,15 @@ http_archive(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-vjaIihXYgNrkm/oaX6iMWn50SEmw+HfRk5HMSopE1qg=",
+    integrity = "sha256-3cH11WXKtGhGK/Fjug9+wwVRbR1D5ywlkXKgspH4FjA=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:testing.patch",
         "//third_party/federated_compute:visibility.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-5c02b0ffc547b6e3e3ee272893a8d7fb54f2de28",
-    url = "https://github.com/google/federated-compute/archive/5c02b0ffc547b6e3e3ee272893a8d7fb54f2de28.tar.gz",
+    strip_prefix = "federated-compute-fc709162a1fb4af59b127cf5705a3982b1210733",
+    url = "https://github.com/google/federated-compute/archive/fc709162a1fb4af59b127cf5705a3982b1210733.tar.gz",
 )
 
 http_archive(
