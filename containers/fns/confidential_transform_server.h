@@ -56,11 +56,9 @@ class FnConfidentialTransform final
         fn_factory_provider_(std::move(fn_factory_provider)) {};
 
  private:
-  absl::Status StreamInitializeTransformWithKms(
+  absl::Status StreamInitializeTransform(
       const google::protobuf::Any& configuration,
-      const google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys,
-      absl::string_view reencryption_policy_hash) override;
+      const google::protobuf::Any& config_constraints) override;
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;

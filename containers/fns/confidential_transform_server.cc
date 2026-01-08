@@ -57,11 +57,9 @@ absl::Status AppendBytesToTempFile(std::string& file_path,
 
 }  // anonymous namespace
 
-absl::Status FnConfidentialTransform::StreamInitializeTransformWithKms(
+absl::Status FnConfidentialTransform::StreamInitializeTransform(
     const google::protobuf::Any& configuration,
-    const google::protobuf::Any& config_constraints,
-    std::vector<std::string> reencryption_keys,
-    absl::string_view reencryption_policy_hash) {
+    const google::protobuf::Any& config_constraints) {
   absl::WriterMutexLock l(&fn_factory_mutex_);
   if (fn_factory_.has_value()) {
     return absl::FailedPreconditionError("Fn container already initialized.");

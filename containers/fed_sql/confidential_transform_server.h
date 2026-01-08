@@ -46,11 +46,9 @@ class FedSqlConfidentialTransform final
       std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle);
 
  private:
-  absl::Status StreamInitializeTransformWithKms(
+  absl::Status StreamInitializeTransform(
       const google::protobuf::Any& configuration,
-      const google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys,
-      absl::string_view reencryption_policy_hash) override;
+      const google::protobuf::Any& config_constraints) override;
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;
