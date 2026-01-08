@@ -1254,8 +1254,6 @@ TEST_F(FedSqlServerTest,
         }
       }
     }
-    serialize_output_access_policy_node_id: 42
-    report_output_access_policy_node_id: 7
     inference_init_config {
       inference_config {
         inference_task: {

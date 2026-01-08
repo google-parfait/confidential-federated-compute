@@ -59,8 +59,7 @@ TEST(GetKeyIdFromMetadata, NoKmsAssociatedData) {
   BlobMetadata metadata;
   BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
       metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->mutable_rewrapped_symmetric_key_associated_data()
-      ->set_reencryption_public_key("some_key");
+  // No `kms_symmetric_key_associated_data` set.
 
   EXPECT_EQ(GetKeyIdFromMetadata(metadata).status().code(),
             absl::StatusCode::kInvalidArgument);

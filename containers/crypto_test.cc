@@ -249,10 +249,8 @@ TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
       "unused symmetric key");
   metadata.mutable_hpke_plus_aead_data()->set_encapsulated_public_key(
       "unused encapped key");
-  // Setting the wrong kind of associated data will cause decryption to fail
-  // early.
-  metadata.mutable_hpke_plus_aead_data()
-      ->mutable_ledger_symmetric_key_associated_data();
+  // No `kms_symmetric_key_associated_data` set.
+
   EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "unused message"),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Blob to decrypt must contain "
