@@ -18,12 +18,10 @@
 #include <memory>
 #include <string>
 
-#include "absl/log/log.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "containers/big_endian.h"
-#include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
@@ -31,8 +29,6 @@
 #include "containers/fed_sql/testing/test_utils.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
-#include "fcp/confidentialcompute/cose.h"
-#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
@@ -57,15 +53,12 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
-using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
 using ::fcp::confidential_compute::kEventTimeColumnName;
-using ::fcp::confidential_compute::MessageDecryptor;
-using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -158,19 +151,10 @@ KmsFedSqlSession CreateDefaultSession() {
   std::vector<Intrinsic> intrinsics =
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
-  auto merge_public_private_key_pair =
-      crypto_test_utils::GenerateKeyPair("merge");
-  auto report_public_private_key_pair =
-      crypto_test_utils::GenerateKeyPair("report");
-  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle =
-      std::make_shared<MockSigningKeyHandle>();
-  return KmsFedSqlSession(
-      std::move(checkpoint_aggregator), intrinsics, std::nullopt, std::nullopt,
-      "sensitive_values_key",
-      std::vector<std::string>{merge_public_private_key_pair.first,
-                               report_public_private_key_pair.first},
-      "reencryption_policy_hash", CreatePrivateState("", 1), {},
-      mock_signing_key_handle, /*prototype=*/nullptr, "test_query");
+  return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
+                          std::nullopt, std::nullopt, "sensitive_values_key",
+                          CreatePrivateState("", 1), {},
+                          /*prototype=*/nullptr, "test_query");
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -278,14 +262,6 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
 class KmsFedSqlSessionWriteTest : public Test {
  public:
   KmsFedSqlSessionWriteTest(std::optional<uint32_t> default_budget = 5) {
-    auto merge_public_private_key_pair =
-        crypto_test_utils::GenerateKeyPair("merge");
-    auto report_public_private_key_pair =
-        crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ =
-        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
-            {merge_public_private_key_pair.second,
-             report_public_private_key_pair.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -300,11 +276,8 @@ class KmsFedSqlSessionWriteTest : public Test {
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
         std::nullopt, "sensitive_values_key",
-        std::vector<std::string>{merge_public_private_key_pair.first,
-                                 report_public_private_key_pair.first},
-        "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, default_budget),
-        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query");
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
@@ -333,43 +306,43 @@ class KmsFedSqlSessionWriteTest : public Test {
   }
 
  protected:
-  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
-    BlobHeader blob_header;
-    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                    .kms_symmetric_key_associated_data()
-                                    .record_header());
-    CHECK(blob_header.access_policy_sha256() == "reencryption_policy_hash");
-    auto decrypted = message_decryptor_->Decrypt(
-        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-        metadata.hpke_plus_aead_data()
-            .kms_symmetric_key_associated_data()
-            .record_header(),
-        metadata.hpke_plus_aead_data().encapsulated_public_key(),
-        blob_header.key_id());
-    CHECK_OK(decrypted.status());
-    return decrypted.value();
+  void ExpectEmitEncrypted(int& index, std::string& data) {
+    EXPECT_CALL(context_, EmitEncrypted)
+        .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
+          index = reencryption_key_index;
+          data = std::move(kv.data);
+          return true;
+        });
   }
 
-  void ExpectReadResponse(ReadResponse& read_response) {
-    EXPECT_CALL(context_, Emit).WillOnce([&](ReadResponse response) {
-      read_response = std::move(response);
-      return true;
-    });
+  void ExpectEmitEncrypted(int& index, std::vector<std::string>& data,
+                           std::vector<google::protobuf::Any>& configs) {
+    EXPECT_CALL(context_, EmitEncrypted)
+        .WillRepeatedly(
+            [&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
+              index = reencryption_key_index;
+              data.push_back(std::move(kv.data));
+              configs.push_back(std::move(kv.key));
+              return true;
+            });
   }
 
-  void ExpectReadResponses(std::vector<ReadResponse>& read_responses) {
-    EXPECT_CALL(context_, Emit).WillRepeatedly([&](ReadResponse response) {
-      read_responses.push_back(std::move(response));
-      return true;
-    });
+  void ExpectEmitReleasable(int& index, std::string& src, std::string& dst,
+                            std::string& data) {
+    EXPECT_CALL(context_, EmitReleasable)
+        .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv,
+                      std::optional<absl::string_view> src_state,
+                      absl::string_view dst_state, std::string& release_token) {
+          index = reencryption_key_index;
+          src = std::string(src_state.value());
+          dst = std::string(dst_state);
+          data = std::move(kv.data);
+          return true;
+        });
   }
 
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
-  std::unique_ptr<MessageDecryptor> message_decryptor_;
-  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
-      std::make_shared<MockSigningKeyHandle>();
   std::string initial_private_state_;
   MockContext context_;
 };
@@ -427,19 +400,13 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
 
   ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
+  EXPECT_EQ(index, 0);
   auto range_tracker = UnbundleRangeTracker(result_data);
   ASSERT_THAT(*range_tracker,
               UnorderedElementsAre(
@@ -512,29 +479,24 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  std::vector<ReadResponse> read_responses;
-  ExpectReadResponses(read_responses);
+  std::vector<std::string> result_data;
+  std::vector<google::protobuf::Any> configs;
+  int index;
+  ExpectEmitEncrypted(index, result_data, configs);
   ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
-  EXPECT_EQ(read_responses.size(), 2);
+  EXPECT_EQ(result_data.size(), 2);
+  EXPECT_EQ(index, 0);
 
   // Verify the partitoned results.
-  for (int i = 1; i < read_responses.size(); i++) {
-    auto& read_response = read_responses[i];
-    auto actual_metadata = read_response.first_response_metadata();
-    ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-    ASSERT_EQ(actual_metadata.compression_type(),
-              BlobMetadata::COMPRESSION_TYPE_NONE);
-    ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-    auto result_data = Decrypt(actual_metadata, read_response.data());
-    auto range_tracker = UnbundleRangeTracker(result_data);
+  for (int i = 0; i < result_data.size(); i++) {
+    auto range_tracker = UnbundleRangeTracker(result_data[i]);
     ASSERT_THAT(*range_tracker,
                 UnorderedElementsAre(
                     Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
                     Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
     EXPECT_EQ(range_tracker->GetPartitionIndex(), std::optional<uint64_t>(i));
-    auto config = read_response.first_response_configuration();
     FedSqlContainerPartitionedOutputConfiguration partition_config;
-    ASSERT_TRUE(config.UnpackTo(&partition_config));
+    ASSERT_TRUE(configs[i].UnpackTo(&partition_config));
     EXPECT_EQ(partition_config.partition_index(), i);
   }
 }
@@ -580,28 +542,20 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   )pb");
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  std::string src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
   BlobMetadata unused;
-  oak::crypto::v1::Signature fake_signature;
-  fake_signature.set_signature("signature");
-  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
-      .WillOnce(Return(fake_signature));
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
-
   auto finalize_response =
       session_->Finalize(finalize_request, unused, context_);
   ASSERT_THAT(finalize_response, IsOk());
 
-  // Verify the release token.
-  absl::StatusOr<ReleaseToken> release_token =
-      ReleaseToken::Decode(finalize_response->release_token());
-  ASSERT_THAT(release_token, IsOk());
-  EXPECT_EQ(release_token->encryption_key_id, "report");
-  EXPECT_EQ(release_token->src_state, initial_private_state_);
-  EXPECT_EQ(release_token->signature, "signature");
+  EXPECT_EQ(index, 1);
+  EXPECT_EQ(src, initial_private_state_);
   BudgetState new_state;
-  EXPECT_TRUE(new_state.ParseFromString(release_token->dst_state.value()));
+  EXPECT_TRUE(new_state.ParseFromString(dst));
   EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "key_foo"
@@ -612,14 +566,6 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
               )pb"));
-
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
 
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
@@ -694,20 +640,13 @@ TEST_F(KmsFedSqlSessionWriteTest,
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
 
   ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
-
+  EXPECT_EQ(index, 0);
   ASSERT_THAT(UnbundleRangeTracker(result_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
@@ -772,20 +711,13 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
 
   EXPECT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
-
+  EXPECT_EQ(index, 0);
   auto result_range_tracker = UnbundleRangeTracker(result_data);
   ASSERT_THAT(*result_range_tracker,
               UnorderedElementsAre(
@@ -854,28 +786,22 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   )pb");
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata unused;
-  oak::crypto::v1::Signature fake_signature;
-  fake_signature.set_signature("signature");
-  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
-      .WillOnce(Return(fake_signature));
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
 
+  std::string result_data;
+  std::string src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+
+  BlobMetadata unused;
   auto finalize_response =
       session_->Finalize(finalize_request, unused, context_);
   ASSERT_THAT(finalize_response, IsOk());
 
-  // Verify the release token.
-  absl::StatusOr<ReleaseToken> release_token =
-      ReleaseToken::Decode(finalize_response->release_token());
-  ASSERT_THAT(release_token, IsOk());
-  EXPECT_EQ(release_token->encryption_key_id, "report");
-  EXPECT_EQ(release_token->src_state, initial_private_state_);
-  EXPECT_EQ(release_token->signature, "signature");
+  EXPECT_EQ(index, 1);
+  EXPECT_EQ(src, initial_private_state_);
   BudgetState new_state;
-  EXPECT_TRUE(new_state.ParseFromString(release_token->dst_state.value()));
+  EXPECT_TRUE(new_state.ParseFromString(dst));
   EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "key_foo"
@@ -886,15 +812,6 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
               )pb"));
-
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
-
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
   auto col_values = (*parser)->GetTensor("val_out");
@@ -907,6 +824,15 @@ class KmsFedSqlSessionUnlimitedBudgetTest : public KmsFedSqlSessionWriteTest {
  public:
   KmsFedSqlSessionUnlimitedBudgetTest()
       : KmsFedSqlSessionWriteTest(/*default_budget=*/std::nullopt) {}
+
+ protected:
+  void ExpectEmitUnencrypted(std::string& data) {
+    EXPECT_CALL(context_, EmitUnencrypted)
+        .WillOnce([&](KmsFedSqlSession::KV kv) {
+          data = std::move(kv.data);
+          return true;
+        });
+  }
 };
 
 TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
@@ -954,19 +880,12 @@ TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
   )pb");
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  ExpectEmitUnencrypted(result_data);
   BlobMetadata unused;
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
-
   EXPECT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_unencrypted());
-
-  auto parser = parser_factory.Create(absl::Cord(read_response.data()));
+  auto parser = parser_factory.Create(absl::Cord(result_data));
   ASSERT_THAT(parser, IsOk());
   auto col_values = (*parser)->GetTensor("val_out");
   EXPECT_EQ(col_values->num_elements(), 1);
@@ -1104,14 +1023,6 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
 class KmsFedSqlSessionWritePartialRangeTest : public Test {
  public:
   KmsFedSqlSessionWritePartialRangeTest() {
-    merge_public_private_key_pair_ =
-        crypto_test_utils::GenerateKeyPair("merge");
-    report_public_private_key_pair_ =
-        crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ =
-        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
-            {merge_public_private_key_pair_.second,
-             report_public_private_key_pair_.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -1132,11 +1043,8 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator_), intrinsics_, std::nullopt,
         std::nullopt, "sensitive_values_key",
-        std::vector<std::string>{merge_public_private_key_pair_.first,
-                                 report_public_private_key_pair_.first},
-        "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query");
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
@@ -1157,40 +1065,19 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
     CHECK_OK(session_->Configure(request, context_));
   }
 
-  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
-    BlobHeader blob_header;
-    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                    .kms_symmetric_key_associated_data()
-                                    .record_header());
-    CHECK(blob_header.access_policy_sha256() == "reencryption_policy_hash");
-    auto decrypted = message_decryptor_->Decrypt(
-        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-        metadata.hpke_plus_aead_data()
-            .kms_symmetric_key_associated_data()
-            .record_header(),
-        metadata.hpke_plus_aead_data().encapsulated_public_key(),
-        blob_header.key_id());
-    CHECK_OK(decrypted.status());
-    return decrypted.value();
-  }
-
-  void ExpectReadResponse(ReadResponse& read_response) {
-    EXPECT_CALL(context_, Emit).WillOnce([&](ReadResponse response) {
-      read_response = std::move(response);
-      return true;
-    });
+  void ExpectEmitEncrypted(int& index, std::string& data) {
+    EXPECT_CALL(context_, EmitEncrypted)
+        .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
+          index = reencryption_key_index;
+          data = std::move(kv.data);
+          return true;
+        });
   }
 
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
-  std::unique_ptr<MessageDecryptor> message_decryptor_;
-  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
-      std::make_shared<MockSigningKeyHandle>();
   std::string initial_private_state_;
   std::unique_ptr<CheckpointAggregator> checkpoint_aggregator_;
-  std::pair<std::string, std::string> merge_public_private_key_pair_;
-  std::pair<std::string, std::string> report_public_private_key_pair_;
   MockContext context_;
 };
 
@@ -1248,19 +1135,13 @@ TEST_F(KmsFedSqlSessionWritePartialRangeTest,
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  // Read_response pushed via the context_
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
 
   ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto actual_metadata = read_response.first_response_metadata();
-  ASSERT_GT(actual_metadata.total_size_bytes(), 0);
-  ASSERT_EQ(actual_metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_NONE);
-  ASSERT_TRUE(actual_metadata.has_hpke_plus_aead_data());
-
-  auto result_data = Decrypt(actual_metadata, read_response.data());
+  EXPECT_EQ(index, 0);
   auto range_tracker = UnbundleRangeTracker(result_data);
   ASSERT_THAT(*range_tracker,
               UnorderedElementsAre(
@@ -1322,14 +1203,6 @@ class TestMessageFactory : public MessageFactory {
 class KmsFedSqlSessionWriteWithMessageTest : public Test {
  public:
   KmsFedSqlSessionWriteWithMessageTest() {
-    merge_public_private_key_pair_ =
-        crypto_test_utils::GenerateKeyPair("merge");
-    report_public_private_key_pair_ =
-        crypto_test_utils::GenerateKeyPair("report");
-    message_decryptor_ =
-        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
-            {merge_public_private_key_pair_.second,
-             report_public_private_key_pair_.second}));
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -1344,11 +1217,8 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
         std::nullopt, "sensitive_values_key",
-        std::vector<std::string>{merge_public_private_key_pair_.first,
-                                 report_public_private_key_pair_.first},
-        "reencryption_policy_hash",
         CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(), mock_signing_key_handle_,
+        absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
         "test_query");
     ConfigureRequest request;
@@ -1375,40 +1245,29 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
   }
 
  protected:
-  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
-    BlobHeader blob_header;
-    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                    .kms_symmetric_key_associated_data()
-                                    .record_header());
-    CHECK(blob_header.access_policy_sha256() == "reencryption_policy_hash");
-    auto decrypted = message_decryptor_->Decrypt(
-        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-        metadata.hpke_plus_aead_data()
-            .kms_symmetric_key_associated_data()
-            .record_header(),
-        metadata.hpke_plus_aead_data().encapsulated_public_key(),
-        blob_header.key_id());
-    CHECK_OK(decrypted.status());
-    return decrypted.value();
+  void ExpectEmitEncrypted(int& index, std::string& data) {
+    EXPECT_CALL(context_, EmitEncrypted)
+        .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
+          index = reencryption_key_index;
+          data = std::move(kv.data);
+          return true;
+        });
   }
 
-  void ExpectReadResponse(ReadResponse& read_response) {
-    EXPECT_CALL(context_, Emit).WillOnce([&](ReadResponse response) {
-      read_response = std::move(response);
-      return true;
-    });
+  void ExpectEmitReleasable(std::string& data) {
+    EXPECT_CALL(context_, EmitReleasable)
+        .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv,
+                      std::optional<absl::string_view> src_state,
+                      absl::string_view dst_state, std::string& release_token) {
+          data = std::move(kv.data);
+          return true;
+        });
   }
 
   MessageHelper message_helper_;
   std::unique_ptr<KmsFedSqlSession> session_;
   std::vector<Intrinsic> intrinsics_;
-  std::unique_ptr<MessageDecryptor> message_decryptor_;
-  std::shared_ptr<MockSigningKeyHandle> mock_signing_key_handle_ =
-      std::make_shared<MockSigningKeyHandle>();
   std::string initial_private_state_;
-  std::pair<std::string, std::string> merge_public_private_key_pair_;
-  std::pair<std::string, std::string> report_public_private_key_pair_;
   MockContext context_;
 };
 
@@ -1455,13 +1314,13 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest,
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   BlobMetadata unused;
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
 
   ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
 
-  auto result_data =
-      Decrypt(read_response.first_response_metadata(), read_response.data());
+  EXPECT_EQ(index, 0);
   ASSERT_THAT(UnbundleRangeTracker(result_data), IsOk());
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
@@ -1523,20 +1382,13 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
   )pb");
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  ExpectEmitReleasable(result_data);
   BlobMetadata unused;
-  oak::crypto::v1::Signature fake_signature;
-  fake_signature.set_signature("signature");
-  EXPECT_CALL(*mock_signing_key_handle_, Sign(_))
-      .WillOnce(Return(fake_signature));
-  ReadResponse read_response;
-  ExpectReadResponse(read_response);
-
   auto finalize_response =
       session_->Finalize(finalize_request, unused, context_);
   ASSERT_THAT(finalize_response, IsOk());
 
-  auto result_data =
-      Decrypt(read_response.first_response_metadata(), read_response.data());
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());

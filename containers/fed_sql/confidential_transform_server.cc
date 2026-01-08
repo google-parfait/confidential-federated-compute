@@ -463,8 +463,6 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransformWithKms(
     FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
         fed_sql_config.inference_init_config()));
   }
-  reencryption_keys_ = std::move(reencryption_keys);
-  reencryption_policy_hash_ = reencryption_policy_hash;
   return absl::OkStatus();
 }
 
@@ -605,15 +603,10 @@ FedSqlConfidentialTransform::CreateSession() {
   }
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
-  CHECK(reencryption_keys_.has_value())
-      << "Reencryption keys must be set when KMS is enabled.";
-  CHECK(reencryption_policy_hash_.has_value())
-      << "Reencryption policy hash must be set when KMS is enabled.";
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
-      dp_unit_parameters_, sensitive_values_key_, reencryption_keys_.value(),
-      reencryption_policy_hash_.value(), private_state_, expired_key_ids_,
-      GetOakSigningKeyHandle(), message_factory, on_device_query_name_);
+      dp_unit_parameters_, sensitive_values_key_, private_state_,
+      expired_key_ids_, message_factory, on_device_query_name_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(
