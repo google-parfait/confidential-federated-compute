@@ -5,7 +5,7 @@ expression: "output.replace(record_file_path, \"{TMP_RECORD_FILE}\")"
 Inspecting AttestationVerificationRecord at {TMP_RECORD_FILE}.
 
 ========================================
-===== LEDGER ATTESTATION EVIDENCE ======
+== LEDGER / KMS ATTESTATION EVIDENCE ===
 ========================================
 
 Oak Restricted Kernel Stack in a AMD SEV-SNP TEE
@@ -76,7 +76,7 @@ binary:
 config: {}
 
 
-Note: this layer describes the "ledger" application binary, which is generally a build of the `ledger_enclave_app` in the https://github.com/google-parfait/confidential-federated-compute repository.
+Note: this layer describes the "ledger" application binary, which is generally a build of the `replicated_ledger_enclave_app` in the https://github.com/google-parfait/confidential-federated-compute repository.
 
 
 ========================================

@@ -1,0 +1,262 @@
+---
+source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
+expression: buf
+---
+========================================
+== LEDGER / KMS ATTESTATION EVIDENCE ===
+========================================
+
+Oak Containers Stack in a AMD SEV-SNP TEE
+
+_____ Root Layer _____
+
+The attestation is rooted in an AMD SEV-SNP TEE.
+
+Attestations identifying the firmware captured in the evidence can be found here:
+https://search.sigstore.dev/?hash=2f450a0f60c5ed734c7af661c41e42631c84d0a71fcfe8a58765bcd7ebd495e7
+
+ⓘ The firmware attestation digest is the SHA2-256 hash of the SHA2-384 hash of the initial memory state taken by the AMD SoC. The original SHA2-384 hash of the initial memory is: SHA2-384:2840fe8252a9f0c76a89b6cb801f881fb85c93242bcd1950ed4a5afa0491ee0d088773b384b899420e26d9ca3a1e61a1; it is listed as the 'initial_measurement' in the evidence of this layer.
+
+The evidence describing this layer is outlined below.
+
+sev_snp:
+  current_tcb:
+    boot_loader: 4
+    fmc: 0
+    microcode: 219
+    snp: 24
+    tee: 0
+  debug: false
+  hardware_id: d434c30555a180626ade858fb3efdb214c08596a812f188620af8a7cebce86f4b24f4f1a53b5cd9f22cfeaffb3527fc07b51b6270910cf694e7c9bfc582d3a49
+  initial_measurement: 2840fe8252a9f0c76a89b6cb801f881fb85c93242bcd1950ed4a5afa0491ee0d088773b384b899420e26d9ca3a1e61a1
+  product: 1
+  report_data: 1559b1b7fd64e650864087c31a69f940adb1ac9d6bf7c400ab2c8846e087494b0000000000000000000000000000000000000000000000000000000000000000
+  reported_tcb:
+    boot_loader: 4
+    fmc: 0
+    microcode: 219
+    snp: 24
+    tee: 0
+  vmpl: 0
+
+
+Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
+
+_____ Kernel Layer _____
+
+Attestations identifying the binaries captured in the evidence in this layer can be found as outlined below.
+Kernel: https://search.sigstore.dev/?hash=f9d0584247b46cc234a862aa8cd08765b38405022253a78b9af189c4cedbe447
+Initial Ramdisk: https://search.sigstore.dev/?hash=a8b5371594bfc2944fe6263148f6ef289821bf2e581b1ed976cc2f83704538c6
+
+The evidence describing the kernel layer is outlined below.
+
+acpi:
+  sha2_256: a70dbecea0605c60e7bf16a114e4a3210c133517d304c776f4d291d05bff665a
+init_ram_fs:
+  sha2_256: a8b5371594bfc2944fe6263148f6ef289821bf2e581b1ed976cc2f83704538c6
+kernel_image:
+  sha2_256: f9d0584247b46cc234a862aa8cd08765b38405022253a78b9af189c4cedbe447
+kernel_raw_cmd_line: console=ttyS0 panic=-1 earlycon=uart,io,0x3F8 brd.rd_nr=1 brd.rd_size=3072000 brd.max_part=1 ip=10.0.2.15:::255.255.255.0::eth0:off net.ifnames=0 quiet
+kernel_setup_data:
+  sha2_256: 5a5cd42b9471aadf96dc2d2407d9dcbb1165c28c7eea1a0b4e9c72cf0623bbba
+memory_map:
+  sha2_256: 79ae6053b1afd95db05643d3676af49fa7ea30c5b3579d090be9a18ae7030308
+
+
+Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
+
+_____ System Layer _____
+
+Attestations identifying the system image captured in the evidence can be found here: https://search.sigstore.dev/?hash=8b5f76e93f0932ec0f25854e67cd25b346aa236e6678360618295b50d1442ef5
+
+The evidence describing this layer is outlined below.
+
+system_image:
+  sha2_256: 8b5f76e93f0932ec0f25854e67cd25b346aa236e6678360618295b50d1442ef5
+
+
+Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
+
+_____ Container Layer _____
+
+The evidence describing the application is outlined below.
+
+bundle:
+  sha2_256: e6b1e9f8beaeeb5fef0572009be773a4a01ed736bc6dd5411a36ffc7b4dbde74
+config:
+  sha2_256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+hybrid_encryption_public_key:
+- 61
+- 23
+- 55
+- 102
+- 46
+- 226
+- 181
+- 105
+- 178
+- 220
+- 188
+- 198
+- 199
+- 135
+- 233
+- 184
+- 210
+- 150
+- 198
+- 27
+- 161
+- 41
+- 248
+- 130
+- 169
+- 51
+- 77
+- 119
+- 153
+- 96
+- 28
+- 52
+session_binding_public_key:
+- 4
+- 254
+- 173
+- 97
+- 195
+- 116
+- 173
+- 54
+- 247
+- 172
+- 238
+- 191
+- 221
+- 108
+- 47
+- 135
+- 136
+- 243
+- 101
+- 115
+- 201
+- 140
+- 25
+- 109
+- 89
+- 42
+- 222
+- 56
+- 109
+- 1
+- 58
+- 165
+- 210
+- 82
+- 86
+- 235
+- 179
+- 198
+- 186
+- 156
+- 59
+- 63
+- 145
+- 88
+- 163
+- 234
+- 194
+- 150
+- 179
+- 152
+- 155
+- 155
+- 215
+- 7
+- 126
+- 77
+- 84
+- 254
+- 139
+- 108
+- 87
+- 183
+- 77
+- 52
+- 174
+signing_public_key:
+- 4
+- 221
+- 83
+- 182
+- 157
+- 205
+- 167
+- 84
+- 83
+- 78
+- 83
+- 247
+- 174
+- 196
+- 124
+- 40
+- 172
+- 244
+- 227
+- 151
+- 98
+- 203
+- 200
+- 245
+- 191
+- 105
+- 215
+- 240
+- 123
+- 78
+- 160
+- 248
+- 47
+- 137
+- 108
+- 64
+- 141
+- 14
+- 133
+- 20
+- 119
+- 162
+- 173
+- 3
+- 20
+- 219
+- 94
+- 158
+- 5
+- 199
+- 35
+- 197
+- 54
+- 181
+- 241
+- 42
+- 241
+- 214
+- 184
+- 170
+- 123
+- 240
+- 240
+- 155
+- 122
+
+
+Note: this layer describes the "KMS" application binary, which is generally a build of the `kms` in the https://github.com/google-parfait/confidential-federated-compute repository.
+
+
+========================================
+========== DATA ACCESS POLICY ==========
+========================================
+
+The data access policy allows 0 data transformations and defines 0 shared access budgets.

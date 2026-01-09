@@ -1,6 +1,6 @@
 # Attestation evidence test data
 
-This directory contains real attestation evidence extracted from one of our ledger applications
+This directory contains real attestation evidence extracted from one of our applications
 running in a real TEE. The binaries at each layer in the attestation evidence should all have SLSA
 provenance available on sigstore.dev.
 

@@ -139,6 +139,19 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
     record
 }
 
+/// Returns an [`AttestationVerificationRecord`] with valid KMS attestation
+/// evidence but with an empty data access policy.
+pub fn record_with_kms_evidence() -> AttestationVerificationRecord {
+    let evidence = Evidence::decode(&include_bytes!("kms_evidence.pb")[..])
+        .expect("must be a valid evidence proto");
+    AttestationVerificationRecord {
+        attestation_evidence: Some(evidence),
+        attestation_endorsements: None,
+        data_access_policy: Some(DataAccessPolicy { ..Default::default() }),
+        ..Default::default()
+    }
+}
+
 /// Creates a [`ReferenceValues`] instance that expects an Oak Restricted Kernel
 /// application, skips all binary checks, but requires the attestation evidence
 /// to be rooted in AMD SEV-SNP.
