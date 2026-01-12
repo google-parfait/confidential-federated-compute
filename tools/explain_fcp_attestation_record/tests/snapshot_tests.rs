@@ -107,3 +107,23 @@ fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> 
     assert_snapshot!(buf);
     Ok(())
 }
+
+/// Runs the explain tool over a record file that only contains valid KMS
+/// attestation evidence and an empty access policy.
+#[test]
+fn test_explain_record_with_kms_evidence() -> anyhow::Result<()> {
+    // Note: we don't actually invoke the binary, and instead call the
+    // explain_fcp_attestation_record library upon which the binary is built. This
+    // makes it a bit easier to pass in records which we constructed/modified
+    // within the test code, without having to write to temporary files etc.
+    let mut buf = String::new();
+    explain_fcp_attestation_record::explain_record(
+        &mut buf,
+        &testdata::record_with_kms_evidence(),
+    )?;
+
+    // Check that the expected output in the snapshot matches the actual output in
+    // the buffer.
+    assert_snapshot!(buf);
+    Ok(())
+}

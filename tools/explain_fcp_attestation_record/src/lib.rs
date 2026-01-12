@@ -19,7 +19,8 @@ use federated_compute::proto::{
 };
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
-    extracted_evidence::EvidenceValues, Evidence, OakRestrictedKernelData,
+    extracted_evidence::EvidenceValues, Evidence, OakContainersData, OakRestrictedKernelData,
+    ReferenceValues,
 };
 
 /// Writes a human readable explanation for the given FCP
@@ -29,14 +30,14 @@ pub fn explain_record(
     record: &AttestationVerificationRecord,
 ) -> anyhow::Result<()> {
     writeln!(buf, "========================================")?;
-    writeln!(buf, "===== LEDGER ATTESTATION EVIDENCE ======")?;
+    writeln!(buf, "== LEDGER / KMS ATTESTATION EVIDENCE ===")?;
     writeln!(buf, "========================================")?;
     writeln!(buf)?;
-    explain_ledger_evidence(
+    explain_attestation_evidence(
         buf,
         record.attestation_evidence.as_ref().context("record is missing attestation evidence")?,
     )
-    .context("failed to explain ledger attestation evidence")?;
+    .context("failed to explain attestation evidence")?;
 
     writeln!(buf)?;
     writeln!(buf, "========================================")?;
@@ -52,13 +53,13 @@ pub fn explain_record(
     Ok(())
 }
 
-/// Writes a human readable explanation for the given ledger attestation
-/// evidence to the given buffer.
-fn explain_ledger_evidence(
+/// Writes a human readable explanation for the given attestation evidence to
+/// the given buffer.
+fn explain_attestation_evidence(
     buf: &mut dyn std::fmt::Write,
     evidence: &Evidence,
 ) -> anyhow::Result<()> {
-    let extracted_ledger_evidence = oak_attestation_verification::extract_evidence(evidence)
+    let extracted_evidence = oak_attestation_verification::extract_evidence(evidence)
         .context("could not extract evidence data from provided Evidence proto")?;
 
     let write_link_to_oak = |buf: &mut dyn std::fmt::Write| -> anyhow::Result<()> {
@@ -70,10 +71,7 @@ fn explain_ledger_evidence(
         Ok(())
     };
 
-    match extracted_ledger_evidence
-        .evidence_values
-        .context("extracted evidence missing EvidenceValues")?
-    {
+    match extracted_evidence.evidence_values.context("extracted evidence missing EvidenceValues")? {
         EvidenceValues::OakRestrictedKernel(
             ref restricted_kernel_data @ OakRestrictedKernelData {
                 ref root_layer,
@@ -111,16 +109,70 @@ fn explain_ledger_evidence(
             writeln!(
                 buf,
                 "Note: this layer describes the \"ledger\" application binary, which is generally \
-                a build of the `ledger_enclave_app` in the \
+                a build of the `replicated_ledger_enclave_app` in the \
                 https://github.com/google-parfait/confidential-federated-compute repository.",
             )?;
             writeln!(buf,)?;
         }
+
+        EvidenceValues::OakContainers(
+            ref containers_data @ OakContainersData {
+                ref root_layer,
+                ref kernel_layer,
+                ref system_layer,
+                ref container_layer,
+            },
+        ) => {
+            writeln!(buf, "{}", containers_data.title()?)?;
+            writeln!(buf)?;
+            let Some(root_layer) = root_layer else {
+                bail!("missing root layer evidence");
+            };
+            let Some(kernel_layer) = kernel_layer else {
+                bail!("missing kernel layer evidence");
+            };
+            let Some(system_layer) = system_layer else {
+                bail!("missing system layer evidence");
+            };
+            let Some(container_layer) = container_layer else {
+                bail!("missing container layer evidence");
+            };
+            writeln!(buf, "_____ {} _____", root_layer.title()?)?;
+            writeln!(buf,)?;
+            writeln!(buf, "{}", root_layer.description()?)?;
+            writeln!(buf,)?;
+            write_link_to_oak(buf)?;
+            writeln!(buf,)?;
+            writeln!(buf, "_____ {} _____", kernel_layer.title()?)?;
+            writeln!(buf,)?;
+            writeln!(buf, "{}", kernel_layer.description()?)?;
+            writeln!(buf,)?;
+            write_link_to_oak(buf)?;
+            writeln!(buf,)?;
+            writeln!(buf, "_____ {} _____", system_layer.title()?)?;
+            writeln!(buf,)?;
+            writeln!(buf, "{}", system_layer.description()?)?;
+            writeln!(buf,)?;
+            write_link_to_oak(buf)?;
+            writeln!(buf,)?;
+            writeln!(buf, "_____ {} _____", container_layer.title()?,)?;
+            writeln!(buf,)?;
+            writeln!(buf, "{}", container_layer.description()?)?;
+            writeln!(buf,)?;
+            writeln!(
+                buf,
+                "Note: this layer describes the \"KMS\" application binary, which is generally \
+                a build of the `kms` in the \
+                https://github.com/google-parfait/confidential-federated-compute repository.",
+            )?;
+            writeln!(buf,)?;
+        }
+
         unexpected_evidence_type => {
             bail!(
-                "Ledger evidence in an FCP attestation record is currently only expected to \
-                describe Oak Restricted Kernel applications (found the following evidence:
-                {unexpected_evidence_type:?})",
+                "Application evidence in an FCP attestation record is currently only expected to \
+                describe Oak Restricted Kernel or Oak Containers applications (found the following \
+                evidence: {unexpected_evidence_type:?})",
             );
         }
     }
