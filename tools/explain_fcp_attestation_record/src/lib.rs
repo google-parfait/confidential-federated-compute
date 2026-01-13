@@ -13,14 +13,18 @@
 // limitations under the License.
 
 use anyhow::{bail, Context};
-use federated_compute::proto::access_budget::Kind;
-use federated_compute::proto::{
-    AccessBudget, AttestationVerificationRecord, DataAccessPolicy, PipelineVariantPolicy,
-};
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
     extracted_evidence::EvidenceValues, Evidence, OakContainersData, OakRestrictedKernelData,
     ReferenceValues,
+};
+use prost::Message;
+use verification_record_proto::{
+    access_policy_proto::fcp::confidentialcompute::{
+        access_budget::Kind, data_access_policy, pipeline_variant_policy, AccessBudget,
+        DataAccessPolicy, PipelineVariantPolicy,
+    },
+    fcp::confidentialcompute::AttestationVerificationRecord,
 };
 
 /// Writes a human readable explanation for the given FCP
@@ -57,9 +61,10 @@ pub fn explain_record(
 /// the given buffer.
 fn explain_attestation_evidence(
     buf: &mut dyn std::fmt::Write,
-    evidence: &Evidence,
+    evidence: &verification_record_proto::evidence_proto::oak::attestation::v1::Evidence,
 ) -> anyhow::Result<()> {
-    let extracted_evidence = oak_attestation_verification::extract_evidence(evidence)
+    let evidence = Evidence::decode(evidence.encode_to_vec().as_slice())?;
+    let extracted_evidence = oak_attestation_verification::extract_evidence(&evidence)
         .context("could not extract evidence data from provided Evidence proto")?;
 
     let write_link_to_oak = |buf: &mut dyn std::fmt::Write| -> anyhow::Result<()> {
@@ -235,6 +240,7 @@ fn explain_pipeline_variant_policy(
             writeln!(buf, "  {:?}", config_properties)?;
         }
         if let Some(ref_vals) = app_matcher.reference_values {
+            let ref_vals = ReferenceValues::decode(ref_vals.encode_to_vec().as_slice())?;
             writeln!(
                 buf,
                 "- Applications performing this transform must provide attestation evidence that \
@@ -260,7 +266,7 @@ fn explain_pipeline_variant_policy(
 /// buffer.
 fn explain_transform_access_budgets(
     buf: &mut dyn std::fmt::Write,
-    transform: &federated_compute::proto::pipeline_variant_policy::Transform,
+    transform: &pipeline_variant_policy::Transform,
     transform_idx: usize,
     shared_budgets: &[AccessBudget],
 ) -> Result<(), anyhow::Error> {
@@ -337,6 +343,7 @@ fn explain_legacy_data_access_policy(
             writeln!(buf, "  {:?}", config_properties)?;
         }
         if let Some(ref_vals) = app_matcher.reference_values {
+            let ref_vals = ReferenceValues::decode(ref_vals.encode_to_vec().as_slice())?;
             writeln!(
                 buf,
                 "- Applications performing this transform must provide attestation evidence that \
@@ -370,7 +377,7 @@ fn explain_legacy_data_access_policy(
 /// buffer.
 fn explain_legacy_transform_access_budgets(
     buf: &mut dyn std::fmt::Write,
-    transform: &federated_compute::proto::data_access_policy::Transform,
+    transform: &data_access_policy::Transform,
     transform_idx: usize,
     shared_budgets: &[AccessBudget],
 ) -> Result<(), anyhow::Error> {

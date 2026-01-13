@@ -20,8 +20,11 @@ use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use clap::Parser;
-use federated_compute::proto::{AttestationVerificationRecord, DataAccessPolicy};
 use prost::Message;
+use verification_record_proto::{
+    access_policy_proto::fcp::confidentialcompute::DataAccessPolicy,
+    fcp::confidentialcompute::AttestationVerificationRecord,
+};
 
 #[derive(Parser, Debug)]
 #[group(required = true, multiple = false)]
