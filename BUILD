@@ -40,8 +40,6 @@ _RELEASE_BINARIES = {
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/kms:oci_runtime_bundle.tar": "kms/container.tar",
     "//containers/metadata:oci_runtime_bundle.tar": "metadata/container.tar",
-    "//ledger_enclave_app": "ledger/binary",
-    "//replicated_ledger_enclave_app": "replicated_ledger/binary",
     # keep-sorted end
 }
 

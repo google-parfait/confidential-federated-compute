@@ -15,10 +15,10 @@ is verified.
 Note that since these reference values are compiled into the client binaries,
 older clients may be using older versions of these reference values.
 
-Client applications also validate the attestation evidence for the KMS or ledger
-service which enforces the access policies. Unless stated otherwise they use the
+Client applications also validate the attestation evidence for the KMS service
+which enforces the access policies. Unless stated otherwise they use the
 reference values specified in the
-[/reference_values/ledger/reference_values.txtpb](/reference_values/ledger/reference_values.txtpb)
+[/reference_values/kms/reference_values.txtpb](/reference_values/kms/reference_values.txtpb)
 file for this purpose.
 
 ## Gboard

@@ -382,12 +382,11 @@ rust_prost_transitive_repositories()
 register_toolchains("//toolchains:prost_toolchain")
 
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
-load("@trusted_computations_platform//bazel:crates.bzl", "TCP_NO_STD_PACKAGES", "TCP_PACKAGES")
-load("//:crates.bzl", "CFC_ANNOTATIONS", "CFC_NO_STD_PACKAGES", "CFC_PACKAGES")
+load("@trusted_computations_platform//bazel:crates.bzl", "TCP_PACKAGES")
+load("//:crates.bzl", "CFC_ANNOTATIONS", "CFC_PACKAGES")
 
 create_oak_crate_repositories(
     extra_annotations = CFC_ANNOTATIONS,
-    extra_no_std_packages = TCP_NO_STD_PACKAGES | CFC_NO_STD_PACKAGES,
     extra_packages = TCP_PACKAGES | CFC_PACKAGES,
 )
 
@@ -416,31 +415,6 @@ oci_pull(
     digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
     image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
-)
-
-# Install a hermetic GCC toolchain for nostd builds. This must be defined after
-# rules_oci because it uses an older version of aspect_bazel_lib.
-http_archive(
-    name = "aspect_gcc_toolchain",
-    sha256 = "3341394b1376fb96a87ac3ca01c582f7f18e7dc5e16e8cf40880a31dd7ac0e1e",
-    strip_prefix = "gcc-toolchain-0.4.2",
-    url = "https://github.com/aspect-build/gcc-toolchain/archive/refs/tags/0.4.2.tar.gz",
-)
-
-load("@aspect_gcc_toolchain//toolchain:repositories.bzl", "gcc_toolchain_dependencies")
-
-gcc_toolchain_dependencies()
-
-load("@aspect_gcc_toolchain//toolchain:defs.bzl", "ARCHS", "gcc_register_toolchain")
-
-gcc_register_toolchain(
-    name = "gcc_toolchain_x86_64_unknown_none",
-    extra_ldflags = ["-nostdlib"],
-    target_arch = ARCHS.x86_64,
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:none",
-    ],
 )
 
 load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")

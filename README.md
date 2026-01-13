@@ -45,24 +45,24 @@ directory; see this directory for additional documentation. The KMS runs in a
 TEE using
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
 
-### Ledger
+#### Ledger
 
-The ledger is the KMS's predecessor and plays a similar role. The main
-difference is that the ledger tracks privacy budgets itself on a per-upload
+The ledger was the KMS's predecessor and played a similar role. The main
+difference was that the ledger tracked privacy budgets itself on a per-upload
 basis instead of delegating budget tracking to each pipeline. Unfortunately,
-this requires ledger operations and state to scale with the amount of uploaded
+this required ledger operations and state to scale with the amount of uploaded
 data, making the ledger a bottleneck for large-scale data processing.
 
-The code for the ledger is located in the [`ledger_service`](ledger_service) and
-[`ledger_enclave_app`](ledger_enclave_app) directories; see the latter for
-additional documentation. The ledger runs in a TEE using the
-[Oak Restricted Kernel](https://github.com/project-oak/oak/tree/main/oak_restricted_kernel).
+The ledger code has been removed, but it can still be found in the project
+history
+([binary](https://github.com/google-parfait/confidential-federated-compute/tree/5fe8b04f68628fc605d400adccab8169011267ca/replicated_ledger_enclave_app),
+[README](https://github.com/google-parfait/confidential-federated-compute/blob/5fe8b04f68628fc605d400adccab8169011267ca/ledger_enclave_app/README.md)).
 
 ### Transformations
 
 This repository also contains code for components that run transformations over
-data within TEEs, if those transformations are allowed by the KMS- or
-ledger-enforced policy. Transforms are implemented using
+data within TEEs, if those transformations are allowed by the KMS-enforced
+policy. Transforms are implemented using
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
 
 *   [**`containers/confidential_transform_test_concat`**] Example transform that
@@ -77,8 +77,8 @@ See each transform's README for more details.
 See [docs/README.md](docs/README.md) for instructions for mapping attestation
 verification records logged by
 [Federated Compute](https://github.com/google-parfait/federated-compute)
-clients, as well as transparency log entries for KMS, ledger, and data access
-policy endorsements to the reproducibly buildable binaries in this repository.
+clients, as well as transparency log entries for KMS and data access policy
+endorsements to the reproducibly buildable binaries in this repository.
 
 ## Building
 

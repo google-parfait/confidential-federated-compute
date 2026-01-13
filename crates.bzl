@@ -16,34 +16,6 @@
 
 load("@rules_rust//crate_universe:defs.bzl", "crate")
 
-# Crates used by both std and no_std builds.
-_COMMON_PACKAGES = {
-    "aes-gcm-siv": crate.spec(
-        version = "0.11.1",
-    ),
-    "bitmask": crate.spec(
-        default_features = False,
-        version = "0.5.0",
-    ),
-    "byteorder": crate.spec(
-        default_features = False,
-        version = "1.4.3",
-    ),
-    "core2": crate.spec(
-        default_features = False,
-        version = "0.4.0",
-    ),
-    "libflate": crate.spec(
-        default_features = False,
-        version = "2.0.0",
-    ),
-    "rangemap": crate.spec(
-        default_features = False,
-        version = "1.5.1",
-    ),
-}
-
-# Crates used for std builds.
 CFC_ANNOTATIONS = {
     "bindgen-cli": [crate.annotation(
         gen_binaries = ["bindgen"],
@@ -55,7 +27,8 @@ CFC_ANNOTATIONS = {
         gen_binaries = ["protoc-gen-tonic"],
     )],
 }
-CFC_PACKAGES = _COMMON_PACKAGES | {
+
+CFC_PACKAGES = {
     "assert_cmd": crate.spec(
         version = "2.0.14",
     ),
@@ -90,6 +63,3 @@ CFC_PACKAGES = _COMMON_PACKAGES | {
         version = "0.2.17",
     ),
 }
-
-# Crates used for no_std builds.
-CFC_NO_STD_PACKAGES = _COMMON_PACKAGES
