@@ -152,8 +152,8 @@ KmsFedSqlSession CreateDefaultSession() {
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
   return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
-                          std::nullopt, std::nullopt, "sensitive_values_key",
-                          CreatePrivateState("", 1), {},
+                          std::nullopt, std::nullopt, CreatePrivateState("", 1),
+                          {},
                           /*prototype=*/nullptr, "test_query");
 }
 
@@ -275,7 +275,7 @@ class KmsFedSqlSessionWriteTest : public Test {
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
-        std::nullopt, "sensitive_values_key",
+        std::nullopt,
         CreatePrivateState(initial_private_state_, default_budget),
         absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query");
@@ -1042,8 +1042,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator_), intrinsics_, std::nullopt,
-        std::nullopt, "sensitive_values_key",
-        CreatePrivateState(initial_private_state_, 5),
+        std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query");
     ConfigureRequest request;
@@ -1216,8 +1215,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
-        std::nullopt, "sensitive_values_key",
-        CreatePrivateState(initial_private_state_, 5),
+        std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
         "test_query");

@@ -194,11 +194,6 @@ FedSqlConfidentialTransform::FedSqlConfidentialTransform(
     : ConfidentialTransformBase(std::move(signing_key_handle),
                                 std::move(encryption_key_handle)) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
-  std::string key(32, '\0');
-  // Generate a random key using BoringSSL. BoringSSL documentation says
-  // RAND_bytes always returns 1, so we don't check the return value.
-  RAND_bytes(reinterpret_cast<unsigned char*>(key.data()), key.size());
-  sensitive_values_key_ = std::move(key);
 };
 
 absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(
@@ -603,8 +598,8 @@ FedSqlConfidentialTransform::CreateSession() {
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
-      dp_unit_parameters_, sensitive_values_key_, private_state_,
-      expired_key_ids_, message_factory, on_device_query_name_);
+      dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
+      on_device_query_name_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(

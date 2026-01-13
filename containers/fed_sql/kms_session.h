@@ -60,7 +60,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
           intrinsics,
       std::optional<SessionInferenceConfiguration> inference_configuration,
       std::optional<DpUnitParameters> dp_unit_parameters,
-      absl::string_view sensitive_values_key,
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<MessageFactory> message_factory,
@@ -133,9 +132,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
   InferenceModel inference_model_;
-  // Key used to hash sensitive values. In the future we could instead hold an
-  // HMAC_CTX to reuse, which might improve performance.
-  absl::string_view sensitive_values_key_;
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
   std::vector<sql::Input> uncommitted_inputs_;

@@ -26,7 +26,6 @@
 #include "absl/strings/cord.h"
 #include "containers/big_endian.h"
 #include "containers/fed_sql/private_state.h"
-#include "containers/fed_sql/sensitive_columns.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "containers/sql/input.h"
@@ -144,14 +143,12 @@ KmsFedSqlSession::KmsFedSqlSession(
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
     std::optional<SessionInferenceConfiguration> inference_configuration,
     std::optional<DpUnitParameters> dp_unit_parameters,
-    absl::string_view sensitive_values_key,
     std::shared_ptr<PrivateState> private_state,
     const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<MessageFactory> message_factory,
     absl::string_view on_device_query_name)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
-      sensitive_values_key_(sensitive_values_key),
       private_state_(std::move(private_state)),
       dp_unit_parameters_(dp_unit_parameters),
       message_factory_(std::move(message_factory)),
@@ -252,12 +249,6 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
           PrependMessage("Failed to deserialize checkpoint for "
                          "AGGREGATION_TYPE_ACCUMULATE: ",
                          contents.status()));
-    }
-    absl::Status status =
-        HashSensitiveColumns(contents.value(), sensitive_values_key_);
-    if (!status.ok()) {
-      return ToWriteFinishedResponse(
-          PrependMessage("Failed to hash sensitive columns: ", status));
     }
     input = Input::CreateFromTensors(std::move(contents.value()), blob_header);
   }
