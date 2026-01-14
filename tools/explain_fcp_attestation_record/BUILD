@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 
 package(features = ["layering_check"])
 
@@ -21,7 +22,7 @@ rust_binary(
     srcs = ["src/main.rs"],
     deps = [
         ":explain_fcp_attestation_record",
-        "//third_party/federated_compute",
+        ":verification_record_prost_proto",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:clap",
         "@oak_crates_index//:prost",
@@ -36,7 +37,7 @@ rust_library(
     ),
     tags = ["no-clippy"],
     deps = [
-        "//third_party/federated_compute",
+        ":verification_record_prost_proto",
         "@oak//oak_attestation_explain",
         "@oak//oak_attestation_verification",
         "@oak//oak_proto_rust",
@@ -59,12 +60,16 @@ rust_test(
     tags = ["no-clippy"],
     deps = [
         ":explain_fcp_attestation_record",
-        "//third_party/federated_compute",
-        "@oak//oak_proto_rust",
+        ":verification_record_prost_proto",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:assert_cmd",
         "@oak_crates_index//:insta",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:tempfile",
     ],
+)
+
+rust_prost_library(
+    name = "verification_record_prost_proto",
+    proto = "@federated-compute//fcp/protos/confidentialcompute:verification_record_proto",
 )

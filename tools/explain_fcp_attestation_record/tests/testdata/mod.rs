@@ -12,22 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use federated_compute::proto::data_access_policy::Transform;
-use federated_compute::proto::struct_matcher::FieldMatcher;
-use federated_compute::proto::value_matcher::NumberMatcher;
-use federated_compute::proto::{
-    access_budget, value_matcher, AttestationVerificationRecord, StructMatcher,
-};
-use federated_compute::proto::{AccessBudget, DataAccessPolicy};
-use federated_compute::proto::{ApplicationMatcher, ValueMatcher};
-use oak_proto_rust::oak::attestation::v1::{
-    binary_reference_value, kernel_binary_reference_value, reference_values,
-    tcb_version_reference_value, text_reference_value, AmdSevReferenceValues, BinaryReferenceValue,
-    Evidence, KernelBinaryReferenceValue, KernelLayerReferenceValues,
-    OakRestrictedKernelReferenceValues, ReferenceValues, RootLayerReferenceValues,
-    SkipVerification, TcbVersion, TcbVersionReferenceValue, TextReferenceValue,
-};
 use prost::Message as _;
+use verification_record_proto::{
+    access_policy_proto::fcp::confidentialcompute::{
+        access_budget, data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
+        value_matcher::NumberMatcher, AccessBudget, ApplicationMatcher, DataAccessPolicy,
+        StructMatcher, ValueMatcher,
+    },
+    access_policy_proto::reference_value_proto::oak::attestation::v1::{
+        binary_reference_value, kernel_binary_reference_value, reference_values,
+        tcb_version_reference_value, text_reference_value, AmdSevReferenceValues,
+        ApplicationLayerReferenceValues, BinaryReferenceValue, KernelBinaryReferenceValue,
+        KernelLayerReferenceValues, OakRestrictedKernelReferenceValues, ReferenceValues,
+        RootLayerReferenceValues, SkipVerification, TcbVersionReferenceValue, TextReferenceValue,
+    },
+    access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion,
+    evidence_proto::oak::attestation::v1::Evidence,
+    fcp::confidentialcompute::AttestationVerificationRecord,
+};
 
 /// Returns an [`AttestationVerificationRecord`] with valid ledger attestation
 /// evidence but with an empty data access policy.
@@ -195,12 +197,10 @@ fn create_skip_all_amd_sev_reference_values() -> ReferenceValues {
                     acpi: Some(binary_ref_value_skip.clone()),
                     ..Default::default()
                 }),
-                application_layer: Some(
-                    oak_proto_rust::oak::attestation::v1::ApplicationLayerReferenceValues {
-                        binary: Some(binary_ref_value_skip.clone()),
-                        configuration: Some(binary_ref_value_skip.clone()),
-                    },
-                ),
+                application_layer: Some(ApplicationLayerReferenceValues {
+                    binary: Some(binary_ref_value_skip.clone()),
+                    configuration: Some(binary_ref_value_skip.clone()),
+                }),
             },
         )),
     }
