@@ -44,6 +44,7 @@ bazel_dep(name = "toolchains_llvm", version = "1.4.0")
 bazel_dep(name = "riegeli")
 archive_override(
     module_name = "riegeli",
+    integrity = "sha256-zS45loS3Jcmkmrn0E4nXKl2ttf+qQrLmgE6i78C9zNs=",
     strip_prefix = "riegeli-a9be707bf24ad44fca8d42be4f8d72c7d8a94f30",
     url = "https://github.com/google/riegeli/archive/a9be707bf24ad44fca8d42be4f8d72c7d8a94f30.tar.gz",
 )
