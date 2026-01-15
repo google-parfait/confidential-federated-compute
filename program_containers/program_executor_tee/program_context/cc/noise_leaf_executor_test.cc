@@ -110,6 +110,8 @@ SessionConfig* TestConfigAttestedNNServer() {
   return builder.Build();
 }
 
+SessionConfig* NullSessionConfigFn() { return nullptr; }
+
 class NoiseLeafExecutorTest : public Test {
  public:
   NoiseLeafExecutorTest() {
@@ -421,6 +423,31 @@ TEST_F(NoiseLeafExecutorTest, Success) {
     ASSERT_TRUE(response.ok());
     ASSERT_TRUE(response->has_dispose_executor_response());
   }
+}
+
+TEST_F(NoiseLeafExecutorTest, ReturnsErrorWhenSessionConfigFnReturnsNull) {
+  auto executor_or =
+      NoiseLeafExecutor::Create(NullSessionConfigFn, CreateExecutor);
+  ASSERT_TRUE(executor_or.ok());
+  auto executor = std::move(executor_or.value());
+
+  // Create a client to initiate the handshake.
+  auto client_session_or = ClientSession::Create(TestConfigAttestedNNClient());
+  ASSERT_TRUE(client_session_or.ok());
+  auto client_session = std::move(client_session_or.value());
+
+  auto init_request_or = client_session->GetOutgoingMessage();
+  ASSERT_TRUE(init_request_or.ok());
+  ASSERT_TRUE(init_request_or->has_value());
+
+  ComputationRequest request;
+  request.mutable_computation()->PackFrom(init_request_or->value());
+  ComputationResponse response;
+  grpc::Status status = executor->Execute(&request, &response);
+
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_EQ(status.error_message(),
+            "The session config function returned a null pointer.");
 }
 
 }  // namespace

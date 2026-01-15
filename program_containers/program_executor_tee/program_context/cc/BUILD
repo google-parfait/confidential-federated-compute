@@ -485,6 +485,7 @@ rust_library(
         "@oak//oak_sdk/common:oak_sdk_common",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak//oak_session",
+        "@oak_crates_index//:anyhow",
         "@oak_crates_index//:once_cell",
         "@oak_crates_index//:tokio",
     ],

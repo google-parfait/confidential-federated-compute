@@ -108,6 +108,10 @@ NoiseLeafExecutor::HandleHandshakeRequest(
     // the old session and create a new one. This handles cases where a client
     // restarts and reconnects.
     auto* session_config = session_config_fn_();
+    if (session_config == nullptr) {
+      return absl::InvalidArgumentError(
+          "The session config function returned a null pointer.");
+    }
     FCP_ASSIGN_OR_RETURN(server_session_,
                          oak::session::ServerSession::Create(session_config));
   }
@@ -154,6 +158,11 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
   }
 
   // Handle the remote execution request.
+  if (server_session_ == nullptr) {
+    return grpc::Status(
+        grpc::StatusCode::FAILED_PRECONDITION,
+        "Server session is not created yet, but received computation request.");
+  }
   auto plaintext_request = DecryptRequest(session_request);
   if (!plaintext_request.ok()) {
     return ToGrpcStatus(plaintext_request.status());
