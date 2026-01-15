@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use anyhow::{Context, Result};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSessionBinder, OrchestratorClient};
@@ -60,6 +61,30 @@ pub extern "C" fn exit_tokio_runtime(guard_ptr: *mut c_void) {
     }
 }
 
+fn create_session_config_internal() -> Result<*mut SessionConfig> {
+    let channel = RUNTIME
+        .block_on(oak_sdk_containers::default_orchestrator_channel())
+        .context("Failed to create orchestrator channel")?;
+    let mut orchestrator_client = OrchestratorClient::create(&channel);
+    let endorsed_evidence = RUNTIME
+        .block_on(orchestrator_client.get_endorsed_evidence())
+        .context("failed to get endorsed evidence")?;
+    let evidence = endorsed_evidence.evidence.context("EndorsedEvidence.evidence not set")?;
+    let endorsements =
+        endorsed_evidence.endorsements.context("EndorsedEvidence.endorsements not set")?;
+
+    let attester: Arc<dyn Attester> = Arc::new(StaticAttester::new(evidence.clone()));
+    let endorser: Arc<dyn Endorser> = Arc::new(StaticEndorser::new(endorsements.clone()));
+    let session_binder: Arc<dyn SessionBinder> = Arc::new(InstanceSessionBinder::create(&channel));
+
+    let builder =
+        SessionConfig::builder(AttestationType::SelfUnidirectional, HandshakeType::NoiseNN)
+            .add_self_attester_ref(SESSION_ID.into(), &attester)
+            .add_self_endorser_ref(SESSION_ID.into(), &endorser)
+            .add_session_binder_ref(SESSION_ID.into(), &session_binder);
+    Ok(Box::into_raw(Box::new(builder.build())))
+}
+
 /// Creates a SessionConfig for the program worker.
 ///
 /// This function is exported to C so that it can be called from the program
@@ -87,25 +112,14 @@ pub extern "C" fn exit_tokio_runtime(guard_ptr: *mut c_void) {
 /// modified or discarded after, as this function will make its own copy.
 #[no_mangle]
 pub unsafe extern "C" fn create_session_config() -> *mut SessionConfig {
-    let channel = RUNTIME
-        .block_on(oak_sdk_containers::default_orchestrator_channel())
-        .expect("Failed to create orchestrator channel");
-    let mut orchestrator_client = OrchestratorClient::create(&channel);
-    let endorsed_evidence = RUNTIME
-        .block_on(orchestrator_client.get_endorsed_evidence())
-        .expect("failed to get endorsed evidence");
-    let evidence = endorsed_evidence.evidence.expect("EndorsedEvidence.evidence not set");
-    let endorsements =
-        endorsed_evidence.endorsements.expect("EndorsedEvidence.endorsements not set");
-
-    let attester: Arc<dyn Attester> = Arc::new(StaticAttester::new(evidence.clone()));
-    let endorser: Arc<dyn Endorser> = Arc::new(StaticEndorser::new(endorsements.clone()));
-    let session_binder: Arc<dyn SessionBinder> = Arc::new(InstanceSessionBinder::create(&channel));
-
-    let builder =
-        SessionConfig::builder(AttestationType::SelfUnidirectional, HandshakeType::NoiseNN)
-            .add_self_attester_ref(SESSION_ID.into(), &attester)
-            .add_self_endorser_ref(SESSION_ID.into(), &endorser)
-            .add_session_binder_ref(SESSION_ID.into(), &session_binder);
-    Box::into_raw(Box::new(builder.build()))
+    match create_session_config_internal() {
+        Ok(config) => {
+            println!("Session config created successfully");
+            config
+        }
+        Err(err) => {
+            eprintln!("Error creating session config: {:?}", err);
+            std::ptr::null_mut()
+        }
+    }
 }
