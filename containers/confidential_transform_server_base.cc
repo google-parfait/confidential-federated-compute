@@ -79,6 +79,7 @@ class ChunkedStreamWriter : public Session::Context {
                       std::optional<absl::string_view> src_state,
                       absl::string_view dst_state,
                       std::string& release_token) override;
+  bool EmitError(absl::Status status) override;
 
   bool Emit(std::string data, google::protobuf::Any config,
             BlobMetadata metadata);
@@ -87,6 +88,11 @@ class ChunkedStreamWriter : public Session::Context {
   uint32_t chunk_size_;
   const std::optional<KmsEncryptor>& encryptor_;
 };
+
+bool ChunkedStreamWriter::EmitError(absl::Status status) {
+  SessionResponse response = ToSessionWriteFinishedResponse(std::move(status));
+  return stream_->Write(std::move(response));
+}
 
 bool ChunkedStreamWriter::Emit(ReadResponse read_response) {
   SessionResponse response;

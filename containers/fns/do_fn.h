@@ -27,12 +27,11 @@ namespace confidential_federated_compute::fns {
 class DoFn : public Fn {
  public:
   // Processes an input element. The input Value.data is unencrypted. Uses the
-  // Context to emit zero or more output elements. Returns an error status if an
-  // error occurred and the pipeline should be aborted. Ignorable errors should
-  // be logged and then ignored so the input is skipped but the pipeline
-  // continues.
-  // TODO: Update this comment once EmitError is added to the Context. Update Do
-  // to return void once AbortReplica is added.
+  // Context to emit zero or more output elements.
+  //
+  // Returns an error status if an error occurred and the Fn should be aborted.
+  // This is equivalent to calling AbortReplica in Flume. Ignorable errors
+  // should be emitted using Context::EmitError.
   virtual absl::Status Do(KV input, Context& context) = 0;
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
