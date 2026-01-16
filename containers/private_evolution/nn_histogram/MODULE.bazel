@@ -107,9 +107,7 @@ stub_tf_proto_library(
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",
-    # clang version lower than 19.1.0 requires libtinfo.so.5 when building CUDA
-    llvm_version = "19.1.0",
-    stdlib = {"linux-x86_64": "stdc++"},
+    llvm_version = "14.0.0",
 )
 llvm.sysroot(
     name = "llvm_toolchain",

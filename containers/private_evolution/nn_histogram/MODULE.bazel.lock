@@ -1755,7 +1755,7 @@
     "@@toolchains_llvm+//toolchain/extensions:llvm.bzl%llvm": {
       "general": {
         "bzlTransitiveDigest": "miE+G1r8txiL9GGIOFLiY+RyielXfNO9OiFlFw+NE+U=",
-        "usagesDigest": "fxJ95L+owoVU3eBHI4WYxYfAjr3Db9FQWWQZnKAxAtI=",
+        "usagesDigest": "RZw1i0cC6Z1nZOThndyXeqra17+wjI3HXsgT3cpsZ70=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -1770,7 +1770,7 @@
               "exec_os": "",
               "libclang_rt": {},
               "llvm_mirror": "",
-              "llvm_version": "19.1.0",
+              "llvm_version": "14.0.0",
               "llvm_versions": {},
               "netrc": "",
               "sha256": {},
@@ -1798,13 +1798,11 @@
               "link_flags": {},
               "link_libs": {},
               "llvm_versions": {
-                "": "19.1.0"
+                "": "14.0.0"
               },
               "opt_compile_flags": {},
               "opt_link_flags": {},
-              "stdlib": {
-                "linux-x86_64": "stdc++"
-              },
+              "stdlib": {},
               "target_settings": {},
               "unfiltered_compile_flags": {},
               "toolchain_roots": {},

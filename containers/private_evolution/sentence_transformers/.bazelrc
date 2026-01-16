@@ -4,13 +4,37 @@ build --incompatible_enable_cc_toolchain_resolution
 build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
 build --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 --incompatible_strict_action_env
 build --output_filter='^//'  # Suppress warnings from external dependencies.
+build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
+build --incompatible_default_to_explicit_init_py
+
+common --experimental_repo_remote_exec
 
 # CFC registry
 common --registry=https://bcr.bazel.build
 common --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
 
-# CI builds require a cfc-remote config to be defined.
-build:cfc-remote --show_progress
+# Settings for remote build execution.
+build:cfc-remote --experimental_allow_tags_propagation
+build:cfc-remote --define=EXECUTOR=remote
+build:cfc-remote --remote_executor=grpcs://remotebuildexecution.googleapis.com
+build:cfc-remote --remote_instance_name=projects/560162532548/instances/default
+build:cfc-remote --noremote_upload_local_results
+build:cfc-remote --google_default_credentials
+build:cfc-remote --extra_execution_platforms=//:remote_platform
+build:cfc-remote --host_platform=//:remote_platform
+build:cfc-remote --platforms=//:remote_platform
+build:cfc-remote --jobs=50
+
+# Settings for uploading results to BES.
+build:cfc-remote --bes_backend=buildeventservice-pa.googleapis.com
+build:cfc-remote --bes_instance_name=560162532548
+build:cfc-remote --bes_header=X-Goog-User-Project=560162532548
+build:cfc-remote --bes_results_url=http://sponge2/
+build:cfc-remote --grpc_keepalive_time=30s
+
+# Enable CFC remote features when enabled for google-parfait.
+common:parfait-remote --config=cfc-remote
+
 
 # CI builds require a clippy config to be defined.
 build:clippy --show_progress

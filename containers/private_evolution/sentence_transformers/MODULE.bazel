@@ -111,9 +111,7 @@ python.toolchain(
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",
-    # clang version lower than 19.1.0 requires libtinfo.so.5 when building CUDA
-    llvm_version = "19.1.0",
-    stdlib = {"linux-x86_64": "stdc++"},
+    llvm_version = "14.0.0",
 )
 llvm.sysroot(
     name = "llvm_toolchain",
@@ -136,6 +134,8 @@ use_repo(oci, "python_3_11_slim_bookworm", "python_3_11_slim_bookworm_linux_amd6
 # Define the PIP deps we need from the requirements.in file.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
+    # Use pypi downloader, the default uses Gcloud artifact registry which requires gcloud keyring.
+    experimental_index_url = "https://pypi.org/simple",
     hub_name = "pip",
     python_version = "3.11",
     requirements_lock = "//:requirements_lock.txt",
