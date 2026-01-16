@@ -8,3 +8,9 @@ build --output_filter='^//'  # Suppress warnings from external dependencies.
 # CFC registry
 common --registry=https://bcr.bazel.build
 common --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
+
+# CI builds require a cfc-remote config to be defined.
+build:cfc-remote --show_progress
+
+# CI builds require a clippy config to be defined.
+build:clippy --show_progress
