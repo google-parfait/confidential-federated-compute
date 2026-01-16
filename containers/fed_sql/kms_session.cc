@@ -512,20 +512,31 @@ KmsFedSqlSession::Report(Context& context) {
 
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::ReportPartition(Context& context) {
-  // Until we implement encryption of the per-partition result and
-  // distributed release of the encrypted results, we will only support
-  // sessions with unlimited budget.
-  if (!private_state_->budget.HasUnlimitedBudget()) {
-    return absl::UnimplementedError(
-        "ReportPartition is not supported for sessions with budget.");
-  }
-
   // Produce the final report.
   FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+  // If there is unlimited budget, emit an unencrypted result
+  // since budget tracking is not required.
+  if (private_state_->budget.HasUnlimitedBudget()) {
+    if (!context.EmitUnencrypted(std::string(checkpoint.Flatten()))) {
+      return absl::InternalError(
+          "Failed to emit unencrypted result"
+          " for the partition.");
+    }
+    return FinalizeResponse{};
+  }
 
-  // TODO: Encrypt the result and generate partial release token.
-  context.EmitUnencrypted(std::string(checkpoint.Flatten()));
-  return FinalizeResponse{};
+  // Otherwise, encrypt the result and return a release token for
+  // the partition. This release token will be unwrapped by the next
+  // stage of the worker when merging the range tracker state.
+  std::string release_token;
+  if (!context.EmitReleasable(
+          /* reencryption_key_index*/ 1, std::string(checkpoint.Flatten()),
+          std::nullopt, range_tracker_.SerializeAsString(), release_token)) {
+    return absl::InternalError("Failed to emit releasable partition result.");
+  }
+  FinalizeResponse response;
+  *response.mutable_release_token() = std::move(release_token);
+  return response;
 }
 
 absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {

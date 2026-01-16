@@ -327,14 +327,14 @@ class KmsFedSqlSessionWriteTest : public Test {
             });
   }
 
-  void ExpectEmitReleasable(int& index, std::string& src, std::string& dst,
-                            std::string& data) {
+  void ExpectEmitReleasable(int& index, std::optional<std::string>& src,
+                            std::string& dst, std::string& data) {
     EXPECT_CALL(context_, EmitReleasable)
         .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv,
                       std::optional<absl::string_view> src_state,
                       absl::string_view dst_state, std::string& release_token) {
           index = reencryption_key_index;
-          src = std::string(src_state.value());
+          src = src_state;
           dst = std::string(dst_state);
           data = std::move(kv.data);
           return true;
@@ -543,7 +543,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   FinalizeRequest finalize_request;
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
   std::string result_data;
-  std::string src;
+  std::optional<std::string> src;
   std::string dst;
   int index;
   ExpectEmitReleasable(index, src, dst, result_data);
@@ -788,7 +788,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   finalize_request.mutable_configuration()->PackFrom(finalize_config);
 
   std::string result_data;
-  std::string src;
+  std::optional<std::string> src;
   std::string dst;
   int index;
   ExpectEmitReleasable(index, src, dst, result_data);
@@ -811,6 +811,83 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
                 }
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
+              )pb"));
+  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  ASSERT_THAT(parser, IsOk());
+  auto col_values = (*parser)->GetTensor("val_out");
+  EXPECT_EQ(col_values->num_elements(), 1);
+  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
+  // Create input data.
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> input_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
+  std::string data = (std::move(*input_aggregator).Serialize()).value();
+
+  // Create 2 blobs with different ranges for partition index 0.
+  RangeTracker range_tracker1;
+  range_tracker1.AddRange("key_foo", 1, 2);
+  range_tracker1.SetPartitionIndex(0);
+  range_tracker1.SetExpiredKeys({"key_bar"});
+  std::string blob1 = BundleRangeTracker(data, range_tracker1);
+  RangeTracker range_tracker2;
+  range_tracker2.AddRange("key_foo", 2, 3);
+  range_tracker2.SetPartitionIndex(0);
+  range_tracker2.SetExpiredKeys({"key_bar", "key_baz"});
+  std::string blob2 = BundleRangeTracker(data, range_tracker2);
+
+  // Write the blobs.
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE
+  )pb");
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob1, 1, "key_foo");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob2, 2, "key_foo");
+  auto write_result1 = session_->Write(write_request1, blob1, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  auto write_result2 = session_->Write(write_request2, blob2, context_);
+  ASSERT_THAT(write_result2, IsOk());
+
+  // Finalize with REPORT_PARTITION.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PARTITION
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+
+  std::string result_data;
+  std::optional<std::string> src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  // Verify the result.
+  EXPECT_EQ(index, 1);
+  EXPECT_EQ(src, std::nullopt);
+  RangeTrackerState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(dst));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "key_foo" values: 1 values: 3 }
+                partition_index: 0
+                expired_keys: "key_bar"
+                expired_keys: "key_baz"
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
