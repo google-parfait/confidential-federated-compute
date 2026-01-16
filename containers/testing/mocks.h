@@ -33,6 +33,7 @@ class MockContext : public confidential_federated_compute::Session::Context {
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
               (override));
+  MOCK_METHOD(bool, EmitError, (absl::Status), (override));
 };
 
 }  // namespace confidential_federated_compute

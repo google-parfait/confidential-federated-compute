@@ -1263,6 +1263,44 @@ TEST_F(ConfidentialTransformServerBaseTest, ReadNoBlobsOnFinalize) {
   EXPECT_TRUE(finalize_response.has_finalize());
 }
 
+TEST_F(ConfidentialTransformServerBaseTest, EmitError) {
+  InitializeTransform();
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce(
+          [](FinalizeRequest request, BlobMetadata unused,
+             Session::Context& context) -> absl::StatusOr<FinalizeResponse> {
+            if (!context.EmitError(
+                    absl::InternalError("Expected Internal Error"))) {
+              LOG(ERROR) << "EmitError failed";
+              return absl::InternalError("EmitError failed");
+            }
+            return FinalizeResponse{};
+          });
+  service_->AddSession(std::move(mock_session));
+
+  grpc::ClientContext context;
+  auto stream = StartSession(&context);
+
+  SessionRequest finalize_request;
+  finalize_request.mutable_finalize();
+  SessionResponse error_response, finalize_response;
+
+  CHECK(stream->Write(finalize_request));
+  CHECK(stream->Read(&error_response));
+  CHECK(stream->Read(&finalize_response));
+
+  // Verify that an error has been emitted.
+  EXPECT_TRUE(error_response.has_write());
+  EXPECT_EQ(error_response.write().status().code(), grpc::StatusCode::INTERNAL);
+  EXPECT_THAT(error_response.write().status().message(),
+              HasSubstr("Expected Internal Error"));
+
+  // Verify that FinalizeResponse has been received.
+  EXPECT_TRUE(finalize_response.has_finalize());
+}
+
 TEST_F(ConfidentialTransformServerBaseTest, EmitEncrypted) {
   InitializeTransform();
   auto mock_session = std::make_unique<MockSession>();

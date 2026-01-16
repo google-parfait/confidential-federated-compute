@@ -22,6 +22,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "containers/session.h"
+#include "containers/testing/mocks.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "gtest/gtest.h"
@@ -53,24 +54,6 @@ class MockBatchedInferenceProvider : public BatchedInferenceProvider {
 class BatchedInferenceFnTest : public Test {
  protected:
   void SetUp() override {}
-};
-
-class MockContext : public Session::Context {
- public:
-  MOCK_METHOD((bool), Emit,
-              (fcp::confidentialcompute::ReadResponse read_response),
-              (override));
-
-  MOCK_METHOD((bool), EmitUnencrypted, (Session::KV kv), (override));
-
-  MOCK_METHOD((bool), EmitEncrypted,
-              (int reencryption_key_index, Session::KV kv), (override));
-
-  MOCK_METHOD((bool), EmitReleasable,
-              (int reencryption_key_index, Session::KV kv,
-               std::optional<absl::string_view> src_state,
-               absl::string_view dst_state, std::string& release_token),
-              (override));
 };
 
 TEST_F(BatchedInferenceFnTest, MultipleBatches) {

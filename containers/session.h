@@ -104,9 +104,6 @@ class Session {
 
   // Context interface that provides ability to emit an an arbitrary number of
   // ReadResponse messages to the session stream.
-  // TODO: Add EmitError method for emitting ignorable errors so they can be
-  // counted on the untrusted Flume side. Also add an AbortReplica method for
-  // fatal errors.
   class Context {
    public:
     virtual ~Context() = default;
@@ -135,6 +132,11 @@ class Session {
                                 std::optional<absl::string_view> src_state,
                                 absl::string_view dst_state,
                                 std::string& release_token) = 0;
+
+    // Emits an error to the session stream but does not close the stream. This
+    // error can be logged and used to increment Flume counters on the untrusted
+    // side.
+    virtual bool EmitError(absl::Status status) = 0;
   };
 
   // Initialize the session with the given configuration.
