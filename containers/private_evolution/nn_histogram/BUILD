@@ -62,6 +62,7 @@ cc_test(
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+        "@riegeli//riegeli/bytes:fd_writer",
     ],
 )
 
@@ -110,6 +111,7 @@ cc_binary(
         "@oak//cc/containers/sdk:encryption_key_handle",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
+        "@riegeli//riegeli/bytes:fd_writer",
     ],
 )
 

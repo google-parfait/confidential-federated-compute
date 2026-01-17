@@ -23,6 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "fcp/base/monitoring.h"
 #include "libarchive/archive.h"
 #include "libarchive/archive_entry.h"
 
@@ -54,28 +55,30 @@ absl::StatusOr<std::string> ExtractAll(absl::string_view zip_file_path,
   struct archive* a = archive_read_new();
   archive_read_support_filter_all(a);
   archive_read_support_format_all(a);
-  std::string file_name = std::string(zip_file_path);
-  int r = archive_read_open_filename(a, file_name.data(), 10240);
-  if (r != ARCHIVE_OK) {
-    return absl::InvalidArgumentError(archive_error_string(a));
-  }
 
   // 2. Setup archive writer (disk writer)
   struct archive* ext = archive_write_disk_new();
   archive_write_disk_set_standard_lookup(ext);
 
-  // 3. Iterate through entries and extract
-  std::string first_entry_path;
-  bool is_first_entry = true;
-
-  std::string dest_dir = std::string(parent);
-
+  // Setup cleanup
   auto archive_closer = absl::MakeCleanup([a, ext] {
     archive_read_close(a);
     archive_read_free(a);
     archive_write_close(ext);
     archive_write_free(ext);
   });
+
+  std::string file_name = std::string(zip_file_path);
+  int r = archive_read_open_filename(a, file_name.data(), 10240);
+  if (r != ARCHIVE_OK) {
+    return absl::InvalidArgumentError(archive_error_string(a));
+  }
+
+  // 3. Iterate through entries and extract
+  std::string first_entry_path;
+  bool is_first_entry = true;
+
+  std::string dest_dir = std::string(parent);
 
   struct archive_entry* entry;
   while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
@@ -91,7 +94,7 @@ absl::StatusOr<std::string> ExtractAll(absl::string_view zip_file_path,
     // Write the header and data to disk
     r = archive_write_header(ext, entry);
     if (r == ARCHIVE_OK) {
-      CopyData(a, ext);
+      FCP_RETURN_IF_ERROR(CopyData(a, ext));
       r = archive_write_finish_entry(ext);
     } else {
       return absl::InvalidArgumentError(archive_error_string(ext));
