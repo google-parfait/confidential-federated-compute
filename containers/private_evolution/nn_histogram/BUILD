@@ -16,6 +16,8 @@ load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 platform(
@@ -132,4 +134,41 @@ oci_runtime_bundle(
     name = "oci_runtime_bundle",
     image = ":oci_image",
     visibility = ["//:__pkg__"],
+)
+
+# All release (i.e. production) binaries, along with their names in the
+# destination directory.
+_RELEASE_BINARIES = {
+    # keep-sorted start
+    "//:oci_runtime_bundle.tar": "nn_histogram/container.tar",
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "release_binaries",
+    srcs = _RELEASE_BINARIES.keys(),
+    renames = _RELEASE_BINARIES,
+)
+
+pkg_install(
+    name = "install_release_binaries",
+    srcs = [":release_binaries"],
+)
+
+# All release and testing binaries, along with their names in the destination
+# directory.
+_ALL_BINARIES = _RELEASE_BINARIES | {
+    # keep-sorted start
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "all_binaries",
+    srcs = _ALL_BINARIES.keys(),
+    renames = _ALL_BINARIES,
+)
+
+pkg_install(
+    name = "install_all_binaries",
+    srcs = [":all_binaries"],
 )
