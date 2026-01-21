@@ -24,11 +24,11 @@ jobs:
       fail-fast: false
       matrix:
         module-root:
-          - .
-          - containers/private_evolution/nn_histogram
-          - containers/private_evolution/sentence_transformers
-          - program_containers
-          - program_tensorflow_containers
+          - {root: ., name: .}
+          - {root: containers/private_evolution/nn_histogram, name: nn_histogram}
+          - {root: containers/private_evolution/sentence_transformers, name: sentence_transformers}
+          - {root: program_containers, name: program_containers}
+          - {root: program_tensorflow_containers, name: program_tensorflow_containers}
 
     steps:
       - name: Checkout
@@ -36,16 +36,16 @@ jobs:
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
         with:
-          module-root: ${{ matrix.module-root }}
+          module-root: ${{ matrix.module-root.root }}
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-${{ matrix.module-root }}
+          disk-cache: ${{ github.workflow }}-${{ matrix.module-root.name }}
       - name: Build
         run: |
-          cd "${{ matrix.module-root }}" && bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
+          cd "${{ matrix.module-root.root }}" && bazelisk run -c opt --curses=no --noshow_progress //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.module-root }}
+          name: binaries-${{ matrix.module-root.name }}
           path: ${{ runner.temp }}/binaries/
           if-no-files-found: error
           retention-days: 5
