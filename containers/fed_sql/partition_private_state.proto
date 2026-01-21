@@ -1,0 +1,39 @@
+// Copyright 2026 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package confidential_federated_compute.fed_sql;
+
+// Used to serialize the state of PartitionPrivateState and pass it
+// between containers.
+message PartitionPrivateStateProto {
+  message Bucket {
+    // A key for the bucket of range data.
+    bytes key = 1;
+    // List consisting of range_start and range_end values.
+    repeated fixed64 values = 2;
+  }
+  repeated Bucket buckets = 1;
+
+  // Keys that have expired and should be removed from the budget.
+  repeated bytes expired_keys = 2;
+
+  // Symmetric keys used to encrypt each partition.
+  message SymmetricKeys {
+    uint64 id = 1;
+    bytes symmetric_key = 2;
+  }
+  repeated SymmetricKeys symmetric_keys = 3;
+}

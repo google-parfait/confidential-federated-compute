@@ -124,6 +124,10 @@ class IntervalSet {
     CHECK(Assign(il.begin(), il.end()));
   }
 
+  // Equality operators.
+  bool operator==(const IntervalSet& other) const { return set_ == other.set_; }
+  bool operator!=(const IntervalSet& other) const { return !(*this == other); }
+
   // IntervalSet's begin() iterator.
   const_iterator begin() const { return set_.begin(); }
 

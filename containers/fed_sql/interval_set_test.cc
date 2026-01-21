@@ -219,5 +219,16 @@ TEST(IntervalSetTest, Clear) {
   EXPECT_TRUE(set.BoundingInterval().empty());
 }
 
+TEST(IntervalSetTest, Equals) {
+  IntervalSet<int> set_1({{1, 5}, {6, 9}});
+  IntervalSet<int> set_2({{1, 5}, {6, 9}});
+  EXPECT_TRUE(set_1 == set_2);
+}
+
+TEST(IntervalSetTest, NotEquals) {
+  IntervalSet<int> set_1({{1, 5}, {6, 9}});
+  IntervalSet<int> set_2({{1, 5}});
+  EXPECT_TRUE(set_1 != set_2);
+}
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

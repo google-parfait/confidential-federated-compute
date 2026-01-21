@@ -493,6 +493,46 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "partition_private_state_proto",
+    srcs = ["partition_private_state.proto"],
+)
+
+# buildifier: disable=native-cc-proto
+cc_proto_library(
+    name = "partition_private_state_cc_proto",
+    deps = [":partition_private_state_proto"],
+)
+
+cc_library(
+    name = "partition_private_state",
+    srcs = ["partition_private_state.cc"],
+    hdrs = ["partition_private_state.h"],
+    deps = [
+        ":partition_private_state_cc_proto",
+        ":range_tracker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "partition_private_state_test",
+    srcs = ["partition_private_state_test.cc"],
+    deps = [
+        ":partition_private_state",
+        ":partition_private_state_cc_proto",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
