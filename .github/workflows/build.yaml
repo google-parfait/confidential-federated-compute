@@ -25,6 +25,8 @@ jobs:
       matrix:
         module-root:
           - .
+          - containers/private_evolution/nn_histogram
+          - containers/private_evolution/sentence_transformers
           - program_containers
           - program_tensorflow_containers
 
