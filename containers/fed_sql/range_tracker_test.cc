@@ -374,9 +374,9 @@ TEST(RangeTrackerTest, ExpiredKeys) {
   RangeTracker parsed_range_tracker =
       RangeTracker::Parse(serialized_state).value();
   auto expired_keys = parsed_range_tracker.GetExpiredKeys();
-  EXPECT_THAT(expired_keys->size(), 2);
-  EXPECT_TRUE(expired_keys->contains("expired_key1"));
-  EXPECT_TRUE(expired_keys->contains("expired_key2"));
+  EXPECT_THAT(expired_keys.size(), 2);
+  EXPECT_TRUE(expired_keys.contains("expired_key1"));
+  EXPECT_TRUE(expired_keys.contains("expired_key2"));
 }
 
 }  // namespace

@@ -74,7 +74,7 @@ class RangeTracker {
   std::optional<uint64_t> GetPartitionIndex() const { return partition_index_; }
 
   // Gets the expired keys for this RangeTracker.
-  std::optional<absl::flat_hash_set<std::string>> GetExpiredKeys() const {
+  absl::flat_hash_set<std::string> GetExpiredKeys() const {
     return expired_keys_;
   }
   // Sets the expired keys for this RangeTracker.
@@ -95,7 +95,7 @@ class RangeTracker {
   std::optional<uint64_t> partition_index_;
 
   // Keys that have already expired and must be removed from the budget.
-  std::optional<absl::flat_hash_set<std::string>> expired_keys_;
+  absl::flat_hash_set<std::string> expired_keys_;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined
