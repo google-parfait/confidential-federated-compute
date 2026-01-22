@@ -804,13 +804,14 @@ async fn authorize_confidential_transform_with_keyset_keys() {
     }
     .encode_to_vec();
 
-    // Add three keys to keyset 123, one of which expires before the pipeline
-    // invocation intermediates. Add one key to keyset 456, and none to keyset
-    // 789. Save the encryption keys for use later.
+    // Add three keys to keyset 1, one of which expires before the pipeline
+    // invocation intermediates. Add one key to keyset 2, none to keyset 3,
+    // and one to keyset 4 (which is not in the RegisterPipelineInvocation
+    // request). Save the encryption keys for use later.
     let intermediates_exp = 100;
     let mut encryption_keys = Vec::new();
     let mut omitted_key_ids = Vec::new();
-    for (keyset_id, exp) in [(123, 90), (123, 100), (123, 110), (456, 120)] {
+    for (keyset_id, exp) in [(1, 90), (1, 100), (1, 110), (2, 120), (4, 130)] {
         now.fetch_add(1, Ordering::Relaxed); // Avoid ambiguous creation times.
         let request = RotateKeysetRequest {
             keyset_id,
@@ -835,7 +836,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
             .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
             .and_then(|(_, value)| value.into_bytes().ok())
             .unwrap();
-        if exp >= intermediates_exp {
+        if exp >= intermediates_exp && keyset_id != 4 {
             encryption_keys.push((CoseKey::from_slice(&cose_key).unwrap().key_id, cose_key));
         } else {
             omitted_key_ids.push(CoseKey::from_slice(&cose_key).unwrap().key_id);
@@ -849,7 +850,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
             seconds: intermediates_exp - now.load(Ordering::Relaxed),
             nanos: 0,
         }),
-        keyset_ids: vec![123, 456, 789],
+        keyset_ids: vec![1, 2, 3],
         authorized_logical_pipeline_policies: vec![logical_pipeline_policies.clone()],
         include_keys_in_response: false,
     };
@@ -879,7 +880,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
     .expect("failed to decrypt response");
 
     // Verify the ProtectedResponse. There should be 2 decryption keys for
-    // keyset 123, 1 for keyset 456, and 1 for src_node_id 1.
+    // keyset 1, 1 for keyset 2, and 1 for src_node_id 1.
     let protected_response = ProtectedResponse::decode(plaintext.as_slice())
         .expect("failed to decode ProtectedResponse");
     assert_that!(
@@ -910,7 +911,10 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .expect("failed to decode AssociatedData");
     assert_that!(
         associated_data,
-        matches_pattern!(AssociatedData { omitted_decryption_key_ids: eq(omitted_key_ids) })
+        matches_pattern!(AssociatedData {
+            omitted_decryption_key_ids: eq(omitted_key_ids),
+            omitted_decryption_key_ids_include_all_keysets: eq(true),
+        })
     );
 }
 
