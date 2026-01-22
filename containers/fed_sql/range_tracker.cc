@@ -82,10 +82,8 @@ RangeTrackerState RangeTracker::Serialize() const {
       values->Add(interval.end());
     }
   }
-  if (expired_keys_.has_value()) {
-    for (const auto& key : expired_keys_.value()) {
-      state.add_expired_keys(key);
-    }
+  for (const auto& key : expired_keys_) {
+    state.add_expired_keys(key);
   }
 
   if (partition_index_.has_value()) {
@@ -102,9 +100,7 @@ RangeTrackerState RangeTracker::Serialize() const {
 bool RangeTracker::AddRange(const std::string& key, uint64_t start,
                             uint64_t end) {
   // Key must not be expired.
-  if (expired_keys_.has_value()) {
-    CHECK(!expired_keys_->contains(key)) << "Found an expired key " << key;
-  }
+  CHECK(!expired_keys_.contains(key)) << "Found an expired key " << key;
   return per_key_ranges_[key].Add(Interval(start, end));
 }
 
@@ -121,14 +117,7 @@ bool RangeTracker::Merge(const RangeTracker& other) {
   // Merge expired keys. If a key expires while a pipeline is still running,
   // it's possible that different partitions hold different
   // `expired_keys_` so we merge the sets here.
-  if (other.expired_keys_.has_value()) {
-    if (!expired_keys_.has_value()) {
-      expired_keys_ = other.expired_keys_;
-    } else {
-      expired_keys_->insert(other.expired_keys_->begin(),
-                            other.expired_keys_->end());
-    }
-  }
+  expired_keys_.insert(other.expired_keys_.begin(), other.expired_keys_.end());
 
   for (const auto& [key, interval_set] : other.per_key_ranges_) {
     if (!per_key_ranges_[key].Merge(interval_set)) {
