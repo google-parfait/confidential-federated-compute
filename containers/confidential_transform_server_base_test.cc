@@ -149,6 +149,10 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
     return ConfidentialTransformBase::GetActiveKeyIds();
   }
 
+  bool ActiveKeyIdsIncludeAllKeysets() const {
+    return ConfidentialTransformBase::ActiveKeyIdsIncludeAllKeysets();
+  }
+
  protected:
   absl::Status StreamInitializeTransform(
       const ::google::protobuf::Any& configuration,
@@ -232,6 +236,7 @@ class ConfidentialTransformServerBaseTest : public Test {
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         "policy_hash");
     associated_data.add_omitted_decryption_key_ids("omitted_key_id");
+    associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -337,6 +342,7 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   // Finish is called to get the server's response and final status of the
   // stream.
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
+  ASSERT_TRUE(service_->ActiveKeyIdsIncludeAllKeysets());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,

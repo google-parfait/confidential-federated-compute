@@ -417,6 +417,7 @@ class FedSqlServerTest : public Test {
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         allowed_policy_hash_);
     associated_data.add_omitted_decryption_key_ids("foo");
+    associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -893,6 +894,7 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(value);
   associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -905,6 +907,36 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {
       StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr("FedSqlContainerConfigConstraints cannot be unpacked.")));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeActiveKeysDoNotIncludeAllKeysets) {
+  grpc::ClientContext context;
+  InitializeRequest request;
+  InitializeResponse response;
+  request.mutable_configuration()->PackFrom(DefaultFedSqlContainerConfig());
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      DefaultFedSqlConfigConstraints());
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  BudgetState budget =
+      PARSE_TEXT_PROTO(R"pb(buckets { key: "foo" budget: 1 })pb");
+  EXPECT_TRUE(
+      WritePipelinePrivateState(writer.get(), budget.SerializeAsString()));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(request)),
+      StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr("Active key ids must include all keysets to proceed.")));
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeRequestWrongMessageType) {

@@ -275,6 +275,8 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
           return absl::InvalidArgumentError(
               "Expected at least one policy hash but none were supplied.");
         }
+        active_key_ids_include_all_keysets_ =
+            associated_data.omitted_decryption_key_ids_include_all_keysets();
         // Pick any of the authorized_logical_pipeline_policies_hashes as the
         // reencryption_policy_hash. For convenience, we pick the first one.
         kms_encryptor_.emplace(

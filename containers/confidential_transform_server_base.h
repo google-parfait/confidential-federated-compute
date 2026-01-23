@@ -110,6 +110,10 @@ class ConfidentialTransformBase
     return kms_encryptor_->reencryption_keys();
   }
 
+  bool ActiveKeyIdsIncludeAllKeysets() const {
+    return active_key_ids_include_all_keysets_;
+  }
+
  private:
   absl::Status StreamInitializeInternal(
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
@@ -143,6 +147,7 @@ class ConfidentialTransformBase
   absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
   // Tracks the keys ids that are still active i.e. not expired.
   absl::flat_hash_set<std::string> active_key_ids_;
+  bool active_key_ids_include_all_keysets_;
 };
 
 }  // namespace confidential_federated_compute

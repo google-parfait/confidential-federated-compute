@@ -557,6 +557,14 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
     // already persisted in the budget. If any key in the
     // `persisted_budget_keys` is not in the `active_key_ids`, it means that key
     // has expired.
+    //
+    // Note that the active key ids must include all the keysets to proceed.
+    // This prevents a vulnerability where an attacker can reset the budget
+    // by switching the keysets in consecutive pipeline runs.
+    if (!ActiveKeyIdsIncludeAllKeysets()) {
+      return absl::FailedPreconditionError(
+          "Active key ids must include all keysets to proceed.");
+    }
     auto persisted_budget_keys = private_state_->budget.GetKeys();
     auto active_keys = GetActiveKeyIds();
     for (const auto& key : persisted_budget_keys) {
