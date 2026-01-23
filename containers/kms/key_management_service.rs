@@ -217,27 +217,30 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
         // provide non-intermediate keys.
         let mut omitted_decryption_key_ids = Vec::new();
         if src_node_ids.contains(&0) {
-            let ranges = state
-                .keyset_ids
-                .iter()
-                .map(|id| {
-                    Self::create_range(
-                        StorageKey::KeysetKey { keyset_id: *id, key_id: MIN_KEYSET_KEY_ID },
-                        Some(StorageKey::KeysetKey { keyset_id: *id, key_id: MAX_KEYSET_KEY_ID }),
+            let response = self
+                .storage_client
+                .read(ReadRequest {
+                    ranges: vec![Self::create_range(
+                        StorageKey::KeysetKey { keyset_id: u64::MIN, key_id: MIN_KEYSET_KEY_ID },
+                        Some(StorageKey::KeysetKey {
+                            keyset_id: u64::MAX,
+                            key_id: MAX_KEYSET_KEY_ID,
+                        }),
                     )
-                    .unwrap()
+                    .unwrap()],
                 })
-                .collect();
-            let response = self.storage_client.read(ReadRequest { ranges }).await?;
+                .await?;
             for entry in response.entries {
-                let key_id = match entry.key.as_slice().try_into() {
-                    Ok(StorageKey::KeysetKey { key_id, .. }) => key_id,
+                let (keyset_id, key_id) = match entry.key.as_slice().try_into() {
+                    Ok(StorageKey::KeysetKey { keyset_id, key_id }) => (keyset_id, key_id),
                     _ => unreachable!(),
                 };
 
-                // Skip entries that expire before the pipeline invocation
-                // expires.
-                if Self::timestamp_lt(&entry.expiration, state_expiration) {
+                // Skip entries from other keysets or that expire before the
+                // pipeline invocation expires.
+                if !state.keyset_ids.contains(&keyset_id)
+                    || Self::timestamp_lt(&entry.expiration, state_expiration)
+                {
                     for hash in &state.authorized_logical_pipeline_policies_hashes {
                         omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
                     }
@@ -807,6 +810,7 @@ where
             authorized_logical_pipeline_policies_hashes: state
                 .authorized_logical_pipeline_policies_hashes,
             omitted_decryption_key_ids,
+            omitted_decryption_key_ids_include_all_keysets: true,
             invocation_id: request.invocation_id.clone(),
         };
         let encrypted_message =
