@@ -18,7 +18,7 @@ load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 package(
-    default_visibility = ["//:__subpackages__"],
+    default_visibility = ["//visibility:public"],
     features = ["layering_check"],
 )
 
