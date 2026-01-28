@@ -94,9 +94,8 @@ class ConfidentialTransformBase
     return active_key_ids_;
   }
 
-  // Returns a pointer to the BlobDecryptor.
-  absl::StatusOr<confidential_federated_compute::BlobDecryptor*>
-  GetBlobDecryptor();
+  // Returns a pointer to the Decryptor.
+  absl::StatusOr<confidential_federated_compute::Decryptor*> GetDecryptor();
 
   // Returns the Oak SigningKeyHandle passed to the constructor.
   const std::shared_ptr<oak::crypto::SigningKeyHandle>& GetOakSigningKeyHandle()
@@ -124,7 +123,7 @@ class ConfidentialTransformBase
 
   absl::Status HandleWrite(confidential_federated_compute::Session* session,
                            fcp::confidentialcompute::WriteRequest request,
-                           absl::Cord blob_data, BlobDecryptor* blob_decryptor,
+                           absl::Cord blob_data, Decryptor* decryptor,
                            SessionStream* stream, Session::Context& context);
 
   absl::Status SetActiveKeyIds(
@@ -132,10 +131,10 @@ class ConfidentialTransformBase
       const std::vector<absl::string_view>& omitted_key_ids);
 
   absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping blob_decryptor_ and
-  // session_tracker_ to ensure they are initialized, but the BlobDecryptor and
+  // The mutex is used to protect the optional wrapping decryptor_ and
+  // session_tracker_ to ensure they are initialized, but the Decryptor and
   // SessionTracker are themselves threadsafe.
-  std::optional<confidential_federated_compute::BlobDecryptor> blob_decryptor_
+  std::optional<confidential_federated_compute::Decryptor> decryptor_
       ABSL_GUARDED_BY(mutex_);
   std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);

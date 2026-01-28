@@ -58,6 +58,7 @@ using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
+using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -73,6 +74,7 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
@@ -146,13 +148,15 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<PrivateState> private_state,
     const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<MessageFactory> message_factory,
-    absl::string_view on_device_query_name)
+    absl::string_view on_device_query_name,
+    confidential_federated_compute::Decryptor& decryptor)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       private_state_(std::move(private_state)),
       dp_unit_parameters_(dp_unit_parameters),
       message_factory_(std::move(message_factory)),
-      on_device_query_name_(on_device_query_name) {
+      on_device_query_name_(on_device_query_name),
+      decryptor_(decryptor) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(expired_key_ids);
   // TODO: b/427333608 - Switch to the shared model once the Gemma.cpp engine is
@@ -181,6 +185,11 @@ absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::Write(
     case AGGREGATION_TYPE_MERGE: {
       return Merge(std::move(*request.mutable_first_request_metadata()),
                    std::move(unencrypted_data));
+    }
+    case AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE: {
+      return AccumulatePrivateState(
+          request.first_request_metadata().total_size_bytes(),
+          std::move(unencrypted_data));
     }
     default:
       return ToWriteFinishedResponse(absl::InvalidArgumentError(
@@ -273,6 +282,41 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   uncommitted_inputs_.push_back(*std::move(input));
 
   return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
+}
+
+absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::AccumulatePrivateState(
+    int64_t total_size_bytes, std::string release_token) {
+  absl::StatusOr<fcp::confidential_compute::UnwrappedReleaseToken>
+      unwrapped_release_token = decryptor_.UnwrapReleaseToken(release_token);
+  if (!unwrapped_release_token.ok()) {
+    return ToWriteFinishedResponse(
+        PrependMessage("Failed to unwrap release token in "
+                       "AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE: ",
+                       unwrapped_release_token.status()));
+  }
+
+  if (unwrapped_release_token->dst_state == std::nullopt) {
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(
+        "Corrupt release token in AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE. "
+        "dst_state should be non-empty, but found empty dst_state."));
+  }
+
+  absl::StatusOr<RangeTracker> range_tracker =
+      RangeTracker::Parse(unwrapped_release_token->dst_state.value());
+  if (!range_tracker.ok()) {
+    return ToWriteFinishedResponse(
+        PrependMessage("Failed to parse range tracker for dst_state in "
+                       "AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE: ",
+                       range_tracker.status()));
+  }
+
+  if (!partition_private_state_.AddPartition(
+          *range_tracker, unwrapped_release_token->serialized_symmetric_key)) {
+    return ToWriteFinishedResponse(absl::FailedPreconditionError(
+        "Failed to add partition's private state due to conflicts."));
+  }
+
+  return ToWriteFinishedResponse(absl::OkStatus(), total_size_bytes);
 }
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
@@ -438,6 +482,9 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
     case FINALIZATION_TYPE_REPORT_PARTITION: {
       return ReportPartition(context);
     }
+    case FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE: {
+      return SerializePrivateState(context);
+    }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
@@ -455,6 +502,19 @@ KmsFedSqlSession::Serialize(Context& context) {
   if (!context.EmitEncrypted(/* reencryption_key_index*/ 0,
                              std::move(bundled_data))) {
     return absl::InternalError("Failed to emit encrypted result.");
+  }
+
+  return FinalizeResponse{};
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::SerializePrivateState(Context& context) {
+  std::string serialized_private_state =
+      partition_private_state_.SerializeAsString();
+  if (!context.EmitEncrypted(/* reencryption_key_index*/ 1,
+                             std::move(serialized_private_state))) {
+    return absl::InternalError(
+        "Failed to emit encrypted serialized private state.");
   }
 
   return FinalizeResponse{};

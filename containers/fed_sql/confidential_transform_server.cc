@@ -604,10 +604,11 @@ FedSqlConfidentialTransform::CreateSession() {
   }
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
+  FCP_ASSIGN_OR_RETURN(Decryptor * decryptor, GetDecryptor());
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
       dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
-      on_device_query_name_);
+      on_device_query_name_, *decryptor);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(

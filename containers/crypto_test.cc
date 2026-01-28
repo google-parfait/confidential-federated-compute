@@ -49,7 +49,9 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::NiceMock;
+using ::testing::Not;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
@@ -122,10 +124,26 @@ TEST(CryptoTest, EncryptAndDecryptBlob) {
   encryption_metadata->mutable_kms_symmetric_key_associated_data()
       ->set_record_header(associated_data);
 
-  BlobDecryptor blob_decryptor({private_key});
-  EXPECT_THAT(blob_decryptor.DecryptBlob(
-                  metadata, encrypt_result.value().ciphertext, key_id),
+  Decryptor decryptor({private_key});
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
+                                    key_id),
               IsOkAndHolds(message));
+}
+
+TEST(CryptoTest, UnwrapReleaseToken) {
+  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
+  MessageEncryptor encryptor;
+  absl::StatusOr<EncryptMessageResult> result = encryptor.EncryptForRelease(
+      "result", public_key, "associated-data", "src", "dst",
+      [](absl::string_view) { return "signature"; });
+  ASSERT_THAT(result, IsOk());
+
+  Decryptor decryptor({private_key});
+  auto unwrapped_token = decryptor.UnwrapReleaseToken(result->release_token);
+  EXPECT_THAT(unwrapped_token, IsOk());
+  EXPECT_EQ(unwrapped_token->src_state, std::optional<std::string>("src"));
+  EXPECT_EQ(unwrapped_token->dst_state, "dst");
+  EXPECT_THAT(unwrapped_token->serialized_symmetric_key, Not(IsEmpty()));
 }
 
 TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {
@@ -154,9 +172,9 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {
   encryption_metadata->mutable_kms_symmetric_key_associated_data()
       ->set_record_header(associated_data);
 
-  BlobDecryptor blob_decryptor({private_key});
-  EXPECT_THAT(blob_decryptor.DecryptBlob(
-                  metadata, encrypt_result.value().ciphertext, key_id),
+  Decryptor decryptor({private_key});
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
+                                    key_id),
               IsOkAndHolds(message));
 }
 
@@ -186,64 +204,61 @@ TEST(CryptoTest, EncryptAndDecryptBlobWrongKeyId) {
   encryption_metadata->mutable_kms_symmetric_key_associated_data()
       ->set_record_header(associated_data);
 
-  BlobDecryptor blob_decryptor({private_key});
-  EXPECT_THAT(
-      blob_decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
-                                 "invalid key id"),
-      StatusIs(absl::StatusCode::kFailedPrecondition));
+  Decryptor decryptor({private_key});
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
+                                    "invalid key id"),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CryptoTest, DecryptUnencryptedBlob) {
   std::string message = "some plaintext message";
-  BlobDecryptor blob_decryptor;
+  Decryptor decryptor;
 
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, message),
-              IsOkAndHolds(message));
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, message), IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, DecryptUnencryptedBlobWithGzipCompression) {
   std::string message = "some plaintext message";
   absl::StatusOr<std::string> compressed = fcp::CompressWithGzip(message);
   ASSERT_THAT(compressed, IsOk());
-  BlobDecryptor blob_decryptor;
+  Decryptor decryptor;
 
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
-  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, *compressed),
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, *compressed),
               IsOkAndHolds(message));
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidKind) {
-  BlobDecryptor blob_decryptor;
+  Decryptor decryptor;
   BlobMetadata metadata;
-  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "message"),
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, "message"),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CryptoTest, DecryptBlobWithoutCompressionType) {
-  BlobDecryptor blob_decryptor;
+  Decryptor decryptor;
 
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
-  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "message"),
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, "message"),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidGzipCompression) {
-  BlobDecryptor blob_decryptor;
-
+  Decryptor decryptor;
   BlobMetadata metadata;
   metadata.mutable_unencrypted();
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
-  EXPECT_FALSE(blob_decryptor.DecryptBlob(metadata, "message").ok());
+  EXPECT_FALSE(decryptor.DecryptBlob(metadata, "message").ok());
 }
 
 TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
-  BlobDecryptor blob_decryptor;
+  Decryptor decryptor;
   BlobMetadata metadata;
   metadata.mutable_hpke_plus_aead_data()->set_encrypted_symmetric_key(
       "unused symmetric key");
@@ -251,7 +266,7 @@ TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
       "unused encapped key");
   // No `kms_symmetric_key_associated_data` set.
 
-  EXPECT_THAT(blob_decryptor.DecryptBlob(metadata, "unused message"),
+  EXPECT_THAT(decryptor.DecryptBlob(metadata, "unused message"),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Blob to decrypt must contain "
                                  "kms_symmetric_key_associated_data")));

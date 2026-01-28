@@ -30,30 +30,35 @@
 
 namespace confidential_federated_compute {
 
-// Class used to decrypt blobs.
+// Class used to decrypt messages intended for this worker.
 //
 // All the KMS authorized decryption keys should be passed down to the
-// BlobDecryptor as part of its constructor.
+// Decryptor as part of its constructor.
 //
 // This class is threadsafe.
-class BlobDecryptor {
+class Decryptor {
  public:
-  // Constructs a new BlobDecryptor.
-  BlobDecryptor(const std::vector<absl::string_view>& decryption_keys = {});
+  // Constructs a new Decryptor.
+  Decryptor(const std::vector<absl::string_view>& decryption_keys = {});
 
-  // BlobDecryptor is not copyable or moveable due to the use of
+  // Decryptor is not copyable or moveable due to the use of
   // fcp::confidential_compute::MessageDecryptor.
-  BlobDecryptor(const BlobDecryptor& other) = delete;
-  BlobDecryptor& operator=(const BlobDecryptor& other) = delete;
+  Decryptor(const Decryptor& other) = delete;
+  Decryptor& operator=(const Decryptor& other) = delete;
 
   // Decrypts a record encrypted with the public key owned by this class.
   absl::StatusOr<std::string> DecryptBlob(
       const fcp::confidentialcompute::BlobMetadata& metadata,
       absl::string_view blob, absl::string_view key_id = "");
 
+  // Unwraps a release token using the decryption keys owned by this class.
+  absl::StatusOr<fcp::confidential_compute::UnwrappedReleaseToken>
+  UnwrapReleaseToken(absl::string_view release_token) {
+    return message_decryptor_.UnwrapReleaseToken(release_token);
+  }
+
  private:
   fcp::confidential_compute::MessageDecryptor message_decryptor_;
-  absl::StatusOr<std::string> signed_public_key_;
 };
 
 // Wraps BoringSSL's HMAC-SHA256.

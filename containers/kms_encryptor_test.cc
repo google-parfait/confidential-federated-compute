@@ -41,7 +41,7 @@ TEST(KmsEncryptorTest, EncryptIntermediateResult) {
       "reencryption_policy_hash",
       std::make_unique<NiceMock<MockSigningKeyHandle>>());
 
-  BlobDecryptor blob_decryptor({key_pair_1.second, key_pair_2.second});
+  Decryptor decryptor({key_pair_1.second, key_pair_2.second});
 
   // Encrypt using the first key
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
@@ -49,8 +49,8 @@ TEST(KmsEncryptorTest, EncryptIntermediateResult) {
   ASSERT_THAT(encrypted_result, IsOk());
 
   // Decrypt using the same key
-  EXPECT_THAT(blob_decryptor.DecryptBlob(encrypted_result->metadata,
-                                         encrypted_result->ciphertext, "key_1"),
+  EXPECT_THAT(decryptor.DecryptBlob(encrypted_result->metadata,
+                                    encrypted_result->ciphertext, "key_1"),
               IsOkAndHolds("plaintext"));
 }
 
@@ -77,7 +77,7 @@ TEST(KmsEncryptorTest, EncryptReleasableResult) {
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
       "reencryption_policy_hash", std::move(signing_key_handle));
 
-  BlobDecryptor blob_decryptor({key_pair_1.second, key_pair_2.second});
+  Decryptor decryptor({key_pair_1.second, key_pair_2.second});
 
   // Encrypt using the first key
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
@@ -86,8 +86,8 @@ TEST(KmsEncryptorTest, EncryptReleasableResult) {
   ASSERT_TRUE(encrypted_result->release_token.has_value());
 
   // Decrypt using the same key
-  EXPECT_THAT(blob_decryptor.DecryptBlob(encrypted_result->metadata,
-                                         encrypted_result->ciphertext, "key_1"),
+  EXPECT_THAT(decryptor.DecryptBlob(encrypted_result->metadata,
+                                    encrypted_result->ciphertext, "key_1"),
               IsOkAndHolds("plaintext"));
 }
 

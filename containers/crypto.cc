@@ -73,13 +73,12 @@ std::string RandomBlobId() {
   return blob_id;
 }
 
-BlobDecryptor::BlobDecryptor(
-    const std::vector<absl::string_view>& decryption_keys)
+Decryptor::Decryptor(const std::vector<absl::string_view>& decryption_keys)
     : message_decryptor_(decryption_keys) {}
 
-absl::StatusOr<std::string> BlobDecryptor::DecryptBlob(
-    const BlobMetadata& metadata, absl::string_view blob,
-    absl::string_view key_id) {
+absl::StatusOr<std::string> Decryptor::DecryptBlob(const BlobMetadata& metadata,
+                                                   absl::string_view blob,
+                                                   absl::string_view key_id) {
   std::string decrypted;
   switch (metadata.encryption_metadata_case()) {
     case BlobMetadata::kUnencrypted:
