@@ -27,6 +27,7 @@
 #include "fcp/base/compression.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -38,6 +39,9 @@
 namespace confidential_federated_compute {
 namespace {
 
+using ::fcp::confidential_compute::Ec2Cwt;
+using ::fcp::confidential_compute::Ec2Key;
+using ::fcp::confidential_compute::EcdsaP256R1SignatureVerifier;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -60,6 +64,28 @@ absl::StatusOr<std::string> Decompress(
       return absl::InvalidArgumentError(
           absl::StrCat("unsupported compression type ", compression_type));
   }
+}
+
+// Creates a EcdsaP256R1SignatureVerifier from an EC2 key.
+absl::StatusOr<EcdsaP256R1SignatureVerifier> CreateP256Verifier(
+    const Ec2Key& key) {
+  // Algorithm, curve, and key operation constants are defined in
+  // https://www.iana.org/assignments/cose/cose.xhtml and RFC 9052 Table 5.
+  if (key.algorithm != -7 /* ES256 */) {
+    return absl::InvalidArgumentError("unsupported algorithm");
+  } else if (key.curve != 1 /* P-256 */) {
+    return absl::InvalidArgumentError("unsupported curve");
+  } else if (!key.key_ops.empty() &&
+             absl::c_find(key.key_ops, 2 /* verify */) == key.key_ops.end()) {
+    return absl::InvalidArgumentError("key does not support verification");
+  } else if (key.x.size() != 32) {
+    return absl::InvalidArgumentError("unsupported key x coordinate");
+  } else if (key.y.size() != 32) {
+    return absl::InvalidArgumentError("unsupported key y coordinate");
+  }
+  // Uncompressed X9.62 keys have the form \x04 || x || y.
+  return EcdsaP256R1SignatureVerifier::Create(
+      absl::StrCat("\x04", key.x, key.y));
 }
 
 }  // namespace
@@ -125,6 +151,49 @@ absl::StatusOr<std::string> KeyedHash(absl::string_view input,
 
   // Return the hash as a std::string.
   return std::string(reinterpret_cast<char*>(hash), hash_len);
+}
+
+absl::StatusOr<BlobProvenance> VerifyBlobProvenance(
+    absl::string_view data, absl::string_view signature,
+    absl::string_view signing_key_endorsement, absl::string_view kms_public_key,
+    absl::string_view expected_invocation_id) {
+  // Create a signature verifier that uses the KMS public key.
+  FCP_ASSIGN_OR_RETURN(Ec2Key kms_key, Ec2Key::Decode(kms_public_key));
+  FCP_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier kms_verifier,
+                       CreateP256Verifier(kms_key));
+
+  // Parse and verify the signing key endorsement.
+  FCP_ASSIGN_OR_RETURN(Ec2Cwt endorsement,
+                       Ec2Cwt::Decode(signing_key_endorsement));
+  if (endorsement.algorithm != kms_key.algorithm) {
+    return absl::InvalidArgumentError(
+        "signing key endorsement has wrong algorithm");
+  }
+  FCP_ASSIGN_OR_RETURN(
+      std::string sig_structure,
+      Ec2Cwt::GetSigStructureForVerifying(signing_key_endorsement, ""));
+  FCP_RETURN_IF_ERROR(
+      kms_verifier.Verify(sig_structure, endorsement.signature));
+  if (!endorsement.public_key) {
+    return absl::InvalidArgumentError(
+        "signing key endorsement missing public key");
+  } else if (!endorsement.transform_index) {
+    return absl::InvalidArgumentError(
+        "signing key endorsement missing transform index");
+  } else if (endorsement.invocation_id != expected_invocation_id) {
+    return absl::InvalidArgumentError(
+        "signing key endorsement has wrong invocation ID");
+  }
+  FCP_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier endorsed_verifier,
+                       CreateP256Verifier(*endorsement.public_key));
+
+  // Verify the data's signature.
+  FCP_RETURN_IF_ERROR(endorsed_verifier.Verify(data, signature));
+
+  return BlobProvenance{
+      .transform_index = *endorsement.transform_index,
+      .dst_node_ids = std::move(endorsement.dst_node_ids),
+  };
 }
 
 }  // namespace confidential_federated_compute

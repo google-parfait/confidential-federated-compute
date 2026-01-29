@@ -36,6 +36,7 @@ cc_library(
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:compression",
         "@federated-compute//fcp/base:status_converters",
+        "@federated-compute//fcp/confidentialcompute:cose",
         "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

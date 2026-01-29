@@ -41,6 +41,10 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::fcp::confidential_compute::Ec2Cwt;
+using ::fcp::confidential_compute::Ec2Key;
+using ::fcp::confidential_compute::EcdsaP256R1SignatureVerifier;
+using ::fcp::confidential_compute::EcdsaP256R1Signer;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::OkpCwt;
@@ -48,6 +52,7 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::testing::_;
 using ::testing::DoAll;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::NiceMock;
@@ -270,6 +275,371 @@ TEST(CryptoTest, DecryptBlobWithInvalidAssociatedData) {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Blob to decrypt must contain "
                                  "kms_symmetric_key_associated_data")));
+}
+
+TEST(VerifyBlobProvenanceTest, Success) {
+  // Create a signing key for the KMS.
+  auto kms_signer = EcdsaP256R1Signer::Create();
+  Ec2Key kms_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = kms_signer.GetPublicKey().substr(1, 32),
+      .y = kms_signer.GetPublicKey().substr(33, 32),
+  };
+
+  // Create a signing key for the producer's VM and endorse it.
+  auto signer = EcdsaP256R1Signer::Create();
+  Ec2Cwt signing_key_endorsement = {
+      .algorithm = -7 /* ES256 */,
+      .public_key =
+          Ec2Key{
+              .algorithm = -7 /* ES256 */,
+              .curve = 1 /* P-256 */,
+              .x = signer.GetPublicKey().substr(1, 32),
+              .y = signer.GetPublicKey().substr(33, 32),
+          },
+      .invocation_id = "invocation_id",
+      .transform_index = 5,
+      .dst_node_ids = {6, 7},
+  };
+  signing_key_endorsement.signature = kms_signer.Sign(
+      signing_key_endorsement.BuildSigStructureForSigning("").value());
+
+  // Sign some data with the producer VM's signing key.
+  std::string data = "some data";
+  std::string signature = signer.Sign(data);
+
+  // Verify the data's provenance.
+  absl::StatusOr<BlobProvenance> result = VerifyBlobProvenance(
+      data, signature, signing_key_endorsement.Encode().value(),
+      kms_public_key.Encode().value(), "invocation_id");
+  ASSERT_THAT(result, IsOk());
+  EXPECT_EQ(result->transform_index, 5);
+  EXPECT_THAT(result->dst_node_ids, ElementsAre(6, 7));
+}
+
+TEST(VerifyBlobProvenanceTest, InvalidKmsPublicKey) {
+  // Create a signing key for the KMS.
+  auto kms_signer = EcdsaP256R1Signer::Create();
+  const Ec2Key kms_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = kms_signer.GetPublicKey().substr(1, 32),
+      .y = kms_signer.GetPublicKey().substr(33, 32),
+  };
+
+  // Create a signing key for the producer's VM and endorse it.
+  auto signer = EcdsaP256R1Signer::Create();
+  Ec2Cwt signing_key_endorsement = {
+      .algorithm = -7 /* ES256 */,
+      .public_key =
+          Ec2Key{
+              .algorithm = -7 /* ES256 */,
+              .curve = 1 /* P-256 */,
+              .x = signer.GetPublicKey().substr(1, 32),
+              .y = signer.GetPublicKey().substr(33, 32),
+          },
+      .invocation_id = "invocation_id",
+      .transform_index = 5,
+      .dst_node_ids = {6, 7},
+  };
+  signing_key_endorsement.signature = kms_signer.Sign(
+      signing_key_endorsement.BuildSigStructureForSigning("").value());
+
+  // Sign some data with the producer VM's signing key.
+  std::string data = "some data";
+  std::string signature = signer.Sign(data);
+
+  // Check that verification fails with various invalid KMS public keys:
+
+  // Invalid encoded Ec2Key.
+  EXPECT_THAT(VerifyBlobProvenance(data, signature,
+                                   signing_key_endorsement.Encode().value(),
+                                   "invalid kms public key", "invocation_id"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("failed to decode")));
+
+  // Unsupported algorithm.
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    bad_public_key.algorithm = -8 /* EdDSA */;
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("unsupported algorithm")));
+  }
+
+  // Unsupported curve.
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    bad_public_key.curve = 2 /* P-384 */;
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("unsupported curve")));
+  }
+
+  // Key ops disallow verification.
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    bad_public_key.key_ops = {fcp::confidential_compute::kCoseKeyOpDecrypt};
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("key does not support verification")));
+  }
+
+  // Invalid x coordinate.
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    bad_public_key.x = "invalid";
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("unsupported key x coordinate")));
+  }
+
+  // Invalid y coordinate.
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    bad_public_key.y = "invalid";
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("unsupported key y coordinate")));
+  }
+
+  // Wrong key (swapped x and y).
+  {
+    Ec2Key bad_public_key = kms_public_key;
+    std::swap(bad_public_key.x, bad_public_key.y);
+    EXPECT_THAT(VerifyBlobProvenance(
+                    data, signature, signing_key_endorsement.Encode().value(),
+                    bad_public_key.Encode().value(), "invocation_id"),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
+TEST(VerifyBlobProvenanceTest, InvalidSigningKeyEndorsement) {
+  // Create a signing key for the KMS.
+  auto kms_signer = EcdsaP256R1Signer::Create();
+  Ec2Key kms_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = kms_signer.GetPublicKey().substr(1, 32),
+      .y = kms_signer.GetPublicKey().substr(33, 32),
+  };
+
+  // Create a signing key for the producer's VM and endorse it.
+  auto signer = EcdsaP256R1Signer::Create();
+  Ec2Cwt signing_key_endorsement = {
+      .algorithm = -7 /* ES256 */,
+      .public_key =
+          Ec2Key{
+              .algorithm = -7 /* ES256 */,
+              .curve = 1 /* P-256 */,
+              .x = signer.GetPublicKey().substr(1, 32),
+              .y = signer.GetPublicKey().substr(33, 32),
+          },
+      .invocation_id = "invocation_id",
+      .transform_index = 5,
+      .dst_node_ids = {6, 7},
+  };
+  signing_key_endorsement.signature = kms_signer.Sign(
+      signing_key_endorsement.BuildSigStructureForSigning("").value());
+
+  // Sign some data with the producer VM's signing key.
+  std::string data = "some data";
+  std::string signature = signer.Sign(data);
+
+  // Check that verification fails with various invalid signing key
+  // endorsements:
+
+  // Invalid encoded Ec2Cwt.
+  EXPECT_THAT(
+      VerifyBlobProvenance(data, signature, "invalid endorsement",
+                           kms_public_key.Encode().value(), "invocation_id"),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("failed to decode")));
+
+  // Endorsement algorithm does not match KMS key.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.algorithm = -8 /* EdDSA */;
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("wrong algorithm")));
+  }
+
+  // Unsupported algorithm.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key->algorithm = -8 /* EdDSA */;
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("unsupported algorithm")));
+  }
+
+  // Unsupported curve.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key->curve = 2 /* P-384 */;
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("unsupported curve")));
+  }
+
+  // Key ops disallow verification.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key->key_ops = {
+        fcp::confidential_compute::kCoseKeyOpDecrypt};
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("key does not support verification")));
+  }
+
+  // Invalid x coordinate.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key->x = "invalid";
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("unsupported key x coordinate")));
+  }
+
+  // Invalid y coordinate.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key->y = "invalid";
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("unsupported key y coordinate")));
+  }
+
+  // Wrong key (swapped x and y).
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    std::swap(bad_endorsement.public_key->x, bad_endorsement.public_key->y);
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Invalid endorsement signature.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.signature[0] ^= 0xFF;
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Endorsement missing public key.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.public_key = std::nullopt;
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("missing public key")));
+  }
+
+  // Endorsement missing transform index.
+  {
+    Ec2Cwt bad_endorsement = signing_key_endorsement;
+    bad_endorsement.transform_index = std::nullopt;
+    bad_endorsement.signature = kms_signer.Sign(
+        bad_endorsement.BuildSigStructureForSigning("").value());
+    EXPECT_THAT(
+        VerifyBlobProvenance(data, signature, bad_endorsement.Encode().value(),
+                             kms_public_key.Encode().value(), "invocation_id"),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("missing transform index")));
+  }
+
+  // Mismatched invocation ID.
+  EXPECT_THAT(VerifyBlobProvenance(
+                  data, signature, signing_key_endorsement.Encode().value(),
+                  kms_public_key.Encode().value(), "other_invocation_id"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("wrong invocation ID")));
+}
+
+TEST(VerifyBlobProvenanceTest, BadSignature) {
+  // Create a signing key for the KMS.
+  auto kms_signer = EcdsaP256R1Signer::Create();
+  Ec2Key kms_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = kms_signer.GetPublicKey().substr(1, 32),
+      .y = kms_signer.GetPublicKey().substr(33, 32),
+  };
+
+  // Create a signing key for the producer's VM and endorse it.
+  auto signer = EcdsaP256R1Signer::Create();
+  Ec2Cwt signing_key_endorsement = {
+      .algorithm = -7 /* ES256 */,
+      .public_key =
+          Ec2Key{
+              .algorithm = -7 /* ES256 */,
+              .curve = 1 /* P-256 */,
+              .x = signer.GetPublicKey().substr(1, 32),
+              .y = signer.GetPublicKey().substr(33, 32),
+          },
+      .invocation_id = "invocation_id",
+      .transform_index = 5,
+      .dst_node_ids = {6, 7},
+  };
+  signing_key_endorsement.signature = kms_signer.Sign(
+      signing_key_endorsement.BuildSigStructureForSigning("").value());
+
+  // Sign some data with the producer VM's signing key.
+  std::string data = "some data";
+  std::string signature = signer.Sign(data);
+
+  // Corrupt the signature.
+  signature[0] ^= 0xFF;
+  EXPECT_THAT(VerifyBlobProvenance(
+                  data, signature, signing_key_endorsement.Encode().value(),
+                  kms_public_key.Encode().value(), "invocation_id"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

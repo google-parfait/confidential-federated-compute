@@ -16,12 +16,14 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CRYPTO_H_
 
 #include <memory>
+#include <ostream>
 #include <string>
 #include <tuple>
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -67,6 +69,41 @@ absl::StatusOr<std::string> KeyedHash(absl::string_view input,
 
 // Returns a random 16 byte Blob ID
 std::string RandomBlobId();
+
+// Verified claims about a blob's provenance, for use with VerifyBlobProvenance.
+struct BlobProvenance {
+  // The index of the producer's matching transform in the
+  // PipelineVariantPolicy.
+  uint64_t transform_index;
+
+  // The matching transform's dst_node_ids field.
+  std::vector<uint32_t> dst_node_ids;
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const BlobProvenance& provenance) {
+    return os << "transform_index: " << provenance.transform_index
+              << ", dst_node_ids: "
+              << absl::StrJoin(provenance.dst_node_ids, ", ");
+  }
+};
+
+// Verifies the provenance of a signed blob, returning the KMS's endorsement of
+// the VM that created the blob.
+//
+// This function requires that the blob's producer signed its payload using its
+// oak::containers::sdk::InstanceSigningKeyHandle. The resulting signature must
+// be provided along with the signing_key_endorsement from the producer's
+// AuthorizeConfidentialTransformResponse. The kms_public_key and
+// expected_invocation_id must come from the current process's
+// AuthorizeConfidentialTransformResponse.AssociatedData.
+//
+// If this function returns successfully, the blob was signed by a VM in the
+// same pipeline invocation as the current VM. Callers are also responsible for
+// checking any other necessary claims (e.g. transform_index).
+absl::StatusOr<BlobProvenance> VerifyBlobProvenance(
+    absl::string_view data, absl::string_view signature,
+    absl::string_view signing_key_endorsement, absl::string_view kms_public_key,
+    absl::string_view expected_invocation_id);
 
 }  // namespace confidential_federated_compute
 
