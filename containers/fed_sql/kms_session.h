@@ -26,6 +26,7 @@
 #include "absl/strings/string_view.h"
 #include "containers/fed_sql/dp_unit.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/partition_private_state.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/session_utils.h"
@@ -63,7 +64,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<MessageFactory> message_factory,
-      absl::string_view on_device_query_name);
+      absl::string_view on_device_query_name,
+      confidential_federated_compute::Decryptor& decryptor);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
@@ -101,6 +103,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Accumulate(
       fcp::confidentialcompute::BlobMetadata metadata,
       std::string unencrypted_data);
+  // Handles AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE type of Write.
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+  AccumulatePrivateState(int64_t total_size_bytes, std::string release_token);
   // Handles AGGREGATION_TYPE_MERGE type of Write.
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Merge(
       fcp::confidentialcompute::BlobMetadata metadata,
@@ -108,6 +113,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Handles FINALIZATION_TYPE_SERIALIZE type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Serialize(
       Context& context);
+  // Handles FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE type of Finalize.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+  SerializePrivateState(Context& context);
   // Handles FINALIZATION_TYPE_PARTITION type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Partition(
       Context& context, uint64_t num_partitions);
@@ -149,6 +157,10 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // The name of the query that executes on the device. This is used to prefix
   // message field-backed column names.
   std::string on_device_query_name_;
+  // Tracks private state for output partitions.
+  PartitionPrivateState partition_private_state_;
+  // Decryptor used to unwrap release tokens when accumulating private state.
+  confidential_federated_compute::Decryptor& decryptor_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

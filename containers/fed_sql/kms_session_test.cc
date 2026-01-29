@@ -22,13 +22,17 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "containers/big_endian.h"
+#include "containers/crypto.h"
+#include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
+#include "containers/fed_sql/partition_private_state.pb.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
@@ -58,7 +62,9 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::
     BuildMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
+using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
+using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -98,7 +104,9 @@ using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Pair;
+using ::testing::Property;
 using ::testing::Return;
+using ::testing::SizeIs;
 using ::testing::Test;
 using ::testing::UnorderedElementsAre;
 
@@ -151,10 +159,11 @@ KmsFedSqlSession CreateDefaultSession() {
   std::vector<Intrinsic> intrinsics =
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
+  Decryptor decryptor;
   return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
                           std::nullopt, std::nullopt, CreatePrivateState("", 1),
                           {},
-                          /*prototype=*/nullptr, "test_query");
+                          /*prototype=*/nullptr, "test_query", decryptor);
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -262,6 +271,22 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
 class KmsFedSqlSessionWriteTest : public Test {
  public:
   KmsFedSqlSessionWriteTest(std::optional<uint32_t> default_budget = 5) {
+    CreateSession(default_decryptor_, default_budget);
+  }
+
+  ~KmsFedSqlSessionWriteTest() override {
+    // Clean up any temp files created by the server.
+    // for (auto& de : std::filesystem::directory_iterator("/tmp")) {
+    // std::filesystem::remove_all(de.path());
+    // }
+  }
+
+  void CreateSessionWithDecryptor(Decryptor& decryptor) {
+    CreateSession(decryptor);
+  }
+
+  void CreateSession(Decryptor& decryptor,
+                     std::optional<uint32_t> default_budget = 5) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -277,8 +302,7 @@ class KmsFedSqlSessionWriteTest : public Test {
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
         std::nullopt,
         CreatePrivateState(initial_private_state_, default_budget),
-        absl::flat_hash_set<std::string>(),
-        /*prototype=*/nullptr, "test_query");
+        absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -296,13 +320,6 @@ class KmsFedSqlSessionWriteTest : public Test {
     request.mutable_configuration()->PackFrom(sql_query);
 
     CHECK_OK(session_->Configure(request, context_));
-  }
-
-  ~KmsFedSqlSessionWriteTest() override {
-    // Clean up any temp files created by the server.
-    // for (auto& de : std::filesystem::directory_iterator("/tmp")) {
-    // std::filesystem::remove_all(de.path());
-    // }
   }
 
  protected:
@@ -345,6 +362,7 @@ class KmsFedSqlSessionWriteTest : public Test {
   std::vector<Intrinsic> intrinsics_;
   std::string initial_private_state_;
   MockContext context_;
+  Decryptor default_decryptor_;
 };
 
 TEST_F(KmsFedSqlSessionWriteTest, InvalidWriteConfigurationFails) {
@@ -576,6 +594,161 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   EXPECT_EQ(col_values->num_elements(), 1);
   EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
   EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
+  RangeTracker range_tracker1;
+  range_tracker1.AddRange("key_foo", 1, 3);
+  range_tracker1.SetExpiredKeys({"expired_key"});
+  range_tracker1.SetPartitionIndex(123);
+  RangeTracker range_tracker2;
+  range_tracker2.AddRange("key_foo", 1, 3);
+  range_tracker2.SetExpiredKeys({"expired_key"});
+  range_tracker2.SetPartitionIndex(456);
+
+  // Generate release tokens.
+  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
+  MessageEncryptor encryptor;
+  absl::StatusOr<EncryptMessageResult> result1 = encryptor.EncryptForRelease(
+      "result-1", public_key, "associated-data", /*src_state=*/std::nullopt,
+      range_tracker1.SerializeAsString(),
+      [](absl::string_view) { return "signature"; });
+  ASSERT_THAT(result1, IsOk());
+  absl::StatusOr<EncryptMessageResult> result2 = encryptor.EncryptForRelease(
+      "result-2", public_key, "associated-data", /*src_state=*/std::nullopt,
+      range_tracker2.SerializeAsString(),
+      [](absl::string_view) { return "signature"; });
+  ASSERT_THAT(result2, IsOk());
+
+  // Create session with decryptor.
+  Decryptor decryptor({private_key});
+  CreateSessionWithDecryptor(decryptor);
+
+  // Prepare write requests with the release tokens.
+  BlobMetadata metadata1;
+  metadata1.set_total_size_bytes(result1->release_token.size());
+  BlobMetadata metadata2;
+  metadata2.set_total_size_bytes(result2->release_token.size());
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE
+  )pb");
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() = metadata1;
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() = metadata2;
+
+  // Write the two release tokens.
+  auto write_result1 =
+      session_->Write(write_request1, result1->release_token, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+  EXPECT_THAT(write_result1->committed_size_bytes(),
+              Eq(result1->release_token.size()));
+  auto write_result2 =
+      session_->Write(write_request2, result2->release_token, context_);
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->status().code(), Code::OK)
+      << write_result2->status().message();
+  EXPECT_THAT(write_result2->committed_size_bytes(),
+              Eq(result2->release_token.size()));
+
+  // Serialize the accumulated private state.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
+  ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
+
+  // Validate the serialized private state.
+  EXPECT_EQ(index, 1);
+  auto private_state = PartitionPrivateState::Parse(result_data);
+  ASSERT_THAT(private_state, IsOk());
+  auto private_state_proto = private_state->Serialize();
+  EXPECT_THAT(
+      private_state_proto.symmetric_keys(),
+      UnorderedElementsAre(
+          Property(&PartitionPrivateStateProto::SymmetricKeys::id, 123),
+          Property(&PartitionPrivateStateProto::SymmetricKeys::id, 456)));
+  EXPECT_THAT(private_state_proto.expired_keys(), ElementsAre("expired_key"));
+  EXPECT_THAT(private_state_proto.buckets(), SizeIs(1));
+  const auto& bucket = private_state_proto.buckets().at(0);
+  EXPECT_EQ(bucket.key(), "key_foo");
+  EXPECT_THAT(bucket.values(), ElementsAre(1, 3));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulatePrivateStateInvalidRangeTracker) {
+  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
+  MessageEncryptor encryptor;
+  absl::StatusOr<EncryptMessageResult> result = encryptor.EncryptForRelease(
+      "result-1", public_key, "associated-data", /*src_state=*/std::nullopt,
+      "invalid-range-tracker", [](absl::string_view) { return "signature"; });
+  ASSERT_THAT(result, IsOk());
+
+  Decryptor decryptor({private_key});
+  CreateSessionWithDecryptor(decryptor);
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(result->release_token.size());
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result =
+      session_->Write(write_request, result->release_token, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->status().code(), Code::INTERNAL);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("Failed to parse range tracker"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulatePrivateStateConflictingRangeTracker) {
+  RangeTracker range_tracker;
+  range_tracker.AddRange("key_foo", 1, 3);
+  range_tracker.SetPartitionIndex(123);
+
+  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
+  MessageEncryptor encryptor;
+  absl::StatusOr<EncryptMessageResult> result = encryptor.EncryptForRelease(
+      "result-1", public_key, "associated-data", /*src_state=*/std::nullopt,
+      range_tracker.SerializeAsString(),
+      [](absl::string_view) { return "signature"; });
+  ASSERT_THAT(result, IsOk());
+
+  Decryptor decryptor({private_key});
+  CreateSessionWithDecryptor(decryptor);
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(result->release_token.size());
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result =
+      session_->Write(write_request, result->release_token, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->status().code(), Code::OK);
+
+  // Writing same request again fails with conflicting range tracker.
+  write_result =
+      session_->Write(write_request, result->release_token, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->status().code(), Code::FAILED_PRECONDITION);
+  EXPECT_THAT(
+      write_result->status().message(),
+      HasSubstr("Failed to add partition's private state due to conflicts."));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfBlobWithNoBudgetFails) {
@@ -1121,7 +1294,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         std::move(checkpoint_aggregator_), intrinsics_, std::nullopt,
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
-        /*prototype=*/nullptr, "test_query");
+        /*prototype=*/nullptr, "test_query", decryptor_);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1155,6 +1328,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
   std::string initial_private_state_;
   std::unique_ptr<CheckpointAggregator> checkpoint_aggregator_;
   MockContext context_;
+  Decryptor decryptor_;
 };
 
 TEST_F(KmsFedSqlSessionWritePartialRangeTest,
@@ -1295,7 +1469,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
-        "test_query");
+        "test_query", decryptor_);
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects
@@ -1344,6 +1518,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
   std::vector<Intrinsic> intrinsics_;
   std::string initial_private_state_;
   MockContext context_;
+  Decryptor decryptor_;
 };
 
 TEST_F(KmsFedSqlSessionWriteWithMessageTest,

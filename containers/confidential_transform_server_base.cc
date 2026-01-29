@@ -198,7 +198,7 @@ bool ChunkedStreamWriter::EmitReleasable(
 // Reports status to the client in WriteFinishedResponse.
 absl::Status ConfidentialTransformBase::HandleWrite(
     confidential_federated_compute::Session* session, WriteRequest request,
-    absl::Cord blob_data, BlobDecryptor* blob_decryptor, SessionStream* stream,
+    absl::Cord blob_data, Decryptor* decryptor, SessionStream* stream,
     Session::Context& context) {
   // Get the key ID from the metadata.
   absl::StatusOr<std::string> key_id =
@@ -210,7 +210,7 @@ absl::Status ConfidentialTransformBase::HandleWrite(
 
   // TODO: Avoid flattening the cord, which requires the downstream
   // code to parse directly from the chunked cord.
-  absl::StatusOr<std::string> unencrypted_data = blob_decryptor->DecryptBlob(
+  absl::StatusOr<std::string> unencrypted_data = decryptor->DecryptBlob(
       request.first_request_metadata(), blob_data.Flatten(), key_id.value());
   if (!unencrypted_data.ok()) {
     LOG_EVERY_N(WARNING, 1000) << "Blob decryption failed for key_id "
@@ -332,11 +332,11 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
 
   {
     absl::MutexLock l(&mutex_);
-    if (blob_decryptor_ != std::nullopt) {
+    if (decryptor_ != std::nullopt) {
       return absl::FailedPreconditionError(
           "StreamInitialize can only be called once.");
     }
-    blob_decryptor_.emplace(std::vector<absl::string_view>(
+    decryptor_.emplace(std::vector<absl::string_view>(
         protected_response.decryption_keys().begin(),
         protected_response.decryption_keys().end()));
     session_tracker_.emplace(max_num_sessions);
@@ -365,19 +365,19 @@ absl::Status ConfidentialTransformBase::SetActiveKeyIds(
 }
 
 absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
-  BlobDecryptor* blob_decryptor;
+  Decryptor* decryptor;
   {
     absl::MutexLock l(&mutex_);
-    if (blob_decryptor_ == std::nullopt) {
+    if (decryptor_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "Initialize must be called before Session.");
     }
 
-    // Since blob_decryptor_ is set once in Initialize and never
+    // Since decryptor_ is set once in Initialize and never
     // modified, and the underlying object is threadsafe, it is safe to store a
     // local pointer to it and access the object without a lock after we check
     // under the mutex that values have been set for the std::optional wrappers.
-    blob_decryptor = &*blob_decryptor_;
+    decryptor = &*decryptor_;
   }
 
   SessionRequest configure_request;
@@ -455,7 +455,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
         if (is_commit) {
           FCP_RETURN_IF_ERROR(HandleWrite(
               session.get(), std::move(write_state->first_request),
-              std::move(write_state->data), blob_decryptor, stream, context));
+              std::move(write_state->data), decryptor, stream, context));
           write_state.reset();
         }
         break;
@@ -537,18 +537,18 @@ grpc::Status ConfidentialTransformBase::Session(ServerContext* context,
   return status;
 }
 
-absl::StatusOr<BlobDecryptor*> ConfidentialTransformBase::GetBlobDecryptor() {
+absl::StatusOr<Decryptor*> ConfidentialTransformBase::GetDecryptor() {
   absl::MutexLock l(&mutex_);
-  if (blob_decryptor_ == std::nullopt) {
+  if (decryptor_ == std::nullopt) {
     return absl::FailedPreconditionError(
-        "Initialize must be called before GetBlobDecryptor.");
+        "Initialize must be called before GetDecryptor.");
   }
 
-  // Since blob_decryptor_ is set once in Initialize and never modified,
+  // Since decryptor_ is set once in Initialize and never modified,
   // and the underlying object is threadsafe, it is safe to store a local
   // pointer to it and access the object without a lock after we check under
   // the mutex that values have been set for the std::optional wrappers.
-  return &*blob_decryptor_;
+  return &*decryptor_;
 }
 
 }  // namespace confidential_federated_compute
