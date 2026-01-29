@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "verifier.h"
+#include "attestation_token_verifier.h"
 
 #include <cmath>
 #include <fstream>
@@ -31,10 +31,10 @@
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "attestation_policy.pb.h"
 #include "http_client.h"
-#include "json_util.h"
+#include "json_parsing_utils.h"
 #include "nlohmann/json.hpp"
-#include "policy.pb.h"
 #include "proto/attestation/verification.pb.h"
 #include "tink/config/global_registry.h"
 #include "tink/jwt/jwk_set_converter.h"
@@ -44,7 +44,7 @@
 #include "tink/jwt/verified_jwt.h"
 #include "tink/util/statusor.h"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 namespace {
 
 // Standard JWT Claims used in the attestation token.
@@ -71,17 +71,115 @@ constexpr char kHwTcbDate[] = "attester_tcb_date";
 constexpr char kSubmodConfidentialSpace[] = "confidential_space";
 constexpr char kSupportAttributes[] = "support_attributes";
 
-}  // namespace
+/**
+ * @brief Implements policy-based attestation verification for Confidential
+ * Space.
+ *
+ * It verifies both the signature (Intel or Google, depending on policy) and
+ * a comprehensive set of identity and TCB policies provided by the user
+ * via a unified policy file.
+ */
+class AttestationTokenVerifierImpl : public AttestationTokenVerifier {
+ public:
+  AttestationTokenVerifierImpl(
+      const AttestationPolicy& attestation_policy,
+      std::unique_ptr<crypto::tink::JwtPublicKeyVerify> jwt_verifier,
+      bool dump_jwt);
 
-MyVerifier::MyVerifier() {
-  auto jwt_status = crypto::tink::JwtSignatureRegister();
-  CHECK_OK(jwt_status) << "Failed to register Tink JWT Signature primitives.";
-}
+  ~AttestationTokenVerifierImpl() {}
 
-void MyVerifier::SetDumpJwt(bool dump) { dump_jwt_ = dump; }
+  // Oak interface stub (not used in this client-side prototype).
+  virtual absl::StatusOr<oak::attestation::v1::AttestationResults> Verify(
+      std::chrono::time_point<std::chrono::system_clock> now,
+      const ::oak::attestation::v1::Evidence& evidence,
+      const ::oak::attestation::v1::Endorsements& endorsements) const override;
 
-void MyVerifier::SetPolicy(const AttestationPolicy& policy) {
-  policy_ = policy;
+  // Main verification entry point called via FFI from the Rust session layer.
+  // Verifies the JWT signature using locally loaded keys, enforces policy,
+  // and extracts the public key from the nonce.
+  virtual absl::StatusOr<std::string> VerifyJwt(
+      absl::string_view jwt_bytes) override;
+
+ private:
+  // Configuration for the selected Root of Trust (ITA or GCA).
+  struct VerifierConfig {
+    std::string expected_issuer;
+    std::string expected_hw_model;
+  };
+
+  VerifierConfig internal_config_;
+  AttestationPolicy policy_;
+
+  std::unique_ptr<crypto::tink::JwtPublicKeyVerify> jwt_verifier_;
+  bool dump_jwt_ = false;
+
+  // Struct to hold all relevant claims extracted from the token payload.
+  struct ExtractedClaims {
+    // Core Hardware Claims
+    absl::StatusOr<std::string> hwmodel = absl::InternalError("Uninitialized");
+    std::optional<bool> secboot;
+    absl::StatusOr<std::string> dbgstat = absl::InternalError("Uninitialized");
+    std::optional<int64_t> oemid;
+
+    // Workload/Measurement Claim
+    absl::StatusOr<std::string> image_digest =
+        absl::InternalError("Uninitialized");
+
+    // GCP Identity Claims
+    std::vector<std::string> google_service_accounts;
+    absl::StatusOr<std::string> gce_project_id =
+        absl::InternalError("Uninitialized");
+
+    // TCB Status Claims (delegated to ITA, or GCA equivalent)
+    absl::StatusOr<std::string> sw_tcb_status =
+        absl::InternalError("Uninitialized");
+    absl::StatusOr<std::string> hw_tcb_status =
+        absl::InternalError("Uninitialized");
+
+    // TCB Date Claims (raw strings from JSON, parsed during enforcement)
+    absl::StatusOr<std::string> sw_tcb_date =
+        absl::InternalError("Uninitialized");
+    absl::StatusOr<std::string> hw_tcb_date =
+        absl::InternalError("Uninitialized");
+
+    // Confidential Space operational attributes (e.g., DEBUG/EXPERIMENTAL).
+    std::vector<std::string> cs_support_attributes;
+  };
+
+  // Verifies signature and standard claims (issuer, audience, expiry).
+  absl::StatusOr<crypto::tink::VerifiedJwt> VerifyTokenSignatureAndBasicClaims(
+      absl::string_view jwt_bytes) const;
+
+  // Parses the verified JWT payload into a JSON object.
+  absl::StatusOr<nlohmann::json> ParsePayload(
+      crypto::tink::VerifiedJwt& verified_jwt) const;
+
+  // Extracts key claims into the ExtractedClaims struct and logs them.
+  absl::StatusOr<ExtractedClaims> ExtractAndLogClaims(
+      const crypto::tink::VerifiedJwt& verified_jwt,
+      const nlohmann::json& payload_json) const;
+
+  // Enforces all policy rules against the extracted claims.
+  absl::Status EnforcePolicy(const ExtractedClaims& claims) const;
+
+  // Extracts and Base64-decodes the attestation public key from the 'eat_nonce'
+  // claim.
+  absl::StatusOr<std::string> ExtractNonce(
+      const nlohmann::json& payload_json) const;
+
+  // Helper for enforcing exact string matches in policy to reduce boilerplate.
+  absl::Status CheckStringMatch(const absl::StatusOr<std::string>& actual,
+                                const std::string& expected,
+                                absl::string_view claim_label) const;
+};
+
+AttestationTokenVerifierImpl::AttestationTokenVerifierImpl(
+    const AttestationPolicy& attestation_policy,
+    std::unique_ptr<crypto::tink::JwtPublicKeyVerify> jwt_verifier,
+    bool dump_jwt)
+    : policy_(attestation_policy),
+      jwt_verifier_(std::move(jwt_verifier)),
+      dump_jwt_(dump_jwt) {
   switch (policy_.verifier_type()) {
     case AttestationPolicy::GCA:
       internal_config_ = {
@@ -95,52 +193,15 @@ void MyVerifier::SetPolicy(const AttestationPolicy& policy) {
           .expected_hw_model = "INTEL_TDX"};
       break;
   }
-  LOG(INFO) << "Attestation policy updated:\n" << policy_.DebugString();
+  LOG(INFO) << "Attestation policy:\n" << policy_.DebugString();
   LOG(INFO) << "Internal verifier config set: expected_issuer="
             << internal_config_.expected_issuer
             << ", expected_hw_model=" << internal_config_.expected_hw_model;
+  LOG(INFO) << "JWT Verifier initialized successfully.";
 }
 
-absl::Status MyVerifier::Initialize(const std::string& jwks_path) {
-  if (jwks_path.empty()) {
-    return absl::InvalidArgumentError(
-        "Initialize: jwks_path cannot be empty in hardened offline mode.");
-  }
-
-  LOG(INFO) << "Loading JWKS from local file: " << jwks_path;
-  std::ifstream jwks_file(jwks_path);
-  if (!jwks_file.is_open()) {
-    return absl::NotFoundError(
-        absl::StrCat("Failed to open local JWKS file: ", jwks_path));
-  }
-  std::stringstream buffer;
-  buffer << jwks_file.rdbuf();
-  std::string jwks_payload_data = buffer.str();
-
-  // Initialize Tink with the loaded payload.
-  absl::StatusOr<std::unique_ptr<crypto::tink::KeysetHandle>> keyset_handle =
-      crypto::tink::JwkSetToPublicKeysetHandle(jwks_payload_data);
-  if (!keyset_handle.ok()) {
-    return absl::InternalError(
-        absl::StrCat("JwkSetToPublicKeysetHandle failed: ",
-                     keyset_handle.status().ToString()));
-  }
-
-  absl::StatusOr<std::unique_ptr<crypto::tink::JwtPublicKeyVerify>>
-      jwt_verifier_or = (*keyset_handle)
-                            ->GetPrimitive<crypto::tink::JwtPublicKeyVerify>(
-                                crypto::tink::ConfigGlobalRegistry());
-  if (!jwt_verifier_or.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to get JwtPublicKeyVerify primitive: ",
-                     jwt_verifier_or.status().ToString()));
-  }
-  jwt_verifier_ = std::move(*jwt_verifier_or);
-  LOG(INFO) << "JWT Verifier initialized successfully (Hardened Offline Mode).";
-  return absl::OkStatus();
-}
-
-absl::StatusOr<oak::attestation::v1::AttestationResults> MyVerifier::Verify(
+absl::StatusOr<oak::attestation::v1::AttestationResults>
+AttestationTokenVerifierImpl::Verify(
     std::chrono::time_point<std::chrono::system_clock> now,
     const ::oak::attestation::v1::Evidence& evidence,
     const ::oak::attestation::v1::Endorsements& endorsements) const {
@@ -153,7 +214,8 @@ absl::StatusOr<oak::attestation::v1::AttestationResults> MyVerifier::Verify(
   return results;
 }
 
-absl::StatusOr<std::string> MyVerifier::VerifyJwt(absl::string_view jwt_bytes) {
+absl::StatusOr<std::string> AttestationTokenVerifierImpl::VerifyJwt(
+    absl::string_view jwt_bytes) {
   LOG(INFO) << "C++ MyVerifier::VerifyJwt called with token (size "
             << jwt_bytes.size() << ").";
 
@@ -209,7 +271,7 @@ absl::StatusOr<std::string> MyVerifier::VerifyJwt(absl::string_view jwt_bytes) {
 }
 
 absl::StatusOr<crypto::tink::VerifiedJwt>
-MyVerifier::VerifyTokenSignatureAndBasicClaims(
+AttestationTokenVerifierImpl::VerifyTokenSignatureAndBasicClaims(
     absl::string_view jwt_bytes) const {
   // Configure validator for standard required claims.
   absl::StatusOr<crypto::tink::JwtValidator> validator_or =
@@ -236,7 +298,7 @@ MyVerifier::VerifyTokenSignatureAndBasicClaims(
   return verified_jwt_or;
 }
 
-absl::StatusOr<nlohmann::json> MyVerifier::ParsePayload(
+absl::StatusOr<nlohmann::json> AttestationTokenVerifierImpl::ParsePayload(
     crypto::tink::VerifiedJwt& verified_jwt) const {
   absl::StatusOr<std::string> payload_str_or = verified_jwt.GetJsonPayload();
   if (!payload_str_or.ok()) {
@@ -252,7 +314,8 @@ absl::StatusOr<nlohmann::json> MyVerifier::ParsePayload(
   }
 }
 
-absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
+absl::StatusOr<AttestationTokenVerifierImpl::ExtractedClaims>
+AttestationTokenVerifierImpl::ExtractAndLogClaims(
     const crypto::tink::VerifiedJwt& verified_jwt,
     const nlohmann::json& payload_json) const {
   ExtractedClaims claims;
@@ -304,14 +367,14 @@ absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
   };
 
   // 1. Core Hardware and Security Claims
-  claims.hwmodel = gcp_prototype::GetStringClaimFromPath(
-      payload_json, {kJwtHwModelAttributeName});
+  claims.hwmodel =
+      GetStringClaimFromPath(payload_json, {kJwtHwModelAttributeName});
   log_parsed_claim(kJwtHwModelAttributeName, claims.hwmodel);
 
   claims.secboot = log_tink_bool_claim(kJwtSecbootAttributeName);
 
-  claims.dbgstat = gcp_prototype::GetStringClaimFromPath(
-      payload_json, {kJwtDbgstatAttributeName});
+  claims.dbgstat =
+      GetStringClaimFromPath(payload_json, {kJwtDbgstatAttributeName});
   log_parsed_claim(kJwtDbgstatAttributeName, claims.dbgstat);
 
   // Log informational claims (not enforced by current policy).
@@ -325,14 +388,14 @@ absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
   claims.oemid = log_tink_int_claim(kOemIdAttributeName);
 
   // 2. Workload Measurement (Container Image Digest)
-  claims.image_digest = gcp_prototype::GetStringClaimFromPath(
+  claims.image_digest = GetStringClaimFromPath(
       payload_json, {kJwtSubmodsAttributeName, kSubmodsContainerFieldName,
                      kContainerImageDigestFieldName});
   log_parsed_claim("image_digest", claims.image_digest);
 
   // 3. GCP Identity Claims
-  auto sa_list_or = gcp_prototype::GetStringListClaimFromPath(
-      payload_json, {kGoogleServiceAccounts});
+  auto sa_list_or =
+      GetStringListClaimFromPath(payload_json, {kGoogleServiceAccounts});
   if (sa_list_or.ok()) {
     claims.google_service_accounts = *sa_list_or;
   } else {
@@ -345,31 +408,29 @@ absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
                     : nlohmann::json(claims.google_service_accounts).dump());
 
   // Extract GCP Project ID.
-  claims.gce_project_id = gcp_prototype::GetStringClaimFromPath(
+  claims.gce_project_id = GetStringClaimFromPath(
       payload_json, {kJwtSubmodsAttributeName, kSubmodGce, kGceProjectId});
   log_parsed_claim("gce.project_id", claims.gce_project_id);
 
   // 4. TCB Statuses (Delegated Intel Verification)
   // GCP Software TCB Status (kernel, CS agent, etc.).
   claims.sw_tcb_status =
-      gcp_prototype::GetStringClaimFromPath(payload_json, {kTdx, kSwTcbStatus});
+      GetStringClaimFromPath(payload_json, {kTdx, kSwTcbStatus});
   log_parsed_claim("tdx.gcp_attester_tcb_status (SW)", claims.sw_tcb_status);
 
-  claims.sw_tcb_date =
-      gcp_prototype::GetStringClaimFromPath(payload_json, {kTdx, kSwTcbDate});
+  claims.sw_tcb_date = GetStringClaimFromPath(payload_json, {kTdx, kSwTcbDate});
   log_parsed_claim("tdx.gcp_attester_tcb_date (SW)", claims.sw_tcb_date);
 
   // Intel Hardware TCB Status (microcode, TDX module).
   claims.hw_tcb_status =
-      gcp_prototype::GetStringClaimFromPath(payload_json, {kTdx, kHwTcbStatus});
+      GetStringClaimFromPath(payload_json, {kTdx, kHwTcbStatus});
   log_parsed_claim("tdx.attester_tcb_status (HW)", claims.hw_tcb_status);
 
-  claims.hw_tcb_date =
-      gcp_prototype::GetStringClaimFromPath(payload_json, {kTdx, kHwTcbDate});
+  claims.hw_tcb_date = GetStringClaimFromPath(payload_json, {kTdx, kHwTcbDate});
   log_parsed_claim("tdx.attester_tcb_date (HW)", claims.hw_tcb_date);
 
   // 5. Confidential Space Support Attributes (e.g., DEBUG flag)
-  auto support_attrs_or = gcp_prototype::GetStringListClaimFromPath(
+  auto support_attrs_or = GetStringListClaimFromPath(
       payload_json,
       {kJwtSubmodsAttributeName, kSubmodConfidentialSpace, kSupportAttributes});
   if (support_attrs_or.ok()) {
@@ -387,7 +448,8 @@ absl::StatusOr<MyVerifier::ExtractedClaims> MyVerifier::ExtractAndLogClaims(
   return claims;
 }
 
-absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
+absl::Status AttestationTokenVerifierImpl::EnforcePolicy(
+    const ExtractedClaims& claims) const {
   LOG(INFO) << "Enforcing attestation policy...";
 
   // 1. Hardware Model (Fixed based on config)
@@ -537,7 +599,7 @@ absl::Status MyVerifier::EnforcePolicy(const ExtractedClaims& claims) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> MyVerifier::ExtractNonce(
+absl::StatusOr<std::string> AttestationTokenVerifierImpl::ExtractNonce(
     const nlohmann::json& payload_json) const {
   if (!payload_json.contains(kJwtNonceAttributeName)) {
     return absl::InternalError(absl::StrCat("Failed to extract nonce claim ('",
@@ -574,7 +636,7 @@ absl::StatusOr<std::string> MyVerifier::ExtractNonce(
   return decoded_nonce;
 }
 
-absl::Status MyVerifier::CheckStringMatch(
+absl::Status AttestationTokenVerifierImpl::CheckStringMatch(
     const absl::StatusOr<std::string>& actual, const std::string& expected,
     absl::string_view claim_label) const {
   if (!actual.ok()) {
@@ -590,7 +652,36 @@ absl::Status MyVerifier::CheckStringMatch(
   return absl::OkStatus();
 }
 
-}  // namespace gcp_prototype
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<AttestationTokenVerifier>>
+CreateAttestationTokenVerifier(const AttestationPolicy& attestation_policy,
+                               const std::string& jwks_payload, bool dump_jwt) {
+  auto jwt_status = crypto::tink::JwtSignatureRegister();
+  if (!jwt_status.ok()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to register Tink JWT Signature primitives: ",
+                     jwt_status.ToString()));
+  }
+  absl::StatusOr<std::unique_ptr<crypto::tink::KeysetHandle>> keyset_handle =
+      crypto::tink::JwkSetToPublicKeysetHandle(jwks_payload);
+  if (!keyset_handle.ok()) {
+    return absl::InternalError(
+        absl::StrCat("JwkSetToPublicKeysetHandle failed: ",
+                     keyset_handle.status().ToString()));
+  }
+  absl::StatusOr<std::unique_ptr<crypto::tink::JwtPublicKeyVerify>>
+      jwt_verifier_or = (*keyset_handle)
+                            ->GetPrimitive<crypto::tink::JwtPublicKeyVerify>(
+                                crypto::tink::ConfigGlobalRegistry());
+  if (!jwt_verifier_or.ok()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to get JwtPublicKeyVerify primitive: ",
+                     jwt_verifier_or.status().ToString()));
+  }
+  return std::make_unique<AttestationTokenVerifierImpl>(
+      attestation_policy, std::move(*jwt_verifier_or), dump_jwt);
+}
 
 extern "C" {
 bool verify_jwt_f(void* context, const uint8_t* jwt_bytes, size_t jwt_len,
@@ -600,8 +691,8 @@ bool verify_jwt_f(void* context, const uint8_t* jwt_bytes, size_t jwt_len,
     LOG(ERROR) << "FFI verify_jwt_f called with null pointer.";
     return false;
   }
-  gcp_prototype::MyVerifier* verifier =
-      static_cast<gcp_prototype::MyVerifier*>(context);
+  AttestationTokenVerifier* verifier =
+      static_cast<AttestationTokenVerifier*>(context);
   absl::StatusOr<std::string> public_key_or = verifier->VerifyJwt(
       absl::string_view(reinterpret_cast<const char*>(jwt_bytes), jwt_len));
   if (!public_key_or.ok()) {
@@ -618,3 +709,5 @@ bool verify_jwt_f(void* context, const uint8_t* jwt_bytes, size_t jwt_len,
   return true;
 }
 }  // extern "C"
+
+}  // namespace confidential_federated_compute::gcp

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "proto_util.h"
+#include "proto_parsing_utils.h"
 
 #include <fstream>
 #include <sstream>
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 void ReadTextProtoOrDie(const std::string& path,
                         google::protobuf::Message* message) {
@@ -32,4 +32,4 @@ void ReadTextProtoOrDie(const std::string& path,
   }
 }
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp

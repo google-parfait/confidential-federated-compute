@@ -15,6 +15,8 @@
 // gRPC server implementation using Oak Noise sessions for secure communication
 // and GCP Confidential Space attestation.
 
+#include "grpcpp/server.h"
+
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -27,24 +29,24 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/escaping.h"  // For Base64Escape
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
-#include "attestation.h"
+#include "attestation_token_provider.h"
 #include "cc/ffi/rust_bytes.h"
 #include "cc/oak_session/server_session.h"
 #include "grpcpp/grpcpp.h"
-#include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
-#include "inference.pb.h"
-#include "inference_engine.h"
+#include "oak_session_utils.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
+#include "server.h"
 #include "server_session_config.h"
-#include "session_utils.h"
 #include "tink/config/tink_config.h"
 #include "tink/signature/signature_config.h"
 
-// Using declarations for convenience.
+namespace confidential_federated_compute::gcp {
+namespace {
+
 using ::oak::services::OakSessionV1Service;
 using ::oak::session::ServerSession;
 using ::oak::session::SessionConfig;
@@ -52,38 +54,15 @@ using ::oak::session::SigningKeyHandle;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
 
-using ::gcp_prototype::AttestationTokenProvider;
-using ::gcp_prototype::CreateTokenProvider;
-using ::gcp_prototype::InferenceEngine;
-using ::gcp_prototype::ProviderType;
-
-// Default server port.
-const int PORT = 8000;
-
-// Flag to select the attestation provider implementation.
-ABSL_FLAG(std::string, attestation_provider, "ita",
-          "Which attestation provider to use: 'gca' or 'ita'.");
-
-// Flag to specify the path to the model weights (GGUF file).
-ABSL_FLAG(std::string, model_path, "/saved_model/gemma-3-270m-it-q4_k_m.gguf",
-          "Path to the model weights (GGUF file).");
-
-ABSL_FLAG(int32_t, gpu_layers, 0,
-          "Number of layers to offload to GPU. Set to 0 for CPU only, or a "
-          "large number (e.g., 999) to offload all layers.");
-/**
- * @brief Implementation of the Oak Session gRPC service.
- * Handles a single client stream connection.
- */
 class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
  public:
   explicit OakSessionV1ServiceImpl(
       std::unique_ptr<AttestationTokenProvider> provider,
-      InferenceEngine* inference_engine)
+      Server::RequestHandler request_handler)
       : token_provider_(std::move(provider)),
-        inference_engine_(inference_engine) {
+        request_handler_(std::move(request_handler)) {
     CHECK(token_provider_ != nullptr) << "Token provider cannot be null";
-    CHECK(inference_engine_ != nullptr) << "Inference engine cannot be null";
+    CHECK(request_handler_ != nullptr) << "Request handler cannot be null";
   }
 
   grpc::Status Stream(grpc::ServerContext* context,
@@ -145,9 +124,6 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
 
     LOG(INFO) << "ServerSession created, entering message processing loop.";
 
-    // Use the shared PumpOutgoingMessages function.
-    using gcp_prototype::session_utils::PumpOutgoingMessages;
-
     // 4. Main loop: Read requests, process via Oak, send responses.
     while (true) {
       SessionRequest request;
@@ -176,51 +152,25 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
         continue;
       }
 
-      // 1. Get the data as a standard C++ string (existing logic)
       std::string decrypted_data =
           static_cast<std::string>(decrypted_message->value());
 
-      // 2. Parse the Batched Request Proto
-      gcp_prototype::BatchedInferenceRequest batch_request;
-      if (!batch_request.ParseFromString(decrypted_data)) {
-        std::string error_msg =
-            "Failed to parse BatchedInferenceRequest proto.";
-        LOG(ERROR) << error_msg;
-        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, error_msg);
+      // Call the handler to parse and process
+      absl::StatusOr<std::string> unencrypted_response_or =
+          request_handler_(decrypted_data);
+      if (!unencrypted_response_or.ok()) {
+        LOG(ERROR) << "Request processing failed: "
+                   << unencrypted_response_or.status();
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            std::string(unencrypted_response_or.status().message()));
       }
 
-      LOG(INFO) << "Received batch with " << batch_request.requests_size()
-                << " requests.";
-
-      // 3. Delegate to Engine
-      // Pass the full proto in, get the full proto out.
-      auto start_time = std::chrono::high_resolution_clock::now();
-
-      absl::StatusOr<gcp_prototype::BatchedInferenceResponse> response_or =
-          inference_engine_->InferBatch(batch_request);
-
-      auto end_time = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = end_time - start_time;
-
-      if (!response_or.ok()) {
-        LOG(ERROR) << "Batch inference failed: " << response_or.status();
-        return grpc::Status(grpc::StatusCode::INTERNAL,
-                            std::string(response_or.status().message()));
-      }
-
-      LOG(INFO) << "Batch processing complete (" << elapsed.count() << "s).";
-
-      // 4. Serialize Response
-      std::string response_payload;
-      if (!response_or->SerializeToString(&response_payload)) {
-        std::string error_msg = "Failed to serialize BatchedInferenceResponse.";
-        LOG(ERROR) << error_msg;
-        return grpc::Status(grpc::StatusCode::INTERNAL, error_msg);
-      }
-
-      // 5. Send Reply
-      LOG(INFO) << "Sending reply (" << response_payload.size() << " bytes).";
-      absl::Status write_status = server_session->Write(response_payload);
+      // Send Reply
+      LOG(INFO) << "Sending reply (" << unencrypted_response_or->size()
+                << " bytes).";
+      absl::Status write_status =
+          server_session->Write(unencrypted_response_or.value());
       CHECK_OK(write_status) << "Failed to write reply message";
 
       CHECK_OK(PumpOutgoingMessages(server_session.get(), stream));
@@ -232,64 +182,67 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
 
  private:
   std::unique_ptr<AttestationTokenProvider> token_provider_;
-  InferenceEngine* inference_engine_;
+  Server::RequestHandler request_handler_;
 };
 
-/**
- * @brief Sets up and runs the gRPC server.
- */
-void RunServer(InferenceEngine* inference_engine) {
-  std::string server_address = absl::StrFormat("0.0.0.0:%d", PORT);
+class ServerImpl : public Server {
+ public:
+  ServerImpl(std::unique_ptr<OakSessionV1ServiceImpl> service,
+             std::unique_ptr<grpc::Server> server, int port)
+      : service_(std::move(service)), server_(std::move(server)), port_(port) {}
 
-  // Select and create the appropriate attestation provider based on flag.
-  std::unique_ptr<AttestationTokenProvider> token_provider;
-  std::string provider_flag = absl::GetFlag(FLAGS_attestation_provider);
-
-  ProviderType provider_type;
-  if (provider_flag == "gca") {
-    provider_type = ProviderType::kGca;
-  } else if (provider_flag == "ita") {
-    provider_type = ProviderType::kIta;
-  } else {
-    LOG(ERROR) << "Invalid --attestation_provider flag value: '"
-               << provider_flag << "'. Use 'gca' or 'ita'.";
-    exit(1);
+  virtual ~ServerImpl() override {
+    server_->Shutdown();
+    server_->Wait();
   }
-  token_provider = CreateTokenProvider(provider_type);
 
-  OakSessionV1ServiceImpl service(std::move(token_provider), inference_engine);
-  grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
+  virtual void Wait() override { server_->Wait(); }
+  virtual int port() override { return port_; }
 
-  std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-  LOG(INFO) << "Server listening on " << server_address;
-  server->Wait();
-}
+ private:
+  std::unique_ptr<OakSessionV1ServiceImpl> service_;
+  std::unique_ptr<grpc::Server> server_;
+  int port_;
+};
 
-int main(int argc, char** argv) {
-  absl::ParseCommandLine(argc, argv);
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Server>> CreateServer(
+    int port,
+    std::unique_ptr<AttestationTokenProvider> attestation_token_provider,
+    Server::RequestHandler request_handler) {
+  if (!attestation_token_provider) {
+    return absl::InvalidArgumentError(
+        "Attestation tokenb provider cannot be null.");
+  }
+
+  if (!request_handler) {
+    return absl::InvalidArgumentError("Request handler cannot be null.");
+  }
 
   // Initialize Tink for potential future server-side crypto needs.
   auto status = crypto::tink::TinkConfig::Register();
   CHECK_OK(status) << "Failed to register TinkConfig";
+
   status = crypto::tink::SignatureConfig::Register();
   CHECK_OK(status) << "Failed to register Tink SignatureConfig";
 
-  std::string model_path = absl::GetFlag(FLAGS_model_path);
-  int32_t gpu_layers = absl::GetFlag(FLAGS_gpu_layers);
-  LOG(INFO) << "Initializing inference engine... ";
-  LOG(INFO) << "  Model: " << model_path;
-  LOG(INFO) << "  GPU Layers: " << gpu_layers;
-  auto engine_or = InferenceEngine::Create(model_path, gpu_layers);
-  if (!engine_or.ok()) {
-    LOG(FATAL) << "Failed to initialize inference engine: "
-               << engine_or.status();
-  }
-  std::unique_ptr<InferenceEngine> inference_engine = std::move(*engine_or);
-  LOG(INFO) << "Inference engine initialized successfully.";
+  std::unique_ptr<OakSessionV1ServiceImpl> service =
+      std::make_unique<OakSessionV1ServiceImpl>(
+          std::move(attestation_token_provider), std::move(request_handler));
 
-  RunServer(inference_engine.get());
+  grpc::ServerBuilder builder;
+  std::string server_address = absl::StrFormat("0.0.0.0:%d", port);
+  int selected_port;
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(),
+                           &selected_port);
+  builder.RegisterService(service.get());
 
-  return 0;
+  std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+  LOG(INFO) << "Server listening on port " << selected_port;
+
+  return std::make_unique<ServerImpl>(std::move(service), std::move(server),
+                                      selected_port);
 }
+
+}  // namespace confidential_federated_compute::gcp

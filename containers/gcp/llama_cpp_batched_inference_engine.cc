@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "inference_engine.h"
+#include "llama_cpp_batched_inference_engine.h"
 
 #include <iostream>
 #include <vector>
@@ -22,9 +22,9 @@
 #include "absl/strings/str_cat.h"
 #include "google/rpc/code.pb.h"
 
-namespace gcp_prototype {
-
+namespace confidential_federated_compute::gcp {
 namespace {
+
 // Hardcoded parameters for this prototype step.
 constexpr int kDefaultMaxTokens = 1024;
 constexpr int kBatchSize = 2048;  // Capacity for batch processing
@@ -72,9 +72,66 @@ void BatchAdd(llama_batch& batch, llama_token token, llama_pos pos,
   batch.n_tokens++;
 }
 
-}  // namespace
+/**
+ * @brief A thread-safe wrapper around llama.cpp for sequential LLM inference.
+ *
+ * This class encapsulates the state required to run a llama.cpp model,
+ * including the loaded model weights, the active context (KV cache), and the
+ * sampler. It provides a simplified, synchronous interface for generating
+ * text from a prompt.
+ *
+ * Thread Safety: Internally synchronized with a mutex. Concurrent calls to
+ * Infer() will block until the previous inference is complete.
+ */
+class LlamaCppBatchedInferenceEngine : public BatchedInferenceEngine {
+ public:
+  LlamaCppBatchedInferenceEngine(llama_model* model, const llama_vocab* vocab);
 
-InferenceEngine::InferenceEngine(llama_model* model, const llama_vocab* vocab)
+  /**
+   * @brief Initializes the engine by loading the model from the specified path.
+   *
+   * This operation is I/O intensive and slow. It should be called once at
+   * application startup.
+   *
+   * @param model_path Filesystem path to the GGUF model file.
+   * @param gpu_layers Number of layers to offload to GPU (0 for CPU only).
+   * @return A unique_ptr to the initialized engine, or an error status.
+   */
+
+  virtual ~LlamaCppBatchedInferenceEngine() override;
+
+  /**
+   * @brief Performs batched inference on a list of prompts.
+   *
+   * This method processes multiple prompts in parallel using llama.cpp's
+   * batch decoding capabilities.
+   *
+   * @param request The proto containing the list of prompts and parameters.
+   * @return A response proto with results for every prompt.
+   */
+  virtual absl::StatusOr<BatchedInferenceResponse> DoBatchedInference(
+      const BatchedInferenceRequest& request) override;
+
+ private:
+  // Helper to tokenize a prompt (including chat template application).
+  absl::StatusOr<std::vector<llama_token>> Tokenize(const std::string& prompt);
+
+  llama_model* model_;        // Owned by this class.
+  const llama_vocab* vocab_;  // Owned by model_.
+
+  absl::Mutex mutex_;
+  // Context (KV cache) and sampler are reused across requests to save
+  // allocation time, but are reset at the start of each InferInternal() call
+  // to ensure stateless request handling.
+  llama_context* ctx_ ABSL_GUARDED_BY(mutex_) = nullptr;
+  llama_sampler* sampler_ ABSL_GUARDED_BY(mutex_) = nullptr;
+
+  // Reusable batch structure for llama.cpp to avoid frequent allocations.
+  llama_batch batch_ ABSL_GUARDED_BY(mutex_);
+};
+
+LlamaCppBatchedInferenceEngine::LlamaCppBatchedInferenceEngine(
+    llama_model* model, const llama_vocab* vocab)
     : model_(model), vocab_(vocab) {
   // Initialize the batch structure once.
   // We allocate enough space for kBatchSize tokens.
@@ -83,58 +140,15 @@ InferenceEngine::InferenceEngine(llama_model* model, const llama_vocab* vocab)
   batch_ = llama_batch_init(kBatchSize, 0, 1);
 }
 
-InferenceEngine::~InferenceEngine() {
+LlamaCppBatchedInferenceEngine::~LlamaCppBatchedInferenceEngine() {
   if (sampler_) llama_sampler_free(sampler_);
   if (ctx_) llama_free(ctx_);
   llama_batch_free(batch_);
   if (model_) llama_model_free(model_);
 }
 
-absl::StatusOr<std::unique_ptr<InferenceEngine>> InferenceEngine::Create(
-    const std::string& model_path, int gpu_layers) {
-  llama_log_set(LlamaVerboseLogger, nullptr);
-  llama_model_params model_params = llama_model_default_params();
-  model_params.n_gpu_layers = gpu_layers;
-
-  LOG(INFO) << "Loading LLM from " << model_path;
-  LOG(INFO) << "Attempting to offload " << gpu_layers << " layers to GPU.";
-  llama_model* model =
-      llama_model_load_from_file(model_path.c_str(), model_params);
-  if (!model) {
-    return absl::InternalError(
-        absl::StrCat("Failed to load model from ", model_path));
-  }
-
-  const llama_vocab* vocab = llama_model_get_vocab(model);
-  return absl::WrapUnique(new InferenceEngine(model, vocab));
-}
-
-absl::StatusOr<std::string> InferenceEngine::Infer(const std::string& prompt) {
-  // No lock needed here; we are just constructing a request on the stack.
-  // The shared state access happens inside InferBatch.
-  BatchedInferenceRequest request;
-  request.add_requests()->set_text(prompt);
-  request.mutable_params()->set_max_output_tokens(kDefaultMaxTokens);
-
-  auto result_or = InferBatch(request);
-
-  if (!result_or.ok()) {
-    return result_or.status();
-  }
-
-  if (result_or->results_size() > 0) {
-    const auto& result = result_or->results(0);
-    if (result.status().code() == google::rpc::Code::OK) {
-      return result.text();
-    }
-    return absl::InternalError(
-        absl::StrCat("Inference failed: ", result.status().message()));
-  }
-  return absl::InternalError("No result returned from batch inference");
-}
-
-absl::StatusOr<std::vector<llama_token>> InferenceEngine::Tokenize(
-    const std::string& prompt) {
+absl::StatusOr<std::vector<llama_token>>
+LlamaCppBatchedInferenceEngine::Tokenize(const std::string& prompt) {
   // 1. Apply Gemma Chat Template
   std::string formatted_prompt = absl::StrCat(
       "<start_of_turn>user\n", prompt, "<end_of_turn>\n<start_of_turn>model\n");
@@ -151,7 +165,8 @@ absl::StatusOr<std::vector<llama_token>> InferenceEngine::Tokenize(
   return tokens;
 }
 
-absl::StatusOr<BatchedInferenceResponse> InferenceEngine::InferBatch(
+absl::StatusOr<BatchedInferenceResponse>
+LlamaCppBatchedInferenceEngine::DoBatchedInference(
     const BatchedInferenceRequest& request) {
   absl::MutexLock lock(&mutex_);
 
@@ -284,4 +299,26 @@ absl::StatusOr<BatchedInferenceResponse> InferenceEngine::InferBatch(
   return response;
 }
 
-}  // namespace gcp_prototype
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<BatchedInferenceEngine>>
+CreateLlamaCppBatchedInferenceEngine(const std::string& model_path,
+                                     int gpu_layers) {
+  llama_log_set(LlamaVerboseLogger, nullptr);
+  llama_model_params model_params = llama_model_default_params();
+  model_params.n_gpu_layers = gpu_layers;
+
+  LOG(INFO) << "Loading LLM from " << model_path;
+  LOG(INFO) << "Attempting to offload " << gpu_layers << " layers to GPU.";
+  llama_model* model =
+      llama_model_load_from_file(model_path.c_str(), model_params);
+  if (!model) {
+    return absl::InternalError(
+        absl::StrCat("Failed to load model from ", model_path));
+  }
+
+  const llama_vocab* vocab = llama_model_get_vocab(model);
+  return absl::WrapUnique(new LlamaCppBatchedInferenceEngine(model, vocab));
+}
+
+}  // namespace confidential_federated_compute::gcp

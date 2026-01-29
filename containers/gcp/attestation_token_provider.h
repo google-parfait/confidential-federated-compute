@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef ATTESTATION_H
-#define ATTESTATION_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_ATTESTATION_TOKEN_PROVIDER_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_ATTESTATION_TOKEN_PROVIDER_H
 
 #include <memory>
 #include <string>
@@ -21,7 +21,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 /**
  * @brief Abstract interface for fetching a signed attestation token from the
@@ -56,9 +56,9 @@ enum class ProviderType {
  * @param type The desired provider authority.
  * @return An initialized provider instance ready to fetch tokens.
  */
-std::unique_ptr<AttestationTokenProvider> CreateTokenProvider(
+std::unique_ptr<AttestationTokenProvider> CreateAttestationTokenProvider(
     ProviderType type);
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp
 
-#endif  // ATTESTATION_H
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_ATTESTATION_TOKEN_PROVIDER_H

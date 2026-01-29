@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef JSON_UTIL_H
-#define JSON_UTIL_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_JSON_PARSING_UTILS_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_JSON_PARSING_UTILS_H
 
 #include <string>
 #include <vector>
@@ -22,7 +22,7 @@
 #include "absl/strings/string_view.h"
 #include "nlohmann/json.hpp"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 // Helper to extract a potentially nested string claim from a parsed JSON object
 // using a vector of keys representing the path.
@@ -37,6 +37,6 @@ absl::StatusOr<std::vector<std::string>> GetStringListClaimFromPath(
     const nlohmann::json& payload_json,
     const std::vector<absl::string_view>& path);
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp
 
-#endif  // JSON_UTIL_H
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_JSON_PARSING_UTILS_H

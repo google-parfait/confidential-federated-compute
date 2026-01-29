@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef HTTP_CLIENT_H
-#define HTTP_CLIENT_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_HTTP_CLIENT_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_HTTP_CLIENT_H
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 // Performs an HTTP POST request with a JSON payload
 // over a Unix domain socket using libcurl.
@@ -29,6 +29,6 @@ absl::StatusOr<std::string> PostJsonViaUnixSocket(
 // Performs a standard HTTP GET request using libcurl.
 absl::StatusOr<std::string> CurlGet(absl::string_view url);
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp
 
-#endif  // HTTP_CLIENT_H
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_HTTP_CLIENT_H

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PROTO_UTIL_H
-#define PROTO_UTIL_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_PROTO_PARSING_UTILS_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_PROTO_PARSING_UTILS_H
 
 #include <string>
 
@@ -21,13 +21,13 @@
 #include "google/protobuf/message.h"
 #include "google/protobuf/text_format.h"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 // Reads a file at the given path and parses it as a textproto into the provided
 // message. Crashes with LOG(FATAL) if the file cannot be read or parsed.
 void ReadTextProtoOrDie(const std::string& path,
                         google::protobuf::Message* message);
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp
 
-#endif  // PROTO_UTIL_H
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_PROTO_PARSING_UTILS_H

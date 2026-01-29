@@ -16,8 +16,8 @@
 // library (`client_session_config.rs`) responsible for creating the Oak
 // ClientSession configuration.
 
-#ifndef CLIENT_SESSION_CONFIG_H
-#define CLIENT_SESSION_CONFIG_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_CLIENT_SESSION_CONFIG_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_CLIENT_SESSION_CONFIG_H
 
 #include <cstddef>  // For size_t
 #include <cstdint>  // For uint8_t
@@ -32,6 +32,8 @@ class SessionConfig;
 using SessionConfig = bindings::SessionConfig;
 }  // namespace session
 }  // namespace oak
+
+namespace confidential_federated_compute::gcp {
 
 // Extern "C" block ensures C-style linking for FFI compatibility.
 #ifdef __cplusplus
@@ -83,4 +85,6 @@ oak::session::SessionConfig* create_client_session_config(
 }  // extern "C"
 #endif
 
-#endif  // CLIENT_SESSION_CONFIG_H
+}  // namespace confidential_federated_compute::gcp
+
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_CLIENT_SESSION_CONFIG_H

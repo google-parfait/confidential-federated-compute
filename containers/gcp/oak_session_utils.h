@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SESSION_UTILS_H
-#define SESSION_UTILS_H
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_OAK_SESSION_UTILS_H
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_OAK_SESSION_UTILS_H
 
 #include <grpcpp/grpcpp.h>
 
@@ -27,8 +27,7 @@
 #include "cc/oak_session/server_session.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
 
-namespace gcp_prototype {
-namespace session_utils {
+namespace confidential_federated_compute::gcp {
 
 using ::oak::session::ClientSession;
 using ::oak::session::v1::SessionRequest;
@@ -50,6 +49,7 @@ absl::StatusOr<bool> PumpOutgoingMessages(SessionT* session, StreamT* stream) {
   bool sent_any_message = false;
   while (true) {
     auto outgoing_message = session->GetOutgoingMessage();
+
     if (!outgoing_message.ok()) {
       // kInternal means the session needs more input before it can generate
       // output. This is a normal state, not an error.
@@ -62,10 +62,10 @@ absl::StatusOr<bool> PumpOutgoingMessages(SessionT* session, StreamT* stream) {
       return sent_any_message;
     }
 
-    LOG(INFO) << "Oak -> gRPC: " << (*outgoing_message)->DebugString();
     if (!stream->Write(**outgoing_message)) {
       return absl::UnavailableError("Failed to write to gRPC stream.");
     }
+
     sent_any_message = true;
   }
 }
@@ -73,11 +73,10 @@ absl::StatusOr<bool> PumpOutgoingMessages(SessionT* session, StreamT* stream) {
 /**
  * @brief Manages the initial handshake phase for the client session.
  */
-void ExchangeHandshakeMessages(
+absl::Status ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream);
 
-}  // namespace session_utils
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp
 
-#endif  // SESSION_UTILS_H
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_GCP_OAK_SESSION_UTILS_H

@@ -9,3 +9,6 @@ build --output_filter='^//'  # Suppress warnings from external dependencies.
 
 # CFC registry
 common --registry=https://bcr.bazel.build --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
+
+# Work around missing dependencies in the parent (CFC); to remove once fixed
+build --features=-layering_check

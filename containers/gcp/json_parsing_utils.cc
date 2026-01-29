@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "json_util.h"
+#include "json_parsing_utils.h"
 
 #include <string>
 #include <vector>
@@ -20,7 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 
-namespace gcp_prototype {
+namespace confidential_federated_compute::gcp {
 
 absl::StatusOr<std::string> GetStringClaimFromPath(
     const nlohmann::json& payload_json,
@@ -102,4 +102,4 @@ absl::StatusOr<std::vector<std::string>> GetStringListClaimFromPath(
   return result;
 }
 
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp

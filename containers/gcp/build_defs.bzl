@@ -42,14 +42,14 @@ generate_policy = rule(
     },
 )
 
-def define_load_runner(variant, tag, name = None):
+def define_load_runner(variant, image_and_tag, name = None):
     native.genrule(
         name = "load_and_print_digest_runner_" + variant,
         outs = ["load_and_print_digest_" + variant + ".sh"],
         cmd = """
             set -e # Exit on error
-            TARBALL_SCRIPT=$(location :tarball_{variant})
-            IMAGE_TAG="gcp_prototype:{tag}"
+            TARBALL_SCRIPT=$(location :{variant}_tarball)
+            IMAGE_TAG="{image_and_tag}"
 
             # --- STEP 1: Execute the oci_load script ---
             echo "Executing oci_load script: $$TARBALL_SCRIPT" >&2
@@ -84,15 +84,15 @@ def define_load_runner(variant, tag, name = None):
             # --- STEP 4: Print the final digest ---
             # This should now be the Manifest Digest if available, otherwise the Config Digest.
             echo "==================================================" >&2
-            echo "Server Image ({variant}) Docker Digest: $$DIGEST" >&2
+            echo "Server Image ({image_and_tag}) Docker Digest: $$DIGEST" >&2
             echo "==================================================" >&2
 
             # --- STEP 5: Generate the dummy output script for bazel run ---
             printf '#!/bin/bash\\n echo "Wrapper script finished."\\n exit 0\\n' > $@
             chmod +x $@
-        """.format(variant = variant, tag = tag),
+        """.format(variant = variant, image_and_tag = image_and_tag),
         executable = True,  # Make runnable via `bazel run`
         local = True,  # Allow access to local Docker daemon
-        tools = [":tarball_" + variant],
+        tools = [":" + variant + "_tarball"],
         visibility = ["//visibility:public"],
     )

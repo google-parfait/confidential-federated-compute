@@ -12,36 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "session_utils.h"
+#include "oak_session_utils.h"
 
-namespace gcp_prototype {
-namespace session_utils {
+namespace confidential_federated_compute::gcp {
 
-void ExchangeHandshakeMessages(
+absl::Status ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream) {
   while (true) {
     // 1. Send any pending outgoing handshake messages.
     absl::StatusOr<bool> sent_or = PumpOutgoingMessages(session, stream);
-    CHECK_OK(
-        sent_or);  // Crash on fatal session/network errors during handshake.
+    if (!sent_or.ok()) {
+      return absl::InternalError(absl::StrCat("Error during handshake: ",
+                                              sent_or.status().ToString()));
+    }
 
-    // 2. If no message was sent, the handshake is complete (quiesced).
     if (!*sent_or) {
       LOG(INFO) << "Handshake quiesced, proceeding to application data.";
-      return;
+      return absl::OkStatus();
     }
 
-    // 3. Since we sent a message, expect a reply.
     SessionResponse response;
     if (!stream->Read(&response)) {
-      LOG(FATAL) << "Client: Server closed stream during handshake.";
+      return absl::InternalError("Stream was closed during handshake.");
     }
-    LOG(INFO) << "gRPC -> Oak: " << response.DebugString();
-    CHECK_OK(session->PutIncomingMessage(response))
-        << "Client: Attestation verification or handshake protocol failed";
+
+    absl::Status put_status = session->PutIncomingMessage(response);
+    if (!put_status.ok()) {
+      return absl::InternalError(absl::StrCat(
+          "Attestation verification or handshake protocol failed: ",
+          put_status.ToString()));
+    }
   }
 }
 
-}  // namespace session_utils
-}  // namespace gcp_prototype
+}  // namespace confidential_federated_compute::gcp

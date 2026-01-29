@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package gcp_prototype;
+package confidential_federated_compute.gcp;
 
 import "google/rpc/status.proto";
 
