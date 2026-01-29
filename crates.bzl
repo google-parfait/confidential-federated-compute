@@ -34,7 +34,7 @@ CFC_PACKAGES = {
     ),
     "bindgen-cli": crate.spec(
         artifact = "bin",
-        version = "0.70.1",
+        version = "0.71.1",
     ),
     "insta": crate.spec(
         version = "1.38.0",
