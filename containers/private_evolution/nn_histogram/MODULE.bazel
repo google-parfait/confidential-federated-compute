@@ -26,7 +26,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.4.1")
 bazel_dep(name = "boringssl", version = "0.20250514.0")
-bazel_dep(name = "confidential-federated-compute", version = "0.0.11")
+bazel_dep(name = "confidential-federated-compute", version = "0.0.12")
 bazel_dep(name = "flatbuffers", version = "25.2.10")
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
@@ -66,13 +66,12 @@ http_archive(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-H+wHrajZfFtelZoqIgMaiKPplfH4V9G+3VLrZEwUk5k=",
+    integrity = "sha256-RuobEKidPyUjjwa5WyxnozQej0reSTv7keERgUGCVS8=",
     patches = [
-        "@confidential-federated-compute//third_party/federated_compute:libcppbor.patch",
         "@confidential-federated-compute//third_party/federated_compute:visibility.patch",
     ],
-    strip_prefix = "federated-compute-44abeccf2be9e3affc5d2864ac48071a841396f3",
-    url = "https://github.com/google/federated-compute/archive/44abeccf2be9e3affc5d2864ac48071a841396f3.tar.gz",
+    strip_prefix = "federated-compute-44a0dfcb498cced1ebd0eb18cba7803deabc2c2e",
+    url = "https://github.com/google/federated-compute/archive/44a0dfcb498cced1ebd0eb18cba7803deabc2c2e.tar.gz",
 )
 
 git_repository(

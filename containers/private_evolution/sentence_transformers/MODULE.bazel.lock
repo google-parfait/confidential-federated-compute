@@ -110,7 +110,7 @@
     "https://bcr.bazel.build/modules/cel-spec/0.15.0/source.json": "ab7dccdf21ea2261c0f809b5a5221a4d7f8b580309f285fdf1444baaca75d44a",
     "https://bcr.bazel.build/modules/civetweb/1.16/MODULE.bazel": "46a38f9daeb57392e3827fce7d40926be0c802bd23cdd6bfd3a96c804de42fae",
     "https://bcr.bazel.build/modules/civetweb/1.16/source.json": "ba8b9585adb8355cb51b999d57172fd05e7a762c56b8d4bac6db42c99de3beb7",
-    "https://bcr.bazel.build/modules/confidential-federated-compute/0.0.11/MODULE.bazel": "not found",
+    "https://bcr.bazel.build/modules/confidential-federated-compute/0.0.12/MODULE.bazel": "not found",
     "https://bcr.bazel.build/modules/curl/8.4.0/MODULE.bazel": "0bc250aa1cb69590049383df7a9537c809591fcf876c620f5f097c58fdc9bc10",
     "https://bcr.bazel.build/modules/curl/8.7.1/MODULE.bazel": "088221c35a2939c555e6e47cb31a81c15f8b59f4daa8009b1e9271a502d33485",
     "https://bcr.bazel.build/modules/curl/8.8.0/MODULE.bazel": "7da3b3e79b0b4ee8f8c95d640bc6ad7b430ce66ef6e9c9d2bc29b3b5ef85f6fe",
@@ -358,6 +358,7 @@
     "https://bcr.bazel.build/modules/rules_nodejs/6.3.0/MODULE.bazel": "45345e4aba35dd6e4701c1eebf5a4e67af4ed708def9ebcdc6027585b34ee52d",
     "https://bcr.bazel.build/modules/rules_nodejs/6.3.3/MODULE.bazel": "b66eadebd10f1f1b25f52f95ab5213a57e82c37c3f656fcd9a57ad04d2264ce7",
     "https://bcr.bazel.build/modules/rules_nodejs/6.3.3/source.json": "45bd343155bdfed2543f0e39b80ff3f6840efc31975da4b5795797f4c94147ad",
+    "https://bcr.bazel.build/modules/rules_oci/2.2.1/MODULE.bazel": "c32d3c775739ead29f7167fb2665711774a965fefb7fbdc775decc8e4c980ab9",
     "https://bcr.bazel.build/modules/rules_oci/2.2.6/MODULE.bazel": "2ba6ddd679269e00aeffe9ca04faa2d0ca4129650982c9246d0d459fe2da47d9",
     "https://bcr.bazel.build/modules/rules_oci/2.2.6/source.json": "94e7decb8f95d9465b0bbea71c65064cd16083be1350c7468f131818641dc4a5",
     "https://bcr.bazel.build/modules/rules_perl/0.2.4/MODULE.bazel": "5f5af7be4bf5fb88d91af7469518f0fd2161718aefc606188f7cd51f436ca938",
@@ -454,8 +455,8 @@
     "https://bcr.bazel.build/modules/zstd/1.5.6/MODULE.bazel": "471ebe7d3cdd8c6469390fcf623eb4779ff55fbee0a87f1dc57a1def468b96d4",
     "https://bcr.bazel.build/modules/zstd/1.5.6/source.json": "02010c3333fc89b44fe861db049968decb6e688411f7f9d4f6791d74f9adfb51",
     "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/bazel_registry.json": "not found",
-    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.11/MODULE.bazel": "333757aa78a6cd685c9f3baae34d5cdb6c4e128513ab4d21df76b244053b0c2b",
-    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.11/source.json": "124314042fa83fa82120f91ee23c3b93a0625a353d9d354a9f312d7324411af6"
+    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.12/MODULE.bazel": "4af6144bbdefbe00fbfe5c39feba49cef7fbd0b807f3e797e589a14059ca937f",
+    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.12/source.json": "4954e9c4bb40f60a133b7526f315f119be88d1af983be5adc092ec5d04eba042"
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
@@ -632,8 +633,8 @@
     },
     "@@confidential-federated-compute+//:extensions.bzl%cfc_deps": {
       "general": {
-        "bzlTransitiveDigest": "gY87pU/mBHNt949faoXy7chi/Oa004CvydLtS7bcLWE=",
-        "usagesDigest": "1si4ls0cwayFtvP2g7TH41eYiXQVbjFPvD42LSDL1us=",
+        "bzlTransitiveDigest": "3jffg/zvYjeuL4TPsQQC+F0zLYXgHOgmHkBuPIddULE=",
+        "usagesDigest": "YHC4w3ope3BM/ul4k2B7c1cjClZshKBEgUYhhYnLsMo=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -641,19 +642,18 @@
           "federated-compute": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "integrity": "sha256-n/IwJB/5Alv2hbIpNlcvZd0iCXDgZhRunqFmQobKYuU=",
+              "integrity": "sha256-RuobEKidPyUjjwa5WyxnozQej0reSTv7keERgUGCVS8=",
               "patches": [
-                "@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch",
                 "@@confidential-federated-compute+//third_party/federated_compute:visibility.patch"
               ],
-              "strip_prefix": "federated-compute-6efc8646e7f79c60a3110f6c4a63c85e06c9301e",
-              "url": "https://github.com/google/federated-compute/archive/6efc8646e7f79c60a3110f6c4a63c85e06c9301e.tar.gz"
+              "strip_prefix": "federated-compute-44a0dfcb498cced1ebd0eb18cba7803deabc2c2e",
+              "url": "https://github.com/google/federated-compute/archive/44a0dfcb498cced1ebd0eb18cba7803deabc2c2e.tar.gz"
             }
           },
           "libcppbor": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:git.bzl%git_repository",
             "attributes": {
-              "build_file": "@@confidential-federated-compute++cfc_deps+federated-compute//third_party:libcppbor.BUILD.bzl",
+              "build_file": "@@confidential-federated-compute+//third_party/libcppbor:BUILD",
               "commit": "20d2be8672d24bfb441d075f82cc317d17d601f8",
               "patches": [
                 "@@confidential-federated-compute+//third_party/libcppbor:libcppbor.patch"

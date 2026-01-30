@@ -40,7 +40,7 @@ platform(
 # Define a set of PIP-provided deps to use.
 compile_pip_requirements(
     name = "requirements",
-    timeout = "moderate",
+    timeout = "long",
     extra_args = [
         "--allow-unsafe",
         "--resolver=backtracking",
