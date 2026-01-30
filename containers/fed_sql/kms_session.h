@@ -110,6 +110,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Merge(
       fcp::confidentialcompute::BlobMetadata metadata,
       std::string unencrypted_data);
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+  MergePrivateState(int64_t total_size_bytes, std::string unencrypted_data);
   // Handles FINALIZATION_TYPE_SERIALIZE type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Serialize(
       Context& context);
