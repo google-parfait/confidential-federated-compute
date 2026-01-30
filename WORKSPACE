@@ -200,13 +200,13 @@ http_archive(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-ZEZ+qDfHWNivUm3z9LkWG5q2F6udbjij8GTgUFmIl/k=",
+    integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "@trusted_computations_platform//third_party/oak:session_binder.patch",
     ],
-    strip_prefix = "oak-0beb0de86a546df46365cf4caef3ac8065e304e9",
-    url = "https://github.com/project-oak/oak/archive/0beb0de86a546df46365cf4caef3ac8065e304e9.tar.gz",
+    strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
+    url = "https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz",
 )
 
 http_archive(
@@ -275,6 +275,7 @@ http_archive(
 http_archive(
     name = "rules_rust_prost",
     integrity = "sha256-yKqAbPYGZnmsI0YyQe6ArWkiZdrQRl9RERy74wuJA1I=",
+    patches = ["//third_party/rules_rust:prost_deps.patch"],
     strip_prefix = "extensions/prost",
     url = "https://github.com/bazelbuild/rules_rust/releases/download/0.68.1/rules_rust-0.68.1.tar.gz",
 )
@@ -308,9 +309,9 @@ http_archive(
 
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-jnq5xas/fINCtqbQUJAB0PTm8cjDEwN7bdsRXiEKjjo=",
-    strip_prefix = "trusted-computations-platform-c685296de0ded451244e1f9592fb0b0a2fc80775",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/c685296de0ded451244e1f9592fb0b0a2fc80775.tar.gz",
+    integrity = "sha256-G7K/th6tujcj0g359FkXA6iWSxCl2rACv98wXfTu/64=",
+    strip_prefix = "trusted-computations-platform-c57be0640c61bf956511a5110155a9b6c57857fc",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/c57be0640c61bf956511a5110155a9b6c57857fc.tar.gz",
 )
 # go/keep-sorted end
 

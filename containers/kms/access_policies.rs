@@ -27,7 +27,7 @@ use kms_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use oak_attestation_verification::{
-    results::{get_hybrid_encryption_public_key, get_signing_public_key},
+    results::{unique_hybrid_encryption_public_key, unique_signing_public_key},
     AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, FirmwarePolicy,
     InsecureAttestationVerifier, KernelPolicy, SystemPolicy,
 };
@@ -181,10 +181,10 @@ fn match_transform(
         results.reason
     );
 
-    let encryption_public_key = get_hybrid_encryption_public_key(&results)
-        .context("evidence missing encryption public key")?;
-    let signing_public_key =
-        get_signing_public_key(&results).context("evidence missing signing public key")?;
+    let encryption_public_key = unique_hybrid_encryption_public_key(&results)
+        .map_err(|msg| anyhow!("evidence missing unique encryption public key: {}", msg))?;
+    let signing_public_key = unique_signing_public_key(&results)
+        .map_err(|msg| anyhow!("evidence missing unique signing public key: {}", msg))?;
     Ok(AuthorizedTransform {
         index,
         src_node_ids: transform.src_node_ids,

@@ -105,6 +105,7 @@ The reference values describing this layer are printed below.
 
 amd_sev:
   allow_debug: false
+  check_vcek_cert_expiry: false
   milan:
     minimum:
       boot_loader: 1
@@ -163,6 +164,7 @@ The reference values describing this layer are printed below.
 
 amd_sev:
   allow_debug: false
+  check_vcek_cert_expiry: false
   milan:
     minimum:
       boot_loader: 1

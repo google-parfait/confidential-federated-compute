@@ -1,10 +1,13 @@
 # Enable the regex feature for oak_attestation_verification for std builds.
 --- oak_attestation_verification/BUILD
 +++ oak_attestation_verification/BUILD
-@@ -24,8 +24,15 @@
+@@ -41,11 +41,18 @@
  rust_library(
      name = "oak_attestation_verification",
-     srcs = glob(["src/**"]),
+     srcs = glob(
+         ["src/**"],
+         exclude = RESULT_SRC,
+     ),
      compile_data = [
          "//oak_attestation_verification/data:amd_ask_certs",
          "//oak_attestation_verification/data:intel_pck_root",
