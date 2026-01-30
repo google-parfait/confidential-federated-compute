@@ -5,7 +5,7 @@
     "overlay": {
         "BUILD": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
         "extensions.bzl": "sha256-sfbFOcNcS++jerbKXl3RTcrQBiABS0U06j1sVrUa984=",
-        "third_party/libcppbor/BUILD": "sha256-RTO96hqTcV9U6X5++v6aOc+/b9XGQMfNWLR8L/OhEf4=",
+        "third_party/libcppbor/BUILD": "sha256-ysrrhzy4B/0auD4aY+wO8KIqyIIeVzZv03VPXIpDFgY=",
         "third_party/libcppbor/libcppbor.patch": "sha256-XclgZAsEIbtNFeMhrGTtBcX7JsKg+gAWKrfDqYzSoy8=",
         "third_party/federated_compute/visibility.patch": "sha256-ECM/E/q/JanIO4V32jAqcQ4WKjQ6sjGG3BVzJMmAs0o="
     }
