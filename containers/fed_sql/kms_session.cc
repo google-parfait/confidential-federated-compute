@@ -60,6 +60,7 @@ using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
+using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -191,6 +192,10 @@ absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::Write(
           request.first_request_metadata().total_size_bytes(),
           std::move(unencrypted_data));
     }
+    case AGGREGATION_TYPE_MERGE_PRIVATE_STATE:
+      return MergePrivateState(
+          request.first_request_metadata().total_size_bytes(),
+          std::move(unencrypted_data));
     default:
       return ToWriteFinishedResponse(absl::InvalidArgumentError(
           "AggCoreAggregationType must be specified."));
@@ -347,6 +352,24 @@ KmsFedSqlSession::Merge(fcp::confidentialcompute::BlobMetadata metadata,
     return merge_status;
   }
   return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
+}
+
+absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
+KmsFedSqlSession::MergePrivateState(int64_t total_size_bytes,
+                                    std::string unencrypted_data) {
+  absl::StatusOr<PartitionPrivateState> partition_private_state =
+      PartitionPrivateState::Parse(unencrypted_data);
+  if (!partition_private_state.ok()) {
+    return ToWriteFinishedResponse(
+        PrependMessage("Failed to parse PartitionPrivateState in "
+                       "AGGREGATION_TYPE_MERGE_PRIVATE_STATE: ",
+                       partition_private_state.status()));
+  }
+  if (!partition_private_state_.Merge(partition_private_state.value())) {
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(
+        "Failed to merge PartitionPrivateState due to conflicts."));
+  }
+  return ToWriteFinishedResponse(absl::OkStatus(), total_size_bytes);
 }
 
 absl::StatusOr<std::vector<absl::Status>>

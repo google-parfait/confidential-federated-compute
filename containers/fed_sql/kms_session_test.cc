@@ -914,6 +914,127 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
 }
 
+TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "expired_key1"
+    expired_keys: "expired_key2"
+    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
+    buckets { key: "bar" values: 0 values: 3 }
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+  EXPECT_THAT(write_result->committed_size_bytes(),
+              Eq(private_state.SerializeAsString().size()));
+
+  private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 3 symmetric_key: "key3" }
+    symmetric_keys { id: 4 symmetric_key: "key4" }
+    expired_keys: "expired_key1"
+    expired_keys: "expired_key2"
+    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
+    buckets { key: "bar" values: 0 values: 3 }
+  )pb");
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  *write_request.mutable_first_request_metadata() = metadata;
+  write_result = session_->Write(write_request,
+                                 private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+  EXPECT_THAT(write_result->committed_size_bytes(),
+              Eq(private_state.SerializeAsString().size()));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
+  ASSERT_THAT(session_->Finalize(finalize_request, unused, context_), IsOk());
+
+  EXPECT_EQ(index, 1);
+  auto result = PartitionPrivateState::Parse(result_data);
+  ASSERT_THAT(result, IsOk());
+  EXPECT_THAT(result->Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                symmetric_keys { id: 1 symmetric_key: "key1" }
+                symmetric_keys { id: 2 symmetric_key: "key2" }
+                symmetric_keys { id: 3 symmetric_key: "key3" }
+                symmetric_keys { id: 4 symmetric_key: "key4" }
+                expired_keys: "expired_key1"
+                expired_keys: "expired_key2"
+                buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
+                buckets { key: "bar" values: 0 values: 3 }
+              )pb"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, MergeInvalidPrivateState) {
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  std::string invalid_private_state = "invalid-private-state";
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(invalid_private_state.size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result =
+      session_->Write(write_request, invalid_private_state, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::INVALID_ARGUMENT);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, MergeConflictingPrivateState) {
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    expired_keys: "expired_key"
+    buckets { key: "foo" values: 1 values: 4 }
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  // Conflicting private state for same partition 1.
+  private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key2" }
+    expired_keys: "expired_key"
+    buckets { key: "foo" values: 1 values: 4 }
+  )pb");
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  *write_request.mutable_first_request_metadata() = metadata;
+  write_result = session_->Write(write_request,
+                                 private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::INVALID_ARGUMENT);
+}
+
 TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   FederatedComputeCheckpointParserFactory parser_factory;
   auto input_parser =
