@@ -1,0 +1,5 @@
+build --incompatible_enable_cc_toolchain_resolution
+build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
+build --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 --incompatible_strict_action_env
+build --output_filter='^//'  # Suppress warnings from external dependencies.
+
