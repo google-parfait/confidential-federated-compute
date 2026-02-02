@@ -40,9 +40,8 @@ attestation matches the policy under which the data was uploaded. The KMS also
 maintains rollback-protected state for each pipeline for tracking privacy
 budgets.
 
-The code for the KMS is located in the [`containers/kms`](containers/kms)
-directory; see this directory for additional documentation. The KMS runs in a
-TEE using
+The code for the KMS is located in the [`kms`](kms) directory; see this
+directory for additional documentation. The KMS runs in a TEE using
 [Oak Containers](https://github.com/project-oak/oak/tree/main/oak_containers).
 
 #### Ledger

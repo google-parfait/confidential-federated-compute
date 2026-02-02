@@ -22,5 +22,5 @@ proto_data(
     out = "reference_values.binarypb",
     proto_deps = ["@oak//proto/attestation:reference_value_proto"],
     proto_name = "oak.attestation.v1.ReferenceValues",
-    visibility = ["//containers/kms:__pkg__"],
+    visibility = ["//kms:__pkg__"],
 )

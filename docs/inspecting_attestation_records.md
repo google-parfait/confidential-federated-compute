@@ -30,13 +30,13 @@ this approach.
 
 Attestation verification records consist of two major parts:
 
-1.  *the attestation evidence that identifies the [KMS](/containers/kms) or
+1.  *the attestation evidence that identifies the [KMS](/kms) or
     [ledger](/ledger_enclave_app) application* that generated the encryption key
     the client used to encrypt its data,
 
-2.  *the [data access policy](/containers/kms#access-policies)* that prescribes
-    the conditions under which the KMS or ledger binary will allow that
-    encrypted data to be decrypted.
+2.  *the [data access policy](/kms#access-policies)* that prescribes the
+    conditions under which the KMS or ledger binary will allow that encrypted
+    data to be decrypted.
 
 To inspect the KMS or ledger attestation evidence and data access policy in an
 `AttestationVerificationRecord`, the

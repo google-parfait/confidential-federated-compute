@@ -5,11 +5,11 @@ As described in the *Client Side Architecture* section of the
 client devices running the
 [Federated Compute](https://github.com/google-parfait/federated-compute) client
 library and which participate in a `ConfidentialAggregations` protocol session
-will verify attestation evidence for the CFC
-[Key Management Service](/containers/kms) (KMS) or ledger applications hosted in
-this repository. They will also verify the data access policy that the KMS or
-ledger will enforce, which will specify one or more allowed data processing
-applications which are built from this repository.
+will verify attestation evidence for the CFC [Key Management Service](/kms)
+(KMS) or ledger applications hosted in this repository. They will also verify
+the data access policy that the KMS or ledger will enforce, which will specify
+one or more allowed data processing applications which are built from this
+repository.
 
 The paper describes two approaches for inspecting the KMS or ledger binaries and
 the data processing applications authorized by the data access policies served
