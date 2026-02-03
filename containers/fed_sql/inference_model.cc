@@ -64,6 +64,7 @@ using ::gcpp::PromptWrapping;
 using ::gcpp::ThreadingArgs;
 using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
+using ::gcpp::WrapAndTokenize;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
@@ -71,7 +72,8 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
 
-constexpr size_t kMaxPromptSize = 10000;
+// The max prompt size is set to match the gemma.cpp default seq_len value.
+constexpr size_t kMaxPromptSize = 8192;
 // Set the default max_output_tokens to 128. This can be overridden by the
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
@@ -217,9 +219,6 @@ InferenceModel::RunGemmaCppInference(
   per_row_output_counts.reserve(input.GetRowCount());
 
   TimingInfo timing_info;
-  std::mt19937 gen;
-  std::random_device rd;
-  gen.seed(rd());
 
   // For each row of the input columns, we first populate the prompt template
   // to create a combined prompt matching the column values, then run inference
@@ -233,9 +232,9 @@ InferenceModel::RunGemmaCppInference(
             prompt, row, input.GetColumnNames(), input_column_indices,
             output_column_name, max_prompt_size));
     size_t generated = 0;
-    const std::vector<int> tokens = ::gcpp::WrapAndTokenize(
-        gemma->Tokenizer(), gemma->ChatTemplate(), gemma->Config().wrapping,
-        generated, combined_prompt);
+    const std::vector<int> tokens =
+        WrapAndTokenize(gemma->Tokenizer(), gemma->ChatTemplate(),
+                        gemma->Config().wrapping, generated, combined_prompt);
     const size_t prompt_size = tokens.size();
     std::stringstream output_stream;
     auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
@@ -243,7 +242,10 @@ InferenceModel::RunGemmaCppInference(
       ++generated;
       if (generated >= prompt_size && !gemma->Config().IsEOS(token)) {
         std::string token_text;
-        FCP_CHECK(gemma->Tokenizer().Decode({token}, &token_text));
+        if (!gemma->Tokenizer().Decode({token}, &token_text)) {
+          LOG(WARNING) << "Failed to decode the next token.";
+          return false;
+        }
         output_stream << token_text;
       }
       return true;
@@ -258,15 +260,19 @@ InferenceModel::RunGemmaCppInference(
     size_t max_output_tokens = config_max_output_tokens > 0
                                    ? config_max_output_tokens
                                    : kMaxOutputTokens;
-    ::gcpp::RuntimeConfig runtime_config = {
+    gcpp::RuntimeConfig runtime_config = {
         .max_generated_tokens = max_output_tokens,
         .temperature = temperature,
-        .gen = &gen,
+        .gen = &gemma_model.gen_,
         .verbosity = 0,
         .stream_token = stream_token,
     };
-    gemma->Generate(runtime_config, tokens, 0, kv_cache, *gemma_model.env_,
-                    timing_info);
+    try {
+      gemma->Generate(runtime_config, tokens, 0, kv_cache, *gemma_model.env_,
+                      timing_info);
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "Failed to run gemma.cpp inference";
+    }
 
     std::string output_string = output_stream.str();
     absl::StatusOr<size_t> num_rows_added_status =
