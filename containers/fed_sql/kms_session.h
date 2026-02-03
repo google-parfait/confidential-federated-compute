@@ -127,6 +127,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Handles FINALIZATION_TYPE_REPORT_PARTITION type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> ReportPartition(
       Context& context);
+  // Handles FINALIZATION_TYPE_REPORT_PRIVATE_STATE type of Finalize.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> ReportPrivateState(
+      Context& context);
 
   // Produces the final aggregated report and returns the serialized checkpoint.
   absl::StatusOr<absl::Cord> BuildReport();

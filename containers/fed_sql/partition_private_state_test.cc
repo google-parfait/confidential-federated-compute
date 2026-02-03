@@ -16,6 +16,7 @@
 
 #include "absl/status/status_matchers.h"
 #include "containers/fed_sql/partition_private_state.pb.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "gtest/gtest.h"
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
@@ -25,6 +26,10 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 
 TEST(PartitionPrivateStateTest, ParseAndSerialize) {
   PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
@@ -71,6 +76,22 @@ TEST(PartitionPrivateStateTest, ParseInvalidProto) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(PartitionPrivateStateTest, GetSerializedKeys) {
+  PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+  )pb");
+  auto private_state = PartitionPrivateState::Parse(proto).value();
+  std::string serialized_keys = private_state.GetSerializedKeys();
+
+  fcp::confidentialcompute::FedSqlContainerPartitionKeys serialized_keys_proto;
+  serialized_keys_proto.ParseFromString(serialized_keys);
+  EXPECT_THAT(serialized_keys_proto, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                keys { partition_index: 1 symmetric_key: "key1" }
+                keys { partition_index: 2 symmetric_key: "key2" }
+              )pb"));
+}
+
 TEST(PartitionPrivateStateTest, AddPartition) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
     buckets { key: "foo" values: 1 values: 5 values: 7 values: 10 }
@@ -102,6 +123,16 @@ TEST(PartitionPrivateStateTest, AddPartition) {
                 buckets { key: "foo" values: 1 values: 5 values: 7 values: 10 }
                 buckets { key: "bar" values: 0 values: 4 }
               )pb"));
+  RangeTracker::InnerMap per_key_ranges = state.GetPerKeyRanges();
+  EXPECT_THAT(per_key_ranges,
+              UnorderedElementsAre(
+                  Pair(Eq("foo"), ElementsAre(Interval<uint64_t>(1, 5),
+                                              Interval<uint64_t>(7, 10))),
+                  Pair(Eq("bar"), ElementsAre(Interval<uint64_t>(0, 4)))));
+  auto expired_keys = state.GetExpiredKeys();
+  EXPECT_THAT(expired_keys.size(), 2);
+  EXPECT_TRUE(expired_keys.contains("expired_key1"));
+  EXPECT_TRUE(expired_keys.contains("expired_key2"));
 }
 
 TEST(PartitionPrivateStateTest, AddPartitionNoPartitionId) {

@@ -137,6 +137,9 @@ class Budget {
 
   // Update the budget by applying the data collected in the RangeTracker.
   absl::Status UpdateBudget(const RangeTracker& range_tracker);
+  absl::Status UpdateBudget(
+      const RangeTracker::InnerMap& per_key_ranges,
+      const absl::flat_hash_set<std::string>& expired_keys);
 
   // Gets all the keys in the budget.
   absl::flat_hash_set<std::string> GetKeys() const;

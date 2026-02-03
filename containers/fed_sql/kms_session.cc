@@ -74,6 +74,7 @@ using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PARTITION;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -508,6 +509,9 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
     case FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE: {
       return SerializePrivateState(context);
     }
+    case FINALIZATION_TYPE_REPORT_PRIVATE_STATE: {
+      return ReportPrivateState(context);
+    }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
@@ -617,6 +621,28 @@ KmsFedSqlSession::ReportPartition(Context& context) {
           std::nullopt, range_tracker_.SerializeAsString(), release_token)) {
     return absl::InternalError("Failed to emit releasable partition result.");
   }
+  FinalizeResponse response;
+  *response.mutable_release_token() = std::move(release_token);
+  return response;
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::ReportPrivateState(Context& context) {
+  // Update the private state
+  FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(
+      partition_private_state_.GetPerKeyRanges(),
+      partition_private_state_.GetExpiredKeys()));
+  // Get all the symmetric keys for the partitions.
+  std::string serialized_keys = partition_private_state_.GetSerializedKeys();
+  // Emit the final encrypted result.
+  std::string release_token;
+  if (!context.EmitReleasable(
+          /* reencryption_key_index*/ 2, serialized_keys,
+          private_state_->initial_state,
+          private_state_->budget.SerializeAsString(), release_token)) {
+    return absl::InternalError("Failed to emit releasable final result.");
+  }
+
   FinalizeResponse response;
   *response.mutable_release_token() = std::move(release_token);
   return response;

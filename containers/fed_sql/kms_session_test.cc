@@ -72,6 +72,7 @@ using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
+using ::fcp::confidentialcompute::FedSqlContainerPartitionKeys;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
@@ -1189,6 +1190,92 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
   EXPECT_EQ(col_values->num_elements(), 1);
   EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
   EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "key_baz"
+    buckets { key: "key_foo" values: 1 values: 4 values: 7 values: 10 }
+    buckets { key: "key_bar" values: 0 values: 3 }
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+  EXPECT_THAT(write_result->committed_size_bytes(),
+              Eq(private_state.SerializeAsString().size()));
+
+  private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 3 symmetric_key: "key3" }
+    symmetric_keys { id: 4 symmetric_key: "key4" }
+    expired_keys: "key_baz"
+    buckets { key: "key_foo" values: 1 values: 4 values: 7 values: 10 }
+    buckets { key: "key_bar" values: 0 values: 3 }
+  )pb");
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  *write_request.mutable_first_request_metadata() = metadata;
+  write_result = session_->Write(write_request,
+                                 private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+  EXPECT_THAT(write_result->committed_size_bytes(),
+              Eq(private_state.SerializeAsString().size()));
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  std::optional<std::string> src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  EXPECT_EQ(index, 2);
+  EXPECT_EQ(src, initial_private_state_);
+  BudgetState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(dst));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets {
+                  key: "key_foo"
+                  budget: 0
+                  consumed_range_start: 1
+                  consumed_range_end: 10
+                }
+                buckets {
+                  key: "key_bar"
+                  budget: 2
+                  consumed_range_start: 0
+                  consumed_range_end: 3
+                }
+              )pb"));
+
+  FedSqlContainerPartitionKeys result;
+  result.ParseFromString(result_data);
+  EXPECT_THAT(result, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                keys { partition_index: 1 symmetric_key: "key1" }
+                keys { partition_index: 2 symmetric_key: "key2" }
+                keys { partition_index: 3 symmetric_key: "key3" }
+                keys { partition_index: 4 symmetric_key: "key4" }
+              )pb"));
 }
 
 class KmsFedSqlSessionUnlimitedBudgetTest : public KmsFedSqlSessionWriteTest {

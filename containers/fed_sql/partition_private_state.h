@@ -57,6 +57,19 @@ class PartitionPrivateState {
   // Merges another PartitionPrivateState into this one.
   bool Merge(const PartitionPrivateState& state);
 
+  // Returns the ranges tracked by the RangeTracker for all partitions.
+  const RangeTracker::InnerMap& GetPerKeyRanges() const {
+    return per_key_ranges_;
+  }
+
+  // Returns the expired keys.
+  const absl::flat_hash_set<std::string>& GetExpiredKeys() const {
+    return expired_keys_;
+  }
+
+  // Returns the serialized symmetric keys for all partitions.
+  std::string GetSerializedKeys() const;
+
  private:
   // Symmetric keys used to encrypt each partition, key-ed by the partition id.
   absl::flat_hash_map<uint64_t, std::string> symmetric_keys_;

@@ -115,7 +115,15 @@ bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
 }
 
 absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
-  for (const auto& [key, interval_set] : range_tracker) {
+  RangeTracker::InnerMap per_key_ranges;
+  per_key_ranges.insert(range_tracker.begin(), range_tracker.end());
+  return UpdateBudget(per_key_ranges, range_tracker.GetExpiredKeys());
+}
+
+absl::Status Budget::UpdateBudget(
+    const RangeTracker::InnerMap& per_key_ranges,
+    const absl::flat_hash_set<std::string>& expired_keys) {
+  for (const auto& [key, interval_set] : per_key_ranges) {
     if (interval_set.empty()) {
       return absl::FailedPreconditionError(
           "The interval set is empty for key: " + key);
@@ -186,7 +194,6 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
   }
 
   // Remove any expired keys from the budget.
-  auto expired_keys = range_tracker.GetExpiredKeys();
   for (const auto& expired_key : expired_keys) {
     per_key_budgets_.erase(expired_key);
   }

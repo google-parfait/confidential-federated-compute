@@ -177,10 +177,10 @@ TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
 
 TEST(BudgetTest, UpdateDefaultBudget) {
   Budget budget(/*default_budget=*/5);
-  RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
-  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+  RangeTracker range_tracker_1;
+  EXPECT_TRUE(range_tracker_1.AddRange("foo", 1, 4));
+  EXPECT_TRUE(range_tracker_1.AddRange("bar", 1, 4));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker_1), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "foo"
@@ -193,6 +193,30 @@ TEST(BudgetTest, UpdateDefaultBudget) {
                   budget: 4
                   consumed_range_start: 1
                   consumed_range_end: 4
+                }
+              )pb"));
+
+  // Use the other UpdateBudget overload.
+  RangeTracker range_tracker_2;
+  EXPECT_TRUE(range_tracker_2.AddRange("baz", 5, 8));
+  range_tracker_2.SetExpiredKeys({"bar"});
+  RangeTracker::InnerMap per_key_ranges;
+  per_key_ranges.insert(range_tracker_2.begin(), range_tracker_2.end());
+  EXPECT_THAT(
+      budget.UpdateBudget(per_key_ranges, range_tracker_2.GetExpiredKeys()),
+      IsOk());
+  EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets {
+                  key: "foo"
+                  budget: 4
+                  consumed_range_start: 1
+                  consumed_range_end: 4
+                }
+                buckets {
+                  key: "baz"
+                  budget: 4
+                  consumed_range_start: 5
+                  consumed_range_end: 8
                 }
               )pb"));
 }
