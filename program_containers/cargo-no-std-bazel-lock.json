@@ -1,5 +1,5 @@
 {
-  "checksum": "d755ea4901f6a5604c669180c7970ab1edc32fc1b0e7785b23ead7a062dfea4d",
+  "checksum": "b1ba698e995189a84c75447a4d85173a4b742496ebad18751bd59a652311bfc1",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -45,7 +45,7 @@
               "target": "bit_field"
             },
             {
-              "id": "log 0.4.22",
+              "id": "log 0.4.29",
               "target": "log"
             }
           ],
@@ -398,7 +398,7 @@
               "target": "byteorder"
             },
             {
-              "id": "log 0.4.22",
+              "id": "log 0.4.29",
               "target": "log"
             },
             {
@@ -923,14 +923,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "bitflags 2.6.0": {
+    "bitflags 2.10.0": {
       "name": "bitflags",
-      "version": "2.6.0",
+      "version": "2.10.0",
       "package_url": "https://github.com/bitflags/bitflags",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/bitflags/2.6.0/download",
-          "sha256": "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
+          "url": "https://static.crates.io/crates/bitflags/2.10.0/download",
+          "sha256": "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
         }
       },
       "targets": [
@@ -953,7 +953,7 @@
           "**"
         ],
         "edition": "2021",
-        "version": "2.6.0"
+        "version": "2.10.0"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -2244,7 +2244,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -2378,7 +2378,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -2437,7 +2437,7 @@
               "target": "darling_core"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -2572,7 +2572,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -2692,7 +2692,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -2902,7 +2902,7 @@
               "target": "base64"
             },
             {
-              "id": "bitflags 2.6.0",
+              "id": "bitflags 2.10.0",
               "target": "bitflags"
             },
             {
@@ -2994,7 +2994,7 @@
               "target": "lock_api"
             },
             {
-              "id": "log 0.4.22",
+              "id": "log 0.4.29",
               "target": "log"
             },
             {
@@ -3066,6 +3066,10 @@
               "target": "sha2"
             },
             {
+              "id": "signature 2.2.0",
+              "target": "signature"
+            },
+            {
               "id": "snafu 0.8.4",
               "target": "snafu"
             },
@@ -3090,7 +3094,7 @@
               "target": "uart_16550"
             },
             {
-              "id": "virtio-drivers 0.7.4",
+              "id": "virtio-drivers 0.12.0",
               "target": "virtio_drivers"
             },
             {
@@ -3114,7 +3118,7 @@
               "target": "x86_64"
             },
             {
-              "id": "zerocopy 0.8.26",
+              "id": "zerocopy 0.8.38",
               "target": "zerocopy"
             },
             {
@@ -3477,6 +3481,101 @@
         "version": "0.13.8"
       },
       "license": "Apache-2.0 OR MIT",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
+    "embedded-io 0.6.1": {
+      "name": "embedded-io",
+      "version": "0.6.1",
+      "package_url": "https://github.com/rust-embedded/embedded-hal",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/embedded-io/0.6.1/download",
+          "sha256": "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "embedded_io",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "embedded_io",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2021",
+        "version": "0.6.1"
+      },
+      "license": "MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
+    },
+    "enumn 0.1.14": {
+      "name": "enumn",
+      "version": "0.1.14",
+      "package_url": "https://github.com/dtolnay/enumn",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/enumn/0.1.14/download",
+          "sha256": "2f9ed6b3789237c8a0c1c505af1c7eb2c560df6186f01b098c3a1064ea532f38"
+        }
+      },
+      "targets": [
+        {
+          "ProcMacro": {
+            "crate_name": "enumn",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "enumn",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "proc-macro2 1.0.95",
+              "target": "proc_macro2"
+            },
+            {
+              "id": "quote 1.0.44",
+              "target": "quote"
+            },
+            {
+              "id": "syn 2.0.104",
+              "target": "syn"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.1.14"
+      },
+      "license": "MIT OR Apache-2.0",
       "license_ids": [
         "Apache-2.0",
         "MIT"
@@ -4009,7 +4108,7 @@
         "deps": {
           "common": [
             {
-              "id": "log 0.4.22",
+              "id": "log 0.4.29",
               "target": "log"
             },
             {
@@ -5127,14 +5226,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "log 0.4.22": {
+    "log 0.4.29": {
       "name": "log",
-      "version": "0.4.22",
+      "version": "0.4.29",
       "package_url": "https://github.com/rust-lang/log",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/log/0.4.22/download",
-          "sha256": "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
+          "url": "https://static.crates.io/crates/log/0.4.29/download",
+          "sha256": "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
         }
       },
       "targets": [
@@ -5157,7 +5256,7 @@
           "**"
         ],
         "edition": "2021",
-        "version": "0.4.22"
+        "version": "0.4.29"
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -5373,7 +5472,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -6778,14 +6877,14 @@
       ],
       "license_file": "LICENSE"
     },
-    "quote 1.0.36": {
+    "quote 1.0.44": {
       "name": "quote",
-      "version": "1.0.36",
+      "version": "1.0.44",
       "package_url": "https://github.com/dtolnay/quote",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/quote/1.0.36/download",
-          "sha256": "0fa76aaf39101c457836aec0ce2316dbdc3ab723cdda1c6bd4e6ad4208acaca7"
+          "url": "https://static.crates.io/crates/quote/1.0.44/download",
+          "sha256": "21b2ebcf727b7760c461f091f9f0f539b77b8e87f2fd88131e7f1b433b3cece4"
         }
       },
       "targets": [
@@ -6793,6 +6892,18 @@
           "Library": {
             "crate_name": "quote",
             "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        },
+        {
+          "BuildScript": {
+            "crate_name": "build_script_build",
+            "crate_root": "build.rs",
             "srcs": {
               "allow_empty": true,
               "include": [
@@ -6819,12 +6930,27 @@
             {
               "id": "proc-macro2 1.0.95",
               "target": "proc_macro2"
+            },
+            {
+              "id": "quote 1.0.44",
+              "target": "build_script_build"
             }
           ],
           "selects": {}
         },
-        "edition": "2018",
-        "version": "1.0.36"
+        "edition": "2021",
+        "version": "1.0.44"
+      },
+      "build_script_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "compile_data_glob_excludes": [
+          "**/*.rs"
+        ],
+        "data_glob": [
+          "**"
+        ]
       },
       "license": "MIT OR Apache-2.0",
       "license_ids": [
@@ -7536,6 +7662,54 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
+    "safe-mmio 0.2.7": {
+      "name": "safe-mmio",
+      "version": "0.2.7",
+      "package_url": "https://github.com/google/safe-mmio",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/safe-mmio/0.2.7/download",
+          "sha256": "a0a69f884a1511aa811aa94e04559414a66b18ca63f50f84ca31e304f38bad0d"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "safe_mmio",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "safe_mmio",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "zerocopy 0.8.38",
+              "target": "zerocopy"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.2.7"
+      },
+      "license": "MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE"
+    },
     "scopeguard 1.2.0": {
       "name": "scopeguard",
       "version": "1.2.0",
@@ -7664,7 +7838,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -8010,7 +8184,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -8381,7 +8555,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -8770,7 +8944,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -8888,7 +9062,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -8972,7 +9146,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -9058,7 +9232,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -9270,7 +9444,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -9399,7 +9573,7 @@
         "deps": {
           "common": [
             {
-              "id": "bitflags 2.6.0",
+              "id": "bitflags 2.10.0",
               "target": "bitflags"
             }
           ],
@@ -9606,14 +9780,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "virtio-drivers 0.7.4": {
+    "virtio-drivers 0.12.0": {
       "name": "virtio-drivers",
-      "version": "0.7.4",
+      "version": "0.12.0",
       "package_url": "https://github.com/rcore-os/virtio-drivers",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/virtio-drivers/0.7.4/download",
-          "sha256": "aa40e09453618c7a927c08c5a990497a2954da7c2aaa6c65e0d4f0fc975f6114"
+          "url": "https://static.crates.io/crates/virtio-drivers/0.12.0/download",
+          "sha256": "a7a6012590bf8cc11f57abb1b5a8470e2366353bf352386b48650a87b5538204"
         }
       },
       "targets": [
@@ -9638,29 +9812,51 @@
         "crate_features": {
           "common": [
             "alloc",
-            "default"
+            "default",
+            "embedded-io"
           ],
           "selects": {}
         },
         "deps": {
           "common": [
             {
-              "id": "bitflags 2.6.0",
+              "id": "bitflags 2.10.0",
               "target": "bitflags"
             },
             {
-              "id": "log 0.4.22",
+              "id": "embedded-io 0.6.1",
+              "target": "embedded_io"
+            },
+            {
+              "id": "log 0.4.29",
               "target": "log"
             },
             {
-              "id": "zerocopy 0.7.35",
+              "id": "safe-mmio 0.2.7",
+              "target": "safe_mmio"
+            },
+            {
+              "id": "thiserror 2.0.12",
+              "target": "thiserror"
+            },
+            {
+              "id": "zerocopy 0.8.38",
               "target": "zerocopy"
             }
           ],
           "selects": {}
         },
-        "edition": "2018",
-        "version": "0.7.4"
+        "edition": "2021",
+        "proc_macro_deps": {
+          "common": [
+            {
+              "id": "enumn 0.1.14",
+              "target": "enumn"
+            }
+          ],
+          "selects": {}
+        },
+        "version": "0.12.0"
       },
       "license": "MIT",
       "license_ids": [
@@ -9883,7 +10079,7 @@
               "target": "bumpalo"
             },
             {
-              "id": "log 0.4.22",
+              "id": "log 0.4.29",
               "target": "log"
             },
             {
@@ -9891,7 +10087,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -9947,7 +10143,7 @@
         "deps": {
           "common": [
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -10003,7 +10199,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -10774,7 +10970,7 @@
               "target": "bit_field"
             },
             {
-              "id": "bitflags 2.6.0",
+              "id": "bitflags 2.10.0",
               "target": "bitflags"
             },
             {
@@ -10834,33 +11030,21 @@
         ],
         "crate_features": {
           "common": [
-            "alloc",
-            "byteorder",
-            "default",
-            "derive",
-            "simd",
-            "zerocopy-derive"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "byteorder 1.5.0",
-              "target": "byteorder"
-            }
+            "simd"
           ],
           "selects": {}
         },
         "edition": "2018",
         "proc_macro_deps": {
-          "common": [
-            {
-              "id": "zerocopy-derive 0.7.35",
-              "target": "zerocopy_derive"
-            }
-          ],
-          "selects": {}
+          "common": [],
+          "selects": {
+            "cfg(any())": [
+              {
+                "id": "zerocopy-derive 0.7.35",
+                "target": "zerocopy_derive"
+              }
+            ]
+          }
         },
         "version": "0.7.35"
       },
@@ -10872,14 +11056,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "zerocopy 0.8.26": {
+    "zerocopy 0.8.38": {
       "name": "zerocopy",
-      "version": "0.8.26",
+      "version": "0.8.38",
       "package_url": "https://github.com/google/zerocopy",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/zerocopy/0.8.26/download",
-          "sha256": "1039dd0d3c310cf05de012d8a39ff557cb0d23087fd44cad61df08fc31907a2f"
+          "url": "https://static.crates.io/crates/zerocopy/0.8.38/download",
+          "sha256": "57cf3aa6855b23711ee9852dfc97dfaa51c45feaba5b645d0c777414d494a961"
         }
       },
       "targets": [
@@ -10915,6 +11099,7 @@
         ],
         "crate_features": {
           "common": [
+            "alloc",
             "derive",
             "zerocopy-derive"
           ],
@@ -10923,7 +11108,7 @@
         "deps": {
           "common": [
             {
-              "id": "zerocopy 0.8.26",
+              "id": "zerocopy 0.8.38",
               "target": "build_script_build"
             }
           ],
@@ -10933,13 +11118,13 @@
         "proc_macro_deps": {
           "common": [
             {
-              "id": "zerocopy-derive 0.8.26",
+              "id": "zerocopy-derive 0.8.38",
               "target": "zerocopy_derive"
             }
           ],
           "selects": {}
         },
-        "version": "0.8.26"
+        "version": "0.8.38"
       },
       "build_script_attrs": {
         "compile_data_glob": [
@@ -10996,7 +11181,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -11017,14 +11202,14 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
-    "zerocopy-derive 0.8.26": {
+    "zerocopy-derive 0.8.38": {
       "name": "zerocopy-derive",
-      "version": "0.8.26",
+      "version": "0.8.38",
       "package_url": "https://github.com/google/zerocopy",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/zerocopy-derive/0.8.26/download",
-          "sha256": "9ecf5b4cc5364572d7f4c329661bcc82724222973f2cab6f050a4e5c22f75181"
+          "url": "https://static.crates.io/crates/zerocopy-derive/0.8.38/download",
+          "sha256": "8a616990af1a287837c4fe6596ad77ef57948f787e46ce28e166facc0cc1cb75"
         }
       },
       "targets": [
@@ -11053,7 +11238,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -11064,7 +11249,7 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.8.26"
+        "version": "0.8.38"
       },
       "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
       "license_ids": [
@@ -11167,7 +11352,7 @@
               "target": "proc_macro2"
             },
             {
-              "id": "quote 1.0.36",
+              "id": "quote 1.0.44",
               "target": "quote"
             },
             {
@@ -11206,6 +11391,7 @@
       "aarch64-apple-darwin"
     ],
     "cfg(all(target_arch = \"loongarch64\", target_os = \"linux\"))": [],
+    "cfg(any())": [],
     "cfg(any(target_arch = \"aarch64\", target_arch = \"x86_64\", target_arch = \"x86\"))": [
       "aarch64-apple-darwin",
       "x86_64-unknown-linux-gnu",
@@ -11255,7 +11441,7 @@
     "arrayvec 0.7.6",
     "atomic_refcell 0.1.13",
     "base64 0.21.7",
-    "bitflags 2.6.0",
+    "bitflags 2.10.0",
     "bitvec 1.0.1",
     "bytes 1.7.1",
     "chrono 0.4.41",
@@ -11278,7 +11464,7 @@
     "libm 0.2.8",
     "linked_list_allocator 0.10.5",
     "lock_api 0.4.12",
-    "log 0.4.22",
+    "log 0.4.29",
     "maplit 1.0.2",
     "mockall 0.13.0",
     "nom 8.0.0",
@@ -11296,19 +11482,20 @@
     "serde 1.0.219",
     "serde_json 1.0.122",
     "sha2 0.10.9",
+    "signature 2.2.0",
     "snafu 0.8.4",
     "spinning_top 0.3.0",
     "static_assertions 1.1.0",
     "strum 0.26.3",
     "thiserror 2.0.12",
     "uart_16550 0.3.1",
-    "virtio-drivers 0.7.4",
+    "virtio-drivers 0.12.0",
     "wasm-bindgen 0.2.100",
     "wasmi 0.31.2",
     "x509-cert 0.2.5",
     "x509-verify 0.4.8",
     "x86_64 0.15.2",
-    "zerocopy 0.8.26",
+    "zerocopy 0.8.38",
     "zeroize 1.8.1"
   ],
   "direct_dev_deps": [],

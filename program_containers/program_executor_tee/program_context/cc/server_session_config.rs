@@ -17,12 +17,13 @@ use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::{InstanceSessionBinder, OrchestratorClient};
 use oak_session::session_binding::SessionBinder;
 use oak_session::{attestation::AttestationType, config::SessionConfig, handshake::HandshakeType};
+use oak_session_endorsed_evidence::EndorsedEvidenceBindableAssertionGenerator;
 use once_cell::sync::Lazy;
 use std::ffi::c_void;
 use std::sync::Arc;
 use tokio::runtime::{Builder, Runtime};
 
-const SESSION_ID: &str = "cfc_program_worker";
+const ASSERTION_ID: &str = "cfc_program_worker";
 
 pub static RUNTIME: Lazy<Runtime> =
     Lazy::new(|| Builder::new_multi_thread().enable_all().build().unwrap());
@@ -79,9 +80,14 @@ fn create_session_config_internal() -> Result<*mut SessionConfig> {
 
     let builder =
         SessionConfig::builder(AttestationType::SelfUnidirectional, HandshakeType::NoiseNN)
-            .add_self_attester_ref(SESSION_ID.into(), &attester)
-            .add_self_endorser_ref(SESSION_ID.into(), &endorser)
-            .add_session_binder_ref(SESSION_ID.into(), &session_binder);
+            .add_self_assertion_generator(
+                String::from(ASSERTION_ID),
+                Box::new(EndorsedEvidenceBindableAssertionGenerator::new(
+                    attester,
+                    endorser,
+                    session_binder,
+                )),
+            );
     Ok(Box::into_raw(Box::new(builder.build())))
 }
 

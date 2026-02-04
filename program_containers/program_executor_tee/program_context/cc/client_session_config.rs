@@ -25,13 +25,15 @@ use oak_proto_rust::oak::attestation::v1::{
     RootLayerReferenceValues,
 };
 use oak_session::{
-    attestation::AttestationType, config::SessionConfig, handshake::HandshakeType,
-    key_extractor::DefaultBindingKeyExtractor,
+    aggregators::PassThrough, attestation::AttestationType, config::SessionConfig,
+    handshake::HandshakeType, key_extractor::DefaultBindingKeyExtractor,
+    session_binding::SignatureBindingVerifierProvider,
 };
+use oak_session_endorsed_evidence::EndorsedEvidenceBoundAssertionVerifier;
 use oak_time_std::clock::SystemTimeClock;
 use prost::Message;
 
-const SESSION_ID: &str = "cfc_program_worker";
+const ASSERTION_ID: &str = "cfc_program_worker";
 
 fn create_session_config_internal(reference_values: ReferenceValues) -> Result<SessionConfig> {
     let peer_verifier: Box<dyn AttestationVerifier> = match &reference_values.r#type {
@@ -85,11 +87,18 @@ fn create_session_config_internal(reference_values: ReferenceValues) -> Result<S
 
     let builder =
         SessionConfig::builder(AttestationType::PeerUnidirectional, HandshakeType::NoiseNN)
-            .add_peer_verifier_with_key_extractor(
-                SESSION_ID.into(),
-                peer_verifier,
-                Box::new(DefaultBindingKeyExtractor {}),
-            );
+            .add_peer_assertion_verifier(
+                String::from(ASSERTION_ID),
+                Box::new(EndorsedEvidenceBoundAssertionVerifier::new(
+                    peer_verifier.into(),
+                    Arc::new(SignatureBindingVerifierProvider::new(Arc::new(
+                        DefaultBindingKeyExtractor {},
+                    ))),
+                )),
+            )
+            // Since only one assertion type is used, a trivial PassThrough
+            // aggregator is sufficient.
+            .set_assertion_attestation_aggregator(Box::new(PassThrough {}));
 
     Ok(builder.build())
 }
