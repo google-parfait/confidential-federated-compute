@@ -307,6 +307,9 @@ http_archive(
     url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.4.0/toolchains_llvm-v1.4.0.tar.gz",
 )
 
+# IMPORTANT: While to assertion-based Noise sessions, updates to the TCP version
+# must be carefully coordinated with KMS binary releases. Please ensure
+# bmclarnon@ reviews any changes.
 http_archive(
     name = "trusted_computations_platform",
     integrity = "sha256-Ny4ExO5HFJBBlsBHkBheLP3d736WnMAwSSZO0AwmTew=",

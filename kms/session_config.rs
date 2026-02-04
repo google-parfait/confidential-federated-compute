@@ -34,8 +34,10 @@ use oak_session::{
     key_extractor::DefaultBindingKeyExtractor,
     session_binding::SessionBinder,
 };
+use oak_session_endorsed_evidence::EndorsedEvidenceBindableAssertionGenerator;
 use oak_time::Clock;
 
+const ASSERTION_ID: &str = "cfc_kms_assertion";
 const SESSION_ID: &str = "cfc_kms";
 
 struct UnorderedEncryptorProvider;
@@ -111,6 +113,14 @@ pub fn create_session_config(
             SESSION_ID.into(),
             peer_verifier,
             Box::new(DefaultBindingKeyExtractor {}),
+        )
+        .add_self_assertion_generator(
+            String::from(ASSERTION_ID),
+            Box::new(EndorsedEvidenceBindableAssertionGenerator::new(
+                attester.clone(),
+                endorser.clone(),
+                session_binder.clone(),
+            )),
         )
         // The communication channel is not guaranteed to be ordered.
         .set_encryption_provider(Box::new(UnorderedEncryptorProvider))

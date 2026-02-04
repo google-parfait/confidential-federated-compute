@@ -264,6 +264,7 @@ rust_library(
         "@oak//oak_crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_session",
+        "@oak//oak_session/endorsed_evidence:oak_session_endorsed_evidence",
         "@oak//oak_time",
         "@oak_crates_index//:anyhow",
     ],
