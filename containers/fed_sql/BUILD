@@ -520,6 +520,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
     ],
 )
 
@@ -533,6 +534,7 @@ cc_test(
         "//testing:parse_text_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],

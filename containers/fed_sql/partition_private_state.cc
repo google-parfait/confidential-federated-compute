@@ -15,8 +15,11 @@
 #include "containers/fed_sql/partition_private_state.h"
 
 #include "absl/log/log.h"
+#include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
+
+using ::fcp::confidentialcompute::FedSqlContainerPartitionKeys;
 
 absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
     const std::string& data) {
@@ -154,4 +157,15 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
                          other.symmetric_keys_.end());
   return true;
 }
+
+std::string PartitionPrivateState::GetSerializedKeys() const {
+  FedSqlContainerPartitionKeys proto;
+  for (const auto& [id, symmetric_key] : symmetric_keys_) {
+    auto* entry = proto.add_keys();
+    entry->set_partition_index(id);
+    entry->set_symmetric_key(symmetric_key);
+  }
+  return proto.SerializeAsString();
+}
+
 }  // namespace confidential_federated_compute::fed_sql
