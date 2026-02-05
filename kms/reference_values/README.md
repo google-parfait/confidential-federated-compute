@@ -16,7 +16,7 @@ endorsements in the Rekor log (an inclusion proof) is verified.
 Client applications also validate that the access policies, which describe how
 uploaded data are allowed to be processed, are endorsed and publicly
 inspectable. They use the keys specified in the
-[`/reference_values/access_policy`](/reference_values/access_policy) directory
+[`/access_policy_reference_values`](/access_policy_reference_values) directory
 for this purpose.
 
 ## Details on included endorsement keys

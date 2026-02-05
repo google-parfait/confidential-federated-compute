@@ -16,10 +16,17 @@
 # Directly managed dependencies
 ################################################################################
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//:stub_repo.bzl", "stub_repo")
-load("//:stub_tf_proto_library.bzl", "stub_tf_proto_library")
+
+http_archive(
+    name = "confidential-federated-compute",
+    integrity = "sha256-YOUBcclUn78hl0NZi9otO7xvjs1tiUFxwHS0B89/roE=",
+    strip_prefix = "confidential-federated-compute-13a2c4596a05346b3e71e93bb40f89bbd6d3c3eb",
+    url = "https://github.com/google/confidential-federated-compute/archive/13a2c4596a05346b3e71e93bb40f89bbd6d3c3eb.tar.gz",
+)
+
+load("@confidential-federated-compute//:stub_repo.bzl", "stub_repo")
+load("@confidential-federated-compute//:stub_tf_proto_library.bzl", "stub_tf_proto_library")
 
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_repo,stub_tf_proto_library
 http_archive(
@@ -32,6 +39,7 @@ http_archive(
 http_archive(
     name = "boringssl",
     integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
+    patches = ["//third_party/boringssl:rust.patch"],
     strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
     urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
 )
@@ -41,38 +49,6 @@ http_archive(
     integrity = "sha256-rhSg3iIkhf1uO69SAox0rL2a2NaFyBNYBAHTgyz66fE=",
     strip_prefix = "grpc-1.72.2",
     urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"],
-)
-
-# Avoid Kotlin dependencies.
-stub_repo(
-    name = "com_github_grpc_grpc_kotlin",
-    rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
-)
-
-http_archive(
-    name = "com_google_absl",
-    integrity = "sha256-9Q5awxGoE4Laf6dblzEOS5AGR0+VYKxG9UqZZ/B9SuM=",
-    # Prevent googletest from being pulled in twice, causing ODR and strict
-    # layering violations.
-    repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "abseil-cpp-20240722.0",
-    url = "https://github.com/abseil/abseil-cpp/archive/20240722.0.tar.gz",
-)
-
-# The following enables the use of the library functions in the differential-
-# privacy github repo
-http_archive(
-    name = "com_google_cc_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0/cc",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-)
-
-http_archive(
-    name = "com_google_differential_privacy",
-    sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-    strip_prefix = "differential-privacy-3.0.0",
-    url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
 )
 
 http_archive(
@@ -90,88 +66,11 @@ http_archive(
 )
 
 http_archive(
-    name = "com_google_sentencepiece",
-    build_file = "@gemma//bazel:sentencepiece.bazel",
-    patch_args = ["-p1"],
-    patches = ["@gemma//bazel:sentencepiece.patch"],
-    repo_mapping = {"@abseil-cpp": "@com_google_absl"},
-    sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
-    strip_prefix = "sentencepiece-0.1.96",
-    urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],
-)
-
-# The following enables the use of the library functions in the gemma.cpp
-# github repo.
-http_archive(
-    name = "darts_clone",
-    build_file_content = """
-licenses(["notice"])
-exports_files(["LICENSE"])
-package(default_visibility = ["//visibility:public"])
-cc_library(
-    name = "darts_clone",
-    hdrs = [
-        "include/darts.h",
-    ],
-)
-""",
-    sha256 = "c97f55d05c98da6fcaf7f9ecc6a6dc6bc5b18b8564465f77abff8879d446491c",
-    strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
-    urls = [
-        "https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.zip",
-    ],
-)
-
-http_archive(
     name = "federated-compute",
     integrity = "sha256-RuobEKidPyUjjwa5WyxnozQej0reSTv7keERgUGCVS8=",
-    patches = ["//third_party/federated_compute:visibility.patch"],
     repo_mapping = {"@org_tensorflow": "@tf_proto_library"},
     strip_prefix = "federated-compute-44a0dfcb498cced1ebd0eb18cba7803deabc2c2e",
     url = "https://github.com/google/federated-compute/archive/44a0dfcb498cced1ebd0eb18cba7803deabc2c2e.tar.gz",
-)
-
-http_archive(
-    name = "federated_language",
-    repo_mapping = {
-        "@protobuf": "@com_google_protobuf",
-    },
-    sha256 = "51e13f9ce23c9886f34e20c5f4bd7941b6335867405d3b4f7cbc704d6f89e820",
-    strip_prefix = "federated-language-16e734b633e68b613bb92918e6f3304774853e9b",
-    url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
-)
-
-stub_repo(
-    name = "flatbuffers",
-    rules = {":build_defs.bzl": ["flatbuffer_cc_library"]},
-)
-
-http_archive(
-    name = "gemma",
-    sha256 = "9c9b1cb7d859d46fb6e8b3b814818111526bc236bb269d7496cba69f392fe5c1",
-    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
-    url = "https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz",
-)
-
-http_archive(
-    name = "google_benchmark",
-    sha256 = "6bc180a57d23d4d9515519f92b0c83d61b05b5bab188961f36ac7b06b0d9e9ce",
-    strip_prefix = "benchmark-1.8.3",
-    urls = ["https://github.com/google/benchmark/archive/refs/tags/v1.8.3.tar.gz"],
-)
-
-http_archive(
-    name = "googletest",
-    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
-    strip_prefix = "googletest-1.14.0",
-    urls = ["https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"],
-)
-
-http_archive(
-    name = "highway",
-    sha256 = "8bdfbe5c0fb548b284505aa52fe395b50142efd4a999ded20d672a268d8e28d1",
-    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
-    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
 )
 
 # Avoid Java dependencies.
@@ -180,42 +79,29 @@ stub_repo(
     rules = {":java_grpc_library.bzl": ["java_grpc_library"]},
 )
 
-git_repository(
-    name = "libcppbor",
-    build_file = "@federated-compute//third_party:libcppbor.BUILD.bzl",
-    commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-    remote = "https://android.googlesource.com/platform/external/libcppbor",
-)
-
-http_archive(
-    name = "llama_cpp",
-    build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
-    integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
-    patch_args = ["-p1"],
-    patches = ["//third_party/llama_cpp:add_build_info.patch"],
-    strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
-    url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
-)
-
 http_archive(
     name = "oak",
     integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
-    patches = ["//third_party/oak:session_binder.patch"],
+    patches = [
+        "//third_party/oak:oak_attestation_verification.patch",
+        "@trusted_computations_platform//third_party/oak:session_binder.patch",
+    ],
     strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
     url = "https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz",
-)
-
-http_archive(
-    name = "org_tensorflow_federated",
-    integrity = "sha256-yCPoH4SI8wk51N2dgYOUTswSiZYpfK1yW9Jx1GbCjUs=",
-    strip_prefix = "tensorflow-federated-7cbcfabbb0820aba3a2311e11fa29ebdf124bd72",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/7cbcfabbb0820aba3a2311e11fa29ebdf124bd72.tar.gz",
 )
 
 http_archive(
     name = "platforms",
     sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
     url = "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
+)
+
+http_archive(
+    name = "raft_rs",
+    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
+    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
+    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
+    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
 )
 
 http_archive(
@@ -254,19 +140,18 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_rust_bindgen",
+    integrity = "sha256-yKqAbPYGZnmsI0YyQe6ArWkiZdrQRl9RERy74wuJA1I=",
+    strip_prefix = "extensions/bindgen",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.68.1/rules_rust-0.68.1.tar.gz",
+)
+
+http_archive(
     name = "rules_rust_prost",
     integrity = "sha256-yKqAbPYGZnmsI0YyQe6ArWkiZdrQRl9RERy74wuJA1I=",
     patches = ["//third_party/rules_rust:prost_deps.patch"],
     strip_prefix = "extensions/prost",
     url = "https://github.com/bazelbuild/rules_rust/releases/download/0.68.1/rules_rust-0.68.1.tar.gz",
-)
-
-http_archive(
-    name = "sqlite",
-    build_file = "//third_party/sqlite:BUILD.sqlite",
-    sha256 = "65230414820d43a6d1445d1d98cfe57e8eb9f7ac0d6a96ad6932e0647cce51db",
-    strip_prefix = "sqlite-amalgamation-3450200",
-    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip",
 )
 
 http_archive(
@@ -286,6 +171,16 @@ http_archive(
     sha256 = "fded02569617d24551a0ad09c0750dc53a3097237157b828a245681f0ae739f8",
     strip_prefix = "toolchains_llvm-v1.4.0",
     url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.4.0/toolchains_llvm-v1.4.0.tar.gz",
+)
+
+# IMPORTANT: While to assertion-based Noise sessions, updates to the TCP version
+# must be carefully coordinated with KMS binary releases. Please ensure
+# bmclarnon@ reviews any changes.
+http_archive(
+    name = "trusted_computations_platform",
+    integrity = "sha256-Ny4ExO5HFJBBlsBHkBheLP3d736WnMAwSSZO0AwmTew=",
+    strip_prefix = "trusted-computations-platform-d7dda97357b446c77ebed669c72c0337e44a2a6c",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/d7dda97357b446c77ebed669c72c0337e44a2a6c.tar.gz",
 )
 # go/keep-sorted end
 
@@ -357,16 +252,19 @@ rust_prost_transitive_repositories()
 register_toolchains("//toolchains:prost_toolchain")
 
 load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
+load("@trusted_computations_platform//bazel:crates.bzl", "TCP_PACKAGES")
 load("//:crates.bzl", "CFC_ANNOTATIONS", "CFC_PACKAGES")
 
 create_oak_crate_repositories(
     extra_annotations = CFC_ANNOTATIONS,
-    extra_packages = CFC_PACKAGES,
+    extra_packages = TCP_PACKAGES | CFC_PACKAGES,
 )
 
 load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
 
 load_oak_crate_repositories()
+
+register_toolchains("//toolchains:bindgen_toolchain")
 
 load("@rules_oci//oci:dependencies.bzl", "rules_oci_dependencies")
 

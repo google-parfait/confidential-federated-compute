@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//:proto_data.bzl", "proto_data")
+load("@confidential-federated-compute//:proto_data.bzl", "proto_data")
 
 package(features = ["layering_check"])
 
@@ -22,5 +22,5 @@ proto_data(
     out = "reference_values.binarypb",
     proto_deps = ["@oak//proto/attestation:reference_value_proto"],
     proto_name = "oak.attestation.v1.ReferenceValues",
-    visibility = ["//kms:__pkg__"],
+    visibility = ["//:__pkg__"],
 )

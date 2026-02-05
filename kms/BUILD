@@ -12,14 +12,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
+load("@confidential-federated-compute//:proto_data.bzl", "proto_data")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
-load("//:proto_data.bzl", "proto_data")
 
 package(features = ["layering_check"])
+
+exports_files([".rustfmt.toml"])
+
+platform(
+    name = "remote_platform",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    exec_properties = create_rbe_exec_properties_dict(
+        container_image = "docker://gcr.io/cloud-marketplace/google/debian12@sha256:be15f84c44c4ee68b4f187128f0278df1b0f424c04fb5f08b098967d5b896388",
+        os_family = "Linux",
+    ),
+    parents = ["@local_config_platform//:host"],
+)
+
+pkg_files(
+    name = "release_binaries",
+    srcs = [":oci_runtime_bundle.tar"],
+    renames = {":oci_runtime_bundle.tar": "kms/container.tar"},
+)
+
+pkg_install(
+    name = "install_release_binaries",
+    srcs = [":release_binaries"],
+)
+
+alias(
+    name = "install_all_binaries",
+    actual = ":install_release_binaries",
+)
 
 rust_library(
     name = "access_policies",
@@ -153,11 +187,11 @@ rust_binary(
     srcs = ["main.rs"],
     compile_data = [
         ":insecure_reference_values",
-        "//reference_values/kms:reference_values",
+        "//reference_values",
     ],
     rustc_env = {
         "INSECURE_REFERENCE_VALUES": "$(location :insecure_reference_values)",
-        "REFERENCE_VALUES": "$(location //reference_values/kms:reference_values)",
+        "REFERENCE_VALUES": "$(location //reference_values)",
     },
     rustc_flags = ["-Cpanic=abort"],
     deps = [

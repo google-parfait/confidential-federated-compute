@@ -14,6 +14,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_import")
 load("@rules_rust//rust:defs.bzl", "rust_library_group")
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_toolchain")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_toolchain")
 
 package(features = ["layering_check"])
@@ -23,12 +24,21 @@ rust_library_group(
     deps = ["@oak_crates_index//:prost"],
 )
 
+rust_library_group(
+    name = "tonic_runtime",
+    deps = [
+        ":prost_runtime",
+        "@oak_crates_index//:tonic",
+    ],
+)
+
 rust_prost_toolchain(
     name = "prost_toolchain_impl",
     prost_plugin = "@oak_std_crates_index//:protoc-gen-prost__protoc-gen-prost",
     prost_runtime = ":prost_runtime",
     prost_types = "@oak_crates_index//:prost-types",
-    tonic_plugin_flag = "",
+    tonic_plugin = "@oak_std_crates_index//:protoc-gen-tonic__protoc-gen-tonic",
+    tonic_runtime = ":tonic_runtime",
 )
 
 toolchain(
@@ -40,4 +50,17 @@ toolchain(
 cc_import(
     name = "libclang",
     shared_library = "@llvm_toolchain_llvm//:lib/libclang.so",
+)
+
+rust_bindgen_toolchain(
+    name = "bindgen_toolchain_impl",
+    bindgen = "@oak_std_crates_index//:bindgen-cli__bindgen",
+    clang = "@llvm_toolchain_llvm//:bin/clang",
+    libclang = ":libclang",
+)
+
+toolchain(
+    name = "bindgen_toolchain",
+    toolchain = "bindgen_toolchain_impl",
+    toolchain_type = "@rules_rust_bindgen//:toolchain_type",
 )
