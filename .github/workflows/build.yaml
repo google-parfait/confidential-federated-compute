@@ -27,6 +27,7 @@ jobs:
           - {root: ., name: .}
           - {root: containers/private_evolution/nn_histogram, name: nn_histogram}
           - {root: containers/private_evolution/sentence_transformers, name: sentence_transformers}
+          - {root: kms, name: kms}
           - {root: program_containers, name: program_containers}
           - {root: program_tensorflow_containers, name: program_tensorflow_containers}
 

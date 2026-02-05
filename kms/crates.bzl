@@ -17,19 +17,43 @@
 load("@rules_rust//crate_universe:defs.bzl", "crate")
 
 CFC_ANNOTATIONS = {
+    "bindgen-cli": [crate.annotation(
+        gen_binaries = ["bindgen"],
+    )],
     "protoc-gen-prost": [crate.annotation(
         gen_binaries = ["protoc-gen-prost"],
+    )],
+    "protoc-gen-tonic": [crate.annotation(
+        gen_binaries = ["protoc-gen-tonic"],
     )],
 }
 
 CFC_PACKAGES = {
-    "assert_cmd": crate.spec(
-        version = "2.0.14",
+    "bindgen-cli": crate.spec(
+        artifact = "bin",
+        version = "0.71.1",
     ),
-    "insta": crate.spec(
-        version = "1.38.0",
+    "opentelemetry-appender-tracing": crate.spec(
+        features = ["experimental_metadata_attributes"],
+        version = "0.26.0",
     ),
     "protoc-gen-prost": crate.spec(
         version = "0.4.0",
+    ),
+    "protoc-gen-tonic": crate.spec(
+        version = "0.4.1",
+    ),
+    "tracing-slog": crate.spec(
+        version = "0.3.0",
+    ),
+    "tracing-subscriber": crate.spec(
+        version = "0.3.19",
+    ),
+    "tokio-util": crate.spec(
+        features = ["rt"],
+        version = "0.7.12",
+    ),
+    "test-log": crate.spec(
+        version = "0.2.17",
     ),
 }

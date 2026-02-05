@@ -38,10 +38,8 @@ for more details on this approach.
 
 ## Inspecting binary transparency log entries
 
-The endorsement keys client devices use to validate the KMS or ledger
-applications can be found in the
-[`/reference_values/kms`](/reference_values/kms) and
-[`/reference_values/ledger`](/reference_values/ledger) directories.
+The endorsement keys client devices use to validate the KMS can be found in the
+[`/kms/reference_values`](/kms/reference_values) directory.
 
 To find transparency log entries for these endorsement keys you can use the
 [rekor-monitor](https://github.com/sigstore/rekor-monitor) tool. For example,
@@ -536,7 +534,7 @@ result.
 
 The endorsement keys client devices use for validating data access policies
 depends on the app running on the device, and per-app endorsement keys can be
-found in the [/reference_values/access_policy](/reference_values/access_policy)
+found in the [/access_policy_reference_values](/access_policy_reference_values)
 directory. For each data access policy endorsement key there is an associated
 set of privacy properties that the corresponding app will ensure are upheld by
 every endorsed data access policy.

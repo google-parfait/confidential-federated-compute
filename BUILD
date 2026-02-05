@@ -39,7 +39,6 @@ _RELEASE_BINARIES = {
     # keep-sorted start
     "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
     "//containers/metadata:oci_runtime_bundle.tar": "metadata/container.tar",
-    "//kms:oci_runtime_bundle.tar": "kms/container.tar",
     # keep-sorted end
 }
 
