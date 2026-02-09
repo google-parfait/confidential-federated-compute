@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-endorsement_reference_values: {
-  endorser: {
-    keys: {
+endorsement_reference_values {
+  endorser {
+    # Recorder's data access policy endorsement key.
+    keys {
       type: KEY_TYPE_ECDSA_P256_SHA256
       key_id: 1
       # This key's fingerprint (its SHA2-256 digest) is:
@@ -22,7 +23,7 @@ endorsement_reference_values: {
       raw: "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00\x04\x89\x90\x22\xcd\x45\x01\xe8\x28\x43\xb8\xe4\xcd\x06\x92\xa3\xf7\x80\xe5\x6d\xe3\x39\xe6\xb8\x38\x8d\x72\x1d\x73\xab\x67\x87\x13\x35\x9c\xa6\xe0\xd2\x53\x69\xe6\x97\x9a\x8c\x2d\x35\x96\x64\x27\xd1\xae\x31\xda\xcc\x71\x22\xaf\xb1\xf2\xa4\x8f\x87\x8f\x50\xaa"
     }
   }
-  required_claims: {
+  required_claims {
   }
   rekor {
     verify {

@@ -226,6 +226,13 @@ oak_containers {
         endorser {
           keys {
             type: KEY_TYPE_ECDSA_P256_SHA256
+            key_id: 7
+            # This key's fingerprint (SHA2-256 digest) is:
+            # 021205b2b8c3466ecc37a24e5a07ffaf1245cf039d52a0904c01d8eb9078b2cc
+            raw: "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00\x04\x35\xf1\xaf\x6e\x75\x5a\x6b\x7a\x80\xd4\xdc\x13\xcb\xd6\x97\xf0\xc6\x2e\x25\x24\xa7\xe2\x36\x60\x72\x68\x1e\xd4\x49\xf9\x2f\x38\xf6\xa8\xc8\x53\x0e\x4e\x7e\x4c\x14\x3e\xa1\x38\x36\xdb\x81\xba\x7b\xe8\xb6\xdd\xdc\xbb\x9c\xd1\x25\x77\xd6\xb8\xb5\x84\xd1\x06"
+          }
+          keys {
+            type: KEY_TYPE_ECDSA_P256_SHA256
             key_id: 8
             # This key's fingerprint (SHA2-256 digest) is:
             # ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f

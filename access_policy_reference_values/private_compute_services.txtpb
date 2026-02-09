@@ -14,7 +14,7 @@
 
 endorsement_reference_values {
   endorser {
-    # Private Compute Service's data access policy endorsement key.
+    # Private Compute Services' data access policy endorsement key.
     keys {
       type: KEY_TYPE_ECDSA_P256_SHA256
       key_id: 1
