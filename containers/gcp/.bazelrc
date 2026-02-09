@@ -7,6 +7,15 @@ build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
 build --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 --incompatible_strict_action_env
 build --output_filter='^//'  # Suppress warnings from external dependencies.
 
+common --@rules_cuda//cuda:compiler=nvcc
+# Static link cuda runtime deps.
+common --@rules_cuda//cuda:runtime=@cuda//:cuda_runtime_static
+# Build for H100 or equivalent.
+common --@rules_cuda//cuda:archs=compute_90:compute_90,sm_90
+common --repo_env=CC=clang
+common --action_env=CUDA_COMPILER_USE_CC_TOOLCHAIN=true
+common --action_env=CUDA_CLANG_LABEL="@llvm_toolchain//:cc-toolchain-x86_64-linux"
+
 # CFC registry
 common --registry=https://bcr.bazel.build --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
 

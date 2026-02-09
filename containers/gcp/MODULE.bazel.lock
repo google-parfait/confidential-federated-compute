@@ -376,7 +376,7 @@
     "https://bcr.bazel.build/modules/zlib/1.3/MODULE.bazel": "6a9c02f19a24dcedb05572b2381446e27c272cd383aed11d41d99da9e3167a72",
     "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/bazel_registry.json": "not found",
     "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.12/MODULE.bazel": "4af6144bbdefbe00fbfe5c39feba49cef7fbd0b807f3e797e589a14059ca937f",
-    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.12/source.json": "1b56377d66968ff9fa0aab06d44b27da1ccfa329eb96af56e980f4684164d059"
+    "https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/modules/confidential-federated-compute/0.0.12/source.json": "4954e9c4bb40f60a133b7526f315f119be88d1af983be5adc092ec5d04eba042"
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
