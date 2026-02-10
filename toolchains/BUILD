@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_import")
 load("@rules_rust//rust:defs.bzl", "rust_library_group")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_toolchain")
 
@@ -25,7 +24,7 @@ rust_library_group(
 
 rust_prost_toolchain(
     name = "prost_toolchain_impl",
-    prost_plugin = "@oak_std_crates_index//:protoc-gen-prost__protoc-gen-prost",
+    prost_plugin = "@crates//:protoc-gen-prost__protoc-gen-prost",
     prost_runtime = ":prost_runtime",
     prost_types = "@oak_crates_index//:prost-types",
     tonic_plugin_flag = "",
@@ -35,9 +34,4 @@ toolchain(
     name = "prost_toolchain",
     toolchain = "prost_toolchain_impl",
     toolchain_type = "@rules_rust_prost//:toolchain_type",
-)
-
-cc_import(
-    name = "libclang",
-    shared_library = "@llvm_toolchain_llvm//:lib/libclang.so",
 )

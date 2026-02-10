@@ -5,7 +5,7 @@
 @@ -551,2 +551,3 @@
  cc_library(
      name = "compression",
-+    visibility = ["@//:__subpackages__"],
++    visibility = ["//visibility:public"],
 
 # Make event_time_range.proto public
 --- fcp/client/BUILD

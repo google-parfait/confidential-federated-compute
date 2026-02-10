@@ -16,7 +16,6 @@ build --define xnn_enable_avxvnniint8=false
 build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
 build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
-common --noenable_bzlmod
 
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
@@ -72,6 +71,19 @@ test:ubsan --test_tag_filters=-noubsan
 # rules_rust 0.54.1 doesn't work with rust's experimental lld linking and clang
 # (https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html).
 build --@rules_rust//rust/settings:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//rust/settings:extra_exec_rustc_flag=-Zlinker-features=-lld
+
+# sqlite3 options; see https://sqlite.org/compile.html.
+build --copt=-DSQLITE_DQS=0
+build --copt=-DSQLITE_THREADSAFE=1
+build --copt=-DSQLITE_DEFAULT_MEMSTATUS=0
+build --copt=-DSQLITE_LIKE_DOESNT_MATCH_BLOBS
+build --copt=-DSQLITE_MAX_EXPR_DEPTH=0
+build --copt=-DSQLITE_OMIT_DECLTYPE
+build --copt=-DSQLITE_OMIT_PROGRESS_CALLBACK
+build --copt=-DSQLITE_OMIT_SHARED_CACHE
+build --copt=-DSQLITE_OMIT_AUTOINIT
+build --copt=-DSQLITE_STRICT_SUBTYPE=1
+build --copt=-DHAVE_LOCALTIME_R
 
 # Settings for remote build execution.
 build:cfc-remote --experimental_allow_tags_propagation

@@ -260,7 +260,7 @@ TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {
   EXPECT_DEATH(row_view->GetValue<absl::string_view>(0), "but expected string");
 }
 
-TEST_F(MessageRowViewTest, CordCtypeDeathTest) {
+TEST_F(MessageRowViewTest, CordCtype) {
   const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
     name: "test_cord.proto"
     package: "confidential_federated_compute.sql"
@@ -291,8 +291,7 @@ TEST_F(MessageRowViewTest, CordCtypeDeathTest) {
   absl::StatusOr<RowView> row_view =
       RowView::CreateFromMessage(message.get(), {}, 0);
   ASSERT_THAT(row_view, IsOk());
-  EXPECT_DEATH(row_view->GetValue<absl::string_view>(0),
-               "has unsupported ctype");
+  EXPECT_EQ(row_view->GetValue<absl::string_view>(0), "some value");
 }
 
 }  // namespace

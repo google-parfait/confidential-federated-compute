@@ -150,7 +150,7 @@ pkg_tar(
 
 oci_image(
     name = "oci_image_for_testing",
-    base = "@distroless_cc_debian12",
+    base = "@distroless_cc_debian12_base",
     cmd = [],
     entrypoint = ["/main_for_testing"],
     tars = [":tar_for_testing"],

@@ -1,0 +1,167 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+module(
+    name = "confidential-federated-compute",
+    version = "0.0.13",
+)
+
+# Dependencies when CFC is used as a library.
+# go/keep-sorted start
+bazel_dep(name = "abseil-cpp", version = "20250127.1", repo_name = "com_google_absl")
+bazel_dep(name = "aspect_bazel_lib", version = "2.17.1")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "flatbuffers", version = "25.2.10")
+bazel_dep(name = "googleapis", version = "0.0.0-20241220-5e258e33.bcr.1", repo_name = "com_google_googleapis")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "grpc", version = "1.72.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc-java", version = "1.71.0", repo_name = "io_grpc_grpc_java")
+bazel_dep(name = "oak")
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "protobuf", version = "30.0", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "rules_java", version = "8.11.0")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.2.0")
+bazel_dep(name = "rules_rust", version = "0.61.0")
+# go/keep-sorted end
+
+cfc_deps = use_extension("//:extensions.bzl", "cfc_deps")
+use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor", "org_tensorflow_federated")
+
+# Dependencies needed only for tests or building containers in this workspace.
+# go/keep-sorted start ignore_prefixes=bazel_dep
+bazel_dep(name = "gemma", version = "0.1.0", dev_dependency = True)
+bazel_dep(name = "googleapis-cc", version = "1.0.0", dev_dependency = True)
+bazel_dep(name = "rules_rust_prost", version = "0.61.0", dev_dependency = True)
+bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
+bazel_dep(name = "toolchains_llvm", version = "1.4.0", dev_dependency = True)
+# go/keep-sorted end
+
+cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps", dev_dependency = True)
+use_repo(
+    cfc_dev_deps,
+    "com_google_cc_differential_privacy",
+    "com_google_differential_privacy",
+    "llama_cpp",
+    "sysroot",
+)
+
+# Module overrides.
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+archive_override(
+    module_name = "gemma",
+    integrity = "sha256-nJsct9hZ1G+26LO4FIGBEVJrwja7Jp10lsumnzkv5cE=",
+    patches = ["//third_party/gemma:module.patch"],
+    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
+    urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
+)
+
+# gemma requires a more recent version of highway.
+archive_override(
+    module_name = "highway",
+    integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
+    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
+    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
+)
+
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
+    patches = ["//third_party/oak:module.patch"],
+    strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
+    urls = ["https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz"],
+)
+# go/keep-sorted end
+
+# Rust crates.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate", dev_dependency = True)
+crate.annotation(
+    crate = "protoc-gen-prost",
+    gen_binaries = ["protoc-gen-prost"],
+)
+crate.spec(
+    package = "assert_cmd",
+    version = "2.0.14",
+)
+crate.spec(
+    features = ["derive"],
+    package = "clap",
+    version = "4.5.9",
+)
+crate.spec(
+    package = "insta",
+    version = "1.38.0",
+)
+crate.spec(
+    package = "protoc-gen-prost",
+    version = "0.4.0",
+)
+crate.spec(
+    package = "tempfile",
+    version = "3.10.1",
+)
+crate.from_specs(name = "crates")
+use_repo(crate, "crates", "oak_crates_index")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci", dev_dependency = True)
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
+python.toolchain(
+    configure_coverage_tool = False,
+    ignore_root_user_error = True,
+    python_version = "3.10",
+)
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "14.0.0",
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
+rust.toolchain(
+    edition = "2021",
+    sha256s = {
+        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
+        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
+        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
+        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
+        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
+    },
+    versions = ["nightly/2025-03-01"],
+)
+
+register_toolchains(
+    "//toolchains:prost_toolchain",
+    "@llvm_toolchain//:all",
+    dev_dependency = True,
+)

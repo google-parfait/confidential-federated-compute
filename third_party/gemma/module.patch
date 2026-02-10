@@ -1,0 +1,10 @@
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -36,5 +36,5 @@
+ http_archive(
+     name = "com_google_sentencepiece",
+-    build_file = "@//bazel:sentencepiece.bazel",
++    build_file = "//bazel:sentencepiece.bazel",
+     patch_args = ["-p1"],
+-    patches = ["@//bazel:sentencepiece.patch"],
++    patches = ["//bazel:sentencepiece.patch"],

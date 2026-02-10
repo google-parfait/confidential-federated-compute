@@ -1,7 +1,0 @@
-# Fix the zot launcher not working with remote execution:
-# https://github.com/bazel-contrib/rules_oci/issues/477.
---- oci/private/registry/zot_launcher.sh.tpl
-+++ oci/private/registry/zot_launcher.sh.tpl
-@@ -18,1 +18,1 @@ function start_registry() {
--    HOME="${TMPDIR}" "${ZOT}" serve "${config_path}" >> $output 2>&1 &
-+    HOME="${TMPDIR:-/tmp}" "${ZOT}" serve "${config_path}" >> $output 2>&1 &

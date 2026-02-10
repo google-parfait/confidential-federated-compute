@@ -183,7 +183,8 @@ absl::StatusOr<Input> Input::CreateFromMessages(
   FCP_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
   std::vector<std::string> column_names;
   for (int i = 0; i < messages[0]->GetDescriptor()->field_count(); ++i) {
-    column_names.push_back(messages[0]->GetDescriptor()->field(i)->name());
+    column_names.push_back(
+        std::string(messages[0]->GetDescriptor()->field(i)->name()));
   }
   for (const auto& system_column : system_columns) {
     column_names.push_back(system_column.name());

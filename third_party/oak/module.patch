@@ -1,0 +1,77 @@
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -216,11 +216,11 @@
+ git_repository(
+     name = "libcppbor",
+-    build_file = "@//:third_party/google/libcppbor/BUILD",
++    build_file = "//:third_party/google/libcppbor/BUILD",
+     # Head commit on 202505-09
+     commit = "b1b998be4ec447f3086e7fd6a7f78eaec66a1c45",
+     patches = [
+-        "@//:third_party/google/libcppbor/remove_macro.patch",
++        "//:third_party/google/libcppbor/remove_macro.patch",
+-        "@//:third_party/google/libcppbor/limits.patch",
++        "//:third_party/google/libcppbor/limits.patch",
+     ],
+     remote = "https://android.googlesource.com/platform/external/libcppbor",
+ )
+@@ -228,3 +228,3 @@
+ http_archive(
+     name = "cose_lib",
+-    build_file = "@//:third_party/BUILD.cose_lib",
++    build_file = "//:third_party/BUILD.cose_lib",
+@@ -236,3 +236,3 @@
+ http_archive(
+     name = "e2fsprogs",
+-    build_file = "@//:third_party/BUILD.e2fsprogs",
++    build_file = "//:third_party/BUILD.e2fsprogs",
+@@ -203,6 +203,49 @@
+ ##### Rust Toolchain Setup #####
+
+ bazel_dep(name = "rules_shell", version = "0.5.0")
+ bazel_dep(name = "rules_rust", version = "0.61.0")
+ bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.61.0")
+
++crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
++crate.spec(package = "aead", version = "0.5.2")
++crate.spec(package = "aes-gcm", version = "0.10.3")
++crate.spec(package = "anyhow", version = "1.0.98")
++crate.spec(package = "async-trait", version = "0.1.81")
++crate.spec(package = "base64", version = "0.21.7")
++crate.spec(package = "bitflags", version = "2.9.1")
++crate.spec(package = "chrono", version = "0.4.42")
++crate.spec(package = "ciborium", version = "0.2.2")
++crate.spec(package = "coset", version = "0.3.7")
++crate.spec(package = "const-oid", version = "0.9.6")
++crate.spec(package = "ecdsa", version = "0.16.9")
++crate.spec(package = "hashbrown", version = "0.14.5")
++crate.spec(package = "hex", version = "0.4.3")
++crate.spec(package = "hkdf", version = "0.12.4")
++crate.spec(package = "hpke", version = "0.11.0")
++crate.spec(package = "itertools", version = "0.13.0")
++crate.spec(package = "nom", version = "8.0.0")
++crate.spec(package = "primeorder", version = "0.13.6")
++crate.spec(package = "p256", version = "0.13.2")
++crate.spec(package = "p384", version = "0.13.0")
++crate.spec(package = "pkcs8", version = "0.10.2")
++crate.spec(package = "prost", version = "0.13.5")
++crate.spec(package = "prost-build", version = "0.13.5")
++crate.spec(package = "prost-derive", version = "0.13.5")
++crate.spec(package = "prost-types", version = "0.13.5")
++crate.spec(package = "rand_chacha", version = "0.3.1")
++crate.spec(package = "rand_core", version = "0.6.4")
++crate.spec(package = "rsa", version = "0.9.8")
++crate.spec(package = "serde", version = "1.0.228")
++crate.spec(package = "serde_json", version = "1.0.145")
++crate.spec(package = "serde_yaml", version = "0.9.34")
++crate.spec(package = "static_assertions", version = "1.1.0")
++crate.spec(package = "sha2", version = "0.10.9")
++crate.spec(package = "strum", version = "0.26.3", features = ["derive"])
++crate.spec(package = "strum_macros", version = "0.25.3")
++crate.spec(package = "thiserror", version = "2.0.12")
++crate.spec(package = "x509-cert", version = "0.2.5")
++crate.spec(package = "zerocopy", version = "0.8.26")
++crate.spec(package = "zeroize", version = "1.8.1")
++crate.from_specs(name = "oak_crates_index")
++use_repo(crate, "oak_crates_index")
++
