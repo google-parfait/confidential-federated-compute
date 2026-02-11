@@ -65,7 +65,6 @@ using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
 using ::google::protobuf::FileDescriptorSet;
 using ::google::protobuf::Message;
-using ::google::protobuf::Struct;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;

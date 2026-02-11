@@ -28,7 +28,6 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "google/protobuf/struct.pb.h"
 
 namespace confidential_federated_compute {
 
