@@ -236,7 +236,6 @@ absl::Status ConfidentialTransformBase::HandleWrite(
 absl::Status ConfidentialTransformBase::StreamInitializeInternal(
     grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
-  google::protobuf::Struct config_properties;
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   StreamInitializeRequest request;
   bool contain_initialize_request = false;

@@ -32,6 +32,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/struct.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"

@@ -236,6 +236,7 @@ cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf_lite",
+        "@com_google_protobuf//:struct_cc_proto",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
