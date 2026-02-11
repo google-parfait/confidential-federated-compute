@@ -27,14 +27,17 @@ use oak_proto_rust::oak::attestation::v1::{
     RootLayerReferenceValues,
 };
 use oak_session::{
+    aggregators::PassThrough,
     attestation::AttestationType,
     config::{EncryptorProvider, SessionConfig},
     encryptors::UnorderedChannelEncryptor,
     handshake::HandshakeType,
     key_extractor::DefaultBindingKeyExtractor,
-    session_binding::SessionBinder,
+    session_binding::{SessionBinder, SignatureBindingVerifierProvider},
 };
-use oak_session_endorsed_evidence::EndorsedEvidenceBindableAssertionGenerator;
+use oak_session_endorsed_evidence::{
+    EndorsedEvidenceBindableAssertionGenerator, EndorsedEvidenceBoundAssertionVerifier,
+};
 use oak_time::Clock;
 
 const ASSERTION_ID: &str = "cfc_kms_assertion";
@@ -109,11 +112,6 @@ pub fn create_session_config(
     Ok(SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
         .add_self_attester_ref(SESSION_ID.into(), attester)
         .add_self_endorser_ref(SESSION_ID.into(), endorser)
-        .add_peer_verifier_with_key_extractor(
-            SESSION_ID.into(),
-            peer_verifier,
-            Box::new(DefaultBindingKeyExtractor {}),
-        )
         .add_self_assertion_generator(
             String::from(ASSERTION_ID),
             Box::new(EndorsedEvidenceBindableAssertionGenerator::new(
@@ -122,6 +120,18 @@ pub fn create_session_config(
                 session_binder.clone(),
             )),
         )
+        .add_peer_assertion_verifier(
+            String::from(ASSERTION_ID),
+            Box::new(EndorsedEvidenceBoundAssertionVerifier::new(
+                peer_verifier.into(),
+                Arc::new(SignatureBindingVerifierProvider::new(Arc::new(
+                    DefaultBindingKeyExtractor {},
+                ))),
+            )),
+        )
+        // Since only one assertion type is used, a trivial PassThrough
+        // aggregator is sufficient.
+        .set_assertion_attestation_aggregator(Box::new(PassThrough {}))
         // The communication channel is not guaranteed to be ordered.
         .set_encryption_provider(Box::new(UnorderedEncryptorProvider))
         .add_session_binder_ref(SESSION_ID.into(), session_binder)
