@@ -9,10 +9,6 @@ build --incompatible_default_to_explicit_init_py
 
 common --experimental_repo_remote_exec
 
-# CFC registry
-common --registry=https://bcr.bazel.build
-common --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
-
 build:asan --compilation_mode=dbg
 build:asan --strip=never
 # Using -gmlt gives file names and line numbers in the warning messages.
