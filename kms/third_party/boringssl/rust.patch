@@ -1,4 +1,11 @@
 # Add build rules for Rust bindings.
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -36,1 +36,3 @@
+ bazel_dep(name = "rules_license", version = "1.0.0")
++bazel_dep(name = "rules_rust", version = "0.68.1")
++bazel_dep(name = "rules_rust_bindgen", version = "0.68.1")
+
 --- /dev/null
 +++ rust/bssl-crypto/BUILD
 @@ -0,0 +1,14 @@

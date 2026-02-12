@@ -1,0 +1,190 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# go/keep-sorted start
+bazel_dep(name = "boringssl")
+bazel_dep(name = "confidential-federated-compute")
+bazel_dep(name = "googleapis", version = "0.0.0-20241220-5e258e33.bcr.1", repo_name = "com_google_googleapis")
+bazel_dep(name = "oak")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "30.0", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.8")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
+bazel_dep(name = "rules_python", version = "1.5.1")
+bazel_dep(name = "rules_rust", version = "0.68.1")
+bazel_dep(name = "rules_rust_bindgen", version = "0.68.1")
+bazel_dep(name = "rules_rust_prost")
+bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+# go/keep-sorted end
+
+cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
+use_repo(cfc_deps, "bazel_toolchains", "federated-compute")
+
+# Module overrides.
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+archive_override(
+    module_name = "boringssl",
+    integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
+    patches = ["//third_party/boringssl:rust.patch"],
+    strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
+    urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
+)
+
+archive_override(
+    module_name = "confidential-federated-compute",
+    integrity = "sha256-fbSviH6hWRuvo6EsEFq9iJFPkAgbhDToaBWzPrt5+nc=",
+    strip_prefix = "confidential-federated-compute-1b10ca792af509f4064e3a552b982945983b3de8",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/1b10ca792af509f4064e3a552b982945983b3de8.tar.gz"],
+)
+
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
+    patches = [
+        "//third_party/oak:module.patch",
+        "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:session_binder.patch",
+    ],
+    strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
+    urls = ["https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz"],
+)
+
+archive_override(
+    module_name = "rules_rust_prost",
+    integrity = "sha256-yKqAbPYGZnmsI0YyQe6ArWkiZdrQRl9RERy74wuJA1I=",
+    patches = ["//third_party/rules_rust:prost_deps.patch"],
+    strip_prefix = "extensions/prost",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.68.1/rules_rust-0.68.1.tar.gz"],
+)
+# go/keep-sorted end
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Dependencies that do not use bzlmod yet.
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=http_archive
+http_archive(
+    name = "raft_rs",
+    patches = ["@trusted_computations_platform//third_party/raft_rs:bazel.patch"],
+    sha256 = "e755de7613e7105c3bf90fb7742887cce7c7276723f16a9d1fe7c6053bd91973",
+    strip_prefix = "raft-rs-10968a112dcc4143ad19a1b35b6dca6e30d2e439",
+    url = "https://github.com/google-parfait/raft-rs/archive/10968a112dcc4143ad19a1b35b6dca6e30d2e439.tar.gz",
+)
+
+http_archive(
+    name = "sysroot",
+    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>.
+    # To make this lookup easier, we use `sha256` instead of `integrity`.
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
+)
+
+# IMPORTANT: While to assertion-based Noise sessions, updates to the TCP version
+# must be carefully coordinated with KMS binary releases. Please ensure
+# bmclarnon@ reviews any changes.
+http_archive(
+    name = "trusted_computations_platform",
+    integrity = "sha256-RE0DT2mhzbca3jP9Imdbtyzj71nKaoasCHM2Y5lD8H8=",
+    strip_prefix = "trusted-computations-platform-8d6bda6581db0b9f21308e69f9ecf233def44a8a",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/8d6bda6581db0b9f21308e69f9ecf233def44a8a.tar.gz",
+)
+# go/keep-sorted end
+
+# Rust crates.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.annotation(
+    crate = "bindgen-cli",
+    gen_binaries = ["bindgen"],
+)
+crate.annotation(
+    crate = "protoc-gen-prost",
+    gen_binaries = ["protoc-gen-prost"],
+)
+crate.annotation(
+    crate = "protoc-gen-tonic",
+    gen_binaries = ["protoc-gen-tonic"],
+)
+crate.spec(
+    artifact = "bin",
+    package = "bindgen-cli",
+    version = "0.71.1",
+)
+crate.spec(
+    package = "protoc-gen-prost",
+    version = "0.4.0",
+)
+crate.spec(
+    package = "protoc-gen-tonic",
+    version = "0.4.1",
+)
+crate.from_specs(
+    name = "crates",
+    host_tools = "@rust_host_tools_nightly",
+)
+use_repo(crate, "crates", "oak_crates_index")
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "14.0.0",
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    sha256s = {
+        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
+        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
+        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
+        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
+        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
+    },
+    versions = ["nightly/2025-03-01"],
+)
+
+rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")
+rust_host_tools.host_tools(
+    name = "rust_host_tools_nightly",
+    edition = "2021",
+    sha256s = {
+        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
+        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
+        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
+        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
+        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
+    },
+    version = "nightly/2025-03-01",
+)
+use_repo(rust_host_tools, "rust_host_tools_nightly")
+
+register_toolchains(
+    "//toolchains:bindgen_toolchain",
+    "//toolchains:prost_toolchain",
+    "@llvm_toolchain//:all",
+)

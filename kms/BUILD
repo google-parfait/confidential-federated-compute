@@ -103,7 +103,7 @@ rust_binary(
 
 oci_image(
     name = "oci_image",
-    base = "@distroless_cc_debian12",
+    base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
     tars = [":tar"],
 )

@@ -34,10 +34,10 @@ rust_library_group(
 
 rust_prost_toolchain(
     name = "prost_toolchain_impl",
-    prost_plugin = "@oak_std_crates_index//:protoc-gen-prost__protoc-gen-prost",
+    prost_plugin = "@crates//:protoc-gen-prost__protoc-gen-prost",
     prost_runtime = ":prost_runtime",
     prost_types = "@oak_crates_index//:prost-types",
-    tonic_plugin = "@oak_std_crates_index//:protoc-gen-tonic__protoc-gen-tonic",
+    tonic_plugin = "@crates//:protoc-gen-tonic__protoc-gen-tonic",
     tonic_runtime = ":tonic_runtime",
 )
 
@@ -54,7 +54,7 @@ cc_import(
 
 rust_bindgen_toolchain(
     name = "bindgen_toolchain_impl",
-    bindgen = "@oak_std_crates_index//:bindgen-cli__bindgen",
+    bindgen = "@crates//:bindgen-cli__bindgen",
     clang = "@llvm_toolchain_llvm//:bin/clang",
     libclang = ":libclang",
 )
