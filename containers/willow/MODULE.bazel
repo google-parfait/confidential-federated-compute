@@ -1,0 +1,86 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+module(
+    name = "willow",
+    version = "0.0.1",
+    compatibility_level = 1,
+)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Keep sorted
+bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "confidential-federated-compute")
+archive_override(
+    module_name = "confidential-federated-compute",
+    integrity = "sha256-VKEP474jy/vY04VN/6iob/jDjbf+e4B3c2BkAE+ckTY=",
+    strip_prefix = "confidential-federated-compute-2f39d187df2f19b188570f5a38fdc13fb3f54cbc",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/2f39d187df2f19b188570f5a38fdc13fb3f54cbc.tar.gz"],
+)
+
+bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
+bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.8")
+bazel_dep(name = "rules_distroless", version = "0.5.1")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "oak")
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-ayZil41/X2ieLpdpJNvuHdRyeWNqVPtoEMCrDL23YjU=",
+    strip_prefix = "oak-7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a",
+    url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
+)
+
+cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
+use_repo(cfc_deps, "bazel_toolchains", "federated-compute")
+
+http_archive(
+    name = "sysroot",
+    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
+)
+
+# Set up cc toolchain
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "14.0.0",
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
