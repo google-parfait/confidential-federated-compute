@@ -6,9 +6,6 @@ build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
-# Build TensorFlow and XLA with more optimizations to avoid linker OOM
-build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG
-build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
 build --define xnn_enable_avx512fp16=false
 build --define xnn_enable_avx512amx=false
 build --define xnn_enable_avxvnni=false
@@ -32,8 +29,6 @@ build:asan --copt=-fsanitize=address
 build:asan --copt=-fno-omit-frame-pointer
 build:asan --linkopt=-fsanitize=address
 build:asan --action_env=ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1
-# Our clang sysroot uses an old version of glibc without copy_file_range.
-build:asan --per_file_copt=external/riegeli/@-DRIEGELI_DISABLE_COPY_FILE_RANGE
 test:asan --test_tag_filters=-noasan
 
 build:tsan --compilation_mode=dbg
@@ -47,8 +42,6 @@ build:tsan --copt=-O1
 build:tsan --copt=-fno-omit-frame-pointer
 build:tsan --linkopt=-fsanitize=thread
 build:tsan --action_env TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
-# Our clang sysroot uses an old version of glibc without copy_file_range.
-build:tsan --per_file_copt=external/riegeli/@-DRIEGELI_DISABLE_COPY_FILE_RANGE
 test:tsan --test_tag_filters=-notsan
 
 build:ubsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
@@ -64,8 +57,6 @@ build:ubsan --linkopt=-fsanitize=undefined
 # work around linker errors.
 build:ubsan --linkopt=-fsanitize-link-c++-runtime
 build:ubsan --action_env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
-# Our clang sysroot uses an old version of glibc without copy_file_range.
-build:ubsan --per_file_copt=external/riegeli/@-DRIEGELI_DISABLE_COPY_FILE_RANGE
 test:ubsan --test_tag_filters=-noubsan
 
 # rules_rust 0.54.1 doesn't work with rust's experimental lld linking and clang
