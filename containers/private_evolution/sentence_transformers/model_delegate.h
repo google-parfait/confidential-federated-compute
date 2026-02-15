@@ -32,8 +32,6 @@ namespace confidential_federated_compute::sentence_transformers {
 class ModelDelegate {
  public:
   virtual ~ModelDelegate() = default;
-  virtual void InitializeRuntime() {};
-  virtual void FinalizeRuntime() {};
   virtual bool InitializeModel(absl::string_view artifact_path) = 0;
   virtual absl::StatusOr<std::vector<std::vector<float>>> GenerateEmbeddings(
       const std::vector<std::string>& inputs,

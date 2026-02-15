@@ -27,11 +27,13 @@
 
 namespace confidential_federated_compute::sentence_transformers {
 
-void PyModelDelegate::InitializeRuntime() {
+PyModelDelegateFactory::PyModelDelegateFactory() {
   pybind11::initialize_interpreter();
 }
 
-void PyModelDelegate::FinalizeRuntime() { pybind11::finalize_interpreter(); }
+PyModelDelegateFactory::~PyModelDelegateFactory() {
+  pybind11::finalize_interpreter();
+}
 
 bool PyModelDelegate::InitializeModel(absl::string_view model_artifact_path) {
   pybind11::gil_scoped_acquire acquire;

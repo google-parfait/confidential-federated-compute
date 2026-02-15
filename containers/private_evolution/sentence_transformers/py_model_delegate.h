@@ -33,8 +33,6 @@ namespace confidential_federated_compute::sentence_transformers {
 // This class also creats and finalize the interpreter.
 class PyModelDelegate : public ModelDelegate {
  public:
-  void InitializeRuntime() override;
-  void FinalizeRuntime() override;
   bool InitializeModel(absl::string_view artifact_path) override;
   absl::StatusOr<std::vector<std::vector<float>>> GenerateEmbeddings(
       const std::vector<std::string>& inputs,
@@ -42,8 +40,11 @@ class PyModelDelegate : public ModelDelegate {
 };
 
 // Factory class for creating ModelDelegate.
+// This class also initialize/finalize the python interpreter.
 class PyModelDelegateFactory : public ModelDelegateFactory {
  public:
+  PyModelDelegateFactory();
+  ~PyModelDelegateFactory();
   std::unique_ptr<ModelDelegate> Create() override {
     return std::make_unique<PyModelDelegate>();
   }

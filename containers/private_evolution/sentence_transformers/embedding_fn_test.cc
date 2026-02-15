@@ -70,8 +70,6 @@ using ::testing::SaveArg;
 
 class MockDelegate : public ModelDelegate {
  public:
-  MOCK_METHOD(void, InitializeRuntime, (), (override));
-  MOCK_METHOD(void, FinalizeRuntime, (), (override));
   MOCK_METHOD(bool, InitializeModel, (absl::string_view), (override));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<float>>>,
               GenerateEmbeddings,
@@ -219,10 +217,9 @@ TEST_F(EmbeddingMapFnTest, InvalidArchivePath) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(EmbeddingMapFnTest, InitializeReplicaInitializeRuntimeAndModel) {
+TEST_F(EmbeddingMapFnTest, InitializeReplicaInitializeModel) {
   auto fn = InitializeFn();
 
-  EXPECT_CALL(*delegate_raw_ptr_, InitializeRuntime());
   EXPECT_CALL(*delegate_raw_ptr_, InitializeModel(_)).WillOnce(Return(true));
   EXPECT_THAT(fn->InitializeReplica(Any(), context_), IsOk());
 }
@@ -230,16 +227,9 @@ TEST_F(EmbeddingMapFnTest, InitializeReplicaInitializeRuntimeAndModel) {
 TEST_F(EmbeddingMapFnTest, InitializeModelFailed) {
   auto fn = InitializeFn();
 
-  EXPECT_CALL(*delegate_raw_ptr_, InitializeRuntime());
   EXPECT_CALL(*delegate_raw_ptr_, InitializeModel(_)).WillOnce(Return(false));
   EXPECT_THAT(fn->InitializeReplica(Any(), context_),
               StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST_F(EmbeddingMapFnTest, FinalizeReplicaFinalizeRuntime) {
-  auto fn = InitializeFn();
-  EXPECT_CALL(*delegate_raw_ptr_, FinalizeRuntime());
-  EXPECT_THAT(fn->FinalizeReplica(Any(), context_), IsOk());
 }
 
 TEST_F(EmbeddingMapFnTest, WriteSuccess) {
