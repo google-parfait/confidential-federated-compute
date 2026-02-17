@@ -304,6 +304,10 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
     name = "pypi",
+    extra_pip_args = [
+        "--index-url",
+        "https://pypi.org/simple",
+    ],
     python_interpreter_target = interpreter,
     requirements_lock = "//:requirements_lock.txt",
 )
