@@ -121,7 +121,6 @@ EmbeddingFn::EmbeddingFn(absl::string_view model_artifact_path,
 };
 
 absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
-  delegate_->InitializeRuntime();
   if (!delegate_->InitializeModel(model_artifact_path_)) {
     return absl::InvalidArgumentError("Model initialization failed");
   }
@@ -129,7 +128,6 @@ absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
 }
 
 absl::Status EmbeddingFn::FinalizeReplica(Any config, Context& context) {
-  delegate_->FinalizeRuntime();
   return absl::OkStatus();
 }
 
