@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "session.h"
+#include "willow_session.h"
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,39 +35,39 @@ using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 
-absl::StatusOr<ConfigureResponse> Session::Configure(ConfigureRequest request,
-                                                     Context& context) {
+absl::StatusOr<ConfigureResponse> WillowSession::Configure(
+    ConfigureRequest request, Context& context) {
   return ConfigureResponse{};
 }
 
-absl::StatusOr<WriteFinishedResponse> Session::Write(
+absl::StatusOr<WriteFinishedResponse> WillowSession::Write(
     WriteRequest request, std::string unencrypted_data, Context& context) {
   WillowOp op;
   if (!request.first_request_configuration().UnpackTo(&op)) {
-    return ToWriteFinishedResponse(
-        absl::InvalidArgumentError("Session::Write: failed to parse Op."));
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(
+        "WillowSession::Write: failed to parse Op."));
   }
   if (op.kind() == WillowOp::ADD_INPUT) {
     return AddInput(std::move(unencrypted_data));
   } else if (op.kind() == WillowOp::MERGE) {
     return Merge(std::move(unencrypted_data));
   } else {
-    return ToWriteFinishedResponse(absl::InvalidArgumentError(
-        absl::StrCat("Session::Write: unexpected op: ", op.DebugString())));
+    return ToWriteFinishedResponse(absl::InvalidArgumentError(absl::StrCat(
+        "SessWillowSessionion::Write: unexpected op: ", op.DebugString())));
   }
 }
 
-absl::StatusOr<CommitResponse> Session::Commit(CommitRequest request,
-                                               Context& context) {
+absl::StatusOr<CommitResponse> WillowSession::Commit(CommitRequest request,
+                                                     Context& context) {
   return ToCommitResponse(absl::OkStatus());
 }
 
-absl::StatusOr<FinalizeResponse> Session::Finalize(FinalizeRequest request,
-                                                   BlobMetadata input_metadata,
-                                                   Context& context) {
+absl::StatusOr<FinalizeResponse> WillowSession::Finalize(
+    FinalizeRequest request, BlobMetadata input_metadata, Context& context) {
   WillowOp op;
   if (!request.configuration().UnpackTo(&op)) {
-    return absl::InvalidArgumentError("Session::Finalize: failed to parse Op.");
+    return absl::InvalidArgumentError(
+        "WillowSession::Finalize: failed to parse Op.");
   }
   std::string result;
   if (op.kind() == WillowOp::COMPACT) {
@@ -75,22 +75,24 @@ absl::StatusOr<FinalizeResponse> Session::Finalize(FinalizeRequest request,
   } else if (op.kind() == WillowOp::FINALIZE) {
     FCP_ASSIGN_OR_RETURN(result, Compact());
   } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Session::Finalize: unexpected op ", op.DebugString()));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "WillowSession::Finalize: unexpected op ", op.DebugString()));
   }
   if (!context.EmitUnencrypted(std::move(result))) {
-    return absl::InternalError("Session::Finalize: failed to emit result.");
+    return absl::InternalError(
+        "WillowSession::Finalize: failed to emit result.");
   }
   return FinalizeResponse{};
 }
 
-absl::StatusOr<WriteFinishedResponse> Session::AddInput(std::string input) {
+absl::StatusOr<WriteFinishedResponse> WillowSession::AddInput(
+    std::string input) {
   return WriteFinishedResponse{};
 }
-absl::StatusOr<WriteFinishedResponse> Session::Merge(std::string input) {
+absl::StatusOr<WriteFinishedResponse> WillowSession::Merge(std::string input) {
   return WriteFinishedResponse{};
 }
-absl::StatusOr<std::string> Session::Compact() { return ""; }
-absl::StatusOr<std::string> Session::Finalize() { return ""; }
+absl::StatusOr<std::string> WillowSession::Compact() { return ""; }
+absl::StatusOr<std::string> WillowSession::Finalize() { return ""; }
 
 }  // namespace confidential_federated_compute::willow

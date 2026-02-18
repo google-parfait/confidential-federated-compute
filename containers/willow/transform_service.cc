@@ -15,6 +15,7 @@
 #include "transform_service.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -24,6 +25,7 @@
 #include "containers/confidential_transform_server_base.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "willow_session.h"
 
 namespace confidential_federated_compute::willow {
 
@@ -45,10 +47,8 @@ absl::Status TransformService::ReadWriteConfigurationRequest(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
-TransformService::CreateSession() {
-  return absl::UnimplementedError(
-      "Transform::CreateSession is unimplemented yet.");
+absl::StatusOr<std::unique_ptr<Session>> TransformService::CreateSession() {
+  return std::make_unique<WillowSession>();
 };
 
 absl::StatusOr<std::string> TransformService::GetKeyId(

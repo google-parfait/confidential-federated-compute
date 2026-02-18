@@ -20,10 +20,14 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# Keep sorted
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20250814.1",
+)
+
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "boringssl", version = "0.20251002.0")
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
@@ -33,17 +37,35 @@ archive_override(
 )
 
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
+bazel_dep(name = "rules_rust", version = "0.68.1")
+bazel_dep(name = "protobuf", version = "30.0")
+single_version_override(
+    module_name = "protobuf",
+    version = "30.0",
+)
+
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.8")
+bazel_dep(name = "rules_cc", version = "0.2.14")
+single_version_override(
+    module_name = "rules_cc",
+    version = "0.2.14",
+)
+
 bazel_dep(name = "rules_distroless", version = "0.5.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "rules_python", version = "1.7.0")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    configure_coverage_tool = False,
+    ignore_root_user_error = True,
+    python_version = "3.11",
+)
+
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
@@ -52,14 +74,36 @@ archive_override(
     url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
 )
 
+# Willow and dependencies.
+bazel_dep(name = "secure_aggregation", version = "0.0.0")
+archive_override(
+    module_name = "secure_aggregation",
+    integrity = "sha256-SXk5sRDHWUCqivOvs01YrqZ2sF3s7PBUiP79je58mH4=",
+    strip_prefix = "secure-aggregation-4fedb7521362987956d34a69da6e9408d85685ec",
+    urls = ["https://github.com/google/secure-aggregation/archive/4fedb7521362987956d34a69da6e9408d85685ec.zip"],
+)
+
+bazel_dep(name = "shell-encryption", version = "0.0.0")
+archive_override(
+    module_name = "shell-encryption",
+    integrity = "sha256-fR28P87WkRNGlF38tO/cMz9mrt6g/+LF8jhK4eeAows=",
+    strip_prefix = "shell-encryption-8607279e72f79efc51077f2b4f982a6a6296774e",
+    urls = [
+        "https://github.com/google/shell-encryption/archive/8607279e72f79efc51077f2b4f982a6a6296774e.zip",
+    ],
+)
+
+# Root CFC dependencies
 cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
-use_repo(cfc_deps, "bazel_toolchains", "federated-compute")
+use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor")
 
 http_archive(
     name = "sysroot",
     sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
     url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
+
+bazel_dep(name = "toolchains_llvm", version = "1.4.0")
 
 # Set up cc toolchain
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
