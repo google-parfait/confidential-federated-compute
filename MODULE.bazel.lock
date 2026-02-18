@@ -419,7 +419,7 @@
   "moduleExtensions": {
     "//:extensions.bzl%cfc_deps": {
       "general": {
-        "bzlTransitiveDigest": "qIK6LTttO2UeyDynyWfJ6/dWJzGBumL4d8HV77nx2/g=",
+        "bzlTransitiveDigest": "Z2tXfN+Z5X/ga8coPC4IKCL54KtQYAaA6eCxj/XfXjU=",
         "usagesDigest": "j8dFARr4rH+gT4nlt0gjOujmLGCXoNNS1Wn6nyicwzY=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -438,12 +438,12 @@
             "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
             "ruleClassName": "http_archive",
             "attributes": {
-              "integrity": "sha256-AgQnf/4BEpigoN7H3yuTW5aAZnYPLKz4CU9X8yRKRR0=",
+              "integrity": "sha256-cFGpgisCyXfmtJWTK9MmZSYUgRelJZ+ZN1tM2mtFe/U=",
               "patches": [
                 "@@//third_party/federated_compute:visibility.patch"
               ],
-              "strip_prefix": "federated-compute-fa94d08b3f1203025b889b2579f2232b7fe99803",
-              "url": "https://github.com/google/federated-compute/archive/fa94d08b3f1203025b889b2579f2232b7fe99803.tar.gz"
+              "strip_prefix": "federated-compute-f6ccce5a48290fba314a816e88cd5c7ba476ffbe",
+              "url": "https://github.com/google/federated-compute/archive/f6ccce5a48290fba314a816e88cd5c7ba476ffbe.tar.gz"
             }
           },
           "libcppbor": {
@@ -487,7 +487,7 @@
     },
     "//:extensions.bzl%cfc_dev_deps": {
       "general": {
-        "bzlTransitiveDigest": "qIK6LTttO2UeyDynyWfJ6/dWJzGBumL4d8HV77nx2/g=",
+        "bzlTransitiveDigest": "Z2tXfN+Z5X/ga8coPC4IKCL54KtQYAaA6eCxj/XfXjU=",
         "usagesDigest": "NUtSlEfHJn8jLmjdV5XVe1B8ZnpmqbjPeJonysd0YJs=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
