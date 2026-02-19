@@ -15,6 +15,8 @@
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
+use attestation_transparency_service::AttestationTransparencyService;
+use attestation_transparency_service_proto::fcp::confidentialcompute::attestation_transparency_service_server::AttestationTransparencyServiceServer;
 use key_management_service::{get_init_request, KeyManagementService};
 use kms_proto::fcp::confidentialcompute::key_management_service_server::KeyManagementServiceServer;
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
@@ -115,6 +117,9 @@ async fn main() {
         excluded_metrics: None,
     });
 
+    // Create the AttestationTransparencyService.
+    let attestation_transparency_service = AttestationTransparencyService::default();
+
     // Create the KeyManagementService.
     let session_service_client = OakSessionV1ServiceClient::connect(OAK_SESSION_SERVICE_ADDR)
         .await
@@ -147,6 +152,7 @@ async fn main() {
     orchestrator_client.notify_app_ready().await.expect("failed to notify that app is ready");
     tonic::transport::Server::builder()
         .layer(oak_observer.create_monitoring_layer())
+        .add_service(AttestationTransparencyServiceServer::new(attestation_transparency_service))
         .add_service(KeyManagementServiceServer::new(key_management_service))
         .add_service(EndpointServiceServer::new(endpoint_service))
         .serve("[::]:8080".parse().expect("failed to parse address"))

@@ -75,6 +75,8 @@ rust_binary(
     },
     rustc_flags = ["-Cpanic=abort"],
     deps = [
+        "//attestation_transparency_service",
+        "//attestation_transparency_service:attestation_transparency_service_prost_proto",
         "//key_management_service",
         "//key_management_service:kms_prost_proto",
         "//storage_service:session_v1_service_prost_proto",

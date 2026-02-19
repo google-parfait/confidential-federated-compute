@@ -44,9 +44,9 @@ archive_override(
 
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-fbSviH6hWRuvo6EsEFq9iJFPkAgbhDToaBWzPrt5+nc=",
-    strip_prefix = "confidential-federated-compute-1b10ca792af509f4064e3a552b982945983b3de8",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/1b10ca792af509f4064e3a552b982945983b3de8.tar.gz"],
+    integrity = "sha256-ytlMGiFh1GrtnmDRalOLKLJEf0D7Re34SU+CAlROYsk=",
+    strip_prefix = "confidential-federated-compute-69d52f38e891fd7d020b33b0e6ddd6487158900f",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/69d52f38e891fd7d020b33b0e6ddd6487158900f.tar.gz"],
 )
 
 archive_override(
