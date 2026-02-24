@@ -1,0 +1,20 @@
+diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
+index bc0bdd6e5..a68c5a9af 100644
+--- tensorflow_federated/cc/core/impl/executors/BUILD
++++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -368,6 +368,7 @@ cc_library(
+     name = "executor_service",
+     srcs = ["executor_service.cc"],
+     hdrs = ["executor_service.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":cardinalities",
+         ":executor",
+@@ -956,6 +957,7 @@ cc_library(
+         "@org_tensorflow//tensorflow/core/common_runtime:core",
+         "@org_tensorflow//tensorflow/core/common_runtime:session",
+         "@org_tensorflow//tensorflow/core/data:standalone",
++        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
+     ],
+ )
+ 

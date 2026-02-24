@@ -245,6 +245,82 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(session_response.has_finalize());
 }
 
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJax2tf) {
+  this->CreateSession(R"(
+import functools
+
+import federated_language
+import jax
+from jax.experimental import jax2tf
+import jax.numpy as jnp
+import numpy as np
+import tensorflow_federated as tff
+
+jax.config.update("jax_serialization_version", 8)
+
+_jax2tf_convert_cpu_native = functools.partial(
+    jax2tf.convert,
+    native_serialization=True,
+    native_serialization_platforms=['cpu'],
+)
+
+def trusted_program(input_provider, external_service_handle):
+
+  data_type = federated_language.FederatedType(
+      federated_language.TensorType(np.int32), federated_language.SERVER
+  )
+
+  @federated_language.federated_computation(data_type)
+  def my_comp(x):
+
+    @tff.tensorflow.computation
+    def tf_comp(x):
+
+      def jax_comp(x):
+        return jnp.square(x)
+
+      return _jax2tf_convert_cpu_native(jax_comp)(x)
+
+    return federated_language.federated_map(tf_comp, x)
+
+  result = my_comp(5)
+  result_val, _ = tff.framework.serialize_value(
+      result,
+      federated_language.framework.infer_type(result),
+  )
+  external_service_handle.release_unencrypted(
+      result_val.SerializeToString(), b"result"
+  )
+  )");
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  tensorflow_federated::v0::Value released_sum;
+  released_sum.ParseFromString(released_data["result"]);
+  ASSERT_THAT(released_sum.array().int32_list().value(),
+              ::testing::ElementsAreArray({25}));
+
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  // There is no initial state.
+  ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
+  // The first release operation triggers a state change that should decrease
+  // the number of remaining runs and increment the counter.
+  BudgetState expected_first_release_budget;
+  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
+  expected_first_release_budget.set_counter(1);
+  ASSERT_EQ(released_state_changes["result"].second.value(),
+            expected_first_release_budget.SerializeAsString());
+
+  ASSERT_TRUE(session_response.has_finalize());
+}
+
 }  // namespace
 
 }  // namespace confidential_federated_compute::tensorflow::program_executor_tee

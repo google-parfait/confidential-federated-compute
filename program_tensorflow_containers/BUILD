@@ -107,6 +107,8 @@ trusted_py_runtime(
         "@confidential-federated-compute-program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
         "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
+        "@pypi//jax",
+        "@pypi//jaxlib",
     ],
     source_repo_names = [
         "confidential-federated-compute-program",
