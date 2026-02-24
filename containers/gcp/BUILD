@@ -454,6 +454,7 @@ oci_image(
         "--server_address=10.0.2.100",
         "--jwks_path=/etc/pki/intel/jwks.json",
         "--policy_path=/etc/confidential/policy.textproto",
+        "--dump_jwt=true",
     ],
     entrypoint = ["/batched_inference_oak_main"],
     tars = [

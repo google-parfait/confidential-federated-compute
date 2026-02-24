@@ -24,7 +24,7 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 
 http_file(
     name = "intel_jwks",
-    integrity = "sha256-nhu2sXdKJXzAhzE8rB4iBwxWuBJbqqUN/vzRbV1liOk=",
+    sha256 = "4e1d55c79b698cde4987d791594495e70432879be621a1b6e42a9daafc84bee3",
     urls = ["https://portal.trustauthority.intel.com/certs"],
 )
 

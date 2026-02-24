@@ -273,6 +273,18 @@ absl::StatusOr<std::string> AttestationTokenVerifierImpl::VerifyJwt(
 absl::StatusOr<crypto::tink::VerifiedJwt>
 AttestationTokenVerifierImpl::VerifyTokenSignatureAndBasicClaims(
     absl::string_view jwt_bytes) const {
+  if (dump_jwt_) {
+    std::vector<absl::string_view> segments = absl::StrSplit(jwt_bytes, '.');
+    if (segments.size() >= 1) {
+      std::string decoded_header;
+      if (absl::WebSafeBase64Unescape(segments[0], &decoded_header)) {
+        LOG(INFO) << "--- DEBUG: RAW JWT HEADER ---";
+        LOG(INFO) << decoded_header;
+        LOG(INFO) << "-----------------------------";
+      }
+    }
+  }
+
   // Configure validator for standard required claims.
   absl::StatusOr<crypto::tink::JwtValidator> validator_or =
       crypto::tink::JwtValidatorBuilder()
