@@ -21,6 +21,7 @@
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -1854,6 +1855,85 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
   ASSERT_EQ(col_values->num_elements(), 1);
   ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+}
+
+TEST_F(KmsFedSqlSessionWriteWithMessageTest,
+       AccumulateSucceedsWithBase64Encoding) {
+  // Create checkpoint with serialized messages which are base64 encoded,
+  // since old versions of the client base64 encode entries.
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back(absl::Base64Escape(
+      message_helper_.CreateMessage(8, 1)->SerializeAsString()));
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
+
+  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times), "test_query");
+  ASSERT_THAT(data, IsOk());
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(*data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, *data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+}
+
+TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateInvalidMessageFails) {
+  // 1. Create checkpoint with invalid messages
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back("invalid_message_1");
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
+
+  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times), "test_query");
+  ASSERT_THAT(data, IsOk());
+
+  // 2. Write
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(*data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, *data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->status().code(), Code::INVALID_ARGUMENT);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("Failed to parse proto"));
+}
+
+TEST_F(KmsFedSqlSessionWriteWithMessageTest,
+       AccumulateInvalidBase64MessageFails) {
+  // 1. Create checkpoint with invalid messages that are base64 encoded.
+  std::vector<std::string> serialized_messages;
+  serialized_messages.push_back(absl::Base64Escape("invalid_message_1"));
+  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
+
+  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
+      std::move(serialized_messages), std::move(event_times), "test_query");
+  ASSERT_THAT(data, IsOk());
+
+  // 2. Write
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(*data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, *data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_THAT(write_result->status().code(), Code::INVALID_ARGUMENT);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("Failed to parse proto"));
 }
 
 }  // namespace

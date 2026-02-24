@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
@@ -126,8 +127,19 @@ absl::StatusOr<Input> CreateInputFromMessageCheckpoint(
        entry_tensor.AsSpan<absl::string_view>()) {
     std::unique_ptr<google::protobuf::Message> message(
         message_factory.NewMessage());
-    if (!message->ParseFromArray(entry.data(), entry.size())) {
-      return absl::InvalidArgumentError("Failed to parse proto");
+    // Try to base64 decode the entry. Old versions of the client base64
+    // encode entries. We try to base64 decode first since it's extremely
+    // unlikely for a valid binary proto to be a valid Base64 string (while the
+    // inverse is more likely).
+    std::string decoded_entry;
+    if (!absl::Base64Unescape(entry, &decoded_entry) ||
+        !message->ParseFromString(decoded_entry)) {
+      // Note that ParseFrom* methods are documented as calling Clear() on the
+      // message before parsing. Thus it's fine if the failed ParseFromString
+      // above leaves the message in a partial state.
+      if (!message->ParseFromArray(entry.data(), entry.size())) {
+        return absl::InvalidArgumentError("Failed to parse proto");
+      }
     }
     messages.push_back(std::move(message));
   }
