@@ -158,7 +158,7 @@ http_archive(
         "//third_party/org_tensorflow_federated:bazel_deps.patch",
         "//third_party/org_tensorflow_federated:package.patch",
         "//third_party/org_tensorflow_federated:vizier.patch",
-        "@confidential-federated-compute-program//third_party/org_tensorflow_federated:executor.patch",
+        "//third_party/org_tensorflow_federated:executor.patch",
     ],
     strip_prefix = "tensorflow-federated-aa505bf4a0eebd7fe190d8f2ff57404ff8098ef8",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/aa505bf4a0eebd7fe190d8f2ff57404ff8098ef8.tar.gz",
