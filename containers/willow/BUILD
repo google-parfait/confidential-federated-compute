@@ -34,12 +34,12 @@ cc_proto_library(
 cc_library(
     name = "service",
     srcs = [
-        "session.cc",
         "transform_service.cc",
+        "willow_session.cc",
     ],
     hdrs = [
-        "session.h",
         "transform_service.h",
+        "willow_session.h",
     ],
     deps = [
         ":willow_op_cc_proto",
@@ -54,6 +54,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@oak//cc/crypto:encryption_key",
         "@oak//cc/crypto:signing_key",
+        "@secure_aggregation//willow/proto/willow:messages_cc_proto",
     ],
 )
 
