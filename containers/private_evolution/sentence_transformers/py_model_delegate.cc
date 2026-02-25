@@ -43,7 +43,9 @@ bool PyModelDelegate::InitializeModel(absl::string_view model_artifact_path) {
 
     auto init_result_py = generate_embedding_lib.attr("initialize_model")(
         std::string(model_artifact_path));
-    return init_result_py.cast<bool>();
+    bool result = init_result_py.cast<bool>();
+    LOG(WARNING) << "Model initialization result: " << result;
+    return result;
   } catch (pybind11::error_already_set& e) {
     LOG(WARNING) << "Model initialization failed." << e.what();
     return false;
@@ -65,6 +67,7 @@ PyModelDelegate::GenerateEmbeddings(const std::vector<std::string>& inputs,
       embedding_py = generate_embedding_lib.attr("encode")(inputs);
     }
     auto result = embedding_py.cast<std::vector<std::vector<float>>>();
+    LOG(WARNING) << "Embedding generated.";
     return result;
   } catch (pybind11::error_already_set& e) {
     std::string error_msg = e.what();
