@@ -121,6 +121,7 @@ cc_library(
         ":model_delegate",
         ":tensor_utils",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:cord",

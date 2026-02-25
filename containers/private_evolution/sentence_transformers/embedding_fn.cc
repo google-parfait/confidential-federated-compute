@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
@@ -124,10 +125,12 @@ absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
   if (!delegate_->InitializeModel(model_artifact_path_)) {
     return absl::InvalidArgumentError("Model initialization failed");
   }
+  LOG(WARNING) << "Replica initialized.";
   return absl::OkStatus();
 }
 
 absl::Status EmbeddingFn::FinalizeReplica(Any config, Context& context) {
+  LOG(WARNING) << "Replica finalized.";
   return absl::OkStatus();
 }
 
