@@ -55,6 +55,7 @@ cc_library(
         "@oak//cc/crypto:encryption_key",
         "@oak//cc/crypto:signing_key",
         "@secure_aggregation//willow/proto/willow:messages_cc_proto",
+        "@secure_aggregation//willow/protocol:server_traits",  # Just to check if it compiles.
     ],
 )
 
