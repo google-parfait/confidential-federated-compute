@@ -90,14 +90,11 @@ http_archive(
     url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
 )
 
-# IMPORTANT: While to assertion-based Noise sessions, updates to the TCP version
-# must be carefully coordinated with KMS binary releases. Please ensure
-# bmclarnon@ reviews any changes.
 http_archive(
     name = "trusted_computations_platform",
-    integrity = "sha256-RE0DT2mhzbca3jP9Imdbtyzj71nKaoasCHM2Y5lD8H8=",
-    strip_prefix = "trusted-computations-platform-8d6bda6581db0b9f21308e69f9ecf233def44a8a",
-    url = "https://github.com/google-parfait/trusted-computations-platform/archive/8d6bda6581db0b9f21308e69f9ecf233def44a8a.tar.gz",
+    integrity = "sha256-GiW1nnop+4yeFtK2onHFdzc8MQu1fGR+CgebooXjIP8=",
+    strip_prefix = "trusted-computations-platform-ff538c397a76c0344272a58aa3bc916f824171a6",
+    url = "https://github.com/google-parfait/trusted-computations-platform/archive/ff538c397a76c0344272a58aa3bc916f824171a6.tar.gz",
 )
 # go/keep-sorted end
 

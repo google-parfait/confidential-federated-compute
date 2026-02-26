@@ -41,7 +41,6 @@ use oak_session_endorsed_evidence::{
 use oak_time::Clock;
 
 const ASSERTION_ID: &str = "cfc_kms_assertion";
-const SESSION_ID: &str = "cfc_kms";
 
 struct UnorderedEncryptorProvider;
 impl EncryptorProvider for UnorderedEncryptorProvider {
@@ -110,8 +109,6 @@ pub fn create_session_config(
     };
 
     Ok(SessionConfig::builder(AttestationType::Bidirectional, HandshakeType::NoiseNN)
-        .add_self_attester_ref(SESSION_ID.into(), attester)
-        .add_self_endorser_ref(SESSION_ID.into(), endorser)
         .add_self_assertion_generator(
             String::from(ASSERTION_ID),
             Box::new(EndorsedEvidenceBindableAssertionGenerator::new(
@@ -134,6 +131,5 @@ pub fn create_session_config(
         .set_assertion_attestation_aggregator(Box::new(PassThrough {}))
         // The communication channel is not guaranteed to be ordered.
         .set_encryption_provider(Box::new(UnorderedEncryptorProvider))
-        .add_session_binder_ref(SESSION_ID.into(), session_binder)
         .build())
 }
