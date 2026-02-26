@@ -9,7 +9,9 @@ absl-py==1.4.0 \
     --hash=sha256:d2c244d01048ba476e7c080bd2c6df5e141d211de80223460d5b3b8a2a58433d
     # via
     #   -r requirements.in
+    #   chex
     #   dp-accounting
+    #   optax
     #   tensorboard
     #   tensorflow
     #   tensorflow-privacy
@@ -126,6 +128,10 @@ charset-normalizer==3.4.2 \
     --hash=sha256:fcbe676a55d7445b22c10967bceaaf0ee69407fbe0ece4d032b6eb8d4565982a \
     --hash=sha256:fdb20a30fe1175ecabed17cbf7812f7b804b8a315a25f24678bcdf120a90077f
     # via requests
+chex==0.1.86 \
+    --hash=sha256:251c20821092323a3d9c28e1cf80e4a58180978bec368f531949bd9847eee568 \
+    --hash=sha256:e8b0f96330eba4144659e1617c0f7a57b161e8cbb021e55c6d5056c7378091d1
+    # via optax
 cloudpickle==3.1.1 \
     --hash=sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64 \
     --hash=sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e
@@ -315,7 +321,10 @@ immutabledict==4.2.0 \
 jax==0.4.25 \
     --hash=sha256:8158c837e5ecc195074b421609e85329a962785b36f9fe5ff53e844e8ad87dbc \
     --hash=sha256:a8ee189c782de2b7b2ffb64a8916da380b882a617e2769aa429b71d79747b982
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   chex
+    #   optax
 jaxlib==0.4.25 \
     --hash=sha256:0ce2a25263e7504d575e8ba5ba4f53aef6fe274679785bcf87ab06b0aaec0b90 \
     --hash=sha256:0df7e2193b216e195dfc7a8aa14527eb52614ec3ba4c59a199af2f17195ae1c1 \
@@ -337,7 +346,10 @@ jaxlib==0.4.25 \
     --hash=sha256:dfb1ef8c2e6a01ecb60f8833552ff077cd593154fd75739050fba9148879a2a4 \
     --hash=sha256:f7aa9682b6806e4197ad51294e87e77f04f5eee7ced4e841aa7ccc7320c6d96b \
     --hash=sha256:fd751b10e60c085dec42bec6c27c9905f5c57d12323190eea0df10ee14c574e0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   chex
+    #   optax
 joblib==1.5.1 \
     --hash=sha256:4719a31f054c7d766948dcd83e9613686b27114f190f717cec7eaa2084f8a74a \
     --hash=sha256:f4f86e351f39fe3d0d32a9f2c3d8af1ee4cec285aafcb27003dda5205576b444
@@ -491,11 +503,13 @@ numpy==1.26.4 \
     --hash=sha256:ffa75af20b44f8dba823498024771d5ac50620e6915abac414251bd971b4529f
     # via
     #   -r requirements.in
+    #   chex
     #   dp-accounting
     #   h5py
     #   jax
     #   jaxlib
     #   ml-dtypes
+    #   optax
     #   scikit-learn
     #   scipy
     #   tensorboard
@@ -512,6 +526,10 @@ opt-einsum==3.4.0 \
     # via
     #   jax
     #   tensorflow
+optax==0.2.2 \
+    --hash=sha256:411c414a76aae259f4191a60b712663968741a5163ca92fc250b5d5c7d36fb57 \
+    --hash=sha256:f09bf790ef4b09fb9c35f79a07594c6196a719919985f542dc84b0bf97812e0e
+    # via -r requirements.in
 packaging==22.0 \
     --hash=sha256:2198ec20bd4c017b8f9717e00f0c8714076fc2fd93816750ab48e2c41de2cfd3 \
     --hash=sha256:957e2148ba0e1a3b282772e791ef1d8083648bc131c8ab0c1feba110ce1146c3
@@ -728,6 +746,10 @@ threadpoolctl==3.6.0 \
     --hash=sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb \
     --hash=sha256:8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e
     # via scikit-learn
+toolz==1.1.0 \
+    --hash=sha256:15ccc861ac51c53696de0a5d6d4607f99c210739caf987b5d2054f3efed429d8 \
+    --hash=sha256:27a5c770d068c110d9ed9323f24f1543e83b2f300a687b7891c1a6d56b697b5b
+    # via chex
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
@@ -737,6 +759,7 @@ typing-extensions==4.14.0 \
     --hash=sha256:a1514509136dd0b477638fc68d6a91497af5076466ad0fa6c338e44e359944af
     # via
     #   -r requirements.in
+    #   chex
     #   tensorflow
 urllib3==2.5.0 \
     --hash=sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760 \

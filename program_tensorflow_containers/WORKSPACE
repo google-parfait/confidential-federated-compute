@@ -65,6 +65,7 @@ http_archive(
     name = "federated-compute",
     integrity = "sha256-3cH11WXKtGhGK/Fjug9+wwVRbR1D5ywlkXKgspH4FjA=",
     patches = [
+        "//third_party/federated_compute:dpmf.patch",
         "//third_party/federated_compute:libcppbor.patch",
         "//third_party/federated_compute:testing.patch",
         "//third_party/federated_compute:visibility.patch",
@@ -112,6 +113,16 @@ http_archive(
     sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     strip_prefix = "googletest-1.14.0",
     url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
+)
+
+http_archive(
+    name = "jax_privacy",
+    integrity = "sha256-RVbubReikV0L7UFLesswIA+vj7S5osMLSrJd3Xz1bxg=",
+    patches = [
+        "//third_party/jax_privacy:dpmf.patch",
+    ],
+    strip_prefix = "jax_privacy-26a6c8a3dffa8c0fe5f3f2af845fa91cf2bbfbf5",
+    url = "https://github.com/google-deepmind/jax_privacy/archive/26a6c8a3dffa8c0fe5f3f2af845fa91cf2bbfbf5.tar.gz",
 )
 
 git_repository(

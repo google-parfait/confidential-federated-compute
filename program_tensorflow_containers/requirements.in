@@ -19,10 +19,13 @@ tensorflow>=2.14.0,==2.14.*
 tensorflow-privacy==0.9.0
 tqdm~=4.64
 
-# Additional dependencies required for com_google_fcp
+# Additional dependencies required for com_google_fcp.
 immutabledict==4.2.0
 
 # 0.4.25 is the latest jax version that supports native serialization version 8,
 # which is the latest version supported by tf 2.14.0.
 jax==0.4.25
 jaxlib==0.4.25
+
+# Additional dependencies required for jax_privacy.
+optax

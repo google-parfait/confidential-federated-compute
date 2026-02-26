@@ -1,0 +1,21 @@
+diff --git fcp/confidentialcompute/python/BUILD fcp/confidentialcompute/python/BUILD
+index ace8529..5481327 100644
+--- fcp/confidentialcompute/python/BUILD
++++ fcp/confidentialcompute/python/BUILD
+@@ -27,13 +27,14 @@ py_library(
+ py_library(
+     name = "dp_mf_aggregator",
+     srcs = ["dp_mf_aggregator.py"],
++    visibility = ["//visibility:public"],
+     tags = ["manual"],
+     deps = [
+-        "//third_party/py/optax",
+         "@federated_language//federated_language",
++        "@jax_privacy//jax_privacy",
+         "@org_tensorflow_federated//tensorflow_federated",
+         "@pypi_jax//:pkg",
+-        "@pypi_jax_privacy//:pkg",
++        "@pypi_optax//:pkg",
+         "@pypi_tensorflow//:pkg",
+     ],
+ )

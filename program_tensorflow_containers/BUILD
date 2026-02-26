@@ -98,6 +98,7 @@ py_library(
     deps = [
         ":compilers",
         "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
+        "@jax_privacy//jax_privacy",
     ],
 )
 
@@ -106,14 +107,17 @@ trusted_py_runtime(
     py_deps = [
         "@confidential-federated-compute-program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
+        "@federated-compute//fcp/confidentialcompute/python:dp_mf_aggregator",
         "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@pypi//jax",
         "@pypi//jaxlib",
+        "@pypi//optax",
     ],
     source_repo_names = [
         "confidential-federated-compute-program",
         "federated_language",
         "federated-compute",
+        "jax_privacy",
         "org_tensorflow_federated",
         "oak",
     ],

@@ -1,0 +1,1361 @@
+# This patch aims to include only the parts of jax_privacy that are needed to
+# run DPMF.
+# 
+# The jax_privacy library currently expects jax>=0.7.1, but the latest version
+# of jax we are able to use in this repo is 0.4.25 (the tf version we are using
+# due to TFF is at least one blocker to raising the jax version since 0.4.25 is
+# the last jax version that is compatible with tf 2.14.0's native serialization
+# support for jax2tf.
+#
+# This patch was generated manually. Most of it is deletion/exclusion of code
+# that is not needed. There are a couple minor changes (in noise_addition.py) 
+# related to optax API changes between the version used by jax_privacy and the 
+# version of optax we are able to use in this repo (the version of optax is 
+# impacted by the jax version).
+#
+# common_typos_disable
+diff --git BUILD BUILD
+new file mode 100644
+index 0000000..f3490d5
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,3 @@
++package(
++    default_visibility = ["//visibility:public"],
++)
+\ No newline at end of file
+diff --git jax_privacy/BUILD jax_privacy/BUILD
+new file mode 100644
+index 0000000..d67bcf3
+--- /dev/null
++++ jax_privacy/BUILD
+@@ -0,0 +1,25 @@
++load("@rules_python//python:defs.bzl", "py_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++)
++
++py_library(
++	name = "jax_privacy",
++	srcs = [
++		"__init__.py",
++	] + glob(
++		[
++			"noise_addition.py",
++			"clipping.py",
++			"sharding_utils.py",
++			"matrix_factorization/*.py",
++		]
++	),
++	deps = [
++		"@pypi//chex",
++		"@pypi//jax",
++		"@pypi//jaxlib",
++		"@pypi//optax",
++	]
++)
+\ No newline at end of file
+diff --git jax_privacy/__init__.py jax_privacy/__init__.py
+index a8b3ad1..83148c5 100644
+--- jax_privacy/__init__.py
++++ jax_privacy/__init__.py
+@@ -14,15 +14,4 @@
+ 
+ """Algorithms for Privacy-Preserving Machine Learning in JAX."""
+ 
+-from jax_privacy import accounting
+-from jax_privacy import auditing
+-from jax_privacy import batch_selection
+-from jax_privacy import experimental
+-from jax_privacy import matrix_factorization
+-from jax_privacy import noise_addition
+-
+-# pylint: disable=g-importing-member
+-# Carefully selected member imports for the top-level public API.
+-from jax_privacy.clipping import clipped_grad
+-
+ __version__ = '1.1.0'
+diff --git jax_privacy/matrix_factorization/__init__.py jax_privacy/matrix_factorization/__init__.py
+index eb7f944..1edc38d 100644
+--- jax_privacy/matrix_factorization/__init__.py
++++ jax_privacy/matrix_factorization/__init__.py
+@@ -13,5 +13,3 @@
+ # limitations under the License.
+ 
+ """Public API for matrix factorization."""
+-
+-from .streaming_matrix import StreamingMatrix
+diff --git jax_privacy/matrix_factorization/buffered_toeplitz.py jax_privacy/matrix_factorization/buffered_toeplitz.py
+index d5d3a97..501fb06 100644
+--- jax_privacy/matrix_factorization/buffered_toeplitz.py
++++ jax_privacy/matrix_factorization/buffered_toeplitz.py
+@@ -30,11 +30,7 @@ import jax.numpy as jnp
+ import numpy as np
+ import optax
+ 
+-from . import optimization
+-from . import sensitivity
+ from . import streaming_matrix
+-from . import toeplitz
+-
+ 
+ # Disabling pylint invalid-name to allow mathematical notation including
+ # single-capital-letter variables for matrices.
+@@ -364,9 +360,6 @@ class BufferedToeplitz:
+     tmp = self.buf_decay ** powers[:, None] * self.output_scale
+     return jnp.append(1, jnp.sum(tmp, axis=1))
+ 
+-  def materialize(self, n: int) -> jax.Array:
+-    return toeplitz.materialize_lower_triangular(self.toeplitz_coefs(n))
+-
+   def inverse(self, skip_checks: bool = False) -> 'BufferedToeplitz':
+     """Compute the BufferedToeplitz parameterization of C^{-1} from C.
+ 
+@@ -486,1127 +479,3 @@ class BufferedToeplitz:
+         f'    dtype=jnp.{self.dtype})\n'
+         f'Initial Toeplitz coefs=[{coefs_str}])'
+     )
+-
+-
+-def _gt_zero_penalty(x: jax.Array) -> jax.Array:
+-  """Penalize values to enforce x > 0."""
+-  return -jnp.log(x).sum()
+-
+-
+-def _lt_zero_penalty(x: jax.Array) -> jax.Array:
+-  """Penalize values to enforce x < 0."""
+-  return -jnp.log(-x).sum()
+-
+-
+-def _lt_penalty(x: jax.Array, upper_bound: float) -> jax.Array:
+-  """Penalize values to enforce x < upper_bound."""
+-  return -jnp.log(upper_bound - x).sum()
+-
+-
+-def _lt_one_penalty(x: jax.Array) -> jax.Array:
+-  """Penalize values to enforce x < 1."""
+-  return -jnp.log(1 - x).sum()
+-
+-
+-def min_buf_decay_gap(buf_decay: jax.Array) -> jax.Array:
+-  """Returns max_{i,j i!=j} abs(theta[i] - theta[j]).
+-
+-  Much of the theory for BLTs, as well as the numerical functions in this file,
+-  require uniqueness of the buf_decay parameters theta. This function computes
+-  the smallest gap between two such thetas, without assuming they are sorted.
+-
+-  Args:
+-    buf_decay: The buf_decay parameters of a BLT.
+-
+-  Returns:
+-    max_{i,j i!=j} abs(theta[i] - theta[j])
+-  """
+-  theta = jnp.asarray(buf_decay)
+-  A = theta[:, jnp.newaxis] - theta
+-  diag_elements = jnp.diag_indices_from(A)
+-  A = A.at[diag_elements].set(jnp.inf)
+-  return jnp.min(jnp.abs(A))
+-
+-
+-@dataclasses.dataclass(frozen=True)
+-class LossFn:
+-  """Encapsulates the loss to be optimized for a specific setting.
+-
+-  This can represent the loss for both single participation and min-sep
+-  participation (which has single participation as a special case).
+-
+-  Attributes:
+-    error_for_inv: Function for computing the error for the BLT representing
+-      C^{-1}, the noise correlating matrix.
+-    sensitivity_squared: Function for computing the sensitivity for the BLT
+-      representing C, the strategy matrix.
+-    n: The number of iterations the mechanism is optimized for.
+-    min_sep: The minimum separation of participations.
+-    max_participations: The effective maximum number of participations, taking
+-      into account n, min_sep, and max_participations.
+-    penalty_strength: The multiplier applied to the sum of penalties for the
+-      loss.
+-    penalty_multipliers: A dict of multipliers (default 1.0) applied to the
+-      individual penalties returned by `compute_penalties`.
+-    max_second_coef: The maximum value of the second Toeplitz coefficient, which
+-      is equal to sum(output_scale).
+-    min_theta_gap: The minimum gap between buf_decay parameters allowed by the
+-      theta_gap penalty.
+-  """
+-
+-  error_for_inv: Callable[[BufferedToeplitz], ScalarFloat]
+-  sensitivity_squared: Callable[[BufferedToeplitz], ScalarFloat]
+-
+-  n: int
+-  min_sep: int
+-  max_participations: int
+-
+-  # Usually doesn't need to be changed:
+-  penalty_strength: float = 1e-8
+-  penalty_multipliers: dict[str, float] = dataclasses.field(
+-      default_factory=dict
+-  )
+-  max_second_coef: float = 1.0
+-  min_theta_gap: float = 1e-12
+-
+-  @classmethod
+-  def build_closed_form_single_participation(cls, n: int, **kwargs) -> 'LossFn':
+-    """Construct a `LossFn` for single participation max-error.
+-
+-    This function utilizes the closed-form calculations for sensitivity and
+-    error from https://arxiv.org/abs/2404.16706, and hence optimization time
+-    is essentially independent of `n`.  However, particularly for large `n` or
+-    large numbers of buffers, the optimal BLT may have a buf_decay theta very
+-    near 1, which leads to numerical issues in the closed forms. For max error,
+-    this function has been reasonably well tested up to n=10**7.  Closed-form
+-    optimization of the mean loss closed form is possible, but this has not been
+-    well tested.
+-
+-    Args:
+-      n: The number of iterations the mechanism is optimized for.
+-      **kwargs: Optional additional arguments to pass to the constructor.
+-
+-    Returns:
+-      A `LossFn` for single participation.
+-
+-    Raises:
+-      ValueError: If `error` is not 'max' or 'mean'.
+-    """
+-    return cls(
+-        error_for_inv=functools.partial(max_error, n=n),
+-        sensitivity_squared=functools.partial(sensitivity_squared, n=n),
+-        n=n,
+-        min_sep=1,
+-        max_participations=1,
+-        **kwargs,
+-    )
+-
+-  @classmethod
+-  def build_min_sep(
+-      cls,
+-      n: int,
+-      error: str = 'max',
+-      min_sep: int = 1,
+-      max_participations: int | None = None,
+-      **kwargs,
+-  ) -> 'LossFn':
+-    """Construct a `LossFn` for min-sep participation.
+-
+-    This LossFn computes loss and sensitivity by materializing the Toeplitz
+-    coefficients of C and C^{-1}, and then using the loss functions of
+-    `toeplitz.py`, as described in https://arxiv.org/abs/2408.08868. This is
+-    still significantly faster than computing the error directly from the
+-    Toeplitz coefficients of C, because
+-    ```
+-    c_inv_coef = blt.inverse().toeplitz_coefs(n)
+-    ```
+-    is orders of magnitude faster (on GPUs) than
+-    ```
+-    c_inv_coef = toeplitz.inverse_coef(blt.toeplitz_coefs(n))
+-    ```
+-
+-    Args:
+-      n: The number of iterations the mechanism is optimized for.
+-      error: Either 'max' or 'mean', indicating whether to optimize for the
+-        maximum or mean squared error, respectively.
+-      min_sep: The minimum separation of participations.
+-      max_participations: The maximum number of participations.
+-      **kwargs: Optional additional arguments to pass to the constructor.
+-
+-    Returns:
+-      A `LossFn` for min-sep participation.
+-
+-    Raises:
+-      ValueError: If `error` is not 'max' or 'mean'.
+-    """
+-
+-    if error == 'mean':
+-      error_fn = lambda inv_blt: toeplitz.mean_error(
+-          noising_coef=inv_blt.toeplitz_coefs(n)
+-      )
+-    elif error == 'max':
+-      error_fn = lambda inv_blt: toeplitz.max_error(
+-          noising_coef=inv_blt.toeplitz_coefs(n)
+-      )
+-
+-    else:
+-      raise ValueError(f'Unknown error={error}')
+-
+-    def minsep_sensitivity_squared(blt):
+-      return toeplitz.minsep_sensitivity_squared(
+-          strategy_coef=blt.toeplitz_coefs(n),
+-          min_sep=min_sep,
+-          max_participations=max_participations,
+-          skip_checks=True,
+-      )
+-
+-    return cls(
+-        n=n,
+-        error_for_inv=error_fn,
+-        sensitivity_squared=minsep_sensitivity_squared,
+-        min_sep=min_sep,
+-        max_participations=sensitivity.minsep_true_max_participations(
+-            n=n,
+-            min_sep=min_sep,
+-            max_participations=max_participations,
+-        ),
+-        **kwargs,
+-    )
+-
+-  def compute_penalties(
+-      self, blt: BufferedToeplitz, inv_blt: BufferedToeplitz
+-  ) -> dict[str, ScalarFloat]:
+-    """Computes penalties that help keep the optimization well-behaved.
+-
+-    These correspond to the conditions of Theorem 1 (part a) of "An Inversion
+-    Theorem for Buffered Linear Toeplitz (BLT) Matrices and Applications to
+-    Streaming Differential Privacy" (https://arxiv.org/abs/2504.21413), which
+-    restricts the optimization to a class of well-behvaved BLTs. Note the
+-    constraint `pillutla_score < 1` of part (a) is not strictly necessary, but
+-    empirically including it produces better results.
+-
+-    Args:
+-      blt: The BLT representing C.
+-      inv_blt: The BLT representing C^{-1}.
+-
+-    Returns:
+-      A dictionary of named penalties.
+-    """
+-    check_float64_dtype(blt)
+-    num_buffers = len(blt.buf_decay)
+-    # We could also impose the same penalties on inv_blt, but this does not seem
+-    # to be necessary.
+-    penalties = {
+-        # Conditions on `blt` parameters.
+-        'buf_decay>0': _gt_zero_penalty(blt.buf_decay),
+-        'buf_decay<1': _lt_one_penalty(blt.buf_decay),
+-        'output_scale>0': _gt_zero_penalty(blt.output_scale),
+-        # Conditions on `inv_blt` parameters.
+-        'inv_buf_decay>0': _gt_zero_penalty(inv_blt.buf_decay),
+-        'inv_buf_decay<1': _lt_one_penalty(inv_blt.buf_decay),
+-        'inv_output_scale<0': _lt_zero_penalty(inv_blt.output_scale),
+-    }
+-
+-    if num_buffers > 1:
+-      # Optimizing for multiple participations can cause multiple buf_decay
+-      # parameters to converge to the same value, which will break
+-      # `blt.inverse()` numerically. We know "good" solutions should
+-      # have separated thetas, so we enforce some separation:
+-      penalties['theta_gap'] = _gt_zero_penalty(
+-          min_buf_decay_gap(blt.buf_decay) - self.min_theta_gap
+-      ) + _gt_zero_penalty(
+-          min_buf_decay_gap(inv_blt.buf_decay) - self.min_theta_gap
+-      )
+-
+-    # The 2nd Toeplitz coefficient (after 1.0) is equal to sum(output_scale),
+-    # so to ensure decreasing coefficients it is also necessary that
+-    # sum(output_scale) < 1.  When optimizing for single participation,
+-    # we know the optimal 2nd coefficient is 0.5, so we could also use
+-    # a value like max_second_coef = 0.5 + (small value).
+-    second_coef = blt.output_scale.sum()
+-    penalties['second_coef'] = _lt_penalty(second_coef, self.max_second_coef)
+-
+-    # The final condition is the 'Pillutla Score' is less than 1.
+-    penalties['pillutla_score'] = _lt_one_penalty(blt.pillutla_score())
+-
+-    return penalties
+-
+-  def penalized_loss(
+-      self,
+-      blt: BufferedToeplitz,
+-      inv_blt: BufferedToeplitz,
+-      normalize_by_approx_optimal_loss: bool = True,
+-  ) -> ScalarFloat:
+-    """Computes the total composite loss to be optimized.
+-
+-    Args:
+-      blt: The BLT representing C.
+-      inv_blt: The BLT representing C^{-1}.
+-      normalize_by_approx_optimal_loss: If True, the loss is normalized by the
+-        expected optimal loss, so the relative penalty strength remains somewhat
+-        consistent across n and k. This is the default, and recommended for
+-        optimization.
+-
+-    Returns:
+-      The total composite loss to be optimized.
+-    """
+-    check_float64_dtype(blt)
+-    error = self.error_for_inv(inv_blt)
+-    sens_squared = self.sensitivity_squared(blt)
+-    penalty_dict = self.compute_penalties(blt, inv_blt)
+-
+-    multipliers = dict(self.penalty_multipliers)  # copy
+-    total_penalty = 0.0
+-    for k, v in penalty_dict.items():
+-      multiplier = multipliers.pop(k, 1.0)
+-      if multiplier != 0.0:
+-        # We want a multiplier of 0 to "turn off" the penalty even if
+-        # the penalty is NaN or inf, so we avoid mulitplication in that case.
+-        total_penalty += multiplier * v
+-    total_penalty *= self.penalty_strength
+-    if multipliers:
+-      raise ValueError(
+-          f'Unrecognized penalty multipliers: {multipliers.keys()}'
+-      )
+-
+-    loss = error * sens_squared
+-    if normalize_by_approx_optimal_loss:
+-      # Optimal sqrt(max_loss) for Toeplitz matrices scales like
+-      # 1 + ln(n)/pi; sqrt(mean_loss) can be a bit lower.
+-      # Similarly, sensitivity_squared scales by max_participations.
+-      # This gives a rough estimate of the expected optimal loss,
+-      # which we use to normalize the computed loss so the
+-      # relative penalty strength remains somewhat consistent across n and k.
+-      approx_optimal_loss = (
+-          self.max_participations + (1 + jnp.log(self.n) / np.pi) ** 2
+-      )
+-      loss /= approx_optimal_loss
+-
+-    return loss + total_penalty
+-
+-  def loss(
+-      self, blt: BufferedToeplitz, skip_checks: bool = False
+-  ) -> ScalarFloat:
+-    """Returns the loss (not including penalties).
+-
+-    This function is not intended to be jitted or used in optimization, but
+-    only in evaluation of the final BLT.
+-
+-    Args:
+-      blt: The BLT to compute the loss of.
+-      skip_checks: If True, do not check that the BLT is valid for min-sep
+-        sensitivity.
+-    """
+-    check_float64_dtype(blt)
+-    try:
+-      inv_blt = blt.inverse(skip_checks=skip_checks)
+-    except RuntimeError as e:
+-      logging.warning(
+-          'During loss computation, error computing inverse for'
+-          ' BLT\n%s\nReturning jnp.inf. If you really need a finite loss for'
+-          ' this BLT and n is small, consider computing the loss directly from'
+-          ' blt.toeplitz_coefs(n). Exception:\n%s',
+-          str(blt),
+-          str(e),
+-      )
+-      return jnp.inf
+-    error = self.error_for_inv(inv_blt)
+-    if not skip_checks and self.max_participations > 1:
+-      _assert_blt_valid_for_minsep(blt, n=self.n)
+-    sens_squared = self.sensitivity_squared(blt)
+-    return error * sens_squared
+-
+-
+-@dataclasses.dataclass(frozen=True)
+-class Parameterization:
+-  """A parameterization of a BufferedToeplitz for optimization.
+-
+-  Used by `optimize_loss` to specify how parameters relate to the pair of
+-  BLTs representing C and C^{-1}.
+-
+-  Attributes:
+-    params_from_blt: Constructs parameters to be optimized initialized from a
+-      BLT.
+-    blt_and_inverse_from_params: Constructs a tuple of BLTs representing the
+-      (strategy_matrix, noising_matrix) from parameters.
+-    loss_fn: The loss function to optimize.
+-  """
+-
+-  params_from_blt: Callable[[BufferedToeplitz], chex.ArrayTree]
+-  blt_and_inverse_from_params: Callable[
+-      [Any],
+-      tuple[BufferedToeplitz, BufferedToeplitz],
+-  ]
+-
+-  @classmethod
+-  def strategy_blt(cls) -> 'Parameterization':
+-    """A parameterization where the strategy BLT is the parameterization."""
+-    return cls(
+-        params_from_blt=lambda blt: blt,
+-        blt_and_inverse_from_params=lambda blt: (
+-            blt,
+-            blt.inverse(skip_checks=True),
+-        ),
+-    )
+-
+-  @classmethod
+-  def buf_decay_pair(cls) -> 'Parameterization':
+-    """A parameterization where a pair of buf_decay parameters is optimized.
+-
+-    This parameterization is generally more numerically stable than the
+-    `strategy_blt` parameterization, as well as being negligibly faster to
+-    compute (as it does not require a singular-value decomposition). However,
+-    the current L-BFGS parameters are tuned for the strategy_blt
+-    parameterization, so this parameterization may not converge as well with the
+-    default settings.
+-
+-    Returns:
+-        A `Parameterization`.
+-    """
+-
+-    def params_from_blt(blt: BufferedToeplitz) -> tuple[jax.Array, jax.Array]:
+-      inv_blt = blt.inverse()
+-      return (blt.buf_decay, inv_blt.buf_decay)
+-
+-    def blt_and_inverse_from_params(
+-        params: tuple[jax.Array, jax.Array],
+-    ) -> tuple[BufferedToeplitz, BufferedToeplitz]:
+-      return blt_pair_from_theta_pair(params[0], params[1])
+-
+-    return cls(
+-        params_from_blt=params_from_blt,
+-        blt_and_inverse_from_params=blt_and_inverse_from_params,
+-    )
+-
+-  def get_loss_fn(
+-      self, loss_fn: LossFn
+-  ) -> Callable[[chex.ArrayTree], ScalarFloat]:
+-    """Returns a loss function for the parameterization."""
+-    return lambda params: loss_fn.penalized_loss(
+-        *self.blt_and_inverse_from_params(params)
+-    )
+-
+-
+-def get_init_blt(
+-    num_buffers: int = 3,
+-    init_blt: BufferedToeplitz | None = None,
+-) -> BufferedToeplitz:
+-  """Returns an initial BufferedToeplitz for initializing optimization.
+-
+-  Currently, this defaults to `BufferedToeplitz.from_rational_approx_to_sqrt_x`,
+-  setting max_buf_decay and max_pillutla_score so that the solution is within
+-  the feasible set imposed by the optimization penalities in
+-  `LosssFn.compute_penalties`. However, this initialization choice may be
+-  changed in the future.
+-
+-  Args:
+-    num_buffers: The number of buffers to use in the initial BLT, greater than
+-      or equal to zero.
+-    init_blt: An initial BLT to use. If None, a default initialization is used.
+-      This is a convienence for callers who want to handle an optional explicit
+-      initialization and check that it has the correct number of buffers.
+-
+-  Returns:
+-    A BufferedToeplitz with the requested number of buffers.
+-  """
+-  if not init_blt:
+-    if num_buffers == 0:
+-      init_blt = BufferedToeplitz.build(buf_decay=[], output_scale=[])
+-    else:
+-      init_blt = BufferedToeplitz.from_rational_approx_to_sqrt_x(
+-          num_buffers=num_buffers,
+-          max_buf_decay=1 - 1e-6,
+-          max_pillutla_score=1 - 1e-6,
+-      )
+-
+-  # Check we have the correct number of buffers:
+-  if len(init_blt.buf_decay) != num_buffers:
+-    raise ValueError(
+-        f'{num_buffers=} does not match {len(init_blt.buf_decay)=}'
+-    )
+-  return init_blt
+-
+-
+-def _assert_blt_valid_for_minsep(blt: BufferedToeplitz, n: int = 10000):
+-  """Checks that the BLT has valid min-sep sensitivity."""
+-  # It is possible though unlikely that optimization produces
+-  # a BLT with increasing Toeplitz coefficients, which invalidates
+-  # the min-sep sensitivity calculation implemented in
+-  # `toeplitz.minsep_sensitivity_squared`. Hence,
+-  # we re-check sensitivity here with checks enabled just in case.
+-  try:
+-    sens_squared = toeplitz.minsep_sensitivity_squared(
+-        blt.toeplitz_coefs(n),
+-        min_sep=1,
+-        max_participations=1,
+-        skip_checks=False,
+-    )
+-  except ValueError as e:
+-    raise RuntimeError(f'Error computing sensitivity for BLT\n{blt}') from e
+-  # The above should raise a ValueError if Toeplitz coefficients are
+-  # increasing. Since C[0, 0] = 1 for a BLT, the sensitivity should be
+-  # at least one, and it should be finite:
+-  if not (jnp.isfinite(sens_squared) and sens_squared >= 1):
+-    raise RuntimeError(
+-        'Optimized BLT does not satisfy min-sep sensitivity, this should not'
+-        f' happen: {sens_squared=} for BLT\n{blt}'
+-    )
+-
+-
+-@optimization.jax_enable_x64
+-def optimize_loss(
+-    loss_fn: LossFn,
+-    num_buffers: int = 1,
+-    init_blt: BufferedToeplitz | None = None,
+-    parameterization: Parameterization | None = None,
+-    **kwargs,
+-) -> tuple[BufferedToeplitz, ScalarFloat]:
+-  """Like, optimize(), but more configurable and a fixed number of buffers.
+-
+-  Args:
+-    loss_fn: The loss to optimize.
+-    num_buffers: The number of buffers to optimize for; the default of 3 is a
+-      good choice in general; large number of buffers can cause numerical
+-      instability in the optimization.
+-    init_blt: An initial BLT to start the optimization from. If None, a default
+-      initialization is used.
+-    parameterization: The parameterization to use for optimization. If None, the
+-      default parameterization is used.
+-    **kwargs: Optional additional arguments to pass to optimization.optimize,
+-      such as `max_optimizer_steps`, `callback`, and `optimizer`. Note this
+-      function may supply different defaults for these arguments compared to
+-      `optimization.optimize`, so use with care.
+-
+-  Returns:
+-     A tuple (blt, loss).
+-
+-  Raises:
+-    RuntimeError: If the optimization produces an invalid BLT.
+-  """
+-  if num_buffers == 0:
+-    # Construct the identity strategy matrix and directly compute the loss.
+-    blt = BufferedToeplitz.build(buf_decay=[], output_scale=[])
+-    return blt, loss_fn.loss(blt)
+-
+-  if parameterization is None:
+-    parameterization = Parameterization.buf_decay_pair()
+-
+-  default_optimizer = optax.lbfgs(
+-      # Empirical testing shows these parameters improve over the defaults.
+-      # A larger memory size can speed convergence, but also seems to result
+-      # in the optimizer getting stuck at a suboptimal solution.
+-      memory_size=15,
+-      linesearch=optax.scale_by_zoom_linesearch(
+-          max_linesearch_steps=100,
+-          curv_rtol=0.5,
+-          # This avoids some rare nan cases:
+-          max_learning_rate=1.0,
+-          # A small stepsize_precision is necessary when we need values of
+-          # theta very near 1.
+-          stepsize_precision=1e-20,
+-      ),
+-  )
+-  optimize_kwargs = {'max_optimizer_steps': 600, 'optimizer': default_optimizer}
+-  optimize_kwargs.update(kwargs)
+-  blt = get_init_blt(num_buffers=num_buffers, init_blt=init_blt)
+-
+-  params = parameterization.params_from_blt(blt)
+-  # Combine the parameterization with the loss fn:
+-  loss_fn_to_optimize = parameterization.get_loss_fn(loss_fn)
+-  params = optimization.optimize(
+-      # Create
+-      loss_fn_to_optimize,
+-      params,
+-      **optimize_kwargs,
+-  )
+-  blt, _ = parameterization.blt_and_inverse_from_params(params)
+-  blt = blt.canonicalize()
+-
+-  loss = loss_fn.loss(blt)
+-  if not jnp.isfinite(loss):
+-    raise RuntimeError(
+-        f'Optimization produced BLT with non-finite loss {loss}:\n{blt}'
+-    )
+-
+-  if loss_fn.max_participations > 1:
+-    _assert_blt_valid_for_minsep(blt, n=loss_fn.n)
+-
+-  if jnp.any(jnp.abs(blt.output_scale) < 1e-8):
+-    logging.warning(
+-        'BLT has near-zero output_scale parameters, which '
+-        'means some buffers are ignored. Consider re-optimizing '
+-        'with a smaller number of buffers.\n%s',
+-        blt,
+-    )
+-  return blt, loss
+-
+-
+-def _optimize_increasing_nbuf(
+-    opt_blt_and_loss_fn: Callable[[int], tuple[Any, float]],
+-    min_buffers: int = 0,
+-    max_buffers: int = 10,
+-    rtol: float = 1.02,
+-) -> Any:
+-  """Optimizes w/ increasing num_buffers until the improvement is < rtol."""
+-  prev_blt, prev_loss = opt_blt_and_loss_fn(min_buffers)
+-  for nbuf in range(min_buffers + 1, max_buffers + 1):
+-    try:
+-      blt, loss = opt_blt_and_loss_fn(nbuf)
+-    except NotImplementedError as err:
+-      err.add_note(
+-          'This error may be caused by trying to run `blt.inverse()` on a GPU.'
+-      )
+-      # This can happen if we try to run `jnp.linalg.eigvals` on a GPU,
+-      # for example. This is a real configuration issue, not
+-      # an optimization failure.
+-      raise err
+-    except RuntimeError as err:
+-      logging.warning(
+-          'Optimization failed for %d buffers with:\n%s',
+-          nbuf,
+-          str(err),
+-      )
+-      blt, loss = None, jnp.inf
+-
+-    if rtol * loss < prev_loss:
+-      # Sufficient improvement, accept this BLT and maybe try more buffers:
+-      prev_blt, prev_loss = blt, loss
+-    else:
+-      # Improvement was < rtol, return prev_blt
+-      return prev_blt
+-  return prev_blt
+-
+-
+-@optimization.jax_enable_x64
+-def optimize(
+-    *,
+-    n: int,
+-    min_sep: int = 1,
+-    max_participations: int | None = 1,
+-    error: str = 'max',
+-    min_buffers: int = 0,
+-    max_buffers: int = 10,
+-    rtol: float = 1.01,
+-    **kwargs,
+-) -> BufferedToeplitz:
+-  """Computes a good BLT with a dynamically-chosen num_buffers for min-sep.
+-
+-  Internally this function uses `jax.jit` on the key optimization steps, but it
+-  is not intended to be called from a jitted context itself.
+-
+-  For single-participation optimization of max error, this function utilizes the
+-  closed-form calculations for sensitivity and
+-  error from https://arxiv.org/abs/2404.16706, and hence optimization time
+-  is essentially independent of `n`.  However, particularly for large `n` or
+-  large numbers of buffers, the optimal BLT may have a buf_decay theta very
+-  near 1, which leads to numerical issues in the closed forms. This function
+-  has been reasonably well tested for max loss up to n=10**7.
+-
+-  Otherwise (for multiple-participations or mean loss optimization), this
+-  function computes loss and sensitivity by materializing the Toeplitz
+-  coefficients of C and C^{-1}, and then using the loss functions of
+-  `toeplitz.py`, as described in https://arxiv.org/abs/2408.08868. This is still
+-  significantly faster than directly optimizing
+-  Toeplitz mechanisms, because `blt.inverse()` is much faster than
+-  computing the Toeplitz coefficients of C^{-1} directly. This optimization
+-  benefits from GPUs for large n (say > 1000);
+-  We have observed some issues using TPUs, so avoid them for now.
+-
+-  Internally this function uses `jax.jit` on the key optimization steps, but it
+-  is not intended to be called from a jitted context itself.
+-
+-  Args:
+-    n: The number of iterations the mechanism is optimized for.
+-    min_sep: The minimum separation of participations.
+-    max_participations: The maximum number of participations.
+-    error: Either 'max' or 'mean', indicating whether to optimize for the
+-      maximum or mean squared error, respectively.
+-    min_buffers: The minimum number of buffers to optimize for (inclusive).
+-    max_buffers: The maximum number of buffers to optimize for (inclusive).
+-    rtol: The relative tolerance for the loss improvement in order to increase
+-      the number of buffers.
+-    **kwargs: Optional additional arguments to pass to optimization.optimize,
+-      such as `max_optimizer_steps` and `optimizer`. Note this function may
+-      supply different defaults for these arguments compared to
+-      `optimization.optimize`, so use with care. Further, the same arguments
+-      will be passed to each optimization (for different `num_buffers`), so for
+-      example a stateful `callback` function may not work as expected.
+-
+-  Returns:
+-    A BLT that approximately minimizes the loss.
+-
+-  Raises:
+-    RuntimeError: If the optimization produces an invalid BLT.
+-  """
+-
+-  if max_buffers > 15:
+-    raise ValueError(
+-        'In typical regimes 3 to 7 buffers should give the best utility (and'
+-        ' memory efficiency); 15+ buffers will almost certainly lead to'
+-        ' numerical issues in the optimization. Try setting a smaller value for'
+-        ' `max_buffers`.'
+-    )
+-
+-  k = sensitivity.minsep_true_max_participations(
+-      n=n, min_sep=min_sep, max_participations=max_participations
+-  )
+-  if k == 1 and error == 'max':
+-    # Single participation max loss, used closed forms:
+-    loss_fn = LossFn.build_closed_form_single_participation(n=n)
+-  else:
+-    loss_fn = LossFn.build_min_sep(
+-        n=n, error=error, min_sep=min_sep, max_participations=max_participations
+-    )
+-
+-  with jax.default_device(_gpu_or_cpu_device()):
+-    return _optimize_increasing_nbuf(
+-        opt_blt_and_loss_fn=lambda nbuf: (
+-            optimize_loss(
+-                loss_fn=loss_fn,
+-                num_buffers=nbuf,
+-                parameterization=Parameterization.buf_decay_pair(),
+-                **kwargs,
+-            )
+-        ),
+-        min_buffers=min_buffers,
+-        max_buffers=max_buffers,
+-        rtol=rtol,
+-    )
+-
+-
+-@jax.jit
+-def geometric_sum(
+-    a: jax.Array, r: jax.Array, num: chex.Numeric = jnp.inf
+-) -> jax.Array:
+-  """Sum a + a*r + a*r**2 + ... + a*r**(num-1) (or limit if num=jnp.inf).
+-
+-  Args:
+-    a: Scale factor (or vector of scale factors).
+-    r: ratio between successive terms, requires |r| < 1
+-    num: How many terms to add, or jnp.inf for the limit.
+-
+-  Returns:
+-    The sum.
+-  """
+-  n = jnp.array(num, dtype=jnp.float64)
+-
+-  def finite_n_geo_sum(a, n, r):
+-    """Robustly handle the finite-n case, including r=1."""
+-    # We choose between a Taylor series approx near r=1 and the
+-    # direct calculation.
+-    #
+-    # The direct calculation is numerically fairly stable for the
+-    # value, but gets unstable earlier (r farther from 1) for the calculation
+-    # of the gradient (which we need). So this threshold rule was chosen to
+-    # minimize the difference between the direct computation and the series
+-    # approximation in terms of the gradient w.r.t. `r`.
+-    SLOPE = 0.53018965
+-    INTERCEPT = 3.33503185
+-    pow_threshold = INTERCEPT + SLOPE * jnp.log(n)
+-
+-    use_direct_calc = r < 1 - 10 ** (-pow_threshold)
+-
+-    # Quadratic Taylor polynomial approx at r = 1 from sympy:
+-    x0 = n - 1
+-    x1 = r - 1
+-    series_approx = (1 / 6) * a * n * (x0 * x1**2 * (n - 2) + 3 * x0 * x1 + 6)
+-
+-    # Avoid nans in the untaken branch when r == 1, see
+-    # https://jax.readthedocs.io/en/latest/faq.html#gradients-contain-nan-where-using-where
+-    safe_r = jnp.where(use_direct_calc, r, jnp.zeros_like(r))
+-    return jnp.where(
+-        use_direct_calc, a * (1 - safe_r**num) / (1 - safe_r), series_approx
+-    )
+-
+-  return jax.lax.cond(
+-      jnp.isinf(n),
+-      lambda a, n, r: a / (1 - r),  # Infinite n case
+-      finite_n_geo_sum,
+-      a,
+-      num,
+-      r,
+-  )
+-
+-
+-def _inf_if(cond_fn, blt_fn: Callable[..., Any]) -> Any:
+-  def new_fn(blt, *args, **kwargs):
+-    return jax.lax.cond(
+-        cond_fn(blt),
+-        lambda: jnp.inf,
+-        lambda: blt_fn(blt, *args, **kwargs),
+-    )
+-
+-  return new_fn
+-
+-
+-def require_buf_decay_less_eq_one(blt_fn: Callable[..., Any]) -> Any:
+-  """Return inf if blt, the first arg to blt_fn, has buf_decay > 1."""
+-
+-  return _inf_if(lambda blt: jnp.any(blt.buf_decay > 1), blt_fn)
+-
+-
+-def require_output_scale_gt_zero(blt_fn: Callable[..., Any]) -> Any:
+-  """Return inf if blt, the first arg to blt_fn, has output_scale <= 0."""
+-
+-  return _inf_if(lambda blt: jnp.any(blt.output_scale <= 0), blt_fn)
+-
+-
+-def _poly_from_theta(theta: jax.Array) -> jax.Array:
+-  """Returns a polynomial (1 - theta[0]*x)*...*(1-theta[-1]*x).
+-
+-  Args:
+-     theta: The multiplicative inverses of the roots of the polynomial.
+-
+-  Returns:
+-     A polynomial of degree len(theta) -1  = d represented as an array under the
+-     `np.poly1d` convention. If the returned array is `c`,then
+-     p(x) = c[0]*x**d + c[1]*x**(d-1) + ... + c[-2]*x + c[-1]
+-  """
+-  theta = jnp.asarray(theta)
+-  z = jnp.prod(-theta)
+-  p = jnp.poly(seq_of_zeros=1 / theta) * z
+-  p = p.at[-1].set(1)  # This should be approximately 1, set to make exact.
+-  return p
+-
+-
+-def blt_pair_from_theta_pair(
+-    theta: jax.Array, theta_hat: jax.Array
+-) -> tuple[BufferedToeplitz, BufferedToeplitz]:
+-  """Computes BLTs (C, C_inv) from theta and theta_hat.
+-
+-  This implements Lemma 5.2 of https://arxiv.org/abs/2404.16706 (See also
+-  Algorithm 5 of https://arxiv.org/abs/2408.08868). The simplified computation
+-  used in the implementation here appears as Theorem 2 of
+-  https://arxiv.org/abs/2504.21413.
+-
+-  This function uses quantities like 1 /(1/theta[i] - 1/theta[j]), and so can be
+-  numerically unstable if abs(theta[i] - theta[j]) is too small; hence, by
+-  default the Parameterization based on `blt.inverse()` should be used instead.
+-
+-  Args:
+-     theta: Array of thetas for the denominator q of `r(x) = p(x; theta_hat) /
+-       q(x; theta)`.
+-     theta_hat: Array of thetas for the numerator of r(x).
+-
+-  Returns:
+-    A tuple of BLTs (C, C_inv) where C.buf_decay = theta and C_inv.buf_decay =
+-    theta_hat,
+-    with the output_scale (omega) parameters for each computed to make these
+-    inverses.
+-  """
+-  theta = jnp.asarray(theta)
+-  theta_hat = jnp.asarray(theta_hat)
+-
+-  def get_omega(theta, theta_hat):
+-    numerators = jnp.prod(theta[:, jnp.newaxis] - theta_hat, axis=1)
+-    # Compute denom_i = prod_{j: i != j} (lambda_i - lambda_j)
+-    A = theta[:, jnp.newaxis] - theta
+-    A = A.at[jnp.diag_indices_from(A)].set(1)
+-    denominators = jnp.prod(A, axis=1)
+-    return numerators / denominators
+-
+-  return (
+-      BufferedToeplitz.build(
+-          output_scale=get_omega(theta, theta_hat), buf_decay=theta
+-      ),
+-      # Note we reverse the order of the arguments to `get_omega` to get C_inv.
+-      BufferedToeplitz.build(
+-          output_scale=get_omega(theta_hat, theta), buf_decay=theta_hat  # pylint: disable=arguments-out-of-order
+-      ),
+-  )
+-
+-
+-@jax.jit
+-@require_buf_decay_less_eq_one
+-def sensitivity_squared(blt: BufferedToeplitz, n: chex.Numeric) -> float:
+-  """Computes sensitivity**2 for a BLT strategy matrix C.
+-
+-  See https://arxiv.org/pdf/2404.16706 Lemma 5.3
+-
+-  Args:
+-    blt: The Buffered Linear Toeplitz operator representing C().
+-    n: The number of iterations; the limit of sensitivity as n -> jnp.inf is
+-      returned if n is jnp.inf.
+-
+-  Returns:
+-    The max-column-norm-squared of C.
+-  """
+-  omega = blt.output_scale
+-  theta = blt.buf_decay
+-  num = jnp.array(n - 1)  # Still jnp.inf if n = jnp.inf
+-
+-  # Vectorized via JAX broadcasting, omega and theta must be the same length.
+-  omega_pairs = omega * omega[:, jnp.newaxis]
+-  theta_pairs = theta * theta[:, jnp.newaxis]
+-  geo_pairs = geometric_sum(omega_pairs, theta_pairs, num=num)
+-  return 1.0 + geo_pairs.sum()
+-
+-
+-def _max_error_Gamma_j(
+-    omega: jax.Array, theta: jax.Array, n: jax.Array
+-) -> jax.Array:
+-  # Closed-form computation of
+-  # sum([geometric_sum(omega, theta, i) for i in range(1, n)])
+-  return (omega / (1.0 - theta)) * (1 - geometric_sum(1, theta, n) / n)
+-
+-
+-def _max_error_Gamma_j_series(
+-    omega: jax.Array, theta: jax.Array, n: jax.Array
+-) -> jax.Array:
+-  """Taylor series approximation to _max_error_Gamma_j."""
+-  # Auto-generated via sympy, see colab notebook
+-  # robust_max_error_for_blts.ipynb.ipynb
+-  # fmt: off
+-  x0 = theta - 1
+-  x1 = omega*(n - 2)*(n - 1)
+-  return -omega*(1/2 - 1/2*n) + (1/24)*x0**2*x1*(n - 3) + (1/6)*x0*x1
+-  # fmt: on
+-
+-
+-def robust_max_error_Gamma_j(
+-    omega: jax.Array, theta: jax.Array, n: jax.Array
+-) -> jax.Array:
+-  """Robustly computes _max_error_Gamma_j."""
+-  # See robust_max_error_for_blts.ipynb.ipynb
+-  # for computation of these regression constants.
+-  J_SLOPE = 0.43877484
+-  J_INTERCEPT = 2.91215085
+-
+-  power = J_INTERCEPT + J_SLOPE * jnp.log(n)
+-  threshold = 1 - 10 ** (-power)
+-  predicate = theta < threshold
+-
+-  # We need to avoid inf/nan in v0, v1, and v2 even if not selected, see:
+-  # https://jax.readthedocs.io/en/latest/faq.html#gradients-contain-nan-where-using-where
+-  safe_theta = jnp.where(predicate, theta, jnp.zeros_like(theta))
+-  v0 = _max_error_Gamma_j(omega, safe_theta, n)
+-  v1 = _max_error_Gamma_j_series(omega, theta, n)
+-  return jnp.where(predicate, v0, v1)
+-
+-
+-def _max_error_Gamma_jk(
+-    omega1: jax.Array,
+-    theta1: jax.Array,
+-    omega2: jax.Array,
+-    theta2: jax.Array,
+-    n: jax.Array,
+-) -> jax.Array:
+-  """Direct computation of Gamma_jk for max-error."""
+-  # Closed-form computation of
+-  # sum([geometric_sum(omega1, theta1, i) * geometric_sum(omega2, theta2, i)
+-  #      for i in range(1, n)])
+-  temp1 = omega1 * omega2 / ((1 - theta1) * (1 - theta2))
+-  temp2 = (
+-      n
+-      - geometric_sum(1, theta1, n)
+-      - geometric_sum(1, theta2, n)
+-      + geometric_sum(1, theta1 * theta2, n)
+-  ) / n
+-  return temp1 * temp2
+-
+-
+-def _max_error_Gamma_jk_series_j(
+-    omega1: jax.Array,
+-    theta1: jax.Array,
+-    omega2: jax.Array,
+-    theta2: jax.Array,
+-    n: jax.Array,
+-) -> jax.Array:
+-  """Compute _max_error_Gamma_jk with a series approximation for theta1."""
+-  # Auto-generated via sympy, see colab notebook
+-  # robust_max_error_for_blts.ipynb
+-  # fmt: off
+-  x0 = theta2 - 1
+-  x1 = theta2**(n + 1)
+-  x2 = -x1
+-  x3 = 6*x0
+-  x4 = theta2**n
+-  x5 = n - 1
+-  x6 = theta1 - 1
+-  x7 = theta2**(n + 2)
+-  return (-1/6*omega1*omega2*(
+-      n*x0**3*(3*n + x5*x6*(n - 2) - 3) + n*x3*(x2 + x4) - x3*(theta2 + x2)
+-      + 3*x6*(n*x0*(-x1*x5 + x4*x5) - 2*n*(x1 - x7)
+-              + 2*theta2**2 - 2*x7))/(n*x0**4))
+-  # fmt: on
+-
+-
+-def _max_error_Gamma_jk_series_jk(
+-    omega1: jax.Array,
+-    theta1: jax.Array,
+-    omega2: jax.Array,
+-    theta2: jax.Array,
+-    n: jax.Array,
+-) -> jax.Array:
+-  """Compute _max_error_Gamma_jk with a series approximation for theta1."""
+-  # Auto-generated via sympy, see colab notebook
+-  # robust_max_error_for_blts.ipynb
+-  # fmt: off
+-  x0 = n**2
+-  x1 = 3*n**3 + 9*n - 10*x0 - 2
+-  return ((1/24)*omega1*omega2*(-12*n + 8*x0 + x1*(theta1 - 1)
+-                                + x1*(theta2 - 1) + 4))
+-  # fmt: on
+-
+-
+-def robust_max_error_Gamma_jk(
+-    omega1: jax.Array,
+-    theta1: jax.Array,
+-    omega2: jax.Array,
+-    theta2: jax.Array,
+-    n: jax.Array,
+-) -> jax.Array:
+-  """Robustly computes _max_error_Gamma_jk.
+-
+-  Robustly computes the Gamma_{j,k} term of the closed-form expression
+-  for max-error, by choosing either the direct computation or a Taylor
+-  series approximation.
+-
+-  Used below to compute all pairs of Gamma_{j,k} via numpy broadcasting.
+-
+-
+-  Args:
+-    omega1:  The omega_j argument (a output_scale value), typically a 1D array.
+-    theta1:  The theta_j argument (a buf_decay value), typically a 1D array.
+-    omega2:  The omega_k argument (a output_scale value), typically a 2D column
+-      vector.
+-    theta2:  The theta_k argument (a buf_decay value), typically a 2D column
+-      vector.
+-    n: The value of n.
+-
+-  Returns:
+-    The value of Gamma_jk.
+-  """
+-  # The _j series approximation needs theta1 > theta2:
+-  theta1, theta2 = jnp.maximum(theta1, theta2), jnp.minimum(theta1, theta2)
+-
+-  JK_SLOPE = 0.35321577
+-  JK_INTERCEPT = 2.81518052
+-  power = JK_INTERCEPT + JK_SLOPE * jnp.log(n)
+-  threshold = 1 - 10 ** (-power)
+-
+-  # We need to avoid inf/nan in v0, v1, and v2 even if not selected, see:
+-  # https://jax.readthedocs.io/en/latest/faq.html#gradients-contain-nan-where-using-where
+-  v0_predicate = theta1 < threshold
+-  v1_predicate = theta2 < threshold
+-
+-  safe_theta1 = jnp.where(v0_predicate, theta1, jnp.zeros_like(theta1))
+-  safe_theta2 = jnp.where(v0_predicate, theta2, jnp.zeros_like(theta2))
+-  v0 = _max_error_Gamma_jk(omega1, safe_theta1, omega2, safe_theta2, n)
+-
+-  safe_theta2 = jnp.where(v1_predicate, theta2, jnp.zeros_like(theta2))
+-  v1 = _max_error_Gamma_jk_series_j(omega1, theta1, omega2, safe_theta2, n)
+-  v2 = _max_error_Gamma_jk_series_jk(omega1, theta1, omega2, theta2, n)
+-
+-  return jnp.where(
+-      v0_predicate,  # and theta2 <= theta1 by assumption
+-      # Both thetas are not close to 1, use the direct fn:
+-      v0,
+-      jnp.where(
+-          v1_predicate,
+-          # theta1 is near 1, theta2 is not
+-          v1,
+-          # Both thetas are near 1, use 2-variable series
+-          v2,
+-      ),
+-  )
+-
+-
+-@jax.jit
+-def iteration_error(inv_blt: BufferedToeplitz, i: chex.Array) -> jax.Array:
+-  """Computes the error on iteration `i` which is also the max error.
+-
+-  That is, for a Buffered Linear Toeplitz matrix, the max error from iteration 0
+-  through `i` is achieved on iteration `i`, so this equivalently computes
+-  the max error for `i+1` iterations.
+-
+-  Here "error" is the squared error introduced in the `n`th iterate (partial
+-  sum) assuming unit-variance noise. This generally scales as O(n), and
+-  so optimization routines might normalize by an additional factor of n.
+-
+-  This implements https://arxiv.org/pdf/2404.16706 Lemma 5.4.
+-
+-  Args:
+-    inv_blt: The Buffered Linear Toeplitz operator where inv_blt.C() represents
+-      C^{-1} in the matrix factorization mechanism.
+-    i: The iteration for which to compute error, 0-indexed. To compute the max
+-      error for an `n` iteration mechanism, one should thus pass i = n-1 to this
+-      function.
+-
+-  Returns:
+-    The squared-error (variance) on iteration `iter`.
+-  """
+-  check_float64_dtype(inv_blt)
+-  # Note: The derivation in the paper is 1-indexed and uses `n`;
+-  # we follow that formula here, so we define n accordingly:
+-  n = i + 1
+-
+-  omega = inv_blt.output_scale  # shape = (inv_blt._num_buffers,)
+-  theta = inv_blt.buf_decay  # shape = (inv_blt._num_buffers,)
+-  # (b, b) -> scalar, where b = inv_blt._num_buffers
+-  s1 = jnp.sum(
+-      robust_max_error_Gamma_j(omega, theta, n)
+-  )  # Vectorized, via JAX broadcasting
+-  s2 = jnp.sum(
+-      robust_max_error_Gamma_jk(
+-          omega, theta, omega[:, jnp.newaxis], theta[:, jnp.newaxis], n
+-      )
+-  )  # (b, b) -> scalar
+-  return n * (1 + 2 * s1 + s2)
+-
+-
+-@jax.jit
+-def max_error(inv_blt: BufferedToeplitz, n: chex.Array) -> jax.Array:
+-  """Returns the max squared error for any iteration 0, ..., n-1."""
+-  # Note: For a BLT, the iteration error is increasing in `i`, so:
+-  return iteration_error(inv_blt, n - 1)
+-
+-
+-@jax.jit
+-def limit_max_error(
+-    inv_blt: BufferedToeplitz,
+-) -> jax.Array:
+-  """Computes limit_{n -> jnp.inf} (1/n)*max_error(blt, n).
+-
+-  Args:
+-    inv_blt: The Buffered Linear Toeplitz operator where inv_blt.C() represents
+-      C^{-1} in the matrix factorization mechanism.
+-
+-  Returns:
+-    The iteration error in the limit.
+-  """
+-  omega = inv_blt.output_scale  # shape = (inv_blt._num_buffers,)
+-  theta = inv_blt.buf_decay  # shape = (inv_blt._num_buffers,)
+-
+-  # Re-shaping to utilize numpy broadcasting to behave
+-  # like a double for-loop, omega and theta should
+-  # have the same length.
+-  omega_pairs = omega * omega[:, jnp.newaxis]
+-  theta_pairs = (1 - theta) * (1 - theta[:, jnp.newaxis])
+-  cross_term_sum = jnp.sum(omega_pairs / theta_pairs)
+-
+-  return 1 + 2 * jnp.sum(omega / (1 - theta)) + cross_term_sum
+-
+-
+-@jax.jit
+-@require_output_scale_gt_zero
+-def max_loss(blt: BufferedToeplitz, n: jax.Array) -> jax.Array:
+-  """Max squared error scaled by sensitivity**2."""
+-  check_float64_dtype(blt)
+-  sens_squared = sensitivity_squared(blt, n)
+-  inv_blt = blt.inverse(skip_checks=True)
+-  error = max_error(inv_blt, n)
+-  return error * sens_squared
+-
+-
+-@jax.jit
+-@require_output_scale_gt_zero
+-def limit_max_loss(
+-    blt: BufferedToeplitz,
+-) -> jax.Array:
+-  """Limit of (1/n) max squared error scaled by sensitivity**2."""
+-  check_float64_dtype(blt)
+-  sens_squared = sensitivity_squared(blt, n=jnp.inf)
+-  inv_blt = blt.inverse(skip_checks=True)
+-  error = limit_max_error(inv_blt)
+-  return error * sens_squared
+diff --git jax_privacy/noise_addition.py jax_privacy/noise_addition.py
+index 2cc19c1..32191fc 100644
+--- jax_privacy/noise_addition.py
++++ jax_privacy/noise_addition.py
+@@ -53,7 +53,6 @@ from jax import numpy as jnp
+ import numpy as np
+ import optax
+ 
+-from . import sharding_utils
+ from .matrix_factorization import streaming_matrix
+ 
+ 
+@@ -111,12 +110,6 @@ class SupportedStrategies(enum.Enum):
+       add=lambda value, noise: (value + noise).astype(value.dtype),
+   )
+   """Basic approach for single-machine training scenarios."""
+-  ZERO = _IntermediateStrategy(
+-      get_noise_structure=sharding_utils.flatten_with_zero_redundancy,
+-      add=sharding_utils.local_reshape_add,
+-  )
+-  """Zero-redundancy approach suitable for multi-machine scenarios. Requires
+-  inputs to have explicit sharding annotations."""
+ 
+ 
+ def matrix_factorization_privatizer(
+@@ -161,9 +154,7 @@ def matrix_factorization_privatizer(
+     prng_key = jax.random.key(np.random.randint(0, 2**31))
+   elif isinstance(prng_key, int):
+     prng_key = jax.random.key(prng_key)
+-  if isinstance(noising_matrix, jax.typing.ArrayLike):
+-    impl = _dense_matrix_factorization_privatizer
+-  elif isinstance(noising_matrix, streaming_matrix.StreamingMatrix):
++  if isinstance(noising_matrix, streaming_matrix.StreamingMatrix):
+     impl = _streaming_matrix_factorization_privatizer
+   else:
+     raise NotImplementedError('Unsupported noising_matrix: ', noising_matrix)
+@@ -186,80 +177,13 @@ gaussian_privatizer.__doc__ = (
+ )
+ 
+ 
+-def _compute_loop_bounds(matrix_row):
+-  """Computes bounds for jax.lax.fori_loop version of row-column reduction."""
+-  assert matrix_row.ndim == 1
+-  nonzero_entries = (matrix_row != 0).astype(jnp.int32)
+-  first_nonzero = jnp.argmax(nonzero_entries)
+-  # We reverse to get the last index.
+-  last_nonzero = matrix_row.shape[0] - jnp.argmax(nonzero_entries[::-1])
+-  return first_nonzero, last_nonzero
+-
+-
+-def _gaussian_linear_combination(
+-    matrix_row: jax.Array,
+-    key: jax.Array,
+-    shape: tuple[int, ...],
+-    dtype: jax.typing.DTypeLike,
+-    out_sharding: jax.sharding.NamedSharding | None = None,
+-) -> jax.Array:
+-  """Computes a linear combination of standard Gaussian random variables."""
+-  assert matrix_row.ndim == 1
+-
+-  def loop_body(idx, partial):
+-    coef = matrix_row[idx].astype(dtype)
+-    sub_key = jax.random.fold_in(key, idx)
+-    # We pass sharding because sharding-in-types will replicate otherwise.
+-    noise = jax.random.normal(sub_key, shape, dtype, out_sharding=out_sharding)
+-    return partial + coef * noise
+-
+-  lower_bound, upper_bound = _compute_loop_bounds(matrix_row)
+-  loop_state = jnp.zeros(shape, dtype)
+-  return jax.lax.fori_loop(lower_bound, upper_bound, loop_body, loop_state)
+-
+-
+-def _dense_matrix_factorization_privatizer(
+-    noising_matrix: jax.typing.ArrayLike,
+-    *,
+-    stddev: float,
+-    prng_key: jax.Array,
+-    strategy: _IntermediateStrategy,
+-    dtype: jax.typing.DTypeLike | None = None,
+-) -> optax.GradientTransformation:
+-  """Creates a gradient privatizer from a dense matrix C^{-1}."""
+-  # See Section 4.4.5 of https://arxiv.org/pdf/2506.08201 (Approach 2)
+-  noising_matrix = jnp.asarray(noising_matrix)
+-
+-  if noising_matrix.ndim != 2:
+-    raise ValueError(f'Expected 2D matrix, found {noising_matrix.shape=}.')
+-
+-  def privatize(sum_of_clipped_grads, noise_state, params=None):
+-    del params  # Unused, but expected by optax.GradientTransformation API.
+-    index = noise_state
+-    matrix_row = noising_matrix[index] * stddev
+-
+-    target = jax.tree.map(strategy.get_noise_structure, sum_of_clipped_grads)
+-    noise = optax.tree.random_like(
+-        rng_key=prng_key,
+-        target_tree=target,
+-        sampler=functools.partial(_gaussian_linear_combination, matrix_row),
+-        dtype=dtype,
+-    )
+-    noisy_grads = jax.tree.map(strategy.add, sum_of_clipped_grads, noise)
+-    return noisy_grads, index + 1
+-
+-  init = lambda _: jnp.array(0)
+-  return optax.GradientTransformation(init, privatize)
+-
+-
+ def _iid_normal_noise(prng_key, target_tree, stddev, dtype=None):
+-  standard_normal = optax.tree.random_like(
++  standard_normal = optax.tree_utils.tree_random_like(
+       rng_key=prng_key,
+       target_tree=target_tree,
+       sampler=jax.random.normal,
+-      dtype=dtype,
+   )
+-  return optax.tree.scale(stddev, standard_normal)
++  return optax.tree_utils.tree_scalar_mul(stddev, standard_normal)
+ 
+ 
+ def _streaming_matrix_factorization_privatizer(

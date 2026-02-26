@@ -301,9 +301,9 @@ def trusted_program(input_provider, external_service_handle):
   ASSERT_TRUE(this->stream_->Read(&session_response));
 
   auto released_data = this->fake_data_read_write_service_.GetReleasedData();
-  tensorflow_federated::v0::Value released_sum;
-  released_sum.ParseFromString(released_data["result"]);
-  ASSERT_THAT(released_sum.array().int32_list().value(),
+  tensorflow_federated::v0::Value released_val;
+  released_val.ParseFromString(released_data["result"]);
+  ASSERT_THAT(released_val.array().int32_list().value(),
               ::testing::ElementsAreArray({25}));
 
   auto released_state_changes =
@@ -317,6 +317,125 @@ def trusted_program(input_provider, external_service_handle):
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result"].second.value(),
             expected_first_release_budget.SerializeAsString());
+
+  ASSERT_TRUE(session_response.has_finalize());
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDpmf) {
+  this->CreateSession(R"(
+import functools
+
+from fcp.confidentialcompute.python import dp_mf_aggregator
+import federated_language
+import jax
+from jax.experimental import jax2tf
+import jax.numpy as jnp
+from jax_privacy import noise_addition
+from jax_privacy.matrix_factorization import buffered_toeplitz
+import numpy as np
+import tensorflow as tf
+import tensorflow_federated as tff
+
+# Required by jnp.float64
+jax.config.update("jax_enable_x64", True)
+# Set the serialization version to be compatible with the version of TF used in
+# the TEE binary.
+jax.config.update("jax_serialization_version", 8)
+
+_jax2tf_convert_cpu_native = functools.partial(
+    jax2tf.convert,
+    native_serialization=True,
+    native_serialization_platforms=['cpu'],
+)
+
+_CLIP_NORM = 1.0
+_NOISE_MULTIPLIER = 7.379
+_BLT_BUF_DECAY = [
+    0.9999999999921251,
+    0.9944453083640997,
+    0.8985923474607591,
+    0.4912001418098778,
+]
+_BLT_OUTPUT_SCALE = [
+    0.0070314825502323835,
+    0.10613806907600574,
+    0.1898159060327625,
+    0.1966594748073734,
+]
+_TEST_STRUCT_TYPE = federated_language.StructWithPythonType(
+    elements=(
+        federated_language.TensorType(dtype=np.float32, shape=(3,)),
+        federated_language.TensorType(dtype=np.float32),
+    ),
+    container_type=tuple,
+)
+
+def trusted_program(input_provider, external_service_handle):
+  matrix_mechanism = buffered_toeplitz.BufferedToeplitz.build(
+      buf_decay=_BLT_BUF_DECAY,
+      output_scale=_BLT_OUTPUT_SCALE,
+  ).inverse_as_streaming_matrix()
+  # Use a constant noise seed so the results are reproducible.
+  global_noise_seed = 123
+  privatizer = noise_addition.matrix_factorization_privatizer(
+      matrix_mechanism,
+      stddev=_NOISE_MULTIPLIER * _CLIP_NORM,
+      prng_key=jax.random.PRNGKey(global_noise_seed),
+      dtype=jnp.float32,
+  )
+  dp_mf_factory = dp_mf_aggregator.DPMFAggregatorFactory(
+      gradient_privatizer=privatizer,
+      clients_per_round=2,
+      l2_clip_norm=_CLIP_NORM,
+  )
+  process = dp_mf_factory.create(_TEST_STRUCT_TYPE)
+  client_updates = [
+      (np.array([1.0, 1.0, 1.0], np.float32), np.float32(0.0)),
+      (np.array([0.0, 0.0, 0.0], np.float32), np.float32(1.0)),
+  ]
+  state = process.initialize()
+  output = process.next(state, client_updates)
+
+  result_val, _ = tff.framework.serialize_value(
+      output.result,
+      federated_language.framework.infer_type(output.result),
+  )
+  external_service_handle.release_unencrypted(
+      result_val.SerializeToString(), b"result"
+  )
+  num_clipped_updates, _ = tff.framework.serialize_value(
+      output.measurements["num_clipped_updates"],
+      federated_language.framework.infer_type(output.measurements["num_clipped_updates"]),
+  )
+  external_service_handle.release_unencrypted(
+      num_clipped_updates.SerializeToString(), b"num_clipped_updates"
+  )
+  )");
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+
+  tensorflow_federated::v0::Value result;
+  result.ParseFromString(released_data["result"]);
+  ASSERT_THAT(
+      result.struct_().element(0).value().array().float32_list().value(),
+      ::testing::Pointwise(::testing::FloatNear(0.001f),
+                           {-4.7695f, -3.8157f, 0.3610f}));
+  ASSERT_THAT(
+      result.struct_().element(1).value().array().float32_list().value(),
+      ::testing::Pointwise(::testing::FloatNear(0.001f), {-7.7562f}));
+
+  tensorflow_federated::v0::Value num_clipped_updates;
+  num_clipped_updates.ParseFromString(released_data["num_clipped_updates"]);
+  // Only the first example is clipped.
+  ASSERT_THAT(num_clipped_updates.array().int32_list().value(),
+              ::testing::ElementsAreArray({1}));
 
   ASSERT_TRUE(session_response.has_finalize());
 }
