@@ -20,6 +20,8 @@
 #include "containers/blob_metadata.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "willow/api/server_accumulator.h"
+#include "willow/proto/willow/aggregation_config.pb.h"
 #include "willow/proto/willow/messages.pb.h"
 
 namespace confidential_federated_compute::willow {
@@ -27,6 +29,8 @@ namespace confidential_federated_compute::willow {
 // Willow implementation of Session interface.
 class WillowSession final : public confidential_federated_compute::Session {
  public:
+  WillowSession(const secure_aggregation::willow::AggregationConfigProto&
+                    aggregation_config);
   WillowSession() = default;
 
   // Session configuration.
@@ -55,12 +59,17 @@ class WillowSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> AddInput(
       std::string input);
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Merge(
-      std::string input);
+      std::string serialized_state);
   absl::StatusOr<std::string> Compact();
   absl::StatusOr<std::string> Finalize();
 
+  absl::StatusOr<secure_aggregation::willow::ServerAccumulator*>
+  GetAccumulator() const;
+
   std::vector<secure_aggregation::willow::ClientMessage>
       pending_client_messages_;
+  absl::StatusOr<std::unique_ptr<secure_aggregation::willow::ServerAccumulator>>
+      accumulator_;
 };
 
 }  // namespace confidential_federated_compute::willow

@@ -37,13 +37,14 @@ archive_override(
 )
 
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
+bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "rules_rust", version = "0.65.0")
 single_version_override(
     module_name = "rules_rust",
     version = "0.65.0",
 )
 
-bazel_dep(name = "protobuf", version = "31.1")
+bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
 archive_override(
     # fix-rust-31.1
     # Patches protobuf to make the Rust libraries visible. See
