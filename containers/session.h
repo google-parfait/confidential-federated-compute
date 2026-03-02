@@ -23,12 +23,17 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute {
+
+// A map of counter names to their values. This is used by the Session to track
+// arbitrary metrics.
+using Counters = absl::flat_hash_map<std::string, int64_t>;
 
 // Class used to track the number of active sessions in a container.
 //
@@ -133,10 +138,8 @@ class Session {
                                 absl::string_view dst_state,
                                 std::string& release_token) = 0;
 
-    // Emits an error to the session stream but does not close the stream. This
-    // error can be logged and used to increment Flume counters on the untrusted
-    // side.
-    virtual bool EmitError(absl::Status status) = 0;
+    // Returns a reference to the counters.
+    virtual Counters& GetCounters() = 0;
   };
 
   // Initialize the session with the given configuration.

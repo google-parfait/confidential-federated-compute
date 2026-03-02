@@ -121,10 +121,10 @@ class ConfidentialTransformBase
 
   absl::Status SessionImpl(SessionStream* stream);
 
-  absl::Status HandleWrite(confidential_federated_compute::Session* session,
-                           fcp::confidentialcompute::WriteRequest request,
-                           absl::Cord blob_data, Decryptor* decryptor,
-                           SessionStream* stream, Session::Context& context);
+  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> HandleWrite(
+      confidential_federated_compute::Session* session,
+      fcp::confidentialcompute::WriteRequest request, absl::Cord blob_data,
+      Decryptor* decryptor, SessionStream* stream, Session::Context& context);
 
   absl::Status SetActiveKeyIds(
       const std::vector<absl::string_view>& decryption_keys,

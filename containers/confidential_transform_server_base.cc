@@ -62,12 +62,21 @@ using ::oak::crypto::DecryptionResult;
 using ::oak::crypto::ServerEncryptor;
 
 // Provides implementation of methods to emit the data into the session
-// stream with an ability to encrypt and chunk the data.
-class ChunkedStreamWriter : public Session::Context {
+// stream with an ability to encrypt and chunk the data. This class is not
+// threadsafe.
+class SessionContextImpl : public Session::Context {
  public:
-  ChunkedStreamWriter(SessionStream* stream, uint32_t chunk_size,
-                      const std::optional<KmsEncryptor>& encryptor)
+  SessionContextImpl(SessionStream* stream, uint32_t chunk_size,
+                     const std::optional<KmsEncryptor>& encryptor)
       : stream_(stream), chunk_size_(chunk_size), encryptor_(encryptor) {}
+
+  void ApplyCountersToResponse(SessionResponse* response) {
+    if (!counters_.empty()) {
+      response->mutable_metrics()->mutable_counters()->insert(counters_.begin(),
+                                                              counters_.end());
+      counters_.clear();
+    }
+  }
 
  private:
   // Implementation of Session::Context - private because these
@@ -79,7 +88,7 @@ class ChunkedStreamWriter : public Session::Context {
                       std::optional<absl::string_view> src_state,
                       absl::string_view dst_state,
                       std::string& release_token) override;
-  bool EmitError(absl::Status status) override;
+  Counters& GetCounters() override;
 
   bool Emit(std::string data, google::protobuf::Any config,
             BlobMetadata metadata);
@@ -87,14 +96,12 @@ class ChunkedStreamWriter : public Session::Context {
   SessionStream* stream_;
   uint32_t chunk_size_;
   const std::optional<KmsEncryptor>& encryptor_;
+  Counters counters_;
 };
 
-bool ChunkedStreamWriter::EmitError(absl::Status status) {
-  SessionResponse response = ToSessionWriteFinishedResponse(std::move(status));
-  return stream_->Write(std::move(response));
-}
+Counters& SessionContextImpl::GetCounters() { return counters_; }
 
-bool ChunkedStreamWriter::Emit(ReadResponse read_response) {
+bool SessionContextImpl::Emit(ReadResponse read_response) {
   SessionResponse response;
   ReadResponse* mutable_read = response.mutable_read();
   *mutable_read = std::move(read_response);
@@ -123,8 +130,8 @@ bool ChunkedStreamWriter::Emit(ReadResponse read_response) {
   return stream_->Write(response);
 }
 
-bool ChunkedStreamWriter::Emit(std::string data, google::protobuf::Any key,
-                               BlobMetadata metadata) {
+bool SessionContextImpl::Emit(std::string data, google::protobuf::Any key,
+                              BlobMetadata metadata) {
   ReadResponse response;
   *response.mutable_data() = std::move(data);
   *response.mutable_first_response_configuration() = std::move(key);
@@ -132,7 +139,7 @@ bool ChunkedStreamWriter::Emit(std::string data, google::protobuf::Any key,
   return Emit(std::move(response));
 }
 
-bool ChunkedStreamWriter::EmitUnencrypted(Session::KV kv) {
+bool SessionContextImpl::EmitUnencrypted(Session::KV kv) {
   BlobMetadata metadata;
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
   metadata.set_total_size_bytes(kv.data.size());
@@ -140,8 +147,8 @@ bool ChunkedStreamWriter::EmitUnencrypted(Session::KV kv) {
   return Emit(std::move(kv.data), std::move(kv.key), std::move(metadata));
 }
 
-bool ChunkedStreamWriter::EmitEncrypted(int reencryption_key_index,
-                                        Session::KV kv) {
+bool SessionContextImpl::EmitEncrypted(int reencryption_key_index,
+                                       Session::KV kv) {
   if (!encryptor_.has_value()) {
     LOG(ERROR) << "KMS reencryption context isn't initialized";
     return false;
@@ -162,7 +169,7 @@ bool ChunkedStreamWriter::EmitEncrypted(int reencryption_key_index,
               std::move(metadata));
 }
 
-bool ChunkedStreamWriter::EmitReleasable(
+bool SessionContextImpl::EmitReleasable(
     int reencryption_key_index, Session::KV kv,
     std::optional<absl::string_view> src_state, absl::string_view dst_state,
     std::string& release_token) {
@@ -195,8 +202,8 @@ bool ChunkedStreamWriter::EmitReleasable(
 
 // Decrypts and parses a record and incorporates the record into the session.
 //
-// Reports status to the client in WriteFinishedResponse.
-absl::Status ConfidentialTransformBase::HandleWrite(
+// Returns a WriteFinishedResponse with the status of the operation.
+absl::StatusOr<WriteFinishedResponse> ConfidentialTransformBase::HandleWrite(
     confidential_federated_compute::Session* session, WriteRequest request,
     absl::Cord blob_data, Decryptor* decryptor, SessionStream* stream,
     Session::Context& context) {
@@ -204,8 +211,7 @@ absl::Status ConfidentialTransformBase::HandleWrite(
   absl::StatusOr<std::string> key_id =
       GetKeyId(request.first_request_metadata());
   if (!key_id.ok()) {
-    stream->Write(ToSessionWriteFinishedResponse(key_id.status()));
-    return absl::OkStatus();
+    return ToWriteFinishedResponse(key_id.status());
   }
 
   // TODO: Avoid flattening the cord, which requires the downstream
@@ -216,21 +222,13 @@ absl::Status ConfidentialTransformBase::HandleWrite(
     LOG_EVERY_N(WARNING, 1000) << "Blob decryption failed for key_id "
                                << absl::BytesToHexString(key_id.value())
                                << " with status: " << unencrypted_data.status();
-    stream->Write(ToSessionWriteFinishedResponse(unencrypted_data.status()));
-    return absl::OkStatus();
+    return ToWriteFinishedResponse(unencrypted_data.status());
   }
   // Clear the memory used by the original encrypted data.
   blob_data.Clear();
 
-  SessionResponse response;
-  FCP_ASSIGN_OR_RETURN(
-      WriteFinishedResponse write_response,
-      session->Write(std::move(request), std::move(unencrypted_data.value()),
-                     context));
-
-  *response.mutable_write() = std::move(write_response);
-  stream->Write(response);
-  return absl::OkStatus();
+  return session->Write(std::move(request), std::move(unencrypted_data.value()),
+                        context);
 }
 
 absl::Status ConfidentialTransformBase::StreamInitializeInternal(
@@ -398,7 +396,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
 
   // This provides the context for encryption and writing of ReadResponse
   // messages.
-  ChunkedStreamWriter context(stream, chunk_size, kms_encryptor_);
+  SessionContextImpl context(stream, chunk_size, kms_encryptor_);
 
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
@@ -409,6 +407,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
                          context));
   SessionResponse response;
   *response.mutable_configure() = std::move(configure_response);
+  context.ApplyCountersToResponse(&response);
   stream->Write(response);
 
   // Initialize result_blob_metadata with unencrypted metadata since
@@ -452,9 +451,15 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
                                    .data = std::move(data)};
         }
         if (is_commit) {
-          FCP_RETURN_IF_ERROR(HandleWrite(
-              session.get(), std::move(write_state->first_request),
-              std::move(write_state->data), decryptor, stream, context));
+          FCP_ASSIGN_OR_RETURN(
+              WriteFinishedResponse response,
+              HandleWrite(session.get(), std::move(write_state->first_request),
+                          std::move(write_state->data), decryptor, stream,
+                          context));
+          SessionResponse session_response;
+          *session_response.mutable_write() = std::move(response);
+          context.ApplyCountersToResponse(&session_response);
+          stream->Write(session_response);
           write_state.reset();
         }
         break;
@@ -471,6 +476,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
                              session->Commit(commit_request, context));
         SessionResponse response;
         *response.mutable_commit() = std::move(commit_response);
+        context.ApplyCountersToResponse(&response);
         stream->Write(response);
         break;
       }
@@ -486,6 +492,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
                                                result_blob_metadata, context));
         SessionResponse response;
         *response.mutable_finalize() = std::move(finalize_response);
+        context.ApplyCountersToResponse(&response);
         stream->Write(response);
         return absl::OkStatus();
       }

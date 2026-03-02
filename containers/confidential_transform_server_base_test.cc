@@ -1270,42 +1270,84 @@ TEST_F(ConfidentialTransformServerBaseTest, ReadNoBlobsOnFinalize) {
   EXPECT_TRUE(finalize_response.has_finalize());
 }
 
-TEST_F(ConfidentialTransformServerBaseTest, EmitError) {
+TEST_F(ConfidentialTransformServerBaseTest, PopulatesMetrics) {
   InitializeTransform();
+
   auto mock_session = std::make_unique<MockSession>();
-  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Configure)
+      .WillOnce([](ConfigureRequest request, Session::Context& context) {
+        context.GetCounters()["configure_counter"] = 1;
+        return ConfigureResponse{};
+      });
+  EXPECT_CALL(*mock_session, Write)
+      .WillOnce([](WriteRequest request, std::string unencrypted_data,
+                   Session::Context& context) {
+        context.GetCounters()["write_counter"] = 2;
+        context.GetCounters()["another_counter"] = 1;
+        return WriteFinishedResponse{};
+      });
+  EXPECT_CALL(*mock_session, Commit)
+      .WillOnce([](CommitRequest request, Session::Context& context) {
+        context.GetCounters()["commit_counter"] = 1;
+        return CommitResponse{};
+      });
   EXPECT_CALL(*mock_session, Finalize)
-      .WillOnce(
-          [](FinalizeRequest request, BlobMetadata unused,
-             Session::Context& context) -> absl::StatusOr<FinalizeResponse> {
-            if (!context.EmitError(
-                    absl::InternalError("Expected Internal Error"))) {
-              LOG(ERROR) << "EmitError failed";
-              return absl::InternalError("EmitError failed");
-            }
-            return FinalizeResponse{};
-          });
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.GetCounters()["finalize_counter"] = 1;
+        return FinalizeResponse{};
+      });
   service_->AddSession(std::move(mock_session));
-
   grpc::ClientContext context;
-  auto stream = StartSession(&context);
 
+  SessionRequest configure_request;
+  configure_request.mutable_configure()->set_chunk_size(1000);
+
+  auto stream = stub_->Session(&context);
+  CHECK(stream->Write(configure_request));
+
+  SessionResponse configure_response;
+  CHECK(stream->Read(&configure_response));
+  ASSERT_TRUE(configure_response.has_configure());
+  EXPECT_THAT(
+      configure_response.metrics().counters(),
+      testing::UnorderedElementsAre(testing::Pair("configure_counter", 1)));
+
+  // Write
+  SessionRequest write_request = CreateDefaultWriteRequest("test data");
+  SessionResponse write_response;
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
+  ASSERT_TRUE(write_response.has_write());
+  EXPECT_THAT(
+      write_response.metrics().counters(),
+      testing::UnorderedElementsAre(testing::Pair("write_counter", 2),
+                                    testing::Pair("another_counter", 1)));
+
+  // Commit
+  SessionRequest commit_request;
+  commit_request.mutable_commit();
+  SessionResponse commit_response;
+  ASSERT_TRUE(stream->Write(commit_request));
+  ASSERT_TRUE(stream->Read(&commit_response));
+  ASSERT_TRUE(commit_response.has_commit());
+  EXPECT_THAT(
+      commit_response.metrics().counters(),
+      testing::UnorderedElementsAre(testing::Pair("commit_counter", 1)));
+
+  // Finalize
   SessionRequest finalize_request;
   finalize_request.mutable_finalize();
-  SessionResponse error_response, finalize_response;
+  SessionResponse finalize_response;
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_TRUE(finalize_response.has_finalize());
+  EXPECT_THAT(
+      finalize_response.metrics().counters(),
+      testing::UnorderedElementsAre(testing::Pair("finalize_counter", 1)));
 
-  CHECK(stream->Write(finalize_request));
-  CHECK(stream->Read(&error_response));
-  CHECK(stream->Read(&finalize_response));
-
-  // Verify that an error has been emitted.
-  EXPECT_TRUE(error_response.has_write());
-  EXPECT_EQ(error_response.write().status().code(), grpc::StatusCode::INTERNAL);
-  EXPECT_THAT(error_response.write().status().message(),
-              HasSubstr("Expected Internal Error"));
-
-  // Verify that FinalizeResponse has been received.
-  EXPECT_TRUE(finalize_response.has_finalize());
+  stream->WritesDone();
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest, EmitEncrypted) {

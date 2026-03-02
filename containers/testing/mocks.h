@@ -19,6 +19,7 @@
 
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "gmock/gmock.h"
 
 namespace confidential_federated_compute {
 
@@ -26,6 +27,10 @@ using ::fcp::confidentialcompute::ReadResponse;
 
 class MockContext : public confidential_federated_compute::Session::Context {
  public:
+  MockContext() {
+    ON_CALL(*this, GetCounters()).WillByDefault(testing::ReturnRef(counters_));
+  }
+
   MOCK_METHOD(bool, Emit, (ReadResponse), (override));
   MOCK_METHOD(bool, EmitUnencrypted, (Session::KV), (override));
   MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV), (override));
@@ -33,7 +38,9 @@ class MockContext : public confidential_federated_compute::Session::Context {
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
               (override));
-  MOCK_METHOD(bool, EmitError, (absl::Status), (override));
+  MOCK_METHOD(Counters&, GetCounters, (), (override));
+
+  Counters counters_;
 };
 
 }  // namespace confidential_federated_compute

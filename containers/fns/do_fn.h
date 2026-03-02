@@ -30,8 +30,9 @@ class DoFn : public Fn {
   // Context to emit zero or more output elements.
   //
   // Returns an error status if an error occurred and the Fn should be aborted.
-  // This is equivalent to calling AbortReplica in Flume. Ignorable errors
-  // should be emitted using Context::EmitError.
+  // This is equivalent to calling AbortReplica in Flume. Metrics about
+  // ignorable errors can be recorded using the Counters returned by
+  // Context::GetCounters.
   virtual absl::Status Do(KV input, Context& context) = 0;
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
