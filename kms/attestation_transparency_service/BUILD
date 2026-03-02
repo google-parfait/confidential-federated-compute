@@ -23,6 +23,8 @@ rust_library(
     visibility = ["//:__pkg__"],
     deps = [
         ":attestation_transparency_service_prost_proto",
+        ":payload_signer",
+        "@oak_crates_index//:anyhow",
         "@oak_crates_index//:tokio-stream",
         "@oak_crates_index//:tonic",
     ],
@@ -34,6 +36,8 @@ rust_test(
     deps = [
         ":attestation_transparency_service",
         ":attestation_transparency_service_prost_proto",
+        ":payload_signer",
+        "//testing:matchers",
         "@oak_crates_index//:googletest",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tokio-stream",
@@ -46,4 +50,15 @@ rust_prost_library(
     name = "attestation_transparency_service_prost_proto",
     proto = "@federated-compute//fcp/protos/confidentialcompute:attestation_transparency_service_proto",
     visibility = ["//:__pkg__"],
+)
+
+rust_library(
+    name = "payload_signer",
+    srcs = ["payload_signer.rs"],
+    visibility = ["//key_management_service:__subpackages__"],
+    deps = [
+        ":attestation_transparency_service_prost_proto",
+        "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:mockall",
+    ],
 )

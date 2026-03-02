@@ -16,6 +16,7 @@ use googletest::{
     description::Description,
     matcher::{Matcher, MatcherResult},
 };
+use prost::Message;
 
 /// Matches an error that has the given code in its context.
 pub fn code(expected: tonic::Code) -> impl Matcher<ActualT = anyhow::Error> {
@@ -73,11 +74,48 @@ impl<InnerMatcherT: Matcher<ActualT = String>> Matcher for ContextMatcher<InnerM
     }
 }
 
+/// Matches a `Vec<u8>` that deserializes to a message matched by `inner`.
+pub fn when_deserialized<MessageT: Message + Default>(
+    inner: impl Matcher<ActualT = MessageT>,
+) -> impl Matcher<ActualT = Vec<u8>> {
+    SerializedMessageMatcher { inner }
+}
+
+struct SerializedMessageMatcher<InnerMatcherT: Matcher> {
+    inner: InnerMatcherT,
+}
+
+impl<InnerMatcherT: Matcher<ActualT = MessageT>, MessageT: Message + Default> Matcher
+    for SerializedMessageMatcher<InnerMatcherT>
+{
+    type ActualT = Vec<u8>;
+
+    fn matches(&self, actual: &Self::ActualT) -> MatcherResult {
+        MessageT::decode(actual.as_slice()).map(|m| self.inner.matches(&m)).unwrap_or(false.into())
+    }
+
+    fn describe(&self, matcher_result: MatcherResult) -> Description {
+        match matcher_result {
+            MatcherResult::Match => format!(
+                "deserializes to a message which {}",
+                self.inner.describe(MatcherResult::Match)
+            )
+            .into(),
+            MatcherResult::NoMatch => format!(
+                "doesn't deserialize to a message which {}",
+                self.inner.describe(MatcherResult::Match)
+            )
+            .into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
     use anyhow::anyhow;
     use googletest::prelude::*;
+    use prost_types::Duration;
     use tonic::Code::{Internal, Unknown};
 
     #[googletest::test]
@@ -140,5 +178,26 @@ mod tests {
     #[googletest::test]
     fn has_context_does_not_match_different_string() {
         expect_that!(anyhow!("message").context("context1"), not(has_context(eq("context2"))));
+    }
+
+    #[googletest::test]
+    fn when_deserialized_matches() {
+        expect_that!(
+            Duration { seconds: 1, ..Default::default() }.encode_to_vec(),
+            when_deserialized(matches_pattern!(Duration { seconds: eq(1) }))
+        );
+    }
+
+    #[googletest::test]
+    fn when_deserialized_does_not_match_invalid_message() {
+        expect_that!(b"invalid".to_vec(), not(when_deserialized(anything::<Duration>())));
+    }
+
+    #[googletest::test]
+    fn when_deserialized_does_not_match_different_message() {
+        expect_that!(
+            Duration { seconds: 1, ..Default::default() }.encode_to_vec(),
+            not(when_deserialized(matches_pattern!(Duration { seconds: eq(2) })))
+        );
     }
 }

@@ -24,6 +24,12 @@ use coset::{
 };
 use futures::stream::{FuturesOrdered, TryStreamExt};
 use oak_sdk_containers::Signer;
+use payload_signer::PayloadSigner;
+use payload_transparency_proto::{
+    fcp::confidentialcompute::{signed_payload::signature::Headers, SignedPayload},
+    key_proto::fcp::confidentialcompute::{key, Key},
+};
+use prost::Message;
 
 // Private CWT claims; see
 // https://github.com/google/federated-compute/blob/main/fcp/protos/confidentialcompute/cbor_ids.md.
@@ -90,6 +96,48 @@ pub async fn derive_public_cwts<S: Signer>(
         cwts.push_back(build_cwt(claims, signer));
     }
     cwts.try_collect().await
+}
+
+/// Derives a public key, encoded as a SignedPayload, for each access policy
+/// hash.
+pub fn derive_signed_public_keys<S: PayloadSigner>(
+    alg: i64,
+    key_id: &[u8],
+    ikm: &[u8],
+    headers: &Headers,
+    access_policy_hashes: impl IntoIterator<Item = impl AsRef<[u8]>> + Copy,
+    signer: &S,
+) -> anyhow::Result<Vec<SignedPayload>> {
+    ensure!(alg == HPKE_BASE_X25519_SHA256_AES128GCM, "unsupported algorithm: {}", alg);
+    let serialized_headers = headers.encode_to_vec();
+    let private_keys = derive_raw_private_keys(alg, ikm, access_policy_hashes)?;
+    access_policy_hashes
+        .into_iter()
+        .zip(private_keys)
+        .map(|(hash, private_key)| {
+            let hash: &[u8] = hash.as_ref();
+            let serialized_key = Key {
+                algorithm: key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32,
+                purpose: Some(key::Purpose::Encrypt as i32),
+                key_id: get_derived_key_id(key_id, hash),
+                key_material: get_public_key(alg, &private_key)?,
+            }
+            .encode_to_vec();
+
+            // Add the access policy hash to the headers. This is valid because
+            // concatenation of serialized messages is equivalent to merging.
+            let extra_headers =
+                Headers { access_policy_sha256: hash.to_vec(), ..Default::default() }
+                    .encode_to_vec();
+            let serialized_headers =
+                [serialized_headers.as_slice(), extra_headers.as_slice()].concat();
+
+            let signature = signer
+                .sign(&serialized_headers, &serialized_key)
+                .context("failed to sign SignedPayload")?;
+            Ok(SignedPayload { payload: serialized_key, signatures: vec![signature] })
+        })
+        .collect()
 }
 
 /// Derives a raw private key for each HKDF info value.

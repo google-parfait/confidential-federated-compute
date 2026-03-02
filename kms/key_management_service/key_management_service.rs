@@ -23,8 +23,8 @@ use coset::{
 };
 use hashbrown::HashMap;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, get_derived_key_id,
-    HPKE_BASE_X25519_SHA256_AES128GCM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, derive_signed_public_keys,
+    get_derived_key_id, HPKE_BASE_X25519_SHA256_AES128GCM,
 };
 use kms_proto::fcp::confidentialcompute::{
     authorize_confidential_transform_response, key_management_service_server, keyset,
@@ -36,6 +36,8 @@ use kms_proto::fcp::confidentialcompute::{
 };
 use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
+use payload_signer::PayloadSigner;
+use payload_transparency_proto::fcp::confidentialcompute::signed_payload::signature::Headers;
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use release_tokens::{
@@ -89,16 +91,17 @@ pub fn get_init_request() -> UpdateRequest {
 }
 
 /// An implementation of the KeyManagementService proto service.
-pub struct KeyManagementService<SC, S> {
+pub struct KeyManagementService<SC, S, PS> {
     storage_client: SC,
     signer: S,
+    payload_signer: PS,
 }
 
-impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
+impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S, PS> {
     /// Creates a new KeyManagementService that interacts with persistent
     /// storage via the provided client.
-    pub fn new(storage_client: SC, signer: S) -> Self {
-        Self { storage_client, signer }
+    pub fn new(storage_client: SC, signer: S, payload_signer: PS) -> Self {
+        Self { storage_client, signer, payload_signer }
     }
 
     /// Converts an anyhow::Error to a tonic::Status using the attached Code (if
@@ -361,10 +364,12 @@ impl<SC: StorageClient, S: Signer> KeyManagementService<SC, S> {
 }
 
 #[tonic::async_trait]
-impl<SC, S> key_management_service_server::KeyManagementService for KeyManagementService<SC, S>
+impl<SC, S, PS> key_management_service_server::KeyManagementService
+    for KeyManagementService<SC, S, PS>
 where
     SC: StorageClient + Send + Sync + 'static,
     S: Signer + Send + Sync + 'static,
+    PS: PayloadSigner + Send + Sync + 'static,
 {
     async fn get_cluster_public_key(
         &self,
@@ -542,8 +547,29 @@ where
         )
         .await
         .map_err(Self::convert_error)?;
-        // TODO: b/454946443 - Populate signed_public_keys.
-        Ok(Response::new(DeriveKeysResponse { public_keys, signed_public_keys: vec![] }))
+
+        let signed_public_keys = derive_signed_public_keys(
+            value.algorithm,
+            &key_id,
+            &value.ikm,
+            &Headers {
+                issued_at: Some(response.now.unwrap_or_default()),
+                not_before: Some(created),
+                not_after: Some(expiration.unwrap_or_default()),
+                ..Default::default()
+            },
+            &request.authorized_logical_pipeline_policies_hashes,
+            &self.payload_signer,
+        )
+        .unwrap_or_else(|err| {
+            // TODO: b/454946443 - Until the AttestationTransparencyService is
+            // guaranteed to be initialized, don't fail the request if
+            // attestation-transparency-based keys cannot be derived.
+            warn!("Failed to derive SignedPayloads: {err}");
+            Vec::new()
+        });
+
+        Ok(Response::new(DeriveKeysResponse { public_keys, signed_public_keys }))
     }
 
     async fn get_logical_pipeline_state(

@@ -19,6 +19,8 @@ use attestation_transparency_service_proto::fcp::confidentialcompute::{
     GetStatusRequest,
 };
 use googletest::prelude::*;
+use matchers::has_context;
+use payload_signer::PayloadSigner;
 use tokio::{net::TcpListener, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::task::AbortOnDropHandle;
@@ -27,9 +29,13 @@ use tonic::{
     Code, Status,
 };
 
-async fn start_server(
-) -> (AttestationTransparencyServiceClient<tonic::transport::Channel>, AbortOnDropHandle<()>) {
+async fn start_server() -> (
+    AttestationTransparencyServiceClient<tonic::transport::Channel>,
+    impl PayloadSigner,
+    AbortOnDropHandle<()>,
+) {
     let ats = AttestationTransparencyService::default();
+    let signer = ats.signer();
 
     let listener = TcpListener::bind("[::]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -42,13 +48,23 @@ async fn start_server(
             .await
             .unwrap();
     });
-    (client, AbortOnDropHandle::new(handle))
+    (client, signer, AbortOnDropHandle::new(handle))
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn sign_fails_without_key() {
+    let (_, signer, _server_handle) = start_server().await;
+    expect_that!(
+        signer.sign(b"headers", b"payload"),
+        err(has_context(contains_substring("AttestationTransparencyService not initialized")))
+    );
 }
 
 #[googletest::test]
 #[tokio::test]
 async fn create_signing_key_unimplemented() {
-    let (mut client, _server_handle) = start_server().await;
+    let (mut client, _, _server_handle) = start_server().await;
 
     let (_, rx) = mpsc::channel(1);
     expect_that!(
@@ -63,7 +79,7 @@ async fn create_signing_key_unimplemented() {
 #[googletest::test]
 #[tokio::test]
 async fn share_signing_key_unimplemented() {
-    let (mut client, _server_handle) = start_server().await;
+    let (mut client, _, _server_handle) = start_server().await;
 
     let (_, rx) = mpsc::channel(1);
     expect_that!(
@@ -78,7 +94,7 @@ async fn share_signing_key_unimplemented() {
 #[googletest::test]
 #[tokio::test]
 async fn load_signing_key_unimplemented() {
-    let (mut client, _server_handle) = start_server().await;
+    let (mut client, _, _server_handle) = start_server().await;
 
     let (_, rx) = mpsc::channel(1);
     expect_that!(
@@ -93,7 +109,7 @@ async fn load_signing_key_unimplemented() {
 #[googletest::test]
 #[tokio::test]
 async fn get_status_unimplemented() {
-    let (mut client, _server_handle) = start_server().await;
+    let (mut client, _, _server_handle) = start_server().await;
 
     expect_that!(
         client.get_status(GetStatusRequest::default()).await,

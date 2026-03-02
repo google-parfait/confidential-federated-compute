@@ -22,10 +22,21 @@ use coset::{
 };
 use googletest::prelude::*;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, get_derived_key_id,
-    ACCESS_POLICY_SHA256_CLAIM, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
+    derive_private_keys, derive_public_cwts, derive_public_keys, derive_signed_public_keys,
+    get_derived_key_id, ACCESS_POLICY_SHA256_CLAIM, HPKE_BASE_X25519_SHA256_AES128GCM,
+    PUBLIC_KEY_CLAIM,
 };
+use matchers::when_deserialized;
 use oak_proto_rust::oak::crypto::v1::Signature;
+use payload_signer::MockPayloadSigner;
+use payload_transparency_proto::{
+    fcp::confidentialcompute::{
+        signed_payload,
+        signed_payload::signature::{Headers, Signature::RawSignature},
+        SignedPayload,
+    },
+    key_proto::fcp::confidentialcompute::{key, Key},
+};
 
 struct FakeSigner {}
 #[async_trait::async_trait]
@@ -235,6 +246,67 @@ async fn derive_public_cwts_fails_with_invalid_algorithm() {
             &FakeSigner {},
         )
         .await,
+        err(displays_as(contains_substring("unsupported algorithm"))),
+    );
+}
+
+#[googletest::test]
+fn derive_signed_public_keys_produces_signed_payload() {
+    let mut signer = MockPayloadSigner::new();
+    signer.expect_sign().returning(|headers, data| {
+        Ok(signed_payload::Signature {
+            headers: headers.to_vec(),
+            signature: Some(RawSignature([b"<", data, b">"].concat())),
+            ..Default::default()
+        })
+    });
+
+    let signed_keys = derive_signed_public_keys(
+        HPKE_BASE_X25519_SHA256_AES128GCM,
+        b"key-id",
+        &[0; 32],
+        &Headers { claims: vec!["claim".to_string()], ..Default::default() },
+        [b"foo"],
+        &signer,
+    );
+    assert_that!(signed_keys, ok(elements_are!(anything())));
+    let signed_key = &signed_keys.unwrap()[0];
+    expect_that!(
+        *signed_key,
+        matches_pattern!(SignedPayload {
+            payload: when_deserialized(matches_pattern!(Key {
+                algorithm: eq(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32),
+                purpose: some(eq(key::Purpose::Encrypt as i32)),
+                key_id: eq(b"key-idfoo"),
+                key_material: not(empty()),
+            })),
+            signatures: elements_are![matches_pattern!(signed_payload::Signature {
+                headers: when_deserialized(matches_pattern!(Headers {
+                    claims: elements_are![eq("claim")],
+                    access_policy_sha256: eq(b"foo"),
+                })),
+                signature: some(matches_pattern!(RawSignature(eq([
+                    b"<",
+                    signed_key.payload.as_slice(),
+                    b">"
+                ]
+                .concat())))),
+            })],
+        })
+    );
+}
+
+#[googletest::test]
+fn derive_signed_public_keys_fails_with_invalid_algorithm() {
+    expect_that!(
+        derive_signed_public_keys(
+            0,
+            b"key-id",
+            &[0; 32],
+            &Headers::default(),
+            [b"foo"],
+            &MockPayloadSigner::new(),
+        ),
         err(displays_as(contains_substring("unsupported algorithm"))),
     );
 }

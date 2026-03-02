@@ -12,19 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::anyhow;
 use attestation_transparency_service_proto::{
     fcp::confidentialcompute::{
         attestation_transparency_service_server, CreateSigningKeyRequest, CreateSigningKeyResponse,
         GetStatusRequest, GetStatusResponse,
     },
+    payload_transparency_proto::fcp::confidentialcompute::signed_payload::Signature,
     session_proto::oak::session::v1::{SessionRequest, SessionResponse},
 };
+use payload_signer::PayloadSigner;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response};
 
 /// An implementation of the AttestationTransparencyService proto service.
 #[derive(Default)]
 pub struct AttestationTransparencyService {}
+
+impl AttestationTransparencyService {
+    /// Creates and returns a `PayloadSigner` that signs using the most recently
+    /// created or loaded signing key (if any).
+    pub fn signer(&self) -> impl PayloadSigner + Clone {
+        AttestationTransparencyServiceSigner {}
+    }
+}
 
 #[tonic::async_trait]
 impl attestation_transparency_service_server::AttestationTransparencyService
@@ -60,5 +71,17 @@ impl attestation_transparency_service_server::AttestationTransparencyService
         _request: Request<GetStatusRequest>,
     ) -> Result<Response<GetStatusResponse>, tonic::Status> {
         Err(tonic::Status::unimplemented("GetStatus is unimplemented"))
+    }
+}
+
+/// A PayloadSigner that uses the AttestationTransparencyService's most recently
+/// created/loaded signing key.
+#[derive(Clone)]
+struct AttestationTransparencyServiceSigner {}
+
+impl PayloadSigner for AttestationTransparencyServiceSigner {
+    fn sign(&self, _headers: &[u8], _payload: &[u8]) -> anyhow::Result<Signature> {
+        Err(anyhow!("AttestationTransparencyService not initialized")
+            .context(tonic::Code::Unavailable))
     }
 }

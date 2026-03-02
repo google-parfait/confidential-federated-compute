@@ -24,6 +24,7 @@ rust_library(
     deps = [
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:googletest",
+        "@oak_crates_index//:prost",
         "@oak_crates_index//:tonic",
     ],
 )
@@ -31,6 +32,7 @@ rust_library(
 rust_test(
     name = "matchers_test",
     crate = ":matchers",
+    deps = ["@oak_crates_index//:prost-types"],
 )
 
 rust_library(

@@ -53,6 +53,11 @@ use kms_proto::fcp::confidentialcompute::{
 };
 use oak_crypto::{encryptor::ServerEncryptor, signer::Signer};
 use oak_proto_rust::oak::crypto::v1::Signature;
+use payload_signer::{MockPayloadSigner, PayloadSigner};
+use payload_transparency_proto::{
+    fcp::confidentialcompute::SignedPayload,
+    key_proto::fcp::confidentialcompute::{key, Key as FcpKey},
+};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use release_tokens::{
@@ -195,7 +200,7 @@ fn init_request() {
 async fn get_cluster_key() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let request = GetClusterPublicKeyRequest::default();
     let response = kms.get_cluster_public_key(request.into_request()).await;
@@ -229,7 +234,11 @@ async fn get_cluster_key() {
 #[googletest::test]
 #[tokio::test]
 async fn get_keyset_with_empty_keyset() {
-    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::default(),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
 
     let request = GetKeysetRequest { keyset_id: 1234 };
     let response = kms.get_keyset(request.into_request()).await;
@@ -246,7 +255,11 @@ async fn get_keyset_with_empty_keyset() {
 #[tokio::test]
 async fn rotate_and_get_keyset() {
     let now = Arc::new(AtomicI64::new(1000));
-    let kms = KeyManagementService::new(FakeStorageClient::new(now.clone()), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::new(now.clone()),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
     // Add 3 keys, each with creation time (1000 + 10*i) and ttl 100*i.
     for i in 1..4 {
         now.fetch_add(10, Ordering::Relaxed);
@@ -293,7 +306,11 @@ async fn rotate_and_get_keyset() {
 #[googletest::test]
 #[tokio::test]
 async fn derive_keys_with_empty_keyset() {
-    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::default(),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
 
     let request = DeriveKeysRequest {
         keyset_id: 1234,
@@ -313,7 +330,13 @@ async fn derive_keys_with_empty_keyset() {
 #[tokio::test]
 async fn rotate_and_derive_keys() {
     let now = Arc::new(AtomicI64::new(1000));
-    let kms = KeyManagementService::new(FakeStorageClient::new(now.clone()), FakeSigner {});
+    let mut payload_signer = MockPayloadSigner::new();
+    payload_signer.expect_sign().returning(|_, _| Ok(Default::default()));
+    let kms = KeyManagementService::new(
+        FakeStorageClient::new(now.clone()),
+        FakeSigner {},
+        payload_signer,
+    );
     // Add 3 keys, each with creation time (1000 + 10*i) and ttl 400 - 100*i.
     for i in 1..4 {
         now.fetch_add(10, Ordering::Relaxed);
@@ -345,12 +368,30 @@ async fn rotate_and_derive_keys() {
         response,
         ok(matches_pattern!(DeriveKeysResponse {
             public_keys: elements_are![not(empty()), not(empty())],
+            signed_public_keys: elements_are![
+                matches_pattern!(SignedPayload { payload: not(empty()), signatures: not(empty()) }),
+                matches_pattern!(SignedPayload { payload: not(empty()), signatures: not(empty()) }),
+            ],
         }))
     );
 
     let mut key_ids = vec![];
-    for public_key in response.unwrap().public_keys {
-        let cwt = CoseSign1::from_slice(&public_key);
+    for (public_key, signed_public_key) in
+        response.as_ref().map(|r| r.public_keys.iter().zip(r.signed_public_keys.iter())).unwrap()
+    {
+        let key = FcpKey::decode(signed_public_key.payload.as_slice())
+            .expect("failed to decode signed_public_key");
+        assert_that!(
+            key,
+            matches_pattern!(FcpKey {
+                algorithm: eq(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32),
+                purpose: some(eq(key::Purpose::Encrypt as i32)),
+                key_id: not(empty()),
+                key_material: not(empty()),
+            })
+        );
+
+        let cwt = CoseSign1::from_slice(public_key);
         expect_that!(
             cwt,
             ok(matches_pattern!(CoseSign1 {
@@ -378,7 +419,7 @@ async fn rotate_and_derive_keys() {
                 )),
             })),
         );
-        let key = claims.and_then(|claims| {
+        let cose_key = claims.and_then(|claims| {
             claims
                 .rest
                 .iter()
@@ -387,10 +428,11 @@ async fn rotate_and_derive_keys() {
                 .unwrap()
         });
         expect_that!(
-            key,
+            cose_key,
             ok(matches_pattern!(CoseKey {
                 kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
                 alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+                key_id: eq(key.key_id.clone()),
                 key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
                 params: unordered_elements_are![
                     (
@@ -404,9 +446,7 @@ async fn rotate_and_derive_keys() {
                 ],
             })),
         );
-        if let Ok(key_id) = key.map(|key| key.key_id) {
-            key_ids.push(key_id);
-        }
+        key_ids.push(key.key_id);
     }
 
     // The key ids should be distinct and start with the keyset key id.
@@ -431,8 +471,36 @@ async fn rotate_and_derive_keys() {
 
 #[googletest::test]
 #[tokio::test]
+async fn derive_keys_ignores_payload_signer_errors() {
+    let mut payload_signer = MockPayloadSigner::new();
+    payload_signer.expect_sign().returning(|_, _| anyhow::bail!("signing failed"));
+    let kms =
+        KeyManagementService::new(FakeStorageClient::default(), FakeSigner {}, payload_signer);
+    let request =
+        RotateKeysetRequest { keyset_id: 1234, ttl: Some(Duration { seconds: 10_000, nanos: 0 }) };
+    assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+
+    let request = DeriveKeysRequest {
+        keyset_id: 1234,
+        authorized_logical_pipeline_policies_hashes: vec![b"foo".into(), b"bar".into()],
+    };
+    assert_that!(
+        kms.derive_keys(request.into_request()).await.map(Response::into_inner),
+        ok(matches_pattern!(DeriveKeysResponse {
+            public_keys: elements_are![not(empty()), not(empty())],
+            signed_public_keys: empty(),
+        }))
+    );
+}
+
+#[googletest::test]
+#[tokio::test]
 async fn get_logical_pipeline_state_with_empty_state() {
-    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::default(),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
 
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     let response = kms.get_logical_pipeline_state(request.into_request()).await;
@@ -448,7 +516,11 @@ async fn get_logical_pipeline_state_with_empty_state() {
 #[googletest::test]
 #[tokio::test]
 async fn register_pipeline_invocation_success() {
-    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::default(),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -492,7 +564,11 @@ async fn register_pipeline_invocation_success() {
 #[googletest::test]
 #[tokio::test]
 async fn register_pipeline_invocation_with_invalid_policies() {
-    let kms = KeyManagementService::new(FakeStorageClient::default(), FakeSigner {});
+    let kms = KeyManagementService::new(
+        FakeStorageClient::default(),
+        FakeSigner {},
+        MockPayloadSigner::new(),
+    );
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform { src_node_ids: vec![1], ..Default::default() }],
@@ -544,7 +620,13 @@ async fn register_pipeline_invocation_with_invalid_policies() {
 #[tokio::test]
 async fn register_pipeline_invocation_with_keys_in_response() {
     let now = Arc::new(AtomicI64::new(0));
-    let kms = KeyManagementService::new(FakeStorageClient::new(now.clone()), FakeSigner {});
+    let mut payload_signer = MockPayloadSigner::new();
+    payload_signer.expect_sign().returning(|_, _| Ok(Default::default()));
+    let kms = KeyManagementService::new(
+        FakeStorageClient::new(now.clone()),
+        FakeSigner {},
+        payload_signer,
+    );
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -682,7 +764,7 @@ async fn register_pipeline_invocation_with_keys_in_response() {
 async fn authorize_confidential_transform_success() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -780,7 +862,9 @@ async fn authorize_confidential_transform_with_keyset_keys() {
     let now = Arc::new(AtomicI64::new(0));
     let storage_client = FakeStorageClient::new(now.clone());
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let mut payload_signer = MockPayloadSigner::new();
+    payload_signer.expect_sign().returning(|_, _| Ok(Default::default()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, payload_signer);
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -923,7 +1007,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
 async fn authorize_confidential_transform_with_intermediate_keys() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1003,7 +1087,7 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
 async fn authorize_confidential_transform_endorses_transform_signing_key() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(1000)));
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1126,7 +1210,7 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
 async fn authorize_confidential_transform_with_invalid_invocation_id() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1159,7 +1243,7 @@ async fn authorize_confidential_transform_with_invalid_invocation_id() {
 async fn authorize_confidential_transform_without_registered_invocation() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1192,7 +1276,7 @@ async fn authorize_confidential_transform_without_registered_invocation() {
 async fn authorize_confidential_transform_without_authorization() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1248,14 +1332,15 @@ async fn authorize_confidential_transform_without_authorization() {
 ///
 /// This function is used to avoid repetitive (and complex) setup in tests
 /// exercising the ReleaseResults flow.
-async fn register_and_authorize<SC, S>(
-    kms: &KeyManagementService<SC, S>,
+async fn register_and_authorize<SC, S, PS>(
+    kms: &KeyManagementService<SC, S, PS>,
     logical_pipeline_name: &str,
     policy: &PipelineVariantPolicy,
 ) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, Vec<u8>)>
 where
     SC: StorageClient + Send + Sync + 'static,
     S: oak_sdk_containers::Signer + Send + Sync + 'static,
+    PS: PayloadSigner + Send + Sync + 'static,
 {
     register_and_authorize_with_options(
         kms,
@@ -1269,8 +1354,8 @@ where
 
 /// Variant of register_and_authorize that allows rarely-used options to be
 /// specified.
-async fn register_and_authorize_with_options<SC, S>(
-    kms: &KeyManagementService<SC, S>,
+async fn register_and_authorize_with_options<SC, S, PS>(
+    kms: &KeyManagementService<SC, S, PS>,
     logical_pipeline_name: &str,
     policy: &PipelineVariantPolicy,
     intermediates_ttl: Duration,
@@ -1279,6 +1364,7 @@ async fn register_and_authorize_with_options<SC, S>(
 where
     SC: StorageClient + Send + Sync + 'static,
     S: oak_sdk_containers::Signer + Send + Sync + 'static,
+    PS: PayloadSigner + Send + Sync + 'static,
 {
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -1401,7 +1487,7 @@ fn create_release_token(
 async fn release_results_success() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1488,7 +1574,7 @@ async fn release_results_success() {
 async fn release_results_sets_expiration_from_intermediates_ttl() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1548,7 +1634,7 @@ async fn release_results_sets_expiration_from_key_ttl() {
     let now = Arc::new(AtomicI64::new(10_000));
     let storage_client = FakeStorageClient::new(now.clone());
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     // Create keys with different expiration times:
     //  - keyset 111: 20_000 (not used by pipeline)
@@ -1633,7 +1719,7 @@ async fn release_results_sets_expiration_from_key_ttl() {
 async fn release_results_sets_expiration_from_existing_logical_pipeline_state() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1699,7 +1785,7 @@ async fn release_results_sets_expiration_from_existing_logical_pipeline_state() 
 async fn release_results_fails_with_src_state_not_matching() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1748,7 +1834,7 @@ async fn release_results_fails_with_src_state_not_matching() {
 async fn release_results_fails_with_src_state_none_not_matching() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1817,7 +1903,7 @@ async fn release_results_fails_with_missing_invocation_id() {
     let now = Arc::new(AtomicI64::new(1000));
     let storage_client = FakeStorageClient::new(now.clone());
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1864,7 +1950,7 @@ async fn release_results_fails_with_missing_invocation_id() {
 async fn release_results_fails_with_modified_release_token() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1912,7 +1998,7 @@ async fn release_results_fails_with_modified_release_token() {
 async fn release_results_fails_with_undecryptable_release_token() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -1957,7 +2043,7 @@ async fn release_results_fails_with_undecryptable_release_token() {
 async fn release_results_fails_with_modified_signing_key_endorsement() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
-    let kms = KeyManagementService::new(storage_client, FakeSigner {});
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform {

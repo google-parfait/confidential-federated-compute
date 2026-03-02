@@ -55,11 +55,14 @@ rust_library(
     name = "key_derivation",
     srcs = ["key_derivation.rs"],
     deps = [
+        ":payload_transparency_prost_proto",
+        "//attestation_transparency_service:payload_signer",
         "@boringssl//rust/bssl-crypto",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:coset",
         "@oak_crates_index//:futures",
+        "@oak_crates_index//:prost",
     ],
 )
 
@@ -69,6 +72,9 @@ rust_test(
     proc_macro_deps = ["@oak_crates_index//:async-trait"],
     deps = [
         ":key_derivation",
+        ":payload_transparency_prost_proto",
+        "//attestation_transparency_service:payload_signer",
+        "//testing:matchers",
         "@boringssl//rust/bssl-crypto",
         "@oak//oak_proto_rust",
         "@oak//oak_sdk/containers:oak_sdk_containers",
@@ -87,8 +93,10 @@ rust_library(
         ":access_policies",
         ":key_derivation",
         ":kms_prost_proto",
+        ":payload_transparency_prost_proto",
         ":release_tokens",
         "//:prost_proto_conversion",
+        "//attestation_transparency_service:payload_signer",
         "//storage_service:storage_client",
         "//storage_service:storage_prost_proto",
         "@boringssl//rust/bssl-crypto",
@@ -114,8 +122,10 @@ rust_test(
         ":key_derivation",
         ":key_management_service",
         ":kms_prost_proto",
+        ":payload_transparency_prost_proto",
         ":release_tokens",
         "//:prost_proto_conversion",
+        "//attestation_transparency_service:payload_signer",
         "//storage_service:storage",
         "//storage_service:storage_client",
         "//storage_service:storage_prost_proto",
@@ -137,6 +147,11 @@ rust_prost_library(
     name = "kms_prost_proto",
     proto = "@federated-compute//fcp/protos/confidentialcompute:kms_proto",
     visibility = ["//:__subpackages__"],
+)
+
+rust_prost_library(
+    name = "payload_transparency_prost_proto",
+    proto = "@federated-compute//fcp/protos/confidentialcompute:payload_transparency_proto",
 )
 
 rust_library(

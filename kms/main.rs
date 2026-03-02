@@ -135,6 +135,7 @@ async fn main() {
             clock.clone(),
         ),
         signer,
+        attestation_transparency_service.signer(),
     );
 
     // Create the TCP EndpointService, following the TCP recommendation of only
