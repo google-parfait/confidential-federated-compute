@@ -29,7 +29,8 @@ def initialize_model(artifacts_path: str) -> bool:
 
   """
   global model
-  model =  SentenceTransformer(artifacts_path)
+  if model is None:
+    model =  SentenceTransformer(artifacts_path, device="cpu")
   return model is not None
 
 

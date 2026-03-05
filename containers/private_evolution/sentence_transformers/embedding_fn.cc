@@ -123,14 +123,15 @@ EmbeddingFn::EmbeddingFn(absl::string_view model_artifact_path,
 
 absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
   if (!delegate_->InitializeModel(model_artifact_path_)) {
+    LOG(WARNING) << "Model initialization failed.";
     return absl::InvalidArgumentError("Model initialization failed");
   }
-  LOG(WARNING) << "Replica initialized.";
+  LOG(INFO) << "Replica initialized.";
   return absl::OkStatus();
 }
 
 absl::Status EmbeddingFn::FinalizeReplica(Any config, Context& context) {
-  LOG(WARNING) << "Replica finalized.";
+  LOG(INFO) << "Replica finalized.";
   return absl::OkStatus();
 }
 
@@ -170,6 +171,7 @@ absl::StatusOr<std::string> EmbeddingFn::Process(std::string unencrypted_data) {
   if (tensor.dtype() != DT_STRING) {
     return absl::InvalidArgumentError("Unsupported tensor data type.");
   }
+  LOG(INFO) << "Generating embedding";
   FCP_ASSIGN_OR_RETURN(
       std::vector<std::vector<float>> embeddings,
       delegate_->GenerateEmbeddings(tensor.ToStringVector(), prompt_));
@@ -227,6 +229,7 @@ EmbeddingFnFactoryProvider CreateEmbeddingFnFactoryProvider(
         write_configuration_map.at(config.model_artifacts_configuration_id());
     FCP_ASSIGN_OR_RETURN(std::string model_artifacts_path,
                          ExtractAll(archive_path, tmp_dir));
+    LOG(WARNING) << "model archive path is " << model_artifacts_path;
     std::optional<std::string> prompt;
     if (config.has_encode_config() &&
         !config.encode_config().prompt().empty()) {

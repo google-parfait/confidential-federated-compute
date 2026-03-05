@@ -41,11 +41,12 @@ static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 
 void RunServer() {
   std::string server_address("[::]:8080");
-  PyModelDelegateFactory factory;
+  PyRuntimeManager manager;
+  CHECK_OK(manager.ImportLib());
 
   fns::FnConfidentialTransform service(
       std::make_unique<InstanceSigningKeyHandle>(),
-      CreateEmbeddingFnFactoryProvider(factory, "/tmp"),
+      CreateEmbeddingFnFactoryProvider(manager, "/tmp"),
       std::make_unique<InstanceEncryptionKeyHandle>());
   ServerBuilder builder;
   builder.SetMaxReceiveMessageSize(kChannelMaxMessageSize);
