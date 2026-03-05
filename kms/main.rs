@@ -99,15 +99,15 @@ async fn main() {
     let mut orchestrator_client = OrchestratorClient::create(&channel);
     let endorsed_evidence =
         orchestrator_client.get_endorsed_evidence().await.expect("failed to get endorsed evidence");
-    let evidence = endorsed_evidence.evidence.expect("EndorsedEvidence.evidence not set");
+    let evidence = endorsed_evidence.evidence.as_ref().expect("EndorsedEvidence.evidence not set");
     let endorsements =
-        endorsed_evidence.endorsements.expect("EndorsedEvidence.endorsements not set");
+        endorsed_evidence.endorsements.as_ref().expect("EndorsedEvidence.endorsements not set");
 
     let attester = Arc::new(StaticAttester::new(evidence.clone()));
-    let endorser = Arc::new(StaticEndorser::new(endorsements));
+    let endorser = Arc::new(StaticEndorser::new(endorsements.clone()));
     let session_binder = Arc::new(InstanceSessionBinder::create(&channel));
     let signer = InstanceSigner::create(&channel);
-    let reference_values = get_reference_values(&evidence).expect("failed to get reference values");
+    let reference_values = get_reference_values(evidence).expect("failed to get reference values");
     let clock = Arc::new(SystemTimeClock {});
 
     // Export basic metrics to OpenTelemetry (e.g. CPU usage and RPC latency).
@@ -118,7 +118,9 @@ async fn main() {
     });
 
     // Create the AttestationTransparencyService.
-    let attestation_transparency_service = AttestationTransparencyService::default();
+    let attestation_transparency_service =
+        AttestationTransparencyService::create(signer.clone(), &endorsed_evidence)
+            .expect("failed to create AttestationTransparencyService");
 
     // Create the KeyManagementService.
     let session_service_client = OakSessionV1ServiceClient::connect(OAK_SESSION_SERVICE_ADDR)
@@ -145,7 +147,7 @@ async fn main() {
         slog::o!(),
     );
     let endpoint_service =
-        TonicApplicationService::new(channel, evidence, Some(logger), move || {
+        TonicApplicationService::new(channel, evidence.clone(), Some(logger), move || {
             StorageActor::new(attester, endorser, session_binder, reference_values, clock)
         });
 
