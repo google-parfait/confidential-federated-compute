@@ -30,7 +30,6 @@
 namespace confidential_federated_compute::sentence_transformers {
 
 // ModelDelegate that delegates all method calls to python code.
-// This class also creats and finalize the interpreter.
 class PyModelDelegate : public ModelDelegate {
  public:
   bool InitializeModel(absl::string_view artifact_path) override;
@@ -40,14 +39,24 @@ class PyModelDelegate : public ModelDelegate {
 };
 
 // Factory class for creating ModelDelegate.
-// This class also initialize/finalize the python interpreter.
-class PyModelDelegateFactory : public ModelDelegateFactory {
+// This class also initialize/finalize the python interpreter, and loading
+// python libraries.
+class PyRuntimeManager : public ModelDelegateFactory {
  public:
-  PyModelDelegateFactory();
-  ~PyModelDelegateFactory();
+  PyRuntimeManager();
+  ~PyRuntimeManager();
+  // Import python libraries.
+  // This method should be called before any method of PyModelDelegate is
+  // called. Once the libraries are imported, the result will be cached so
+  // subsequent import calls are lightweight. This method should run on the main
+  // thread, it might fail on gRPC worker thread.
+  absl::Status ImportLib();
   std::unique_ptr<ModelDelegate> Create() override {
     return std::make_unique<PyModelDelegate>();
   }
+
+ private:
+  PyThreadState* tstate_;
 };
 
 }  // namespace confidential_federated_compute::sentence_transformers

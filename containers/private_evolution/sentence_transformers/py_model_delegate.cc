@@ -23,28 +23,49 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 
 namespace confidential_federated_compute::sentence_transformers {
 
-PyModelDelegateFactory::PyModelDelegateFactory() {
+PyRuntimeManager::PyRuntimeManager() {
   pybind11::initialize_interpreter();
+  // Release GIL, so other thread can hold the GIL.
+  tstate_ = PyEval_SaveThread();
+  LOG(INFO) << "Interpreter initialized.";
 }
 
-PyModelDelegateFactory::~PyModelDelegateFactory() {
+PyRuntimeManager::~PyRuntimeManager() {
+  // Restore thread state before finalization.
+  PyEval_RestoreThread(tstate_);
   pybind11::finalize_interpreter();
+  LOG(INFO) << "Interpreter finalized.";
+}
+
+absl::Status PyRuntimeManager::ImportLib() {
+  pybind11::gil_scoped_acquire acquire;
+  try {
+    pybind11::module_::import("generate_embedding");
+    LOG(INFO) << "generate_embedding library is imported";
+    return absl::OkStatus();
+  } catch (pybind11::error_already_set& e) {
+    std::string error =
+        absl::StrCat("Import generate_embedding library failed:", e.what());
+    LOG(WARNING) << error;
+    return absl::InternalError(error);
+  }
 }
 
 bool PyModelDelegate::InitializeModel(absl::string_view model_artifact_path) {
   pybind11::gil_scoped_acquire acquire;
+  LOG(INFO) << "GIL acquired. Model initialization.";
   try {
     pybind11::module_ generate_embedding_lib =
         pybind11::module_::import("generate_embedding");
-
     auto init_result_py = generate_embedding_lib.attr("initialize_model")(
         std::string(model_artifact_path));
     bool result = init_result_py.cast<bool>();
-    LOG(WARNING) << "Model initialization result: " << result;
+    LOG(INFO) << "Model initialization result: " << result;
     return result;
   } catch (pybind11::error_already_set& e) {
     LOG(WARNING) << "Model initialization failed." << e.what();
@@ -56,6 +77,7 @@ absl::StatusOr<std::vector<std::vector<float>>>
 PyModelDelegate::GenerateEmbeddings(const std::vector<std::string>& inputs,
                                     std::optional<std::string> prompt) {
   pybind11::gil_scoped_acquire acquire;
+  LOG(INFO) << "GIL acquired, generate embedding";
   try {
     pybind11::module_ generate_embedding_lib =
         pybind11::module_::import("generate_embedding");
@@ -67,7 +89,7 @@ PyModelDelegate::GenerateEmbeddings(const std::vector<std::string>& inputs,
       embedding_py = generate_embedding_lib.attr("encode")(inputs);
     }
     auto result = embedding_py.cast<std::vector<std::vector<float>>>();
-    LOG(WARNING) << "Embedding generated.";
+    LOG(INFO) << "Embedding generated.";
     return result;
   } catch (pybind11::error_already_set& e) {
     std::string error_msg = e.what();
