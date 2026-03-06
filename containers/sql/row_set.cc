@@ -28,6 +28,10 @@ namespace confidential_federated_compute::sql {
 
 absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
                                       absl::Span<const Input> storage) {
+  if (!locations.empty() && storage.empty()) {
+    return absl::InvalidArgumentError(
+        "RowSet has row locations but no storage.");
+  }
   if (storage.size() > 1) {
     const auto first_columns = storage[0].GetColumnNames();
     for (size_t i = 1; i < storage.size(); ++i) {
@@ -36,6 +40,16 @@ absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
             "All Inputs to a RowSet must have the same columns in the same "
             "order.");
       }
+    }
+  }
+  for (const auto& location : locations) {
+    if (location.input_index >= storage.size()) {
+      return absl::InvalidArgumentError(
+          "RowLocation has an input index that is out of range.");
+    }
+    if (location.row_index >= storage[location.input_index].GetRowCount()) {
+      return absl::InvalidArgumentError(
+          "RowLocation has a row index that is out of range.");
     }
   }
   return RowSet(locations, storage);
