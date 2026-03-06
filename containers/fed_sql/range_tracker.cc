@@ -90,10 +90,6 @@ RangeTrackerState RangeTracker::Serialize() const {
     state.set_partition_index(partition_index_.value());
   }
 
-  std::string state_string;
-  google::protobuf::TextFormat::PrintToString(state, &state_string);
-  LOG(INFO) << "Serializing RangeTracker state:\n" << state_string;
-
   return state;
 }
 
