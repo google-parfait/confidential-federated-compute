@@ -118,9 +118,13 @@ async fn main() {
     });
 
     // Create the AttestationTransparencyService.
-    let attestation_transparency_service =
-        AttestationTransparencyService::create(signer.clone(), &endorsed_evidence)
-            .expect("failed to create AttestationTransparencyService");
+    let attestation_transparency_service = AttestationTransparencyService::create(
+        signer.clone(),
+        &endorsed_evidence,
+        session_binder.clone(),
+        clock.clone(),
+    )
+    .expect("failed to create AttestationTransparencyService");
 
     // Create the KeyManagementService.
     let session_service_client = OakSessionV1ServiceClient::connect(OAK_SESSION_SERVICE_ADDR)
