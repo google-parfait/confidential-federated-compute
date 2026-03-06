@@ -16,8 +16,7 @@ syntax = "proto3";
 
 package confidential_federated_compute.willow;
 
-// This messages describe an operation performed the Willow container
-
+// Describes an operation performed the Willow container
 message WillowOp {
     enum Kind {
         UNKNOWN = 0;
@@ -27,4 +26,10 @@ message WillowOp {
         FINALIZE = 4;
     }
     Kind kind = 1;
+}
+
+// Describes the range of blob IDs passed in the commit configuration
+message RangeProto {
+  bytes start = 1;
+  bytes end = 2;
 }

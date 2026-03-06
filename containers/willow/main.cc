@@ -17,13 +17,11 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/orchestrator_client.h"
-#include "cc/containers/sdk/signing_key_handle.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "transform_service.h"
+#include "willow_transform_service.h"
 
 namespace confidential_federated_compute::willow {
 
@@ -31,15 +29,12 @@ namespace {
 
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
-using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
-using ::oak::containers::sdk::InstanceSigningKeyHandle;
 using ::oak::containers::sdk::OrchestratorClient;
 
 void RunServer() {
   std::string server_address("[::]:8080");
 
-  TransformService service(std::make_unique<InstanceSigningKeyHandle>(),
-                           std::make_unique<InstanceEncryptionKeyHandle>());
+  WillowTransformService service;
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
