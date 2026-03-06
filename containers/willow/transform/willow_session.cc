@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "willow_session.h"
+#include "transform/willow_session.h"
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -22,11 +22,11 @@
 #include "containers/session.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "transform/willow_messages.pb.h"
 #include "willow/api/server_accumulator.h"
 #include "willow/proto/willow/aggregation_config.pb.h"
 #include "willow/proto/willow/messages.pb.h"
 #include "willow/proto/willow/server_accumulator.pb.h"
-#include "willow_op.pb.h"
 
 namespace confidential_federated_compute::willow {
 

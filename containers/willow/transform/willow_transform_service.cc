@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "willow_transform_service.h"
+#include "transform/willow_transform_service.h"
 
 #include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-// #include "containers/blob_metadata.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
-#include "willow_session.h"
+#include "transform/willow_session.h"
 
 namespace confidential_federated_compute::willow {
 

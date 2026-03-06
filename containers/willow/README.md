@@ -1,6 +1,6 @@
 # Willow server
 
-This folder contains a Willow specific Confidential Transform server that
+This folder contains a Willow specific containers that
 implements secure aggregation using Willow protocol - see
 https://eprint.iacr.org/2024/936.pdf for the details.
 

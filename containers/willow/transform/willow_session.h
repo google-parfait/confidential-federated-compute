@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_WILLOW_SESSION_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_WILLOW_SESSION_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_TRANSFORM_WILLOW_SESSION_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_TRANSFORM_WILLOW_SESSION_H_
 
 #include <vector>
 
@@ -74,4 +74,4 @@ class WillowSession final : public confidential_federated_compute::Session {
 
 }  // namespace confidential_federated_compute::willow
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_WILLOW_SESSION_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_WILLOW_TRANSFORM_WILLOW_SESSION_H_

@@ -21,7 +21,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "willow_transform_service.h"
+#include "transform/willow_transform_service.h"
 
 namespace confidential_federated_compute::willow {
 

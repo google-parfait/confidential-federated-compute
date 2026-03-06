@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "willow_transform_service.h"
+#include "transform/willow_transform_service.h"
 
 #include <memory>
 #include <string>
@@ -30,6 +30,7 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "gtest/gtest.h"
+#include "transform/willow_messages.pb.h"
 #include "willow/api/client.h"
 #include "willow/api/server_accumulator.h"
 #include "willow/input_encoding/codec.h"
@@ -37,7 +38,6 @@
 #include "willow/proto/willow/aggregation_config.pb.h"
 #include "willow/testing_utils/shell_testing_decryptor.h"
 #include "willow/testing_utils/testing_utils.h"
-#include "willow_op.pb.h"
 
 namespace confidential_federated_compute::willow {
 namespace {
