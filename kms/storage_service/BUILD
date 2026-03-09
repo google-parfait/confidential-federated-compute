@@ -179,9 +179,9 @@ proto_library(
     srcs = ["storage.proto"],
     data = [":storage_transform"],
     deps = [
-        "@com_google_googleapis//google/rpc:status_proto",
         "@com_google_protobuf//:duration_proto",
         "@com_google_protobuf//:timestamp_proto",
+        "@googleapis//google/rpc:status_proto",
     ],
 )
 
