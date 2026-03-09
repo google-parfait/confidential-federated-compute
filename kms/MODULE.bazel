@@ -15,18 +15,18 @@
 # go/keep-sorted start
 bazel_dep(name = "boringssl")
 bazel_dep(name = "confidential-federated-compute")
-bazel_dep(name = "googleapis", version = "0.0.0-20241220-5e258e33.bcr.1", repo_name = "com_google_googleapis")
+bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983")
 bazel_dep(name = "oak")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "30.0", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.8")
-bazel_dep(name = "rules_oci", version = "2.2.6")
-bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "rules_python", version = "1.5.1")
-bazel_dep(name = "rules_rust", version = "0.68.1")
-bazel_dep(name = "rules_rust_bindgen", version = "0.68.1")
+bazel_dep(name = "protobuf", version = "33.5", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_python", version = "1.9.0")
+bazel_dep(name = "rules_rust", version = "0.69.0")
+bazel_dep(name = "rules_rust_bindgen", version = "0.69.0")
 bazel_dep(name = "rules_rust_prost")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
 
 cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
@@ -36,10 +36,10 @@ use_repo(cfc_deps, "bazel_toolchains", "federated-compute")
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
 archive_override(
     module_name = "boringssl",
-    integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
+    integrity = "sha256-UuLZZ1nUg+OE45ZKJRN4HqBctrLWd/H49aQEmuowU10=",
     patches = ["//third_party/boringssl:rust.patch"],
-    strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
-    urls = ["https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz"],
+    strip_prefix = "boringssl-0.20260211.0",
+    urls = ["https://github.com/google/boringssl/releases/download/0.20260211.0/boringssl-0.20260211.0.tar.gz"],
 )
 
 archive_override(
@@ -63,10 +63,10 @@ archive_override(
 
 archive_override(
     module_name = "rules_rust_prost",
-    integrity = "sha256-yKqAbPYGZnmsI0YyQe6ArWkiZdrQRl9RERy74wuJA1I=",
+    integrity = "sha256-u8dkwlLQYSgbI1knek1GSA4tz69yr8HObgCtpYzL/Uw=",
     patches = ["//third_party/rules_rust:prost_deps.patch"],
     strip_prefix = "extensions/prost",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.68.1/rules_rust-0.68.1.tar.gz"],
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.69.0/rules_rust-0.69.0.tar.gz"],
 )
 # go/keep-sorted end
 

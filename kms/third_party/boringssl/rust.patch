@@ -26,7 +26,7 @@
 
 --- /dev/null
 +++ rust/bssl-sys/BUILD
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,51 @@
 +load("@rules_cc//cc:defs.bzl", "cc_library")
 +load("@rules_rust//rust:defs.bzl", "rust_library")
 +load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen")
@@ -72,7 +72,6 @@
 +
 +cc_library(
 +    name = "wrapper",
-+    srcs = ["rust_wrapper.h"],
 +    hdrs = ["wrapper.h"],
 +    deps = [
 +        "//:crypto",
