@@ -157,7 +157,7 @@ class DpUnitCommitTest : public Test {
 absl::StatusOr<std::vector<Tensor>> BuildTensors(
     std::vector<int64_t> keys, std::vector<int64_t> vals,
     std::vector<std::string> event_times,
-    absl::flat_hash_map<std::string, std::vector<int64_t>> dp_columns) {
+    std::vector<std::pair<std::string, std::vector<int64_t>>> dp_columns) {
   if (keys.size() != vals.size() || keys.size() != event_times.size()) {
     return absl::InvalidArgumentError("Input vectors must have the same size.");
   }

@@ -1,36 +1,12 @@
 --- MODULE.bazel
 +++ MODULE.bazel
-@@ -216,11 +216,11 @@
- git_repository(
-     name = "libcppbor",
--    build_file = "@//:third_party/google/libcppbor/BUILD",
-+    build_file = "//:third_party/google/libcppbor/BUILD",
-     # Head commit on 202505-09
-     commit = "b1b998be4ec447f3086e7fd6a7f78eaec66a1c45",
-     patches = [
--        "@//:third_party/google/libcppbor/remove_macro.patch",
-+        "//:third_party/google/libcppbor/remove_macro.patch",
--        "@//:third_party/google/libcppbor/limits.patch",
-+        "//:third_party/google/libcppbor/limits.patch",
-     ],
-     remote = "https://android.googlesource.com/platform/external/libcppbor",
- )
-@@ -228,3 +228,3 @@
- http_archive(
-     name = "cose_lib",
--    build_file = "@//:third_party/BUILD.cose_lib",
-+    build_file = "//:third_party/BUILD.cose_lib",
-@@ -236,3 +236,3 @@
- http_archive(
-     name = "e2fsprogs",
--    build_file = "@//:third_party/BUILD.e2fsprogs",
-+    build_file = "//:third_party/BUILD.e2fsprogs",
-@@ -203,6 +203,49 @@
+@@ -256,6 +257,50 @@
  ##### Rust Toolchain Setup #####
 
- bazel_dep(name = "rules_shell", version = "0.5.0")
- bazel_dep(name = "rules_rust", version = "0.61.0")
- bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.61.0")
+ bazel_dep(name = "rules_shell", version = "0.6.1")
+ bazel_dep(name = "rules_rust", version = "0.68.1")
+ bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.68.1")
++bazel_dep(name = "rules_cc", version = "0.2.8")
 
 +crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 +crate.spec(package = "aead", version = "0.5.2")
