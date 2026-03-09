@@ -14,7 +14,7 @@
 
 """Rule for converting protocol buffers from text to binary format."""
 
-load("@rules_proto//proto:defs.bzl", "ProtoInfo")
+load("@com_google_protobuf//bazel/common:proto_info.bzl", "ProtoInfo")
 
 def _proto_data_impl(ctx):
     direct_proto_deps = [

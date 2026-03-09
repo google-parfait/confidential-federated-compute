@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
-load("@rules_proto//proto:defs.bzl", "proto_library")
 
 package(features = ["layering_check"])
 
@@ -417,7 +418,6 @@ proto_library(
     srcs = ["range_tracker.proto"],
 )
 
-# buildifier: disable=native-cc-proto
 cc_proto_library(
     name = "range_tracker_cc_proto",
     deps = [":range_tracker_proto"],
@@ -459,7 +459,6 @@ proto_library(
     srcs = ["budget.proto"],
 )
 
-# buildifier: disable=native-cc-proto
 cc_proto_library(
     name = "budget_cc_proto",
     deps = [":budget_proto"],
@@ -505,7 +504,6 @@ proto_library(
     srcs = ["partition_private_state.proto"],
 )
 
-# buildifier: disable=native-cc-proto
 cc_proto_library(
     name = "partition_private_state_cc_proto",
     deps = [":partition_private_state_proto"],

@@ -36,7 +36,6 @@ bazel_dep(name = "rules_java", version = "8.11.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "rules_python", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.61.0")
 # go/keep-sorted end

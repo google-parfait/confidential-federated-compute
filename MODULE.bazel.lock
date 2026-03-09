@@ -419,7 +419,7 @@
   "moduleExtensions": {
     "//:extensions.bzl%cfc_deps": {
       "general": {
-        "bzlTransitiveDigest": "M8AAf2a4K6NkCC3AwyMMAz7/tg82kyIHKiWALPov35E=",
+        "bzlTransitiveDigest": "3GU0d2YKtAR9T0jhyvpItDM6yqRdCNiRvn0/BojXrDs=",
         "usagesDigest": "j8dFARr4rH+gT4nlt0gjOujmLGCXoNNS1Wn6nyicwzY=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -487,7 +487,7 @@
     },
     "//:extensions.bzl%cfc_dev_deps": {
       "general": {
-        "bzlTransitiveDigest": "M8AAf2a4K6NkCC3AwyMMAz7/tg82kyIHKiWALPov35E=",
+        "bzlTransitiveDigest": "3GU0d2YKtAR9T0jhyvpItDM6yqRdCNiRvn0/BojXrDs=",
         "usagesDigest": "NUtSlEfHJn8jLmjdV5XVe1B8ZnpmqbjPeJonysd0YJs=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -7709,7 +7709,7 @@
         "bzlTransitiveDigest": "0B1qYQOi8zZmOMd1flxkYpKrtvpY5JvxcO1m1TD/c8c=",
         "usagesDigest": "Ic/TlwKN6TT/vS+dus5btAEfJPC+jbSXTJ0ulhlOhDk=",
         "recordedFileInputs": {
-          "@@//MODULE.bazel": "a5a79c800664f1b8593ff04185bace8eee84d779d7e00bcfb43ddaefb8a9f684",
+          "@@//MODULE.bazel": "0082d9d4135871c74cae62422b8f3b7fb84e37f166c43d677ed5722b153265c2",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},
