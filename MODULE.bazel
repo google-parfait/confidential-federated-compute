@@ -19,9 +19,9 @@ module(
 
 # Dependencies when CFC is used as a library.
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250127.1", repo_name = "com_google_absl")
-bazel_dep(name = "aspect_bazel_lib", version = "2.17.1")
-bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "abseil-cpp", version = "20250512.1", repo_name = "com_google_absl")
+bazel_dep(name = "aspect_bazel_lib", version = "2.19.3")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "boringssl", version = "0.20250514.0")
 bazel_dep(name = "flatbuffers", version = "25.2.10")
 bazel_dep(name = "googleapis", version = "0.0.0-20241220-5e258e33.bcr.1", repo_name = "com_google_googleapis")
@@ -29,15 +29,15 @@ bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "grpc", version = "1.72.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "grpc-java", version = "1.71.0", repo_name = "io_grpc_grpc_java")
 bazel_dep(name = "oak")
-bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "protobuf", version = "30.0", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.1.1")
-bazel_dep(name = "rules_java", version = "8.11.0")
+bazel_dep(name = "rules_cc", version = "0.2.14")
+bazel_dep(name = "rules_java", version = "8.14.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "rules_python", version = "1.2.0")
-bazel_dep(name = "rules_rust", version = "0.61.0")
+bazel_dep(name = "rules_python", version = "1.5.1")
+bazel_dep(name = "rules_rust", version = "0.68.1")
 # go/keep-sorted end
 
 cfc_deps = use_extension("//:extensions.bzl", "cfc_deps")
@@ -47,9 +47,9 @@ use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor", "org_te
 # go/keep-sorted start ignore_prefixes=bazel_dep
 bazel_dep(name = "gemma", version = "0.1.0", dev_dependency = True)
 bazel_dep(name = "googleapis-cc", version = "1.0.0", dev_dependency = True)
-bazel_dep(name = "rules_rust_prost", version = "0.61.0", dev_dependency = True)
+bazel_dep(name = "rules_rust_prost", version = "0.68.1", dev_dependency = True)
 bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
-bazel_dep(name = "toolchains_llvm", version = "1.4.0", dev_dependency = True)
+bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
 # go/keep-sorted end
 
 cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps", dev_dependency = True)
@@ -81,10 +81,10 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
+    integrity = "sha256-Nmlg1YwkjJfq7oREXBWSBfemITX9B98g5WbjGYPj3ck=",
     patches = ["//third_party/oak:module.patch"],
-    strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
-    urls = ["https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz"],
+    strip_prefix = "oak-d7f4c7089e09cc32aa08c67fa6921bab467515ef",
+    urls = ["https://github.com/project-oak/oak/archive/d7f4c7089e09cc32aa08c67fa6921bab467515ef.tar.gz"],
 )
 # go/keep-sorted end
 
