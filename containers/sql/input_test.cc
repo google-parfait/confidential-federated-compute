@@ -53,6 +53,7 @@ using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
+using ::testing::HasSubstr;
 
 class InputTest : public ::testing::Test {
  protected:
@@ -235,6 +236,52 @@ TEST_F(InputTest, MoveToTensors) {
   EXPECT_EQ(tensors->at(1).shape(), TensorShape({2}));
   EXPECT_THAT(tensors->at(1).AsSpan<absl::string_view>(),
               testing::ElementsAre("foo", "bar"));
+}
+
+TEST_F(InputTest, AddColumnFailsWithEmptyColumnName) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), blob_header_, /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({3, 4}, "");
+  EXPECT_THAT(input->AddColumn(std::move(new_col)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Column name is empty.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithDuplicateColumnName) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), blob_header_, /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({3, 4}, "col1");
+  EXPECT_THAT(
+      input->AddColumn(std::move(new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column name col1 already exists.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithMultiDimensionalColumn) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), blob_header_, /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2, 2}),
+                                CreateTestData<int64_t>({1, 2, 3, 4}), "col3");
+  EXPECT_THAT(
+      input->AddColumn(std::move(*new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column col3 must have exactly one "
+                                       "dimension.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithMismatchedColumnRows) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), blob_header_, /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({1, 2, 3}, "col3");
+  EXPECT_THAT(
+      input->AddColumn(std::move(new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column col3 has a different number of "
+                                       "rows than the table.")));
 }
 
 class MessageInputTest : public ::testing::Test {
@@ -457,7 +504,7 @@ TEST_F(MessageInputTest, AddColumn) {
   auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
                                 CreateTestData<int64_t>({100, 200}), "new_col");
   ASSERT_THAT(new_col, IsOk());
-  input->AddColumn(std::move(*new_col));
+  ASSERT_THAT(input->AddColumn(std::move(*new_col)), IsOk());
   EXPECT_EQ(
       input->GetColumnNames(),
       std::vector<std::string>({"col1", "col2", "col3", "col4", "col5",

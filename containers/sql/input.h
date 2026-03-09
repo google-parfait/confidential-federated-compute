@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -67,7 +68,8 @@ class Input {
   Input(const Input&) = delete;
   Input& operator=(const Input&) = delete;
 
-  void AddColumn(tensorflow_federated::aggregation::Tensor&& new_column);
+  absl::Status AddColumn(
+      tensorflow_federated::aggregation::Tensor&& new_column);
 
   absl::Span<const std::string> GetColumnNames() const;
 

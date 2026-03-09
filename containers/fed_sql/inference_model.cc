@@ -38,6 +38,7 @@ namespace {
 
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowView;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::GEMMA2_2B;
 using ::fcp::confidentialcompute::GEMMA2_9B;
@@ -520,6 +521,9 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
     return absl::OkStatus();
   }
 
+  const BlobHeader blob_header = input.GetBlobHeader();
+  std::optional<std::string> original_privacy_id = input.GetPrivacyId();
+
   FCP_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
                        std::move(input).MoveToTensors());
 
@@ -590,9 +594,14 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
                                         original_columns[i].name()));
     final_columns.push_back(std::move(t));
   }
-  FCP_ASSIGN_OR_RETURN(sql::Input new_input,
-                       sql::Input::CreateFromTensors(std::move(final_columns),
-                                                     {}));  // blob_header
+  std::optional<Tensor> privacy_id_tensor;
+  if (original_privacy_id.has_value()) {
+    privacy_id_tensor = Tensor(*original_privacy_id, "privacy_id");
+  }
+  FCP_ASSIGN_OR_RETURN(
+      sql::Input new_input,
+      sql::Input::CreateFromTensors(std::move(final_columns), blob_header,
+                                    std::move(privacy_id_tensor)));
   input = std::move(new_input);
   return absl::OkStatus();
 }
@@ -672,7 +681,8 @@ absl::Status InferenceModel::RunInference(Input& input) {
           input, current_output_column, per_row_output_counts_map));
     }
 
-    input.AddColumn(std::move(current_output_column.begin()->second));
+    FCP_RETURN_IF_ERROR(
+        input.AddColumn(std::move(current_output_column.begin()->second)));
   }
 
   return absl::OkStatus();
