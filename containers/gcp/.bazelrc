@@ -1,5 +1,4 @@
 common --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
-common --enable_workspace=True
 
 build --@rules_rust//rust/toolchain/channel=nightly
 build --incompatible_enable_cc_toolchain_resolution
@@ -21,3 +20,8 @@ common --registry=https://bcr.bazel.build --registry=https://raw.githubuserconte
 
 # Work around missing dependencies in the parent (CFC); to remove once fixed
 build --features=-layering_check
+
+# rules_rust 0.54.1 doesn't work with rust's experimental lld linking and clang
+# (https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html).
+build --@rules_rust//rust/settings:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//rust/settings:extra_exec_rustc_flag=-Zlinker-features=-lld
+
