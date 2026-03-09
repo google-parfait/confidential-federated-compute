@@ -43,7 +43,7 @@ namespace confidential_federated_compute::fed_sql {
 absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
 Deserialize(const fcp::confidentialcompute::TableSchema& table_schema,
             tensorflow_federated::aggregation::CheckpointParser* checkpoint,
-            std::optional<SessionInferenceConfiguration>
+            std::optional<fcp::confidentialcompute::InferenceConfiguration>
                 inference_configuration = std::nullopt);
 
 // A simple pass-through CheckpointParser.
@@ -90,5 +90,21 @@ struct SqlConfiguration {
 absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
 ExecuteClientQuery(const SqlConfiguration& configuration, sql::RowSet rows);
 
+// Interface for creating new protobuf messages.
+class MessageFactory {
+ public:
+  virtual ~MessageFactory() = default;
+
+  // Creates a new message instance.
+  virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
+};
+
+absl::StatusOr<confidential_federated_compute::sql::Input>
+CreateInputFromMessageCheckpoint(
+    fcp::confidentialcompute::BlobHeader blob_header,
+    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
+    MessageFactory& message_factory, absl::string_view on_device_query_name);
+
 }  // namespace confidential_federated_compute::fed_sql
+
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_

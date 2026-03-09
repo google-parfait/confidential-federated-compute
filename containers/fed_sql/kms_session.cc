@@ -52,6 +52,8 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
+using ::confidential_federated_compute::fed_sql::
+    CreateInputFromMessageCheckpoint;
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowLocation;
 using ::confidential_federated_compute::sql::RowSet;
@@ -80,6 +82,7 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalizeResponse;
+using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SqlQuery;
@@ -95,61 +98,6 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
-
-absl::StatusOr<Input> CreateInputFromMessageCheckpoint(
-    BlobHeader blob_header, CheckpointParser* checkpoint,
-    MessageFactory& message_factory, absl::string_view on_device_query_name) {
-  std::string column_prefix = absl::StrCat(on_device_query_name, "/");
-  FCP_ASSIGN_OR_RETURN(Tensor entry_tensor,
-                       checkpoint->GetTensor(absl::StrCat(
-                           column_prefix, kPrivateLoggerEntryKey)));
-  if (entry_tensor.dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "`%s` tensor must be a string tensor", kPrivateLoggerEntryKey));
-  }
-  FCP_ASSIGN_OR_RETURN(
-      Tensor time_tensor,
-      checkpoint->GetTensor(absl::StrCat(column_prefix, kEventTimeColumnName)));
-  if (time_tensor.dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "`%s` tensor must be a string tensor", kEventTimeColumnName));
-  }
-
-  // Rename the time tensor to remove the column prefix. Pipelines that process
-  // Message-based checkpoints don't use the column name prefix.
-  FCP_RETURN_IF_ERROR(time_tensor.set_name(kEventTimeColumnName));
-
-  std::vector<std::unique_ptr<google::protobuf::Message>> messages;
-  messages.reserve(entry_tensor.num_elements());
-  for (const absl::string_view entry :
-       entry_tensor.AsSpan<absl::string_view>()) {
-    std::unique_ptr<google::protobuf::Message> message(
-        message_factory.NewMessage());
-    // Try to base64 decode the entry. Old versions of the client base64
-    // encode entries. We try to base64 decode first since it's extremely
-    // unlikely for a valid binary proto to be a valid Base64 string (while the
-    // inverse is more likely).
-    std::string decoded_entry;
-    if (!absl::Base64Unescape(entry, &decoded_entry) ||
-        !message->ParseFromString(decoded_entry)) {
-      // Note that ParseFrom* methods are documented as calling Clear() on the
-      // message before parsing. Thus it's fine if the failed ParseFromString
-      // above leaves the message in a partial state.
-      if (!message->ParseFromArray(entry.data(), entry.size())) {
-        return absl::InvalidArgumentError("Failed to parse proto");
-      }
-    }
-    messages.push_back(std::move(message));
-  }
-
-  std::vector<Tensor> system_columns;
-  system_columns.reserve(1);
-  system_columns.push_back(std::move(time_tensor));
-  return Input::CreateFromMessages(std::move(messages),
-                                   std::move(system_columns), blob_header);
-}
 
 }  // namespace
 
@@ -268,9 +216,16 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         blob_header, parser->get(), *message_factory_, on_device_query_name_);
     // TODO: handle sensitive columns for Message checkpoints.
   } else {
-    absl::StatusOr<std::vector<Tensor>> contents =
-        Deserialize(sql_configuration_->input_schema, parser->get(),
-                    inference_model_.GetInferenceConfiguration());
+    auto model_inference_configuration =
+        inference_model_.GetInferenceConfiguration();
+    auto inference_config =
+        model_inference_configuration.has_value()
+            ? std::optional<InferenceConfiguration>(
+                  model_inference_configuration->initialize_configuration
+                      .inference_config())
+            : std::nullopt;
+    absl::StatusOr<std::vector<Tensor>> contents = Deserialize(
+        sql_configuration_->input_schema, parser->get(), inference_config);
     if (!contents.ok()) {
       return ToWriteFinishedResponse(
           PrependMessage("Failed to deserialize checkpoint for "
