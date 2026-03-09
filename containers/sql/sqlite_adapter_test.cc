@@ -545,6 +545,24 @@ TEST_F(EvaluateQueryTest, ValidQueryBasicExpression) {
   ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(0), 2);
 }
 
+TEST_F(EvaluateQueryTest, ValidQueryEmptyValue) {
+  const std::string query = R"sql(
+    SELECT CAST('' AS BLOB) AS blob_val
+  )sql";
+  std::string output_col_name = "blob_val";
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), output_col_name,
+                       google::internal::federated::plan::BYTES);
+
+  auto result_status = sqlite_->EvaluateQuery(query, output_schema.column());
+  ASSERT_THAT(result_status, IsOk());
+  std::vector<Tensor> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).dtype(), DataType::DT_STRING);
+  ASSERT_EQ(result.at(0).num_elements(), 1);
+  ASSERT_EQ(result.at(0).AsSpan<absl::string_view>().at(0), "");
+}
+
 TEST_F(EvaluateQueryTest, ValidQueryBasicStringExpression) {
   const std::string query = R"sql(
     SELECT 'foo' AS str_val

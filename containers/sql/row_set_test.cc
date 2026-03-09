@@ -243,19 +243,23 @@ TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyLocations) {
 }
 
 TEST_F(TensorRowSetTest, GetColumnNamesForSetWithEmptyStorage) {
-  std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
+  std::vector<RowLocation> locations = {};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
   ASSERT_THAT(set, IsOk());
   auto column_names = set->GetColumnNames();
   EXPECT_THAT(column_names, IsEmpty());
 }
 
-TEST_F(TensorRowSetTest, DereferenceInvalidRowDeathTest) {
+TEST_F(TensorRowSetTest, CreateFailsWithRowLocationsAndNoStorage) {
+  std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 0}};
+  absl::StatusOr<RowSet> set = RowSet::Create(locations, {});
+  EXPECT_THAT(set, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TensorRowSetTest, CreateFailsWithInvalidRowIndexTest) {
   std::vector<RowLocation> locations = {{.input_index = 0, .row_index = 2}};
   absl::StatusOr<RowSet> set = RowSet::Create(locations, inputs_);
-  ASSERT_THAT(set, IsOk());
-  auto it = set->begin();
-  EXPECT_DEATH(*it, "Check failed");
+  EXPECT_THAT(set, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 class MessageRowSetTest : public ::testing::Test {

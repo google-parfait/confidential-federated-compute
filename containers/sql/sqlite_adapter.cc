@@ -185,9 +185,17 @@ absl::Status ReadSqliteColumn(
       StoreValue<double>(result, sqlite3_column_double(stmt, column_index));
       break;
     case google::internal::federated::plan::BYTES: {
-      std::string bytes_value(
-          static_cast<const char*>(sqlite3_column_blob(stmt, column_index)),
-          sqlite3_column_bytes(stmt, column_index));
+      int bytes = sqlite3_column_bytes(stmt, column_index);
+      const void* blob_ptr = sqlite3_column_blob(stmt, column_index);
+      if (bytes == 0) {
+        StoreValue<std::string>(result, "");
+        break;
+      }
+      if (blob_ptr == nullptr) {
+        return absl::InvalidArgumentError(
+            "Failed to read non-empty byte column from SQLite.");
+      }
+      std::string bytes_value(static_cast<const char*>(blob_ptr), bytes);
       StoreValue<std::string>(result, std::move(bytes_value));
       break;
     }
