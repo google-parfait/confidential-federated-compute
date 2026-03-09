@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "containers/sql/row_view.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -64,6 +65,29 @@ absl::Status ValidateMessageRows(
       return absl::InvalidArgumentError(
           "System columns must have the same number of rows as the table.");
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ValidateNewColumn(const Tensor& new_column,
+                               absl::Span<const std::string> column_names,
+                               size_t row_count) {
+  if (new_column.name().empty()) {
+    return absl::InvalidArgumentError("Column name is empty.");
+  }
+  if (std::find(column_names.begin(), column_names.end(), new_column.name()) !=
+      column_names.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Column name ", new_column.name(), " already exists."));
+  }
+  if (new_column.shape().dim_sizes().size() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Column ", new_column.name(), " must have exactly one dimension."));
+  }
+  if (new_column.shape().dim_sizes()[0] != row_count) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Column ", new_column.name(),
+                     " has a different number of rows than the table."));
   }
   return absl::OkStatus();
 }
@@ -145,13 +169,16 @@ absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
       contents_);
 }
 
-void Input::AddColumn(Tensor&& new_column) {
+absl::Status Input::AddColumn(Tensor&& new_column) {
+  FCP_RETURN_IF_ERROR(
+      ValidateNewColumn(new_column, column_names_, GetRowCount()));
   column_names_.push_back(new_column.name());
-  return absl::visit(
+  absl::visit(
       [new_column = std::move(new_column)](auto& data) mutable {
         data.AddColumn(std::move(new_column));
       },
       contents_);
+  return absl::OkStatus();
 }
 
 size_t Input::GetRowCount() const {

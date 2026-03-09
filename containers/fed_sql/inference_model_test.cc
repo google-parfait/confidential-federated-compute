@@ -74,6 +74,13 @@ class InferenceModelTest : public ::testing::Test {
         std::make_unique<MutableVectorData<absl::string_view>>(values), name);
   }
 
+  absl::StatusOr<Tensor> CreatePrivacyIdTensor(std::string&& privacy_id) {
+    auto data = std::make_unique<MutableStringData>(0);
+    data->Add(std::move(privacy_id));
+    return Tensor::Create(DataType::DT_STRING, TensorShape({}), std::move(data),
+                          "privacy_id");
+  }
+
   // Helper to set expectations on RunGemmaCppInference.
   void ExpectGemmaCppInference(
       const std::vector<std::string>& input_names,
@@ -1183,6 +1190,58 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
               ElementsAre("t1", "t2", "t2", "t3"));
   EXPECT_THAT(output_tensors->at(3).AsSpan<absl::string_view>(),
               ElementsAre("o1", "o2", "o3", "o4"));
+}
+
+TEST_F(InferenceModelTest,
+       RunInferenceMultipleRowsPreservesBlobHeaderAndPrivacyId) {
+  MockInferenceModel::InferenceOutput topic_output;
+  absl::StatusOr<Tensor> topic_tensor =
+      CreateStringTensor({"t1", "t2", "t3"}, "topic");
+  ASSERT_THAT(topic_tensor, IsOk());
+  topic_output.tensor = std::move(*topic_tensor);
+  topic_output.per_row_output_counts = {1, 2};
+  ExpectGemmaCppInference({"transcript"}, "topic", std::move(topic_output));
+  SessionInferenceConfiguration inference_configuration;
+  inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Topic for {{transcript}}" }
+      }
+    }
+    gemma_init_config {}
+  )pb");
+  inference_configuration.gemma_configuration.emplace();
+
+  std::vector<Tensor> columns;
+  absl::StatusOr<Tensor> transcript_tensor =
+      CreateStringTensor({"foo", "bar"}, "transcript");
+  ASSERT_THAT(transcript_tensor, IsOk());
+  columns.push_back(std::move(*transcript_tensor));
+  ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
+
+  BlobHeader blob_header;
+  blob_header.set_blob_id("blob_id_1");
+  blob_header.set_access_policy_node_id(99);
+  blob_header.set_key_id("key_1");
+
+  absl::StatusOr<Tensor> privacy_id_tensor =
+      CreatePrivacyIdTensor("privacy_id_1");
+  ASSERT_THAT(privacy_id_tensor, IsOk());
+
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(columns), blob_header, std::move(*privacy_id_tensor));
+  ASSERT_THAT(input, IsOk());
+  ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
+  absl::StatusOr<std::vector<Tensor>> output_tensors =
+      std::move(*input).MoveToTensors();
+  ASSERT_THAT(output_tensors, IsOk());
+  EXPECT_THAT(input->GetBlobHeader(), EqualsProto(blob_header));
+  ASSERT_TRUE(input->GetPrivacyId().has_value());
+  EXPECT_EQ(input->GetPrivacyId().value(), "privacy_id_1");
 }
 
 }  // namespace

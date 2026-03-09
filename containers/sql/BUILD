@@ -108,6 +108,7 @@ cc_library(
         ":row_view",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
