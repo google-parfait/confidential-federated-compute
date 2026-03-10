@@ -33,7 +33,9 @@
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_test_utils.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/base/compression.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -41,6 +43,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "grpcpp/channel.h"
@@ -63,6 +66,7 @@ using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
 using ::fcp::confidentialcompute::SessionRequest;
@@ -154,6 +158,8 @@ class BatchedInferenceServerTest : public ::testing::Test {
     *init_request.mutable_initialize_request()->mutable_protected_response() =
         encrypted_handshake;
 
+    testing::AddInitConfigForTest(&init_request);
+
     ASSERT_TRUE(init_stream->Write(init_request));
     ASSERT_TRUE(init_stream->WritesDone());
     ASSERT_THAT(FromGrpcStatus(init_stream->Finish()), IsOk());
@@ -179,9 +185,13 @@ class BatchedInferenceServerTest : public ::testing::Test {
     header.set_key_id(kKeyId);
     std::string aad = header.SerializeAsString();
 
+    absl::StatusOr<std::string> compressed_data =
+        fcp::CompressWithGzip(inference_data);
+    CHECK(compressed_data.ok());
+
     fcp::confidential_compute::MessageEncryptor encryptor;
     auto encrypt_res =
-        encryptor.Encrypt(inference_data, session_pub_key_cose, aad).value();
+        encryptor.Encrypt(*compressed_data, session_pub_key_cose, aad).value();
 
     SessionRequest write_req;
     auto* write = write_req.mutable_write();
@@ -190,7 +200,7 @@ class BatchedInferenceServerTest : public ::testing::Test {
 
     auto* metadata = write->mutable_first_request_metadata();
     metadata->set_compression_type(
-        fcp::confidentialcompute::BlobMetadata::COMPRESSION_TYPE_NONE);
+        fcp::confidentialcompute::BlobMetadata::COMPRESSION_TYPE_GZIP);
     metadata->set_total_size_bytes(encrypt_res.ciphertext.size());
 
     auto* hpke = metadata->mutable_hpke_plus_aead_data();
@@ -297,8 +307,9 @@ TEST_F(BatchedInferenceServerTest, SingleWriteNoCommit) {
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
                     &session_context, &session_stream);
-  WriteInferenceDataToSession(session_stream, session_pub_key_cose, "test_blob",
-                              "some_inference_data");
+  WriteInferenceDataToSession(
+      session_stream, session_pub_key_cose, "test_blob",
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"}));
   std::vector<std::string> responses;
   absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
       ReadResponsesFromSession(session_stream, decryptor, &responses);
@@ -321,8 +332,10 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesNoCommit) {
                     &session_context, &session_stream);
   const int kNumWrites = 10;
   for (int write_no = 1; write_no <= kNumWrites; ++write_no) {
-    WriteInferenceDataToSession(session_stream, session_pub_key_cose,
-                                "test_blob", "some_inference_data");
+    WriteInferenceDataToSession(
+        session_stream, session_pub_key_cose, "test_blob",
+        testing::GetPrivateInferenceInputCheckpointForTest(
+            {absl::StrCat("bark_", write_no)}));
     std::vector<std::string> responses;
     absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
         ReadResponsesFromSession(session_stream, decryptor, &responses);
@@ -351,8 +364,9 @@ TEST_F(BatchedInferenceServerTest, SingleWriteWithCommit) {
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
                     &session_context, &session_stream);
-  WriteInferenceDataToSession(session_stream, session_pub_key_cose, "test_blob",
-                              "some_inference_data");
+  WriteInferenceDataToSession(
+      session_stream, session_pub_key_cose, "test_blob",
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"}));
   std::vector<std::string> responses;
   absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
       ReadResponsesFromSession(session_stream, decryptor, &responses);
@@ -365,14 +379,14 @@ TEST_F(BatchedInferenceServerTest, SingleWriteWithCommit) {
   EXPECT_TRUE(read_result.value()->has_commit());
   EXPECT_FALSE(responses.empty());
   EXPECT_EQ(responses.size(), 1);
-  EXPECT_EQ(responses[0], "Processed: some_inference_data");
+  EXPECT_EQ(responses[0], testing::GetPrivateInferenceOutputCheckpointForTest(
+                              {"bark"}, {"Processed: Hello, bark"}));
   FinalizeSession(session_stream);
 }
 
 TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
   EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
-      .Times(1)
-      .WillOnce(Invoke([](std::vector<std::string> prompts) {
+      .WillRepeatedly(Invoke([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
         for (const auto& prompt : prompts) {
           results.push_back("Processed: " + prompt);
@@ -390,9 +404,10 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
   std::vector<std::string> responses;
   const int kNumWrites = 10;
   for (int write_no = 1; write_no <= kNumWrites; ++write_no) {
-    WriteInferenceDataToSession(session_stream, session_pub_key_cose,
-                                "test_blob",
-                                absl::StrCat("some_inference_data_", write_no));
+    WriteInferenceDataToSession(
+        session_stream, session_pub_key_cose, "test_blob",
+        testing::GetPrivateInferenceInputCheckpointForTest(
+            {absl::StrCat("bark_", write_no)}));
     absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
         ReadResponsesFromSession(session_stream, decryptor, &responses);
     EXPECT_THAT(read_result.status(), IsOk());
@@ -408,15 +423,16 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
   EXPECT_EQ(responses.size(), kNumWrites);
   for (int write_no = 1; write_no <= kNumWrites; ++write_no) {
     EXPECT_EQ(responses[write_no - 1],
-              absl::StrCat("Processed: some_inference_data_", write_no));
+              testing::GetPrivateInferenceOutputCheckpointForTest(
+                  {absl::StrCat("bark_", write_no)},
+                  {absl::StrCat("Processed: Hello, bark_", write_no)}));
   }
   FinalizeSession(session_stream);
 }
 
-TEST_F(BatchedInferenceServerTest, MultipleBatches) {
-  const int kNumBatches = 5;
+TEST_F(BatchedInferenceServerTest, MultipleCommits) {
+  const int kNumCommits = 5;
   EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
-      .Times(kNumBatches)
       .WillRepeatedly(Invoke([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
         for (const auto& prompt : prompts) {
@@ -432,13 +448,14 @@ TEST_F(BatchedInferenceServerTest, MultipleBatches) {
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
                     &session_context, &session_stream);
-  for (int batch_no = 1; batch_no <= kNumBatches; ++batch_no) {
+  for (int commit_no = 1; commit_no <= kNumCommits; ++commit_no) {
     std::vector<std::string> responses;
     const int kNumWrites = 5;
     for (int write_no = 1; write_no <= kNumWrites; ++write_no) {
       WriteInferenceDataToSession(
           session_stream, session_pub_key_cose, "test_blob",
-          absl::StrCat("some_inference_data_", batch_no, "_", write_no));
+          testing::GetPrivateInferenceInputCheckpointForTest(
+              {absl::StrCat("bark_", commit_no, "_", write_no)}));
       absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
           ReadResponsesFromSession(session_stream, decryptor, &responses);
       EXPECT_THAT(read_result.status(), IsOk());
@@ -454,8 +471,10 @@ TEST_F(BatchedInferenceServerTest, MultipleBatches) {
     EXPECT_EQ(responses.size(), kNumWrites);
     for (int write_no = 1; write_no <= kNumWrites; ++write_no) {
       EXPECT_EQ(responses[write_no - 1],
-                absl::StrCat("Processed: some_inference_data_", batch_no, "_",
-                             write_no));
+                testing::GetPrivateInferenceOutputCheckpointForTest(
+                    {absl::StrCat("bark_", commit_no, "_", write_no)},
+                    {absl::StrCat("Processed: Hello, bark_", commit_no, "_",
+                                  write_no)}));
     }
   }
   FinalizeSession(session_stream);

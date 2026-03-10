@@ -27,6 +27,7 @@
 #include "containers/batched_inference/batched_inference_provider.h"
 #include "containers/fns/confidential_transform_server.h"
 #include "containers/fns/fn_factory.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "grpcpp/grpcpp.h"
 
@@ -36,13 +37,14 @@ namespace {
 using ::confidential_federated_compute::fns::FnFactory;
 using ::confidential_federated_compute::fns::FnFactoryProvider;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
+using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::google::protobuf::Any;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
 using ::oak::containers::sdk::InstanceSigningKeyHandle;
-using oak::crypto::EncryptionKeyHandle;
-using oak::crypto::SigningKeyHandle;
+using ::oak::crypto::EncryptionKeyHandle;
+using ::oak::crypto::SigningKeyHandle;
 
 // Increase gRPC message size limit to 2GB.
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
@@ -53,7 +55,13 @@ FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
              const Any& configuration, const Any& config_constraints,
              const WriteConfigurationMap& write_configuration_map)
              -> absl::StatusOr<std::unique_ptr<FnFactory>> {
-    return CreateBatchedInferenceFnFactory(batched_inference_provider);
+    InferenceInitializeConfiguration init_config;
+    if (!configuration.UnpackTo(&init_config)) {
+      return absl::InvalidArgumentError(
+          "Failed to unpack InferenceInitializeConfiguration");
+    }
+    return CreateBatchedInferenceFnFactory(batched_inference_provider,
+                                           init_config.inference_config());
   };
 }
 
