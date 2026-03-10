@@ -41,14 +41,6 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-// Interface for creating new protobuf messages.
-class MessageFactory {
- public:
-  virtual ~MessageFactory() = default;
-  // Creates a new message instance.
-  virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
-};
-
 // FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
 // thread-safe.

@@ -204,8 +204,9 @@ TEST(DeserializeTest, DeserializeSucceedsWithInferenceConfig) {
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(data));
-  auto deserialized_result =
-      Deserialize(schema, parser->get(), inference_configuration);
+  auto deserialized_result = Deserialize(
+      schema, parser->get(),
+      inference_configuration.initialize_configuration.inference_config());
   EXPECT_THAT(deserialized_result, IsOk());
   EXPECT_EQ(deserialized_result->size(), 2);
   EXPECT_THAT(*deserialized_result,
@@ -251,8 +252,9 @@ TEST(DeserializeTest,
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(data));
-  auto deserialized_result =
-      Deserialize(schema, parser->get(), inference_configuration);
+  auto deserialized_result = Deserialize(
+      schema, parser->get(),
+      inference_configuration.initialize_configuration.inference_config());
   EXPECT_THAT(deserialized_result, IsOk());
   EXPECT_EQ(deserialized_result->size(), 3);
   EXPECT_THAT(*deserialized_result,
