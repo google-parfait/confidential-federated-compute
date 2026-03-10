@@ -27,7 +27,7 @@ use oak_sdk_containers::{
 use oak_time_std::clock::SystemTimeClock;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::logs::LoggerProvider;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use prost::Message;
 use session_v1_service_proto::oak::services::oak_session_v1_service_client::OakSessionV1ServiceClient;
 use slog::Drain;
@@ -35,7 +35,7 @@ use storage_actor::StorageActor;
 use storage_client::GrpcStorageClient;
 use tcp_proto::runtime::endpoint::endpoint_service_server::EndpointServiceServer;
 use tcp_runtime::service::TonicApplicationService;
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{filter::filter_fn, fmt::Layer, prelude::*};
 
 /// The address for OpenTelemetry logging, which is the Oak Launcher address:
 /// https://github.com/project-oak/oak/blob/ac3a692abe67331d7c62e75523c7385e86adf29b/oak_containers/orchestrator/src/lib.rs#L40.
@@ -62,28 +62,34 @@ fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> 
 }
 
 fn initialize_logging() {
-    opentelemetry::global::set_error_handler(|err| eprintln!("KMS: OTLP error: {}", err))
-        .expect("failed to set OTLP error handler");
-    let log_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let log_exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
         .with_endpoint(OPEN_TELEMETRY_ADDR)
-        .build_log_exporter()
+        .build()
         .expect("failed to create LogExporter");
-    let logger_provider = LoggerProvider::builder()
-        .with_batch_exporter(log_exporter, opentelemetry_sdk::runtime::Tokio)
-        .build();
+    let logger_provider = SdkLoggerProvider::builder().with_batch_exporter(log_exporter).build();
     tracing_subscriber::registry()
-        .with(OpenTelemetryTracingBridge::new(&logger_provider))
+        // Prevent opentelemetry errors from propagating to the tracing bridge,
+        // which could cause a cycle. See
+        // https://github.com/open-telemetry/opentelemetry-rust/pull/2260.
+        .with(
+            Layer::new()
+                .with_writer(std::io::stderr)
+                .with_filter(filter_fn(|metadata| metadata.target().starts_with("opentelemetry"))),
+        )
+        .with(
+            OpenTelemetryTracingBridge::new(&logger_provider)
+                .with_filter(filter_fn(|metadata| !metadata.target().starts_with("opentelemetry"))),
+        )
         .with(tracing_subscriber::filter::LevelFilter::INFO)
         .init();
 
     // Update the panic hook to flush logs before exiting.
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let result = logger_provider.force_flush();
-        if result.iter().any(|r| r.is_err()) {
-            eprintln!("Failed to flush OTLP logs: {:?}", result);
-        }
+        if let Err(e) = logger_provider.force_flush() {
+            eprintln!("Failed to flush OTLP logs: {:?}", e);
+        };
         prev_hook(info);
     }));
 }
@@ -111,11 +117,14 @@ async fn main() {
     let clock = Arc::new(SystemTimeClock {});
 
     // Export basic metrics to OpenTelemetry (e.g. CPU usage and RPC latency).
-    let oak_observer = init_metrics(MetricsConfig {
-        launcher_addr: OPEN_TELEMETRY_ADDR.into(),
-        scope: "kms",
-        excluded_metrics: None,
-    });
+    let oak_observer = init_metrics(
+        MetricsConfig {
+            launcher_addr: OPEN_TELEMETRY_ADDR.into(),
+            scope: "kms",
+            excluded_metrics: None,
+        },
+        tokio::runtime::Handle::current(),
+    );
 
     // Create the AttestationTransparencyService.
     let attestation_transparency_service = AttestationTransparencyService::create(

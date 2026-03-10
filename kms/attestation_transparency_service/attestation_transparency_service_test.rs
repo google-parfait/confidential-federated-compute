@@ -137,7 +137,7 @@ async fn start_server_with_standalone(
     let handle = tokio::spawn(async move {
         Server::builder()
             .add_service(AttestationTransparencyServiceServer::new(ats))
-            .serve_with_incoming(TcpIncoming::from_listener(listener, true, None).unwrap())
+            .serve_with_incoming(TcpIncoming::from(listener))
             .await
             .unwrap();
     });

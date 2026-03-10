@@ -111,17 +111,17 @@ fn deserialize_message<'de, D: serde::de::Deserializer<'de>, M: Message + Defaul
 
 /// Performs the initial handshake for a Session, reading messages from `rx` and
 /// writing responses to `tx`.
-async fn initialize_session<'a, I1, I2, O1, O2, S>(
+async fn initialize_session<'a, I, O, S>(
     mut session: S,
-    rx: &'a mut tonic::Streaming<I1>,
-    tx: &'a mpsc::Sender<Result<O1, tonic::Status>>,
+    rx: &'a mut tonic::Streaming<I>,
+    tx: &'a mpsc::Sender<Result<O, tonic::Status>>,
 ) -> anyhow::Result<S>
 where
-    I1: ProstProtoConversionExt<I2> + 'static,
-    I2: Message + Default,
-    O1: Message + Default + 'static,
-    O2: ProstProtoConversionExt<O1>,
-    S: ProtocolEngine<I2, O2> + Session + Send + 'a + 'static,
+    I: ProstProtoConversionExt<S::Input> + 'static,
+    O: Message + Default + 'static,
+    S: ProtocolEngine + Session + Send + 'a + 'static,
+    S::Input: Message + Default,
+    S::Output: ProstProtoConversionExt<O>,
 {
     while !session.is_open() {
         let in_msg = rx.message().await?.context("stream unexpectedly closed")?;
@@ -130,7 +130,7 @@ where
         // SessionBinder is only used during the initial handshake, so it's not
         // necessary to run subsequent ProtocolEngine interactions on a separate
         // thread.
-        let out_msgs: Vec<O1>;
+        let out_msgs: Vec<O>;
         (session, out_msgs) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             session
                 .put_incoming_message(in_msg.convert()?)

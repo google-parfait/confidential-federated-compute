@@ -191,7 +191,7 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     let handle = tokio::spawn(async move {
         Server::builder()
             .add_service(OakSessionV1ServiceServer::new(server))
-            .serve_with_incoming(TcpIncoming::from_listener(listener, true, None).unwrap())
+            .serve_with_incoming(TcpIncoming::from(listener))
             .await
             .unwrap();
     });
