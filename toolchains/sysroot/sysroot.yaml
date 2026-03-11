@@ -17,16 +17,17 @@ version: 1
 sources:
   - channel: bookworm main
     urls:
-      - https://snapshot-cloudflare.debian.org/archive/debian/20250617T023849Z
-      - https://snapshot.debian.org/archive/debian/20250617T023849Z
+      - https://snapshot-cloudflare.debian.org/archive/debian/20260311T082224Z
+      - https://snapshot.debian.org/archive/debian/20260311T082224Z
   - channel: bookworm-security main
     urls:
-      - https://snapshot-cloudflare.debian.org/archive/debian-security/20250617T023849Z
-      - https://snapshot.debian.org/archive/debian-security/20250617T023849Z
+      - https://snapshot-cloudflare.debian.org/archive/debian-security/20260311T082224Z
+      - https://snapshot.debian.org/archive/debian-security/20260311T082224Z
 
 archs:
   - "amd64"
 
 packages:
+  - "base-files"  # For common licenses.
   - "libc6-dev"
   - "libstdc++-11-dev"
