@@ -12,42 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-module(
-    name = "confidential-federated-compute",
-    version = "0.0.13",
-)
+module(name = "confidential-federated-compute")
 
 # Dependencies when CFC is used as a library.
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250512.1", repo_name = "com_google_absl")
-bazel_dep(name = "aspect_bazel_lib", version = "2.19.3")
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "boringssl", version = "0.20250514.0")
-bazel_dep(name = "flatbuffers", version = "25.2.10")
-bazel_dep(name = "googleapis", version = "0.0.0-20241220-5e258e33.bcr.1", repo_name = "com_google_googleapis")
-bazel_dep(name = "googletest", version = "1.17.0")
-bazel_dep(name = "grpc", version = "1.72.0", repo_name = "com_github_grpc_grpc")
-bazel_dep(name = "grpc-java", version = "1.71.0", repo_name = "io_grpc_grpc_java")
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "boringssl", version = "0.20260211.0")
+bazel_dep(name = "flatbuffers", version = "25.12.19")
+bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc-java", version = "1.78.0", repo_name = "io_grpc_grpc_java")
 bazel_dep(name = "oak")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "30.0", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.14")
-bazel_dep(name = "rules_java", version = "8.14.0")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "rules_java", version = "9.4.2")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_oci", version = "2.2.6")
-bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "rules_python", version = "1.5.1")
-bazel_dep(name = "rules_rust", version = "0.68.1")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_python", version = "1.5.4")
+bazel_dep(name = "rules_rust", version = "0.69.0")
 # go/keep-sorted end
 
 cfc_deps = use_extension("//:extensions.bzl", "cfc_deps")
 use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor", "org_tensorflow_federated")
 
 # Dependencies needed only for tests or building containers in this workspace.
-# go/keep-sorted start ignore_prefixes=bazel_dep
-bazel_dep(name = "gemma", version = "0.1.0", dev_dependency = True)
+# go/keep-sorted start
+bazel_dep(name = "gemma", dev_dependency = True)
 bazel_dep(name = "googleapis-cc", version = "1.0.0", dev_dependency = True)
-bazel_dep(name = "rules_rust_prost", version = "0.68.1", dev_dependency = True)
+bazel_dep(name = "rules_rust_prost", version = "0.69.0", dev_dependency = True)
 bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
 bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
 # go/keep-sorted end
@@ -128,11 +125,8 @@ oci.pull(
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
-python.toolchain(
-    configure_coverage_tool = False,
-    ignore_root_user_error = True,
-    python_version = "3.10",
-)
+python.defaults(python_version = "3.13")
+python.toolchain(python_version = "3.13")
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
@@ -148,7 +142,7 @@ use_repo(llvm, "llvm_toolchain")
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
 rust.toolchain(
-    edition = "2021",
+    edition = "2024",
     sha256s = {
         "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
         "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
