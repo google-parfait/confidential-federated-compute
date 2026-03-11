@@ -1,5 +1,5 @@
 {
-  "checksum": "13d9e0d7a82f680a685e616a39b87cfd5128af9d35708baec1aa7629609c774f",
+  "checksum": "3a7f50653767b7c1963d01650dacea6f72046e4ad1f53301484369c562e026ad",
   "crates": {
     "acpi 5.0.0": {
       "name": "acpi",
@@ -2647,58 +2647,6 @@
         "MIT"
       ],
       "license_file": "LICENSE-APACHE"
-    },
-    "bmrng 0.5.2": {
-      "name": "bmrng",
-      "version": "0.5.2",
-      "package_url": "https://github.com/oguzbilgener/bmrng",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/bmrng/0.5.2/download",
-          "sha256": "d54df9073108f1558f90ae6c5bf5ab9c917c4185f5527b280c87a993cbead0ac"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "bmrng",
-            "crate_root": "src/lib.rs",
-            "srcs": {
-              "allow_empty": true,
-              "include": [
-                "**/*.rs"
-              ]
-            }
-          }
-        }
-      ],
-      "library_target_name": "bmrng",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "futures-core 0.3.31",
-              "target": "futures_core"
-            },
-            {
-              "id": "tokio 1.46.1",
-              "target": "tokio"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.5.2"
-      },
-      "license": "MIT OR Apache-2.0",
-      "license_ids": [
-        "Apache-2.0",
-        "MIT"
-      ],
-      "license_file": "LICENSE"
     },
     "bstr 1.9.1": {
       "name": "bstr",
@@ -7541,10 +7489,6 @@
               "target": "bitvec"
             },
             {
-              "id": "bmrng 0.5.2",
-              "target": "bmrng"
-            },
-            {
               "id": "bytes 1.10.1",
               "target": "bytes"
             },
@@ -7865,7 +7809,7 @@
               "target": "rlsf"
             },
             {
-              "id": "rmcp 0.6.3",
+              "id": "rmcp 0.8.5",
               "target": "rmcp"
             },
             {
@@ -7907,6 +7851,10 @@
             {
               "id": "signal-hook-tokio 0.3.1",
               "target": "signal_hook_tokio"
+            },
+            {
+              "id": "signature 2.2.0",
+              "target": "signature"
             },
             {
               "id": "snafu 0.8.4",
@@ -8087,7 +8035,7 @@
               "target": "prost_derive"
             },
             {
-              "id": "rmcp-macros 0.6.3",
+              "id": "rmcp-macros 0.8.5",
               "target": "rmcp_macros"
             },
             {
@@ -24844,14 +24792,14 @@
       ],
       "license_file": null
     },
-    "rmcp 0.6.3": {
+    "rmcp 0.8.5": {
       "name": "rmcp",
-      "version": "0.6.3",
+      "version": "0.8.5",
       "package_url": "https://github.com/modelcontextprotocol/rust-sdk/",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/rmcp/0.6.3/download",
-          "sha256": "c7dd163d26e254725137b7933e4ba042ea6bf2d756a4260559aaea8b6ad4c27e"
+          "url": "https://static.crates.io/crates/rmcp/0.8.5/download",
+          "sha256": "e5947688160b56fb6c827e3c20a72c90392a1d7e9dec74749197aa1780ac42ca"
         }
       },
       "targets": [
@@ -24990,13 +24938,13 @@
               "target": "paste"
             },
             {
-              "id": "rmcp-macros 0.6.3",
+              "id": "rmcp-macros 0.8.5",
               "target": "rmcp_macros"
             }
           ],
           "selects": {}
         },
-        "version": "0.6.3"
+        "version": "0.8.5"
       },
       "license": "MIT",
       "license_ids": [
@@ -25004,14 +24952,14 @@
       ],
       "license_file": null
     },
-    "rmcp-macros 0.6.3": {
+    "rmcp-macros 0.8.5": {
       "name": "rmcp-macros",
-      "version": "0.6.3",
+      "version": "0.8.5",
       "package_url": "https://github.com/modelcontextprotocol/rust-sdk/",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/rmcp-macros/0.6.3/download",
-          "sha256": "a43bb4c90a0d4b12f7315eb681a73115d335a2cee81322eca96f3467fe4cd06f"
+          "url": "https://static.crates.io/crates/rmcp-macros/0.8.5/download",
+          "sha256": "01263441d3f8635c628e33856c468b96ebbce1af2d3699ea712ca71432d4ee7a"
         }
       },
       "targets": [
@@ -25059,7 +25007,7 @@
           "selects": {}
         },
         "edition": "2024",
-        "version": "0.6.3"
+        "version": "0.8.5"
       },
       "license": "MIT",
       "license_ids": [
@@ -41440,7 +41388,6 @@
     "base64 0.21.7",
     "bitflags 2.9.1",
     "bitvec 1.0.1",
-    "bmrng 0.5.2",
     "bytes 1.10.1",
     "chrono 0.4.41",
     "ciborium 0.2.2",
@@ -41524,8 +41471,8 @@
     "reqwest 0.12.22",
     "ring 0.17.14",
     "rlsf 0.2.1",
-    "rmcp 0.6.3",
-    "rmcp-macros 0.6.3",
+    "rmcp 0.8.5",
+    "rmcp-macros 0.8.5",
     "rpassword 7.4.0",
     "rsa 0.9.8",
     "rtnetlink 0.14.1",
@@ -41536,6 +41483,7 @@
     "sha2 0.10.9",
     "signal-hook 0.3.17",
     "signal-hook-tokio 0.3.1",
+    "signature 2.2.0",
     "snafu 0.8.4",
     "spinning_top 0.3.0",
     "static_assertions 1.1.0",
