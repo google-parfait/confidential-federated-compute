@@ -182,10 +182,11 @@ class ContextImpl : public Session::Context {
                       std::string& release_token) override {
     return false;
   }
-  bool EmitError(absl::Status status) override { return false; }
+  Counters& GetCounters() override { return counters_; }
 
  private:
   SessionStream* stream_;
+  Counters counters_;
 };
 
 absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
