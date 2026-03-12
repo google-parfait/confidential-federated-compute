@@ -85,12 +85,6 @@ def _cfc_dev_deps_impl(ctx):  # buildifier: disable=unused-variable
         strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
         url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
     )
-
-    http_archive(
-        name = "sysroot",
-        sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
-        url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
-    )
     # go/keep-sorted end
 
 cfc_dev_deps = module_extension(implementation = _cfc_dev_deps_impl)

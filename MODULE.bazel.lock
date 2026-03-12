@@ -486,7 +486,7 @@
   "moduleExtensions": {
     "//:extensions.bzl%cfc_deps": {
       "general": {
-        "bzlTransitiveDigest": "3GU0d2YKtAR9T0jhyvpItDM6yqRdCNiRvn0/BojXrDs=",
+        "bzlTransitiveDigest": "fE7Gqn+xAYLo0TccpXvSTucJ4GBly+UpOF1j6Kl9jdU=",
         "usagesDigest": "NSxeq223E722d+GIE2lWlw7Kzqw4DHKGQeWY0/f6jzY=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -554,7 +554,7 @@
     },
     "//:extensions.bzl%cfc_dev_deps": {
       "general": {
-        "bzlTransitiveDigest": "3GU0d2YKtAR9T0jhyvpItDM6yqRdCNiRvn0/BojXrDs=",
+        "bzlTransitiveDigest": "fE7Gqn+xAYLo0TccpXvSTucJ4GBly+UpOF1j6Kl9jdU=",
         "usagesDigest": "UI+OsAu8arR//WFUaf8Mptdcdr6Ur5ngeLHsI4EP2ik=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -592,14 +592,6 @@
               ],
               "strip_prefix": "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
               "url": "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz"
-            }
-          },
-          "sysroot": {
-            "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
-            "ruleClassName": "http_archive",
-            "attributes": {
-              "sha256": "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
-              "url": "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz"
             }
           }
         },
@@ -1676,7 +1668,7 @@
         "bzlTransitiveDigest": "syA7yduZFTHiEBv6H9O+AoeWS7yaeK49xc3ve6SHvgg=",
         "usagesDigest": "XoMUGHACsrf8oG1Hc9RshzGNBaSG7WZqBn9J+rC19Lg=",
         "recordedFileInputs": {
-          "@@//MODULE.bazel": "86da819a7ce2075f65150c2417bdc851db813b00901ed697a4a28e6010ba5318",
+          "@@//MODULE.bazel": "5703a06ceb7ad53ee7925518b35f50daca50cd3d47c32c189798088367b2a71b",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},

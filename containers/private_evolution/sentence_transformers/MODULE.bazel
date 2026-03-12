@@ -63,8 +63,8 @@ use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "org_tensorflow_fede
 
 http_archive(
     name = "sysroot",
-    sha256 = "f58c289b3ccb28895ad8ca408ac366e709037088e8b5c28aca18212adc18c31e",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20250618/sysroot.tar.xz",
+    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")

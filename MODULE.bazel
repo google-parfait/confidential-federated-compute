@@ -42,6 +42,7 @@ use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor", "org_te
 
 # Dependencies needed only for tests or building containers in this workspace.
 # go/keep-sorted start
+bazel_dep(name = "confidential-federated-compute-sysroot", dev_dependency = True)
 bazel_dep(name = "gemma", dev_dependency = True)
 bazel_dep(name = "googleapis-cc", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_rust_prost", version = "0.69.0", dev_dependency = True)
@@ -55,11 +56,18 @@ use_repo(
     "com_google_cc_differential_privacy",
     "com_google_differential_privacy",
     "llama_cpp",
-    "sysroot",
 )
 
 # Module overrides.
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+archive_override(
+    module_name = "confidential-federated-compute-sysroot",
+    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>,
+    # where <sha256> is base16 encoded, not base64 as required by `integrity`.
+    integrity = "sha256-hsz56iNgI37K0BYzqG1WbtFuE32vmGMg75HsKV6l9nk=",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz"],
+)
+
 archive_override(
     module_name = "gemma",
     integrity = "sha256-nJsct9hZ1G+26LO4FIGBEVJrwja7Jp10lsumnzkv5cE=",
@@ -135,7 +143,7 @@ llvm.toolchain(
 )
 llvm.sysroot(
     name = "llvm_toolchain",
-    label = "@sysroot",
+    label = "@confidential-federated-compute-sysroot//:sysroot",
     targets = ["linux-x86_64"],
 )
 use_repo(llvm, "llvm_toolchain")
