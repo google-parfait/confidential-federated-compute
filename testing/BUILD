@@ -14,7 +14,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
 package(
-    default_visibility = ["//:__subpackages__"],
+    default_visibility = ["//visibility:public"],
     features = ["layering_check"],
 )
 
