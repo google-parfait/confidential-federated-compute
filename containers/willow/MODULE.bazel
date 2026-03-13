@@ -31,9 +31,9 @@ bazel_dep(name = "boringssl", version = "0.20251002.0")
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-VKEP474jy/vY04VN/6iob/jDjbf+e4B3c2BkAE+ckTY=",
-    strip_prefix = "confidential-federated-compute-2f39d187df2f19b188570f5a38fdc13fb3f54cbc",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/2f39d187df2f19b188570f5a38fdc13fb3f54cbc.tar.gz"],
+    integrity = "sha256-43jF0vBd+lb0tlbupdUfVGkMmlgM/3p7tiS6GdWZd+o=",
+    strip_prefix = "confidential-federated-compute-aa6e872b932fae18cc74d3b253db32fb9f5d5b93",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/aa6e872b932fae18cc74d3b253db32fb9f5d5b93.tar.gz"],
 )
 
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
@@ -68,7 +68,7 @@ bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "rules_python", version = "1.5.4")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(

@@ -74,8 +74,7 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
-        "@confidential-federated-compute//containers:crypto_test_utils",
-        "@federated-compute//fcp/base:random_token",
+        "@confidential-federated-compute//testing:parse_text_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest",
@@ -86,7 +85,6 @@ cc_test(
         "@secure_aggregation//willow/input_encoding:codec",
         "@secure_aggregation//willow/proto/willow:aggregation_config_cc_proto",
         "@secure_aggregation//willow/testing_utils:shell_testing_decryptor_cc",
-        "@secure_aggregation//willow/testing_utils:testing_utils_cc",
     ],
 )
 

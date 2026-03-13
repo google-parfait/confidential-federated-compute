@@ -14,6 +14,7 @@
 
 #include "transform/willow_transform_service.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,7 +22,6 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
-#include "fcp/base/random_token.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
@@ -30,6 +30,7 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "gtest/gtest.h"
+#include "testing/parse_text_proto.h"
 #include "transform/willow_messages.pb.h"
 #include "willow/api/client.h"
 #include "willow/api/server_accumulator.h"
@@ -37,7 +38,6 @@
 #include "willow/input_encoding/codec_factory.h"
 #include "willow/proto/willow/aggregation_config.pb.h"
 #include "willow/testing_utils/shell_testing_decryptor.h"
-#include "willow/testing_utils/testing_utils.h"
 
 namespace confidential_federated_compute::willow {
 namespace {
@@ -56,14 +56,53 @@ using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
+using ::secure_aggregation::testing::ShellTestingDecryptor;
 using ::secure_aggregation::willow::AggregationConfigProto;
+using ::secure_aggregation::willow::Codec;
 using ::secure_aggregation::willow::CodecFactory;
+using ::secure_aggregation::willow::DecodedData;
 using ::secure_aggregation::willow::FinalizedAccumulatorResult;
 using ::secure_aggregation::willow::FinalResultDecryptor;
+using ::secure_aggregation::willow::GroupData;
+using ::secure_aggregation::willow::InputSpec;
+using ::secure_aggregation::willow::MetricData;
+using ::secure_aggregation::willow::ShellAhePublicKey;
 using ::testing::ElementsAre;
 using ::testing::Pair;
 using ::testing::Test;
 using ::testing::UnorderedElementsAre;
+
+AggregationConfigProto CreateAggregationConfig() {
+  return PARSE_TEXT_PROTO(R"pb(
+    max_number_of_decryptors: 1
+    max_number_of_clients: 10
+    key_id: "test"
+    vector_configs {
+      key: "metric1"
+      value { length: 8 bound: 100 }
+    }
+  )pb");
+}
+
+InputSpec CreateInputSpec() {
+  return PARSE_TEXT_PROTO(R"pb(
+    group_by_vector_specs {
+      vector_name: "country"
+      data_type: STRING
+      domain_spec { string_values { values: [ "CA", "GB", "MX", "US" ] } }
+    }
+    group_by_vector_specs {
+      vector_name: "lang"
+      data_type: STRING
+      domain_spec { string_values { values: [ "en", "es" ] } }
+    }
+    metric_vector_specs {
+      vector_name: "metric1"
+      data_type: INT64
+      domain_spec { interval { min: 0 max: 100 } }
+    }
+  )pb");
+}
 
 class WillowTransformServiceTest : public Test {
  public:
@@ -84,11 +123,29 @@ class WillowTransformServiceTest : public Test {
         grpc::CreateChannel(server_address + std::to_string(port),
                             grpc::InsecureChannelCredentials()));
 
-    aggregation_config_ =
-        secure_aggregation::willow::CreateTestAggregationConfigProto();
+    // Create Aggregation Config.
+    aggregation_config_ = CreateAggregationConfig();
+
+    // Create Codec.
+    auto codec = CodecFactory::CreateExplicitCodec(CreateInputSpec());
+    CHECK(codec.ok());
+    codec_ = std::move(*codec);
+
+    // Initialize decryptor and generate public key.
+    auto decryptor = secure_aggregation::testing::ShellTestingDecryptor::Create(
+        aggregation_config_);
+    CHECK(decryptor.ok());
+    decryptor_ = std::move(*decryptor);
+
+    auto public_key = decryptor_->GeneratePublicKey();
+    CHECK(public_key.ok());
+    public_key_ = std::move(*public_key);
   }
 
-  ~WillowTransformServiceTest() override { server_->Shutdown(); }
+  ~WillowTransformServiceTest() override {
+    LOG(INFO) << "Shutting down the server";
+    server_->Shutdown();
+  }
 
  protected:
   bool InitializeTransform() {
@@ -164,54 +221,85 @@ class WillowTransformServiceTest : public Test {
     return request;
   }
 
+  // Creates an encoded and encrypted write request for the specified
+  // keys and metrics.
+  absl::StatusOr<SessionRequest> CreateContributionWriteRequest(
+      std::string nonce, std::vector<std::string> countries,
+      std::vector<std::string> languages, std::vector<int64_t> metrics) {
+    // Create and encode input.
+    GroupData group_by_data;
+    group_by_data["country"] = std::move(countries);
+    group_by_data["lang"] = std::move(languages);
+    MetricData metric_data;
+    metric_data["metric1"] = std::move(metrics);
+
+    FCP_ASSIGN_OR_RETURN(auto encoded_data,
+                         codec_->Encode(group_by_data, metric_data));
+
+    // Generate client contribution, encrypted towards public key with
+    // the provided nonce.
+    FCP_ASSIGN_OR_RETURN(
+        auto client_message,
+        secure_aggregation::GenerateClientContribution(
+            aggregation_config_, encoded_data, public_key_, nonce));
+
+    // Create write request with the serialized message.
+    return CreateWriteRequest(nonce, WillowOp::ADD_INPUT,
+                              client_message.SerializeAsString());
+  }
+
+  absl::StatusOr<DecodedData> DecryptAndDecode(std::string finalized_data) {
+    // Decrypt finalized result
+    FinalizedAccumulatorResult finalized_result;
+    EXPECT_TRUE(finalized_result.ParseFromString(finalized_data));
+
+    FCP_ASSIGN_OR_RETURN(
+        auto final_result_decryptor,
+        FinalResultDecryptor::CreateFromSerialized(std::move(
+            *finalized_result.mutable_final_result_decryptor_state())));
+
+    FCP_ASSIGN_OR_RETURN(
+        auto decryption_response,
+        decryptor_->GenerateSerializedPartialDecryptionResponse(
+            finalized_result.decryption_request()));
+
+    FCP_ASSIGN_OR_RETURN(
+        auto decrypted_encoded_result,
+        final_result_decryptor->Decrypt(std::move(decryption_response)));
+
+    // Decode the final result
+    return codec_->Decode(decrypted_encoded_result);
+  }
+
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
   std::unique_ptr<WillowTransformService> service_;
   std::unique_ptr<Server> server_;
   AggregationConfigProto aggregation_config_;
+  std::unique_ptr<Codec> codec_;
+  std::unique_ptr<ShellTestingDecryptor> decryptor_;
+  ShellAhePublicKey public_key_;
 };
 
 // The simplest case with a single Willow encrypted contribution
 // and immediate finalization without merging accumulators.
 TEST_F(WillowTransformServiceTest, SingleInputNoMerge) {
-  // Initialize decryptor and generate public key.
-  auto decryptor = secure_aggregation::testing::ShellTestingDecryptor::Create(
-      aggregation_config_);
-  ASSERT_THAT(decryptor, IsOk());
-  auto public_key = (*decryptor)->GeneratePublicKey();
-  ASSERT_THAT(public_key, IsOk());
-
-  // Create and encode input.
-  auto metric_data = secure_aggregation::willow::CreateTestMetricData();
-  auto group_by_data = secure_aggregation::willow::CreateTestGroupData();
-  auto input_spec = secure_aggregation::willow::CreateTestInputSpecProto();
-  auto encoder = CodecFactory::CreateExplicitCodec(input_spec);
-  ASSERT_THAT(encoder, IsOk());
-  auto encoded_data = (*encoder)->Encode(group_by_data, metric_data);
-  ASSERT_THAT(encoded_data, IsOk());
-
-  // Generate client contribution, encrypted towards public key with
-  // server-provided nonce.
-  std::string nonce = fcp::RandomToken::Generate().ToString();
-  auto client_message = secure_aggregation::GenerateClientContribution(
-      aggregation_config_, *encoded_data, *public_key, nonce);
-  ASSERT_THAT(client_message, IsOk());
-
   ASSERT_TRUE(InitializeTransform());
   grpc::ClientContext context;
   auto stream = StartSession(&context);
 
   // Create and write the serialized client message to the session.
-  SessionRequest write_request = CreateWriteRequest(
-      nonce, WillowOp::ADD_INPUT, client_message->SerializeAsString());
+  absl::StatusOr<SessionRequest> write_request = CreateContributionWriteRequest(
+      "nonce", {"US", "CA", "US"}, {"en", "es", "es"}, {10, 20, 5});
+  LOG(INFO) << write_request.status();
+  ASSERT_THAT(write_request, IsOk());
+
   SessionResponse write_response;
-  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Write(*write_request));
   ASSERT_TRUE(stream->Read(&write_response));
   ASSERT_TRUE(write_response.has_write());
   EXPECT_EQ(write_response.write().status().code(), grpc::OK);
 
-  // Create and write the commit that covers the entire range.
-  SessionRequest commit_request =
-      CreateCommitRequest(std::string(16, 0x00), std::string(16, 0xFF));
+  SessionRequest commit_request = CreateCommitRequest("aaaaa", "zzzzz");
   SessionResponse commit_response;
   ASSERT_TRUE(stream->Write(commit_request));
   ASSERT_TRUE(stream->Read(&commit_response));
@@ -229,25 +317,8 @@ TEST_F(WillowTransformServiceTest, SingleInputNoMerge) {
   ASSERT_TRUE(stream->Read(&finalize_response));
   ASSERT_TRUE(finalize_response.has_finalize());
 
-  // Decrypt finalized result
-  FinalizedAccumulatorResult finalized_result;
-  ASSERT_TRUE(finalized_result.ParseFromString(read_response.read().data()));
-
-  auto final_result_decryptor = FinalResultDecryptor::CreateFromSerialized(
-      std::move(*finalized_result.mutable_final_result_decryptor_state()));
-  ASSERT_THAT(final_result_decryptor, IsOk());
-
-  auto decryption_response = (*decryptor)
-                                 ->GenerateSerializedPartialDecryptionResponse(
-                                     finalized_result.decryption_request());
-  ASSERT_THAT(decryption_response, IsOk());
-
-  auto decrypted_encoded_result =
-      (*final_result_decryptor)->Decrypt(std::move(*decryption_response));
-  ASSERT_THAT(decrypted_encoded_result, IsOk());
-
-  // Decode the final result
-  auto decoded_result = (*encoder)->Decode(*decrypted_encoded_result);
+  // Decrypt and decoded finalized result
+  auto decoded_result = DecryptAndDecode(read_response.read().data());
   ASSERT_THAT(decoded_result, IsOk());
 
   // Verify the decoded result matches the original input.
@@ -257,6 +328,144 @@ TEST_F(WillowTransformServiceTest, SingleInputNoMerge) {
       decoded_result->group_data,
       UnorderedElementsAre(Pair("country", ElementsAre("CA", "US", "US")),
                            Pair("lang", ElementsAre("es", "en", "es"))));
+}
+
+// More complex case with 3 batches of inputs over 2 sessions and a
+// merge in the 3rd session.
+TEST_F(WillowTransformServiceTest, MultipleInputsWithMerge) {
+  ASSERT_TRUE(InitializeTransform());
+
+  absl::StatusOr<SessionRequest> write_request;
+  SessionRequest commit_request, compact_request, merge_request,
+      finalize_request;
+  SessionResponse write_response, read_response, commit_response,
+      compact_response, merge_response, finalize_response;
+
+  // First session - submit two contributions in one range.
+  grpc::ClientContext context1;
+  auto stream1 = StartSession(&context1);
+  write_request = CreateContributionWriteRequest("bbbbb", {"US", "CA"},
+                                                 {"en", "en"}, {10, 20});
+  ASSERT_THAT(write_request, IsOk());
+
+  ASSERT_TRUE(stream1->Write(*write_request));
+  ASSERT_TRUE(stream1->Read(&write_response));
+  ASSERT_TRUE(write_response.has_write());
+  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+
+  write_request = CreateContributionWriteRequest(
+      "ccccc", {"US", "CA", "MX"}, {"es", "en", "es"}, {30, 5, 10});
+  ASSERT_THAT(write_request, IsOk());
+
+  ASSERT_TRUE(stream1->Write(*write_request));
+  ASSERT_TRUE(stream1->Read(&write_response));
+  ASSERT_TRUE(write_response.has_write());
+  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+
+  commit_request = CreateCommitRequest("aaaaa", "ddddd");
+  ASSERT_TRUE(stream1->Write(commit_request));
+  ASSERT_TRUE(stream1->Read(&commit_response));
+  ASSERT_TRUE(commit_response.has_commit());
+  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+
+  compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
+  ASSERT_TRUE(stream1->Write(compact_request));
+  ASSERT_TRUE(stream1->Read(&read_response));
+  ASSERT_TRUE(read_response.has_read());
+  ASSERT_TRUE(read_response.read().finish_read());
+  ASSERT_TRUE(stream1->Read(&compact_response));
+  ASSERT_TRUE(compact_response.has_finalize());
+
+  // Compacted result of the first session
+  std::string compacted_blob_id1 =
+      read_response.read().first_response_metadata().unencrypted().blob_id();
+  std::string compacted_data1 = read_response.read().data();
+  stream1.release();
+
+  // Second session - submit two contributions in two separate ranges.
+  grpc::ClientContext context2;
+  auto stream2 = StartSession(&context2);
+  write_request = CreateContributionWriteRequest("kkkkk", {"GB", "MX"},
+                                                 {"en", "es"}, {15, 25});
+  ASSERT_THAT(write_request, IsOk());
+
+  ASSERT_TRUE(stream2->Write(*write_request));
+  ASSERT_TRUE(stream2->Read(&write_response));
+  ASSERT_TRUE(write_response.has_write());
+  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+
+  commit_request = CreateCommitRequest("ddddd", "mmmmm");
+  ASSERT_TRUE(stream2->Write(commit_request));
+  ASSERT_TRUE(stream2->Read(&commit_response));
+  ASSERT_TRUE(commit_response.has_commit());
+  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+
+  write_request = CreateContributionWriteRequest(
+      "ooooo", {"US", "CA", "GB"}, {"en", "en", "en"}, {10, 35, 10});
+  ASSERT_THAT(write_request, IsOk());
+
+  ASSERT_TRUE(stream2->Write(*write_request));
+  ASSERT_TRUE(stream2->Read(&write_response));
+  ASSERT_TRUE(write_response.has_write());
+  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+
+  commit_request = CreateCommitRequest("mmmmm", "zzzzz");
+  ASSERT_TRUE(stream2->Write(commit_request));
+  ASSERT_TRUE(stream2->Read(&commit_response));
+  ASSERT_TRUE(commit_response.has_commit());
+  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+
+  compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
+  ASSERT_TRUE(stream2->Write(compact_request));
+  ASSERT_TRUE(stream2->Read(&read_response));
+  ASSERT_TRUE(read_response.has_read());
+  ASSERT_TRUE(read_response.read().finish_read());
+  ASSERT_TRUE(stream2->Read(&compact_response));
+  ASSERT_TRUE(compact_response.has_finalize());
+
+  // Compacted result of the second session
+  std::string compacted_blob_id2 =
+      read_response.read().first_response_metadata().unencrypted().blob_id();
+  std::string compacted_data2 = read_response.read().data();
+  stream2.release();
+
+  // Third session - merge the two compacted data results and finalize.
+  grpc::ClientContext context3;
+  auto stream3 = StartSession(&context3);
+  merge_request =
+      CreateWriteRequest(compacted_blob_id1, WillowOp::MERGE, compacted_data1);
+  ASSERT_TRUE(stream3->Write(merge_request));
+  ASSERT_TRUE(stream3->Read(&merge_response));
+  ASSERT_TRUE(merge_response.has_write());
+  EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
+
+  merge_request =
+      CreateWriteRequest(compacted_blob_id2, WillowOp::MERGE, compacted_data2);
+  ASSERT_TRUE(stream3->Write(merge_request));
+  ASSERT_TRUE(stream3->Read(&merge_response));
+  ASSERT_TRUE(merge_response.has_write());
+  EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
+
+  finalize_request = CreateFinalizeRequest(WillowOp::FINALIZE);
+  ASSERT_TRUE(stream3->Write(finalize_request));
+  ASSERT_TRUE(stream3->Read(&read_response));
+  ASSERT_TRUE(read_response.has_read());
+  ASSERT_TRUE(read_response.read().finish_read());
+  ASSERT_TRUE(stream3->Read(&finalize_response));
+  ASSERT_TRUE(finalize_response.has_finalize());
+
+  // Decrypt and decoded finalized result
+  auto decoded_result = DecryptAndDecode(read_response.read().data());
+  ASSERT_THAT(decoded_result, IsOk());
+
+  // Verify the decoded result matches the expected results.
+  EXPECT_THAT(
+      decoded_result->metric_data,
+      UnorderedElementsAre(Pair("metric1", ElementsAre(60, 25, 35, 20, 30))));
+  EXPECT_THAT(decoded_result->group_data,
+              UnorderedElementsAre(
+                  Pair("country", ElementsAre("CA", "GB", "MX", "US", "US")),
+                  Pair("lang", ElementsAre("en", "en", "es", "en", "es"))));
 }
 
 }  // namespace
