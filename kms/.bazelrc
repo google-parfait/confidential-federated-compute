@@ -65,7 +65,7 @@ test:ubsan --test_tag_filters=-noubsan
 build --@rules_rust//rust/settings:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//rust/settings:extra_exec_rustc_flag=-Zlinker-features=-lld
 
 # Settings for remote build execution.
-build:cfc-remote --experimental_allow_tags_propagation
+build:cfc-remote --incompatible_allow_tags_propagation
 build:cfc-remote --define=EXECUTOR=remote
 build:cfc-remote --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:cfc-remote --remote_instance_name=projects/560162532548/instances/default
