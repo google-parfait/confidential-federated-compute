@@ -38,6 +38,28 @@
 namespace confidential_federated_compute::batched_inference {
 namespace {
 
+// TODO:
+//
+// - Classify potential types of errors based on criticality and revise error
+// types here to
+//   match that classification. Thread through the DoFn framework, such that
+//   non-critical errors do not abort the session, and can be handled in Flume
+//   on the host to update /streamz counters, etc.
+//
+// - Port the FedSql logic here, in particular the support for inference
+// returning zero or more
+//   than one value for an output column in a row (to be handled as repeats,
+//   outer join, etc.).
+//
+// - Switch the semantics to allow early processing before the Commit(), and
+// during a Write() if
+//   there's enough to fill an inference batch.
+//
+// - Add support for handling protobuf inputs (that require a message factory),
+// to match FedSql.
+//
+// - ...
+
 using ::confidential_federated_compute::Session;
 using ::confidential_federated_compute::fed_sql::
     CreateInputFromMessageCheckpoint;
