@@ -51,14 +51,14 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-EOnX0A/Ef7swiOVjZAtBK1XUGkwuAD7b82/zn/Wk5hw=",
+    integrity = "sha256-pixFPDN0SkhA67jY9RmLL1YZODefPmpZfoJJP7kqpyM=",
     patches = [
         "//third_party/oak:module.patch",
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
     ],
-    strip_prefix = "oak-645240f9826eeedb8e57ab07cbe36c2070b900cc",
-    urls = ["https://github.com/project-oak/oak/archive/645240f9826eeedb8e57ab07cbe36c2070b900cc.tar.gz"],
+    strip_prefix = "oak-7ad6bf3867bc969603f55ba8afff42a200e03745",
+    urls = ["https://github.com/project-oak/oak/archive/7ad6bf3867bc969603f55ba8afff42a200e03745.tar.gz"],
 )
 
 archive_override(
@@ -129,7 +129,10 @@ crate.from_specs(
     name = "crates",
     host_tools = "@rust_host_tools_nightly",
 )
-use_repo(crate, "crates", "oak_crates_index")
+use_repo(crate, "crates")
+
+aliased_crates_repository = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
+use_repo(aliased_crates_repository, "oak_crates_index")
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
 llvm.toolchain(
