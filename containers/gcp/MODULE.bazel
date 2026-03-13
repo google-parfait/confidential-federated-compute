@@ -33,6 +33,19 @@ http_file(
     urls = ["https://www.googleapis.com/service_accounts/v1/metadata/jwk/signer@confidentialspace-sign.iam.gserviceaccount.com"],
 )
 
+bazel_dep(name = "gemma", version = "0.0.1")
+archive_override(
+    module_name = "gemma",
+    patches = ["//third_party/gemma:module.patch"],
+    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
+    urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
+)
+
+single_version_override(
+    module_name = "rules_python",
+    version = "1.5.4",
+)
+
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
@@ -40,18 +53,25 @@ bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
 bazel_dep(name = "toolchains_llvm", version = "1.4.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "rules_python", version = "1.5.3")
+bazel_dep(name = "rules_python", version = "1.5.4")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "protobuf", version = "33.0-rc2", repo_name = "com_google_protobuf")
-bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "tink_cc", version = "2.4.0", repo_name = "com_google_tink")
 bazel_dep(name = "nlohmann_json", version = "3.11.3")  # Needed for JSON parsing
 bazel_dep(name = "rules_foreign_cc", version = "0.11.1")
 bazel_dep(name = "curl", version = "8.11.0")  # Example version, check BCR
 bazel_dep(name = "aspect_bazel_lib", version = "2.9.4")
 bazel_dep(name = "rules_cuda")
-bazel_dep(name = "googleapis", version = "0.0.0-20240819-fe8ba054a", repo_name = "com_google_googleapis")
-bazel_dep(name = "rules_rust", version = "0.61.0")
+bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
+bazel_dep(name = "rules_rust", version = "0.69.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.defaults(python_version = "3.13")
+python.toolchain(python_version = "3.13")
+use_repo(python, "python_3_13")
+
+register_toolchains("@python_3_13//:all")
 
 archive_override(
     module_name = "rules_cuda",
@@ -180,7 +200,25 @@ cc_library(
     urls = ["https://developer.download.nvidia.com/compute/nvidia-driver/redist/nvidia_driver/linux-x86_64/nvidia_driver-linux-x86_64-535.161.07-archive.tar.xz"],
 )
 
-bazel_dep(name = "confidential-federated-compute", version = "0.0.12")
+bazel_dep(name = "confidential-federated-compute")
+archive_override(
+    module_name = "confidential-federated-compute",
+    integrity = "sha256-CFBIIYRjLuxP4DmfF1JWoV57pDMs9p4HiHXGw7LKGYA=",
+    patches = [
+        "//third_party/confidential-federated-compute:make_gemma_regular_dep_module.patch",
+        "//third_party/confidential-federated-compute:make_gemma_regular_dep_extensions.patch",
+    ],
+    strip_prefix = "confidential-federated-compute-088060a64f0725cbde2200f6aaaaa6404916c83c",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/088060a64f0725cbde2200f6aaaaa6404916c83c.zip"],
+)
+
+archive_override(
+    module_name = "highway",
+    integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
+    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
+    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
+)
+
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
@@ -190,7 +228,7 @@ archive_override(
     urls = ["https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz"],
 )
 
-bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "boringssl", version = "0.20260211.0")
 
 # Rust crates.
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate", dev_dependency = True)
