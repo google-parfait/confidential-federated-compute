@@ -1,0 +1,5 @@
+--- extensions.bzl
++++ extensions.bzl
+@@ -53,1 +53,2 @@
+         name = "org_tensorflow_federated",
++        patch_cmds = ["find . -name BUILD -exec sed -i 's|@rules_cc//cc:defs.bzl|@com_google_protobuf//bazel:cc_proto_library.bzl|g' {} +"],

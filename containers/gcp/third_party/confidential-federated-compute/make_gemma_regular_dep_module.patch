@@ -1,0 +1,11 @@
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -46,1 +46,1 @@
+-bazel_dep(name = "gemma", dev_dependency = True)
++bazel_dep(name = "gemma")
+@@ -49,1 +49,1 @@
+-bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
++bazel_dep(name = "sqlite3", version = "3.46.1")
+@@ -53,1 +53,1 @@
+-cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps", dev_dependency = True)
++cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps")
