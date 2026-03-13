@@ -66,7 +66,7 @@ cc_library(
     name = "inference_model_helper",
     srcs = ["inference_model_helper.cc"],
     hdrs = ["inference_model_helper.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//containers:__subpackages__"],
     deps = [
         "//containers/sql:input",
         "@com_google_absl//absl/log",
