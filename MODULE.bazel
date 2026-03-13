@@ -86,11 +86,12 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-Nmlg1YwkjJfq7oREXBWSBfemITX9B98g5WbjGYPj3ck=",
+    integrity = "sha256-pixFPDN0SkhA67jY9RmLL1YZODefPmpZfoJJP7kqpyM=",
     patches = ["//third_party/oak:module.patch"],
-    strip_prefix = "oak-d7f4c7089e09cc32aa08c67fa6921bab467515ef",
-    urls = ["https://github.com/project-oak/oak/archive/d7f4c7089e09cc32aa08c67fa6921bab467515ef.tar.gz"],
+    strip_prefix = "oak-7ad6bf3867bc969603f55ba8afff42a200e03745",
+    urls = ["https://github.com/project-oak/oak/archive/7ad6bf3867bc969603f55ba8afff42a200e03745.tar.gz"],
 )
+
 # go/keep-sorted end
 
 # Rust crates.
@@ -121,7 +122,10 @@ crate.spec(
     version = "3.10.1",
 )
 crate.from_specs(name = "crates")
-use_repo(crate, "crates", "oak_crates_index")
+use_repo(crate, "crates")
+
+aliased_crates_repository = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
+use_repo(aliased_crates_repository, "oak_crates_index")
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci", dev_dependency = True)
 oci.pull(
