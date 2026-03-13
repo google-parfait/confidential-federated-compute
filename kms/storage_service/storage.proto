@@ -170,6 +170,10 @@ message PipelineInvocationStateValue {
   // SHA-256 hashes of the AuthorizedLogicalPipelinePolicies authorizing this
   // pipeline invocation.
   repeated bytes authorized_logical_pipeline_policies_hashes = 5;
+
+  // SHA-256 hashes of the AuthorizedLogicalPipelinePolicies that were blocked
+  // by LogicalPipelineStateValue.blocked_policies.
+  repeated bytes blocked_authorized_logical_pipeline_policies_hashes = 6;
 }
 
 // The persisted state of a logical pipeline.
@@ -182,4 +186,27 @@ message PipelineInvocationStateValue {
 message LogicalPipelineStateValue {
   // The current state, which is opaque to the KMS.
   bytes state = 1;
+
+  // SHA-256 hashes of the AuthorizedLogicalPipelinePolicies that were used by
+  // recently run pipeline invocations. If a pipeline invocation that didn't
+  // use one of these policies releases a result, the hash is moved to
+  // blocked_policies.
+  repeated bytes recent_authorized_logical_pipeline_policy_hashes = 2;
+
+  // AuthorizedLogicalPipelinePolicy hashes for which pipelines will not receive
+  // decryption keys. This denylist ensures that once a pipeline invocation is
+  // run that doesn't match an AuthorizedLogicalPipelinePolicy, the access
+  // budget for all uploads using that AuthorizedLogicalPipelinePolicy is
+  // exhausted. This prevents an attacker from running a malicious pipeline to
+  // modify stored budget information.
+  repeated BlockedPolicies blocked_policies = 3;
+
+  message BlockedPolicies {
+    // Time at which the entry can be removed.
+    google.protobuf.Timestamp expiration = 1;
+
+    // AuthorizedLogicalPipelinePolicy SHA-256 hashes for which decryption keys
+    // will not be provided.
+    repeated bytes authorized_logical_pipeline_policy_hashes = 2;
+  }
 }

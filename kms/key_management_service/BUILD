@@ -116,6 +116,7 @@ rust_library(
 rust_test(
     name = "key_management_service_test",
     srcs = ["key_management_service_test.rs"],
+    env = {"RUST_LOG": "debug"},
     proc_macro_deps = ["@oak_crates_index//:async-trait"],
     deps = [
         ":access_policy_prost_proto",
@@ -138,6 +139,7 @@ rust_test(
         "@oak_crates_index//:coset",
         "@oak_crates_index//:googletest",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:test-log",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
     ],

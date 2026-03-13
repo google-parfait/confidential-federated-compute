@@ -1326,6 +1326,22 @@ async fn authorize_confidential_transform_without_authorization() {
     );
 }
 
+struct RegisterAndAuthorizeOptions {
+    intermediates_ttl: Duration,
+    keyset_ids: Vec<u64>,
+    authorized_logical_pipeline_policies: Vec<Vec<u8>>,
+}
+
+impl Default for RegisterAndAuthorizeOptions {
+    fn default() -> Self {
+        RegisterAndAuthorizeOptions {
+            intermediates_ttl: Duration { seconds: 300, nanos: 0 },
+            keyset_ids: vec![],
+            authorized_logical_pipeline_policies: vec![],
+        }
+    }
+}
+
 /// Helper function to register a pipeline invocation and authorize a transform.
 /// Returns a tuple containing the current logical pipeline state,
 /// ProtectedResponse containing encryption keys, and signing key endorsement.
@@ -1336,7 +1352,7 @@ async fn register_and_authorize<SC, S, PS>(
     kms: &KeyManagementService<SC, S, PS>,
     logical_pipeline_name: &str,
     policy: &PipelineVariantPolicy,
-) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, Vec<u8>)>
+) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, AssociatedData, Vec<u8>)>
 where
     SC: StorageClient + Send + Sync + 'static,
     S: oak_sdk_containers::Signer + Send + Sync + 'static,
@@ -1346,8 +1362,7 @@ where
         kms,
         logical_pipeline_name,
         policy,
-        Duration { seconds: 300, nanos: 0 },
-        vec![],
+        RegisterAndAuthorizeOptions::default(),
     )
     .await
 }
@@ -1358,30 +1373,34 @@ async fn register_and_authorize_with_options<SC, S, PS>(
     kms: &KeyManagementService<SC, S, PS>,
     logical_pipeline_name: &str,
     policy: &PipelineVariantPolicy,
-    intermediates_ttl: Duration,
-    keyset_ids: Vec<u64>,
-) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, Vec<u8>)>
+    mut options: RegisterAndAuthorizeOptions,
+) -> anyhow::Result<(Option<LogicalPipelineState>, ProtectedResponse, AssociatedData, Vec<u8>)>
 where
     SC: StorageClient + Send + Sync + 'static,
     S: oak_sdk_containers::Signer + Send + Sync + 'static,
     PS: PayloadSigner + Send + Sync + 'static,
 {
-    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
-        pipelines: [(
-            logical_pipeline_name.into(),
-            LogicalPipelinePolicy { instances: vec![policy.clone()] },
-        )]
-        .into(),
-        ..Default::default()
-    };
+    if options.authorized_logical_pipeline_policies.is_empty() {
+        options.authorized_logical_pipeline_policies.push(
+            AuthorizedLogicalPipelinePolicies {
+                pipelines: [(
+                    logical_pipeline_name.into(),
+                    LogicalPipelinePolicy { instances: vec![policy.clone()] },
+                )]
+                .into(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        );
+    }
 
     // Register the pipeline invocation.
     let register_invocation_request = RegisterPipelineInvocationRequest {
         logical_pipeline_name: logical_pipeline_name.into(),
         pipeline_variant_policy: policy.encode_to_vec(),
-        intermediates_ttl: Some(intermediates_ttl),
-        keyset_ids,
-        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.encode_to_vec()],
+        intermediates_ttl: Some(options.intermediates_ttl),
+        keyset_ids: options.keyset_ids,
+        authorized_logical_pipeline_policies: options.authorized_logical_pipeline_policies,
         include_keys_in_response: false,
     };
     let response = kms
@@ -1406,7 +1425,7 @@ where
         .into_inner();
 
     // Decrypt the ProtectedResponse.
-    let (_, plaintext, _) = ServerEncryptor::decrypt_async(
+    let (_, plaintext, associated_data) = ServerEncryptor::decrypt_async(
         &response.protected_response.unwrap_or_default().convert().unwrap(),
         &get_test_encryption_key_handle(),
     )
@@ -1414,8 +1433,15 @@ where
     .context("failed to decrypt response")?;
     let protected_response = ProtectedResponse::decode(plaintext.as_slice())
         .context("failed to decode ProtectedResponse")?;
+    let associated_data = AssociatedData::decode(associated_data.as_slice())
+        .context("failed to decode AssociatedData")?;
 
-    Ok((logical_pipeline_state, protected_response, response.signing_key_endorsement))
+    Ok((
+        logical_pipeline_state,
+        protected_response,
+        associated_data,
+        response.signing_key_endorsement,
+    ))
 }
 
 /// Creates an encrypted release token with the given plaintext, source state,
@@ -1501,7 +1527,7 @@ async fn release_results_success() {
         }],
         ..Default::default()
     };
-    let (logical_pipeline_state, protected_response, signing_key_endorsement) =
+    let (logical_pipeline_state, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -1587,12 +1613,14 @@ async fn release_results_sets_expiration_from_intermediates_ttl() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
+    let (_, protected_response, _, signing_key_endorsement) = register_and_authorize_with_options(
         &kms,
         "test",
         &variant_policy,
-        Duration { seconds: 500, nanos: 0 },
-        vec![],
+        RegisterAndAuthorizeOptions {
+            intermediates_ttl: Duration { seconds: 500, nanos: 0 },
+            ..Default::default()
+        },
     )
     .await
     .expect("failed to register and authorize pipeline transform");
@@ -1671,12 +1699,15 @@ async fn release_results_sets_expiration_from_key_ttl() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
+    let (_, protected_response, _, signing_key_endorsement) = register_and_authorize_with_options(
         &kms,
         "test",
         &variant_policy,
-        Duration { seconds: 100, nanos: 0 },
-        vec![222, 333],
+        RegisterAndAuthorizeOptions {
+            intermediates_ttl: Duration { seconds: 100, nanos: 0 },
+            keyset_ids: vec![222, 333],
+            ..Default::default()
+        },
     )
     .await
     .expect("failed to register and authorize pipeline transform");
@@ -1736,15 +1767,18 @@ async fn release_results_sets_expiration_from_existing_logical_pipeline_state() 
     for (src_state, dst_state, invocation_ttl) in
         [(None, b"state1", 500), (Some(b"state1".as_slice()), b"state2", 300)]
     {
-        let (_, protected_response, signing_key_endorsement) = register_and_authorize_with_options(
-            &kms,
-            "test",
-            &variant_policy,
-            Duration { seconds: invocation_ttl, nanos: 0 },
-            vec![],
-        )
-        .await
-        .expect("failed to register and authorize pipeline transform");
+        let (_, protected_response, _, signing_key_endorsement) =
+            register_and_authorize_with_options(
+                &kms,
+                "test",
+                &variant_policy,
+                RegisterAndAuthorizeOptions {
+                    intermediates_ttl: Duration { seconds: invocation_ttl, nanos: 0 },
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("failed to register and authorize pipeline transform");
 
         // Call ReleaseResults to update the saved logical pipeline state. Even
         // though the second invocation has a shorter TTL than the first, the
@@ -1799,7 +1833,7 @@ async fn release_results_fails_with_src_state_not_matching() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -1818,7 +1852,7 @@ async fn release_results_fails_with_src_state_not_matching() {
     };
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        err(displays_as(contains_substring("failed to update logical pipeline states")))
+        err(displays_as(contains_substring("no existing logical pipeline state")))
     );
 
     // The logical pipeline state should not have been set.
@@ -1848,7 +1882,7 @@ async fn release_results_fails_with_src_state_none_not_matching() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -1886,7 +1920,7 @@ async fn release_results_fails_with_src_state_none_not_matching() {
     };
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        err(displays_as(contains_substring("failed to update logical pipeline states")))
+        err(displays_as(contains_substring("failed to update logical pipeline state")))
     );
 
     // The logical pipeline state should not have been changed.
@@ -1917,7 +1951,7 @@ async fn release_results_fails_with_missing_invocation_id() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -1964,7 +1998,7 @@ async fn release_results_fails_with_modified_release_token() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -2012,7 +2046,7 @@ async fn release_results_fails_with_undecryptable_release_token() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -2057,7 +2091,7 @@ async fn release_results_fails_with_modified_signing_key_endorsement() {
         }],
         ..Default::default()
     };
-    let (_, protected_response, signing_key_endorsement) =
+    let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
             .await
             .expect("failed to register and authorize pipeline transform");
@@ -2082,6 +2116,243 @@ async fn release_results_fails_with_modified_signing_key_endorsement() {
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
         err(displays_as(contains_substring("releasable_results are invalid")))
+    );
+}
+
+#[googletest::test]
+#[test_log::test(tokio::test)]
+async fn release_results_blocks_reused_policies() {
+    let storage_client = FakeStorageClient::default();
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
+
+    let request =
+        RotateKeysetRequest { keyset_id: 1234, ttl: Some(Duration { seconds: 10_000, nanos: 0 }) };
+    assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+
+    // Define 3 different AuthorizedLogicalPipelinePolicies messages.
+    let logical_pipeline_name = "test";
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![0],
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let policies: Vec<Vec<u8>> = (0..3)
+        .map(|i| {
+            AuthorizedLogicalPipelinePolicies {
+                pipelines: [
+                    (
+                        logical_pipeline_name.into(),
+                        LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+                    ),
+                    // Add an additional entry to make the policies distinct.
+                    (format!("policy-{i}"), LogicalPipelinePolicy::default()),
+                ]
+                .into(),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        })
+        .collect();
+
+    // Simulate three pipeline invocations and record the ProtectedResponse and
+    // AssociatedData messages from each.
+    let mut results = Vec::new();
+    let mut state: Option<Vec<u8>> = None;
+    for policies in [&policies[0..2], &policies[1..2], &policies[..]] {
+        let (_, protected_response, associated_data, signing_key_endorsement) =
+            register_and_authorize_with_options(
+                &kms,
+                logical_pipeline_name,
+                &variant_policy,
+                RegisterAndAuthorizeOptions {
+                    keyset_ids: vec![1234],
+                    authorized_logical_pipeline_policies: policies.to_vec(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+        // Release a result, changing the state each time.
+        let src_state = state.clone();
+        state = Some([&state.unwrap_or_default(), b"x".as_slice()].concat());
+        let release_token = create_release_token(
+            b"plaintext",
+            src_state.as_deref(),
+            state.as_ref().unwrap(),
+            &protected_response.result_encryption_keys[0],
+        )
+        .expect("failed to create release token");
+        let request = ReleaseResultsRequest {
+            releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+        };
+        kms.release_results(request.into_request()).await.expect("release_results failed");
+        results.push((protected_response, associated_data));
+    }
+
+    // Check the provided and omitted decryption keys for each invocation.
+    assert_that!(
+        results,
+        elements_are![
+            // In the first invocation, decryption keys should be provided for
+            // policies 0 and 1.
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+            ),
+            // Since the second invocation only provides policy 1, it should
+            // only receive one decryption key. Policy 0 should be added to the
+            // blocklist, though this can't be checked directly.
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(1)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+            ),
+            // The third invocation provides policies 0, 1, and 2, but policy 0
+            // should be blocked.
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: len(eq(1)) })
+            ),
+        ]
+    );
+    // The omitted decryption key id should be for policy 0. The last 4 bytes of
+    // the key id should match the first 4 bytes of the policy hash.
+    expect_that!(
+        results[2].1.omitted_decryption_key_ids,
+        each(predicate(|key_id: &Vec<u8>| key_id[4..] == Sha256::hash(&policies[0])[0..4]))
+    );
+}
+
+#[googletest::test]
+#[test_log::test(tokio::test)]
+async fn release_results_blocklist_entries_expire() {
+    let now = Arc::new(AtomicI64::new(10_000));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
+
+    // Define 3 different AuthorizedLogicalPipelinePolicies messages.
+    let logical_pipeline_name = "test";
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![0],
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let policies: Vec<_> = (0..3)
+        .map(|i| {
+            AuthorizedLogicalPipelinePolicies {
+                pipelines: [
+                    (
+                        logical_pipeline_name.into(),
+                        LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+                    ),
+                    // Add an additional entry to make the policies distinct.
+                    (format!("policy-{i}"), LogicalPipelinePolicy::default()),
+                ]
+                .into(),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        })
+        .collect();
+
+    // Simulate four pipeline invocations and record the ProtectedResponse and
+    // AssociatedData messages from each.
+    let mut results = Vec::new();
+    let mut state: Option<Vec<u8>> = None;
+    for policies in [&policies[0..1], &policies[1..2], &policies[2..3], &policies[..]] {
+        // Advance time by 1000 seconds and create a new key before each
+        // invocation. Any blocklist entries created should expire after 1500
+        // seconds (the max key expiration time).
+        now.fetch_add(1_000, Ordering::Relaxed);
+        let request =
+            RotateKeysetRequest { keyset_id: 123, ttl: Some(Duration { seconds: 1500, nanos: 0 }) };
+        assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+
+        let (_, protected_response, associated_data, signing_key_endorsement) =
+            register_and_authorize_with_options(
+                &kms,
+                logical_pipeline_name,
+                &variant_policy,
+                RegisterAndAuthorizeOptions {
+                    keyset_ids: vec![123],
+                    authorized_logical_pipeline_policies: policies.to_vec(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+        // Release a result, changing the state each time.
+        let src_state = state.clone();
+        state = Some([&state.unwrap_or_default(), b"x".as_slice()].concat());
+        let release_token = create_release_token(
+            b"plaintext",
+            src_state.as_deref(),
+            state.as_ref().unwrap(),
+            &protected_response.result_encryption_keys[0],
+        )
+        .expect("failed to create release token");
+        let request = ReleaseResultsRequest {
+            releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+        };
+        kms.release_results(request.into_request()).await.expect("release_results failed");
+        results.push((protected_response, associated_data));
+    }
+
+    // Check the provided and omitted decryption keys for each invocation.
+    assert_that!(
+        results,
+        elements_are![
+            // The first invocation should get the key for policy 0.
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(1)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+            ),
+            // The second invocation should get the keys for policy 1; note that
+            // there are now two keys. Policy 0 should be blocked (expiration
+            // time 12000 + 1500 = 13500).
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+            ),
+            // The third invocation should get the keys for policy 2; note that
+            // there are now two keys since one expired. Policy 1 should be
+            // blocked (expiration time 13000 + 1500 = 14500).
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+            ),
+            // The fourth invocation attempts to use all policies. Policies 0
+            // and 1 were previously blocked, but the block on policy 0 should
+            // have expired since the current time is 14000. Note that there are
+            // now two keys since two have expired.
+            (
+                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(4)) }),
+                matches_pattern!(AssociatedData { omitted_decryption_key_ids: len(eq(2)) })
+            ),
+        ]
+    );
+    // The omitted decryption key ids should be for policy 1. The last 4 bytes
+    // of the key id should match the first 4 bytes of the policy hash.
+    expect_that!(
+        results[3].1.omitted_decryption_key_ids,
+        each(predicate(|key_id: &Vec<u8>| key_id[4..] == Sha256::hash(&policies[1])[0..4]))
     );
 }
 

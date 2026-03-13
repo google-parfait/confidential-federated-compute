@@ -42,13 +42,14 @@ use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use release_tokens::{
     compute_logical_pipeline_updates, decrypt_release_token, endorse_transform_signing_key,
-    verify_release_token,
+    verify_release_token, LogicalPipelineUpdate,
 };
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, read_response, update_request, ClusterKeyValue, KeysetKeyValue,
-        LogicalPipelineStateValue, PipelineInvocationStateValue, ReadRequest, UpdateRequest,
+        logical_pipeline_state_value::BlockedPolicies, read_request, read_response, update_request,
+        ClusterKeyValue, KeysetKeyValue, LogicalPipelineStateValue, PipelineInvocationStateValue,
+        ReadRequest, UpdateRequest,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -88,6 +89,17 @@ pub fn get_init_request() -> UpdateRequest {
             ..Default::default()
         }],
     }
+}
+
+/// Information about the time at which a storage entry expires.
+struct ExpirationInfo {
+    /// The absolute expiration time, or None if the entry does not expire.
+    expiration: Option<Timestamp>,
+    /// The expiration time relative to the storage layer's current time, or
+    /// None if the entry does not expire.
+    ttl: Option<Duration>,
+    /// The storage layer's notion of the current time, used to compute the ttl.
+    now: Timestamp,
 }
 
 /// An implementation of the KeyManagementService proto service.
@@ -239,6 +251,11 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
                     _ => unreachable!(),
                 };
 
+                // Record that blocked policies were omitted.
+                for hash in &state.blocked_authorized_logical_pipeline_policies_hashes {
+                    omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
+                }
+
                 // Skip entries from other keysets or that expire before the
                 // pipeline invocation expires.
                 if !state.keyset_ids.contains(&keyset_id)
@@ -302,7 +319,7 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
         &self,
         invocation_states: impl IntoIterator<Item = &PipelineInvocationStateValue>,
         invocation_expirations: impl IntoIterator<Item = &Option<Timestamp>>,
-    ) -> anyhow::Result<(Option<Timestamp>, Option<Duration>)> {
+    ) -> anyhow::Result<ExpirationInfo> {
         // Find all logical pipelines and keysets referenced by the invocations.
         let mut logical_pipeline_names = Vec::new();
         let mut keyset_ids: Vec<u64> = Vec::new();
@@ -359,7 +376,128 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
             }
             ttl
         });
-        Ok((*max_expiration, ttl))
+        Ok(ExpirationInfo { expiration: *max_expiration, ttl, now: *now })
+    }
+
+    /// Constructs the Update for a LogicalPipelineUpdate.
+    ///
+    /// The existing logical pipeline state (if any) must be provided in
+    /// `current_states`.
+    fn build_update<'a>(
+        update: &LogicalPipelineUpdate,
+        now: Timestamp,
+        expiration: Option<Timestamp>,
+        ttl: Option<Duration>,
+        current_states: &HashMap<Vec<u8>, Vec<u8>>,
+        invocation_states: impl IntoIterator<Item = &'a PipelineInvocationStateValue>,
+    ) -> anyhow::Result<update_request::Update> {
+        let key: Vec<u8> = Self::get_logical_pipeline_storage_key(update.logical_pipeline_name)
+            .try_into()
+            .unwrap();
+
+        // Determine the source value, which is a combination of
+        // `update.src_state` and any other fields in the current
+        // LogicalPipelineStateValue.
+        //
+        // In an ideal world, we'd be able to substitute src_state into the
+        // existing LogicalPipelineStateValue and let the storage layer handle
+        // any precondition checks, but that doesn't work because proto
+        // serialization is not canonical. Instead, this function verifies that
+        // src_state matches the current LogicalPipelineStateValue.state and a
+        // storage layer precondition is used to verify the
+        // LogicalPipelineStateValue didn't change after being read.
+        let (preconditions, src_value) = match update.src_state {
+            Some(src_state) => {
+                let serialized_value = current_states
+                    .get(&key)
+                    .context(format!(
+                        "no existing logical pipeline state for '{}'",
+                        update.logical_pipeline_name
+                    ))
+                    .context(Code::FailedPrecondition)?;
+                let value = LogicalPipelineStateValue::decode(serialized_value.as_slice())
+                    .context(format!(
+                        "failed to decode logical pipeline state for '{}'",
+                        update.logical_pipeline_name
+                    ))?;
+                if value.state != src_state {
+                    return Err(anyhow!(
+                            "existing logical pipeline state for '{}' does not match; expected {:?}, got {:?}",
+                            update.logical_pipeline_name, src_state, value.state
+                        ))
+                        .context(Code::FailedPrecondition)?;
+                }
+                let preconditions = update_request::Preconditions {
+                    value: Some(serialized_value.clone()),
+                    ..Default::default()
+                };
+                (preconditions, value)
+            }
+            None => (
+                // Ensure there's no existing state if `src_state` is None.
+                update_request::Preconditions { exists: Some(false), ..Default::default() },
+                LogicalPipelineStateValue::default(),
+            ),
+        };
+
+        // Compute the set of all recently used policies (`all_hashes`) and the
+        // set of policies used by all pipeline invocations (`common_hashes`).
+        // These sets will be used to determine if any policies need to be
+        // blocked (see below).
+        let mut all_hashes = hashbrown::HashSet::from_iter(
+            src_value.recent_authorized_logical_pipeline_policy_hashes.iter(),
+        );
+        let mut common_hashes: Option<hashbrown::HashSet<&Vec<u8>>> = None;
+        invocation_states.into_iter().for_each(|state| {
+            if state.logical_pipeline_name != update.logical_pipeline_name {
+                return;
+            }
+
+            all_hashes.extend(state.authorized_logical_pipeline_policies_hashes.iter());
+            match common_hashes {
+                None => {
+                    common_hashes = Some(hashbrown::HashSet::from_iter(
+                        state.authorized_logical_pipeline_policies_hashes.iter(),
+                    ))
+                }
+                Some(ref mut common_hashes) => common_hashes.retain(|hash| {
+                    state.authorized_logical_pipeline_policies_hashes.contains(hash)
+                }),
+            }
+        });
+        let common_hashes = common_hashes.unwrap_or_default();
+
+        // A policy should be blocked if it wasn't used by all pipeline
+        // invocations. This ensures that once the logical pipeline state is
+        // modified by a pipeline invocation that wasn't authorized by a
+        // previously used AuthorizedLogicalPipelinePolicy, the policy will not
+        // be used again.
+        let mut blocked_policies = src_value.blocked_policies;
+        // Only keep blocked policies that have not expired.
+        blocked_policies.retain(|p| Self::timestamp_lt(&p.expiration, &Some(now)));
+        let hashes_to_block: Vec<Vec<u8>> =
+            all_hashes.difference(&common_hashes).cloned().cloned().collect();
+        if !hashes_to_block.is_empty() {
+            blocked_policies.push(BlockedPolicies {
+                expiration,
+                authorized_logical_pipeline_policy_hashes: hashes_to_block,
+            });
+        }
+
+        let dst_value = LogicalPipelineStateValue {
+            state: update.dst_state.into(),
+            recent_authorized_logical_pipeline_policy_hashes: common_hashes
+                .into_iter()
+                .cloned()
+                .collect(),
+            blocked_policies,
+        };
+        Ok(update_request::Update {
+            key,
+            value: Some(dst_value.encode_to_vec()),
+            ttl,
+            preconditions: Some(preconditions),
+        })
     }
 }
 
@@ -616,64 +754,86 @@ where
         .context(Code::InvalidArgument)
         .map_err(Self::convert_error)?;
 
-        let authorized_logical_pipeline_policies_hashes: Vec<Vec<u8>> = request
-            .authorized_logical_pipeline_policies
-            .into_iter()
-            .map(|policy| Sha256::hash(policy.as_slice()).into())
-            .collect();
-
-        // Create a future that writes the pipeline invocation state to storage.
-        // We don't worry about retring on collision because the probability is
-        // so low.
-        let write_invocation_state_fut = async {
-            let id = rand::random();
-            let ttl = request.intermediates_ttl.unwrap_or_default();
-            let value = PipelineInvocationStateValue {
-                logical_pipeline_name: request.logical_pipeline_name.clone(),
-                pipeline_variant_policy_hash: Sha256::hash(&request.pipeline_variant_policy).into(),
-                intermediates_key: Some(KeysetKeyValue {
-                    ikm: bssl_crypto::rand_array::<32>().into(),
-                    algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
-                    ttl: Some(ttl),
-                }),
-                keyset_ids: request.keyset_ids.clone(),
-                authorized_logical_pipeline_policies_hashes:
-                    authorized_logical_pipeline_policies_hashes.clone(),
-            };
-            self.storage_client
-                .update(UpdateRequest {
-                    updates: vec![update_request::Update {
-                        key: StorageKey::PipelineInvocationState { id }.try_into().unwrap(),
-                        value: Some(value.encode_to_vec()),
-                        ttl: Some(ttl),
-                        preconditions: Some(update_request::Preconditions {
-                            exists: Some(false),
-                            ..Default::default()
-                        }),
-                    }],
-                })
-                .await
-                .map_err(Self::convert_error)?;
-            Ok(id.into())
-        };
-
-        // Create a future to retrieve the current logical pipeline state (if
-        // any).
-        let logical_pipeline_state_fut = async {
-            let response = self
-                .get_logical_pipeline_state(Request::new(GetLogicalPipelineStateRequest {
-                    name: request.logical_pipeline_name.clone(),
-                }))
-                .await;
-            match response {
-                Ok(response) => Ok(Some(response.into_inner())),
-                Err(err) if err.code() == Code::NotFound => Ok(None),
-                Err(err) => Err(err),
+        // Read the current logical pipeline state (if any).
+        let response = self
+            .storage_client
+            .read(ReadRequest {
+                ranges: vec![Self::create_range(
+                    Self::get_logical_pipeline_storage_key(&request.logical_pipeline_name),
+                    None,
+                )
+                .unwrap()],
+            })
+            .await
+            .map_err(Self::convert_error)?;
+        let (logical_pipeline_state, blocked_policies) = match response.entries.first() {
+            Some(entry) => {
+                let value = LogicalPipelineStateValue::decode(entry.value.as_slice())
+                    .context("failed to decode LogicalPipelineStateValue")
+                    .map_err(Self::convert_error)?;
+                (
+                    Some(LogicalPipelineState {
+                        name: request.logical_pipeline_name.clone(),
+                        value: value.state,
+                        expiration: entry.expiration,
+                    }),
+                    value.blocked_policies,
+                )
             }
+            None => (None, Vec::with_capacity(0)),
         };
 
-        let (invocation_id, logical_pipeline_state): (Vec<u8>, _) =
-            tokio::try_join!(write_invocation_state_fut, logical_pipeline_state_fut)?;
+        // Compute the list of policy hashes, filtering out any that the logical
+        // pipeline state indicate should be blocked.
+        let policy_blocklist: hashbrown::HashSet<Vec<u8>> = blocked_policies
+            .into_iter()
+            .flat_map(|p| p.authorized_logical_pipeline_policy_hashes)
+            .collect();
+        let (blocked_hashes, authorized_logical_pipeline_policies_hashes): (Vec<_>, Vec<_>) =
+            request
+                .authorized_logical_pipeline_policies
+                .into_iter()
+                .map(|policy| Sha256::hash(policy.as_slice()).into())
+                .partition(|hash| policy_blocklist.contains(hash));
+        if !blocked_hashes.is_empty() {
+            warn!(
+                "Blocked policies for logical pipeline {}: {:?}",
+                &request.logical_pipeline_name, blocked_hashes
+            );
+        }
+
+        // Write the pipeline invocation state to storage. We don't worry about
+        // retrying on collision because the probability is so low.
+        let id = rand::random();
+        let ttl = request.intermediates_ttl.unwrap_or_default();
+        let value = PipelineInvocationStateValue {
+            logical_pipeline_name: request.logical_pipeline_name.clone(),
+            pipeline_variant_policy_hash: Sha256::hash(&request.pipeline_variant_policy).into(),
+            intermediates_key: Some(KeysetKeyValue {
+                ikm: bssl_crypto::rand_array::<32>().into(),
+                algorithm: HPKE_BASE_X25519_SHA256_AES128GCM,
+                ttl: Some(ttl),
+            }),
+            keyset_ids: request.keyset_ids.clone(),
+            authorized_logical_pipeline_policies_hashes:
+                authorized_logical_pipeline_policies_hashes.clone(),
+            blocked_authorized_logical_pipeline_policies_hashes: blocked_hashes,
+        };
+        self.storage_client
+            .update(UpdateRequest {
+                updates: vec![update_request::Update {
+                    key: StorageKey::PipelineInvocationState { id }.try_into().unwrap(),
+                    value: Some(value.encode_to_vec()),
+                    ttl: Some(ttl),
+                    preconditions: Some(update_request::Preconditions {
+                        exists: Some(false),
+                        ..Default::default()
+                    }),
+                }],
+            })
+            .await
+            .map_err(Self::convert_error)?;
+        let invocation_id: Vec<u8> = id.into();
 
         // If requested, collect information about the keys to which the
         // pipeline will have access. This requires a separate storage read and
@@ -993,6 +1153,30 @@ where
                 .context("releasable results are incompatible")
                 .context(Code::InvalidArgument)
         };
+        let logical_pipeline_states_fut = async {
+            let mut unique_logical_pipeline_names: Vec<_> = invocation_states
+                .values()
+                .map(|state| state.logical_pipeline_name.clone())
+                .collect();
+            unique_logical_pipeline_names.sort();
+            unique_logical_pipeline_names.dedup();
+            let ranges = unique_logical_pipeline_names
+                .iter()
+                .map(|name| {
+                    Self::create_range(Self::get_logical_pipeline_storage_key(name), None).unwrap()
+                })
+                .collect();
+            let response = self
+                .storage_client
+                .read(ReadRequest { ranges })
+                .await
+                .map_err(Self::convert_error)?;
+            Ok(response
+                .entries
+                .into_iter()
+                .map(|entry| (entry.key, entry.value))
+                .collect::<HashMap<_, _>>())
+        };
         let expiration_fut = async {
             self.compute_expiration_for_logical_pipeline_update(
                 invocation_states.values(),
@@ -1010,10 +1194,17 @@ where
             .await
             .context("failed to determine logical pipeline state TTL")
         };
-        let (_, decryption_keys, state_changes, (expiration, ttl)) = tokio::try_join!(
+        let (
+            _,
+            decryption_keys,
+            state_changes,
+            current_states,
+            ExpirationInfo { expiration, ttl, now },
+        ) = tokio::try_join!(
             verify_endorsements_fut,
             decryption_keys_fut,
             state_changes_fut,
+            logical_pipeline_states_fut,
             expiration_fut,
         )
         .map_err(Self::convert_error)?;
@@ -1022,21 +1213,17 @@ where
         let mut updates = Vec::with_capacity(state_changes.len());
         let mut logical_pipeline_states = Vec::with_capacity(state_changes.len());
         for update in state_changes {
-            let src_value =
-                update.src_state.map(|state| LogicalPipelineStateValue { state: state.into() });
-            let dst_value = LogicalPipelineStateValue { state: update.dst_state.into() };
-            updates.push(update_request::Update {
-                key: Self::get_logical_pipeline_storage_key(update.logical_pipeline_name)
-                    .try_into()
-                    .unwrap(),
-                value: Some(dst_value.encode_to_vec()),
-                ttl,
-                preconditions: Some(update_request::Preconditions {
-                    // Ensure there's no existing state if `src_value` is None.
-                    exists: if src_value.is_none() { Some(false) } else { None },
-                    value: src_value.map(|m| m.encode_to_vec()),
-                }),
-            });
+            updates.push(
+                Self::build_update(
+                    &update,
+                    now,
+                    expiration,
+                    ttl,
+                    &current_states,
+                    invocation_states.values(),
+                )
+                .map_err(Self::convert_error)?,
+            );
             logical_pipeline_states.push(LogicalPipelineState {
                 name: update.logical_pipeline_name.into(),
                 value: update.dst_state.into(),
