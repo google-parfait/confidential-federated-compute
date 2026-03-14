@@ -145,6 +145,7 @@ class WillowTransformServiceTest : public Test {
   ~WillowTransformServiceTest() override {
     LOG(INFO) << "Shutting down the server";
     server_->Shutdown();
+    server_->Wait();
   }
 
  protected:
@@ -163,8 +164,11 @@ class WillowTransformServiceTest : public Test {
     bool init_result =
         init_stream->Write(stream_request) && init_stream->WritesDone();
     auto init_status = init_stream->Finish();
-    if (!init_status.ok()) {
-      LOG(ERROR) << init_status.error_message();
+    if (init_status.ok()) {
+      LOG(INFO) << "Transform initialized";
+    } else {
+      LOG(ERROR) << "Transform failed to initialize: "
+                 << init_status.error_message();
     }
     return init_result && init_status.ok();
   }
@@ -181,6 +185,7 @@ class WillowTransformServiceTest : public Test {
     stream = stub_->Session(context);
     CHECK(stream->Write(session_request));
     CHECK(stream->Read(&session_response));
+    LOG(INFO) << "Session created";
     return stream;
   }
 
@@ -271,13 +276,15 @@ class WillowTransformServiceTest : public Test {
     return codec_->Decode(decrypted_encoded_result);
   }
 
-  std::unique_ptr<ConfidentialTransform::Stub> stub_;
-  std::unique_ptr<WillowTransformService> service_;
-  std::unique_ptr<Server> server_;
   AggregationConfigProto aggregation_config_;
   std::unique_ptr<Codec> codec_;
   std::unique_ptr<ShellTestingDecryptor> decryptor_;
   ShellAhePublicKey public_key_;
+
+  // The following order is important to ensure proper gRPC cleanup.
+  std::unique_ptr<WillowTransformService> service_;
+  std::unique_ptr<Server> server_;
+  std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
 // The simplest case with a single Willow encrypted contribution
@@ -328,6 +335,9 @@ TEST_F(WillowTransformServiceTest, SingleInputNoMerge) {
       decoded_result->group_data,
       UnorderedElementsAre(Pair("country", ElementsAre("CA", "US", "US")),
                            Pair("lang", ElementsAre("es", "en", "es"))));
+
+  stream->WritesDone();
+  EXPECT_TRUE(stream->Finish().ok());
 }
 
 // More complex case with 3 batches of inputs over 2 sessions and a
@@ -342,117 +352,130 @@ TEST_F(WillowTransformServiceTest, MultipleInputsWithMerge) {
       compact_response, merge_response, finalize_response;
 
   // First session - submit two contributions in one range.
-  grpc::ClientContext context1;
-  auto stream1 = StartSession(&context1);
-  write_request = CreateContributionWriteRequest("bbbbb", {"US", "CA"},
-                                                 {"en", "en"}, {10, 20});
-  ASSERT_THAT(write_request, IsOk());
+  {
+    grpc::ClientContext context;
+    auto stream = StartSession(&context);
+    write_request = CreateContributionWriteRequest("bbbbb", {"US", "CA"},
+                                                   {"en", "en"}, {10, 20});
+    ASSERT_THAT(write_request, IsOk());
 
-  ASSERT_TRUE(stream1->Write(*write_request));
-  ASSERT_TRUE(stream1->Read(&write_response));
-  ASSERT_TRUE(write_response.has_write());
-  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+    ASSERT_TRUE(stream->Write(*write_request));
+    ASSERT_TRUE(stream->Read(&write_response));
+    ASSERT_TRUE(write_response.has_write());
+    EXPECT_EQ(write_response.write().status().code(), grpc::OK);
 
-  write_request = CreateContributionWriteRequest(
-      "ccccc", {"US", "CA", "MX"}, {"es", "en", "es"}, {30, 5, 10});
-  ASSERT_THAT(write_request, IsOk());
+    write_request = CreateContributionWriteRequest(
+        "ccccc", {"US", "CA", "MX"}, {"es", "en", "es"}, {30, 5, 10});
+    ASSERT_THAT(write_request, IsOk());
 
-  ASSERT_TRUE(stream1->Write(*write_request));
-  ASSERT_TRUE(stream1->Read(&write_response));
-  ASSERT_TRUE(write_response.has_write());
-  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+    ASSERT_TRUE(stream->Write(*write_request));
+    ASSERT_TRUE(stream->Read(&write_response));
+    ASSERT_TRUE(write_response.has_write());
+    EXPECT_EQ(write_response.write().status().code(), grpc::OK);
 
-  commit_request = CreateCommitRequest("aaaaa", "ddddd");
-  ASSERT_TRUE(stream1->Write(commit_request));
-  ASSERT_TRUE(stream1->Read(&commit_response));
-  ASSERT_TRUE(commit_response.has_commit());
-  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+    commit_request = CreateCommitRequest("aaaaa", "ddddd");
+    ASSERT_TRUE(stream->Write(commit_request));
+    ASSERT_TRUE(stream->Read(&commit_response));
+    ASSERT_TRUE(commit_response.has_commit());
+    EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
 
-  compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
-  ASSERT_TRUE(stream1->Write(compact_request));
-  ASSERT_TRUE(stream1->Read(&read_response));
-  ASSERT_TRUE(read_response.has_read());
-  ASSERT_TRUE(read_response.read().finish_read());
-  ASSERT_TRUE(stream1->Read(&compact_response));
-  ASSERT_TRUE(compact_response.has_finalize());
+    compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
+    ASSERT_TRUE(stream->Write(compact_request));
+    ASSERT_TRUE(stream->Read(&read_response));
+    ASSERT_TRUE(read_response.has_read());
+    ASSERT_TRUE(read_response.read().finish_read());
+    ASSERT_TRUE(stream->Read(&compact_response));
+    ASSERT_TRUE(compact_response.has_finalize());
+
+    stream->WritesDone();
+    EXPECT_TRUE(stream->Finish().ok());
+  }
 
   // Compacted result of the first session
   std::string compacted_blob_id1 =
       read_response.read().first_response_metadata().unencrypted().blob_id();
   std::string compacted_data1 = read_response.read().data();
-  stream1.release();
 
   // Second session - submit two contributions in two separate ranges.
-  grpc::ClientContext context2;
-  auto stream2 = StartSession(&context2);
-  write_request = CreateContributionWriteRequest("kkkkk", {"GB", "MX"},
-                                                 {"en", "es"}, {15, 25});
-  ASSERT_THAT(write_request, IsOk());
+  {
+    grpc::ClientContext context;
+    auto stream = StartSession(&context);
+    write_request = CreateContributionWriteRequest("kkkkk", {"GB", "MX"},
+                                                   {"en", "es"}, {15, 25});
+    ASSERT_THAT(write_request, IsOk());
 
-  ASSERT_TRUE(stream2->Write(*write_request));
-  ASSERT_TRUE(stream2->Read(&write_response));
-  ASSERT_TRUE(write_response.has_write());
-  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+    ASSERT_TRUE(stream->Write(*write_request));
+    ASSERT_TRUE(stream->Read(&write_response));
+    ASSERT_TRUE(write_response.has_write());
+    EXPECT_EQ(write_response.write().status().code(), grpc::OK);
 
-  commit_request = CreateCommitRequest("ddddd", "mmmmm");
-  ASSERT_TRUE(stream2->Write(commit_request));
-  ASSERT_TRUE(stream2->Read(&commit_response));
-  ASSERT_TRUE(commit_response.has_commit());
-  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+    commit_request = CreateCommitRequest("ddddd", "mmmmm");
+    ASSERT_TRUE(stream->Write(commit_request));
+    ASSERT_TRUE(stream->Read(&commit_response));
+    ASSERT_TRUE(commit_response.has_commit());
+    EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
 
-  write_request = CreateContributionWriteRequest(
-      "ooooo", {"US", "CA", "GB"}, {"en", "en", "en"}, {10, 35, 10});
-  ASSERT_THAT(write_request, IsOk());
+    write_request = CreateContributionWriteRequest(
+        "ooooo", {"US", "CA", "GB"}, {"en", "en", "en"}, {10, 35, 10});
+    ASSERT_THAT(write_request, IsOk());
 
-  ASSERT_TRUE(stream2->Write(*write_request));
-  ASSERT_TRUE(stream2->Read(&write_response));
-  ASSERT_TRUE(write_response.has_write());
-  EXPECT_EQ(write_response.write().status().code(), grpc::OK);
+    ASSERT_TRUE(stream->Write(*write_request));
+    ASSERT_TRUE(stream->Read(&write_response));
+    ASSERT_TRUE(write_response.has_write());
+    EXPECT_EQ(write_response.write().status().code(), grpc::OK);
 
-  commit_request = CreateCommitRequest("mmmmm", "zzzzz");
-  ASSERT_TRUE(stream2->Write(commit_request));
-  ASSERT_TRUE(stream2->Read(&commit_response));
-  ASSERT_TRUE(commit_response.has_commit());
-  EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
+    commit_request = CreateCommitRequest("mmmmm", "zzzzz");
+    ASSERT_TRUE(stream->Write(commit_request));
+    ASSERT_TRUE(stream->Read(&commit_response));
+    ASSERT_TRUE(commit_response.has_commit());
+    EXPECT_EQ(commit_response.commit().status().code(), grpc::OK);
 
-  compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
-  ASSERT_TRUE(stream2->Write(compact_request));
-  ASSERT_TRUE(stream2->Read(&read_response));
-  ASSERT_TRUE(read_response.has_read());
-  ASSERT_TRUE(read_response.read().finish_read());
-  ASSERT_TRUE(stream2->Read(&compact_response));
-  ASSERT_TRUE(compact_response.has_finalize());
+    compact_request = CreateFinalizeRequest(WillowOp::COMPACT);
+    ASSERT_TRUE(stream->Write(compact_request));
+    ASSERT_TRUE(stream->Read(&read_response));
+    ASSERT_TRUE(read_response.has_read());
+    ASSERT_TRUE(read_response.read().finish_read());
+    ASSERT_TRUE(stream->Read(&compact_response));
+    ASSERT_TRUE(compact_response.has_finalize());
+
+    stream->WritesDone();
+    EXPECT_TRUE(stream->Finish().ok());
+  }
 
   // Compacted result of the second session
   std::string compacted_blob_id2 =
       read_response.read().first_response_metadata().unencrypted().blob_id();
   std::string compacted_data2 = read_response.read().data();
-  stream2.release();
 
   // Third session - merge the two compacted data results and finalize.
-  grpc::ClientContext context3;
-  auto stream3 = StartSession(&context3);
-  merge_request =
-      CreateWriteRequest(compacted_blob_id1, WillowOp::MERGE, compacted_data1);
-  ASSERT_TRUE(stream3->Write(merge_request));
-  ASSERT_TRUE(stream3->Read(&merge_response));
-  ASSERT_TRUE(merge_response.has_write());
-  EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
+  {
+    grpc::ClientContext context;
+    auto stream = StartSession(&context);
+    merge_request = CreateWriteRequest(compacted_blob_id1, WillowOp::MERGE,
+                                       compacted_data1);
+    ASSERT_TRUE(stream->Write(merge_request));
+    ASSERT_TRUE(stream->Read(&merge_response));
+    ASSERT_TRUE(merge_response.has_write());
+    EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
 
-  merge_request =
-      CreateWriteRequest(compacted_blob_id2, WillowOp::MERGE, compacted_data2);
-  ASSERT_TRUE(stream3->Write(merge_request));
-  ASSERT_TRUE(stream3->Read(&merge_response));
-  ASSERT_TRUE(merge_response.has_write());
-  EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
+    merge_request = CreateWriteRequest(compacted_blob_id2, WillowOp::MERGE,
+                                       compacted_data2);
+    ASSERT_TRUE(stream->Write(merge_request));
+    ASSERT_TRUE(stream->Read(&merge_response));
+    ASSERT_TRUE(merge_response.has_write());
+    EXPECT_EQ(merge_response.write().status().code(), grpc::OK);
 
-  finalize_request = CreateFinalizeRequest(WillowOp::FINALIZE);
-  ASSERT_TRUE(stream3->Write(finalize_request));
-  ASSERT_TRUE(stream3->Read(&read_response));
-  ASSERT_TRUE(read_response.has_read());
-  ASSERT_TRUE(read_response.read().finish_read());
-  ASSERT_TRUE(stream3->Read(&finalize_response));
-  ASSERT_TRUE(finalize_response.has_finalize());
+    finalize_request = CreateFinalizeRequest(WillowOp::FINALIZE);
+    ASSERT_TRUE(stream->Write(finalize_request));
+    ASSERT_TRUE(stream->Read(&read_response));
+    ASSERT_TRUE(read_response.has_read());
+    ASSERT_TRUE(read_response.read().finish_read());
+    ASSERT_TRUE(stream->Read(&finalize_response));
+    ASSERT_TRUE(finalize_response.has_finalize());
+
+    stream->WritesDone();
+    EXPECT_TRUE(stream->Finish().ok());
+  }
 
   // Decrypt and decoded finalized result
   auto decoded_result = DecryptAndDecode(read_response.read().data());
