@@ -35,7 +35,7 @@ platform(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "//transform:oci_runtime_bundle.tar": "transform/container.tar",
+    "//transform:oci_runtime_bundle.tar": "willow_transform/container.tar",
     # keep-sorted end
 }
 
