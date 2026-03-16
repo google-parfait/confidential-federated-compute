@@ -79,6 +79,8 @@ constexpr size_t kMaxPromptSize = 8192;
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
 constexpr size_t kNumTokensPerBatch = 2048;
+// Maximum number of rows to process in a single GenerateBatch call.
+constexpr size_t kMaxBatchSize = 64;
 
 // Duplicates the data in a single column based on the per_row_output_counts.
 // T is the C++ type of the data in the column.
@@ -132,6 +134,18 @@ absl::Status InferenceModel::BuildGemmaCppModel(
   gemma_model.gemma_ =
       std::make_unique<Gemma>(loader_args, inference_args, *gemma_model.ctx_);
   gemma_model.env_ = std::make_unique<MatMulEnv>(*gemma_model.ctx_);
+  return absl::OkStatus();
+}
+
+absl::Status InferenceModel::SetSharedGemmaCppModel(
+    const SessionInferenceConfiguration& config) {
+  if (!config.shared_gemma_model || !config.shared_gemma_model->gemma) {
+    return absl::InvalidArgumentError(
+        "SessionInferenceConfiguration must contain a valid shared Gemma "
+        "model.");
+  }
+  inference_configuration_ = config;
+  model_.emplace<GemmaCppModel>();
   return absl::OkStatus();
 }
 
@@ -201,95 +215,166 @@ InferenceModel::RunGemmaCppInference(
                                         output_column_name));
     return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
-  // Only need to initialize this once.
-  GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
-  Gemma* gemma = gemma_model.gemma_.get();
-  KVCache kv_cache(gemma->Config(), gemma->Inference(),
-                   gemma_model.ctx_->allocator);
+
+  // Determine which Gemma model to use: shared or per-session.
+  Gemma* gemma;
+  GemmaCppModel* gemma_model_ptr = nullptr;
+  if (inference_configuration_->shared_gemma_model &&
+      inference_configuration_->shared_gemma_model->gemma) {
+    gemma = inference_configuration_->shared_gemma_model->gemma.get();
+  } else {
+    gemma_model_ptr = &std::get<GemmaCppModel>(model_);
+    gemma = gemma_model_ptr->gemma_.get();
+  }
+
   RuntimeConfig inference_runtime_config =
       inference_configuration_->initialize_configuration.inference_config()
           .runtime_config();
   size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
                                ? inference_runtime_config.max_prompt_size()
                                : kMaxPromptSize;
+  size_t config_max_output_tokens =
+      inference_configuration_->initialize_configuration.inference_config()
+          .runtime_config()
+          .max_generated_tokens();
+  size_t max_output_tokens = config_max_output_tokens > 0
+                                 ? config_max_output_tokens
+                                 : kMaxOutputTokens;
+  float temperature = 1.0 + inference_runtime_config.temperature_diff();
+
+  const size_t row_count = input.GetRowCount();
   std::unique_ptr<MutableStringData> output_string_data =
-      std::make_unique<MutableStringData>(
-          static_cast<long>(input.GetRowCount()));
+      std::make_unique<MutableStringData>(static_cast<long>(row_count));
   size_t num_output_rows = 0;
   std::vector<size_t> per_row_output_counts;
-  per_row_output_counts.reserve(input.GetRowCount());
+  per_row_output_counts.reserve(row_count);
+
+  // Determine which MatMulEnv and allocator to use.
+  gcpp::MatMulEnv* env_ptr;
+  gcpp::Allocator* allocator_ptr;
+  bool using_shared_model = inference_configuration_->shared_gemma_model &&
+                            inference_configuration_->shared_gemma_model->env;
+  if (using_shared_model) {
+    env_ptr = inference_configuration_->shared_gemma_model->env.get();
+    allocator_ptr =
+        &inference_configuration_->shared_gemma_model->ctx->allocator;
+  } else {
+    GemmaCppModel* per_session_model = &std::get<GemmaCppModel>(model_);
+    env_ptr = per_session_model->env_.get();
+    allocator_ptr = &per_session_model->ctx_->allocator;
+  }
+  std::mt19937 gen;
+  std::random_device rd;
+  gen.seed(rd());
 
   TimingInfo timing_info;
 
-  // For each row of the input columns, we first populate the prompt template
-  // to create a combined prompt matching the column values, then run inference
-  // over the combined prompt. Each element in the output tensor corresponds
-  // to the inference result of one row of the input columns.
-  for (int i = 0; i < input.GetRowCount(); ++i) {
-    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    FCP_ASSIGN_OR_RETURN(
-        std::string combined_prompt,
-        prompt_processor_.PopulatePromptTemplate(
-            prompt, row, input.GetColumnNames(), input_column_indices,
-            output_column_name, max_prompt_size));
-    size_t generated = 0;
-    const std::vector<int> tokens =
-        WrapAndTokenize(gemma->Tokenizer(), gemma->ChatTemplate(),
-                        gemma->Config().wrapping, generated, combined_prompt);
-    const size_t prompt_size = tokens.size();
-    std::stringstream output_stream;
-    auto stream_token = [&gemma, &output_stream, &generated, &prompt_size](
-                            int token, float) {
-      ++generated;
-      if (generated >= prompt_size && !gemma->Config().IsEOS(token)) {
+  size_t max_batch_size = inference_runtime_config.max_batch_size() > 0
+                              ? inference_runtime_config.max_batch_size()
+                              : kMaxBatchSize;
+
+  // Process rows in batches of max_batch_size.
+  for (size_t batch_start = 0; batch_start < row_count;
+       batch_start += max_batch_size) {
+    const size_t batch_end = std::min(batch_start + max_batch_size, row_count);
+    const size_t batch_size = batch_end - batch_start;
+
+    // Tokenize all prompts in this batch.
+    std::vector<std::vector<int>> all_tokens(batch_size);
+    std::vector<gcpp::PromptTokens> prompt_tokens(batch_size);
+    std::vector<size_t> prompt_sizes(batch_size);
+    for (size_t i = 0; i < batch_size; ++i) {
+      FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(batch_start + i));
+      FCP_ASSIGN_OR_RETURN(
+          std::string combined_prompt,
+          prompt_processor_.PopulatePromptTemplate(
+              prompt, row, input.GetColumnNames(), input_column_indices,
+              output_column_name, max_prompt_size));
+      size_t generated = 0;
+      all_tokens[i] =
+          WrapAndTokenize(gemma->Tokenizer(), gemma->ChatTemplate(),
+                          gemma->Config().wrapping, generated, combined_prompt);
+      prompt_sizes[i] = all_tokens[i].size();
+      prompt_tokens[i] =
+          gcpp::PromptTokens(all_tokens[i].data(), all_tokens[i].size());
+    }
+
+    // Create per-query KV caches.
+    std::vector<KVCache> kv_caches;
+    kv_caches.reserve(batch_size);
+    for (size_t i = 0; i < batch_size; ++i) {
+      kv_caches.push_back(
+          KVCache(gemma->Config(), gemma->Inference(), *allocator_ptr));
+    }
+
+    hwy::Span<const gcpp::PromptTokens> prompt_span(prompt_tokens.data(),
+                                                    prompt_tokens.size());
+    hwy::Span<KVCache> kv_span(kv_caches.data(), kv_caches.size());
+    gcpp::AllQueries all_queries(prompt_span, kv_span);
+
+    // Set up per-query output streams and generated counters.
+    std::vector<std::stringstream> output_streams(batch_size);
+    std::vector<size_t> generated_counts(batch_size, 0);
+
+    auto batch_stream_token = [&gemma, &output_streams, &generated_counts,
+                               &prompt_sizes,
+                               batch_start](size_t query_idx, size_t /*pos*/,
+                                            int token, float /*prob*/) -> bool {
+      // query_idx is absolute within AllQueries.
+      size_t local_idx = query_idx;  // batch is rebuilt per chunk, so 0-based.
+      ++generated_counts[local_idx];
+      if (generated_counts[local_idx] >= prompt_sizes[local_idx] &&
+          !gemma->Config().IsEOS(token)) {
         std::string token_text;
         if (!gemma->Tokenizer().Decode({token}, &token_text)) {
           LOG(WARNING) << "Failed to decode the next token.";
           return false;
         }
-        output_stream << token_text;
+        output_streams[local_idx] << token_text;
       }
       return true;
     };
-    float temperature = 1.0 + inference_runtime_config.temperature_diff();
 
-    // Set the max_output_tokens to the value in the RuntimeConfig if provided.
-    size_t config_max_output_tokens =
-        inference_configuration_->initialize_configuration.inference_config()
-            .runtime_config()
-            .max_generated_tokens();
-    size_t max_output_tokens = config_max_output_tokens > 0
-                                   ? config_max_output_tokens
-                                   : kMaxOutputTokens;
     gcpp::RuntimeConfig runtime_config = {
         .max_generated_tokens = max_output_tokens,
         .temperature = temperature,
-        .gen = &gemma_model.gen_,
+        .gen = &gen,
         .verbosity = 0,
-        .stream_token = stream_token,
+        .batch_stream_token = batch_stream_token,
     };
-    try {
-      gemma->Generate(runtime_config, tokens, 0, kv_cache, *gemma_model.env_,
-                      timing_info);
-    } catch (const std::exception& e) {
-      LOG(WARNING) << "Failed to run gemma.cpp inference";
+    // Serialize GenerateBatch calls when using the shared model's thread pool.
+    {
+      std::optional<absl::MutexLock> lock;
+      if (using_shared_model) {
+        lock.emplace(&inference_configuration_->shared_gemma_model->mutex);
+      }
+      try {
+        gemma->GenerateBatch(runtime_config, all_queries, *env_ptr,
+                             timing_info);
+      } catch (const std::exception& e) {
+        return absl::InternalError(
+            absl::StrCat("gemma.cpp batched inference failed: ", e.what()));
+      }
     }
 
-    std::string output_string = output_stream.str();
-    absl::StatusOr<size_t> num_rows_added_status =
-        output_processor_.ProcessInferenceOutput(
-            prompt, std::move(output_string), output_column_name,
-            output_string_data.get());
-    if (!num_rows_added_status.ok()) {
-      LOG(WARNING) << "Failed to process inference output: "
-                   << num_rows_added_status.status()
-                   << ". Outputting empty string.";
-      output_string_data->Add("");
-      num_output_rows++;
-      per_row_output_counts.push_back(1);
-    } else {
-      num_output_rows += *num_rows_added_status;
-      per_row_output_counts.push_back(*num_rows_added_status);
+    // Collect outputs from stream callbacks.
+    for (size_t i = 0; i < batch_size; ++i) {
+      std::string output_string = output_streams[i].str();
+      absl::StatusOr<size_t> num_rows_added_status =
+          output_processor_.ProcessInferenceOutput(
+              prompt, std::move(output_string), output_column_name,
+              output_string_data.get());
+      if (!num_rows_added_status.ok()) {
+        LOG(WARNING) << "Failed to process inference output: "
+                     << num_rows_added_status.status()
+                     << ". Outputting empty string.";
+        output_string_data->Add("");
+        num_output_rows++;
+        per_row_output_counts.push_back(1);
+      } else {
+        num_output_rows += *num_rows_added_status;
+        per_row_output_counts.push_back(*num_rows_added_status);
+      }
     }
   }
 

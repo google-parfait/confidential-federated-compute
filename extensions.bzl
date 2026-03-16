@@ -31,10 +31,10 @@ def _cfc_deps_impl(ctx):  # buildifier: disable=unused-variable
 
     http_archive(
         name = "federated-compute",
-        integrity = "sha256-EYsc5tyDJWBkln5gJd9l0STwLAkLzA8BSRrx2g6jYNg=",
+        integrity = "sha256-YTbY/OOHjWULmSmVui9dsBenGroqCZJ4O6XX/WcxW6w=",
         patches = ["//third_party/federated_compute:visibility.patch"],
-        strip_prefix = "federated-compute-117e1df9d4391cfb74e70e9ae6f8ffda020549b7",
-        url = "https://github.com/google-parfait/federated-compute/archive/117e1df9d4391cfb74e70e9ae6f8ffda020549b7.zip",
+        strip_prefix = "federated-compute-536af33f92b5c4cbd6a56818ec889185ff49dd12",
+        url = "https://github.com/google-parfait/federated-compute/archive/536af33f92b5c4cbd6a56818ec889185ff49dd12.zip",
     )
 
     git_repository(
