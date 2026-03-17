@@ -121,10 +121,16 @@ KmsFedSqlSession::KmsFedSqlSession(
       decryptor_(decryptor) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(expired_key_ids);
-  // TODO: b/427333608 - Switch to the shared model once the Gemma.cpp engine is
-  // updated.
   if (inference_configuration.has_value()) {
-    CHECK_OK(inference_model_.BuildModel(inference_configuration.value()));
+    if (inference_configuration->shared_gemma_model &&
+        inference_configuration->shared_gemma_model->gemma) {
+      // Use the shared Gemma model (no per-session weight loading).
+      CHECK_OK(inference_model_.SetSharedGemmaCppModel(
+          inference_configuration.value()));
+    } else {
+      // Fallback: build a per-session model (e.g., for llama.cpp).
+      CHECK_OK(inference_model_.BuildModel(inference_configuration.value()));
+    }
   }
 };
 

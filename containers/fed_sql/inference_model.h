@@ -15,18 +15,31 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INFERENCE_MODEL_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INFERENCE_MODEL_H_
 
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "containers/fed_sql/inference_model_helper.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "include/llama.h"
+#include "ops/matmul.h"
 #include "util/threading_context.h"
 
 namespace confidential_federated_compute::fed_sql {
+
+// Shared across sessions — holds model weights (read-only after init).
+// ThreadingContext/MatMulEnv are shared and access is serialized via mutex.
+struct SharedGemmaCppModel {
+  std::unique_ptr<gcpp::Gemma> gemma;
+  std::unique_ptr<gcpp::ThreadingContext> ctx;
+  std::unique_ptr<gcpp::MatMulEnv> env;
+  absl::Mutex mutex;  // Serializes GenerateBatch calls
+};
 
 // Session configuration for running inference using gemma.cpp engine.
 struct SessionGemmaCppConfiguration {
@@ -48,6 +61,8 @@ struct SessionInferenceConfiguration {
       initialize_configuration;
   std::optional<SessionGemmaCppConfiguration> gemma_configuration;
   std::optional<SessionLlamaCppConfiguration> llama_configuration;
+  // Shared Gemma model (read-only weights) for reuse across sessions.
+  std::shared_ptr<SharedGemmaCppModel> shared_gemma_model;
 };
 
 // An LLM model that can be invoked to run inference before the per-client
@@ -56,6 +71,11 @@ class InferenceModel {
  public:
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
+  // Sets a shared Gemma model (pre-built, read-only weights) from
+  // config.shared_gemma_model instead of building a new one. Per-call
+  // ThreadingContext, MatMulEnv, and KVCache are allocated during inference.
+  absl::Status SetSharedGemmaCppModel(
+      const SessionInferenceConfiguration& config);
   // Runs inference on the given input. The input is expected to contain the
   // columns required by the inference task. The output column produced by
   // the inference model will be added to the input.

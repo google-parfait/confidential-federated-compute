@@ -35,6 +35,8 @@
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/message_description.pb.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "gemma/gemma.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
@@ -45,6 +47,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "util/threading_context.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -604,6 +607,49 @@ FedSqlConfidentialTransform::CreateSession() {
 
   FCP_ASSIGN_OR_RETURN(aggregator, CheckpointAggregator::Create(intrinsics));
   FCP_ASSIGN_OR_RETURN(Decryptor * decryptor, GetDecryptor());
+
+  // Build the shared Gemma model lazily on first session creation and store it
+  // in inference_configuration_ for all sessions to share.
+  // Protected by mutex_ to prevent data races from concurrent session creation.
+  {
+    absl::MutexLock l(&mutex_);
+    if (inference_configuration_.has_value() &&
+        inference_configuration_->gemma_configuration.has_value() &&
+        !inference_configuration_->shared_gemma_model) {
+      auto model_mode =
+          inference_configuration_->initialize_configuration.inference_config()
+              .runtime_config()
+              .model_mode();
+      if (model_mode != fcp::confidentialcompute::RuntimeConfig::
+                            MODEL_MODE_MODEL_PER_SESSION) {
+        // Build the shared model for UNSPECIFIED and SHARED_MODEL modes.
+        gcpp::LoaderArgs loader_args(
+            inference_configuration_->gemma_configuration->tokenizer_path,
+            inference_configuration_->gemma_configuration->model_weight_path);
+        gcpp::InferenceArgs inference_args;
+        size_t seq_len = inference_configuration_->initialize_configuration
+                             .inference_config()
+                             .runtime_config()
+                             .seq_len();
+        if (seq_len > 0) {
+          inference_args.seq_len = seq_len;
+        }
+        gcpp::ThreadingArgs threading_args;
+        gcpp::ThreadingContext loading_ctx(threading_args);
+        auto shared_model = std::make_shared<SharedGemmaCppModel>();
+        shared_model->gemma = std::make_unique<gcpp::Gemma>(
+            loader_args, inference_args, loading_ctx);
+        // Create shared ThreadingContext and MatMulEnv for all sessions to use.
+        // These are serialized via shared_model->mutex during GenerateBatch.
+        shared_model->ctx =
+            std::make_unique<gcpp::ThreadingContext>(threading_args);
+        shared_model->env =
+            std::make_unique<gcpp::MatMulEnv>(*shared_model->ctx);
+        inference_configuration_->shared_gemma_model = std::move(shared_model);
+      }
+    }
+  }
+
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
       dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
