@@ -119,7 +119,7 @@ SessionRequest CreateDefaultWriteRequest(std::string data) {
 ReadResponse GetFinalizeReadResponse(const std::string& result) {
   ReadResponse read_response;
   read_response.set_finish_read(true);
-  *(read_response.mutable_data()) = result;
+  read_response.set_data(result);
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
     compression_type: COMPRESSION_TYPE_NONE
     unencrypted {}

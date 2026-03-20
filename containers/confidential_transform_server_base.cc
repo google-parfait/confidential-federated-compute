@@ -109,10 +109,9 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
   if (!mutable_read->finish_read()) {
     // Chunked write implemented by splitting the provided
     // ReadResponse.
-    absl::Cord data(std::move(*mutable_read->mutable_data()));
+    absl::Cord data = mutable_read->data();
     do {
-      absl::CopyCordToString(data.Subcord(0, chunk_size_),
-                             mutable_read->mutable_data());
+      mutable_read->set_data(data.Subcord(0, chunk_size_));
       data.RemovePrefix(chunk_size_);
       if (!stream_->Write(response)) {
         return false;
@@ -121,7 +120,7 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
       mutable_read->clear_first_response_metadata();
     } while (data.size() > chunk_size_);
 
-    absl::CopyCordToString(data, mutable_read->mutable_data());
+    mutable_read->set_data(std::move(data));
     mutable_read->set_finish_read(true);
   }
 
@@ -133,7 +132,7 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
 bool SessionContextImpl::Emit(std::string data, google::protobuf::Any key,
                               BlobMetadata metadata) {
   ReadResponse response;
-  *response.mutable_data() = std::move(data);
+  response.set_data(std::move(data));
   *response.mutable_first_response_configuration() = std::move(key);
   *response.mutable_first_response_metadata() = std::move(metadata);
   return Emit(std::move(response));
@@ -441,14 +440,15 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
                 "but received a Write request for another blob");
           }
           // Append the chunk.
-          write_state->data.Append(std::move(*write_request.mutable_data()));
+          write_state->data.Append(write_request.data());
         } else {
           // This is a write request for a new blob i.e. the first chunk of a
           // multi-chunk blob or a small blob consisting of a single chunk of
           // data.
-          absl::Cord data(std::move(*write_request.mutable_data()));
+          absl::Cord data = write_request.data();
+          write_request.clear_data();
           write_state = WriteState{.first_request = std::move(write_request),
-                                   .data = std::move(data)};
+                                   .data = data};
         }
         if (is_commit) {
           FCP_ASSIGN_OR_RETURN(

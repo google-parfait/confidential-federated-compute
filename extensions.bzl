@@ -14,68 +14,12 @@
 
 """Loads dependencies for Confidential Federated Compute."""
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//:stub_tf_proto_library.bzl", "stub_tf_proto_library")
 
 visibility(["//..."])
 
-def _cfc_deps_impl(ctx):  # buildifier: disable=unused-variable
-    # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,stub_tf_proto_library
-    http_archive(
-        name = "bazel_toolchains",
-        sha256 = "294cdd859e57fcaf101d4301978c408c88683fbc46fbc1a3829da92afbea55fb",
-        strip_prefix = "bazel-toolchains-8c717f8258cd5f6c7a45b97d974292755852b658",
-        url = "https://github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
-    )
-
-    http_archive(
-        name = "federated-compute",
-        integrity = "sha256-YTbY/OOHjWULmSmVui9dsBenGroqCZJ4O6XX/WcxW6w=",
-        patches = ["//third_party/federated_compute:visibility.patch"],
-        strip_prefix = "federated-compute-536af33f92b5c4cbd6a56818ec889185ff49dd12",
-        url = "https://github.com/google-parfait/federated-compute/archive/536af33f92b5c4cbd6a56818ec889185ff49dd12.zip",
-    )
-
-    git_repository(
-        name = "libcppbor",
-        build_file = "//third_party/libcppbor:libcppbor.BUILD",
-        commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-        patches = ["//third_party/libcppbor:libcppbor.patch"],
-        remote = "https://android.googlesource.com/platform/external/libcppbor",
-    )
-
-    stub_tf_proto_library(
-        name = "org_tensorflow",
-    )
-
-    http_archive(
-        name = "org_tensorflow_federated",
-        integrity = "sha256-LRtgjagA16SepVffwpMCh8zfT60rzGSYRekKAGaQ2ss=",
-        patches = ["//third_party/tensorflow_federated:proto_library.patch"],
-        strip_prefix = "tensorflow-federated-590104cb7c358ee5c4efa8937e0ccf93a5925265",
-        url = "https://github.com/google-parfait/tensorflow-federated/archive/590104cb7c358ee5c4efa8937e0ccf93a5925265.tar.gz",
-    )
-    # go/keep-sorted end
-
-cfc_deps = module_extension(implementation = _cfc_deps_impl)
-
 def _cfc_dev_deps_impl(ctx):  # buildifier: disable=unused-variable
     # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=http_archive
-    http_archive(
-        name = "com_google_cc_differential_privacy",
-        sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-        strip_prefix = "differential-privacy-3.0.0/cc",
-        url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-    )
-
-    http_archive(
-        name = "com_google_differential_privacy",
-        sha256 = "6e6e1cd7a819695caae408f4fa938129ab7a86e83fe2410137c85e50131abbe0",
-        strip_prefix = "differential-privacy-3.0.0",
-        url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
-    )
-
     http_archive(
         name = "llama_cpp",
         build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",

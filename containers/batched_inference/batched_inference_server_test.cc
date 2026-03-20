@@ -242,9 +242,8 @@ class BatchedInferenceServerTest : public ::testing::Test {
         if (session_response->read().has_first_response_metadata()) {
           read_metadata = session_response->read().first_response_metadata();
         }
-        const std::string& ciphertext = session_response->read().data();
         auto decrypted_result = decryptor.Decrypt(
-            ciphertext,
+            std::string(session_response->read().data()),
             read_metadata.hpke_plus_aead_data().ciphertext_associated_data(),
             read_metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
             read_metadata.hpke_plus_aead_data()

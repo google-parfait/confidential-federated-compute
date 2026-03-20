@@ -183,7 +183,7 @@ StreamInitializeRequest CreateWriteConfigurationRequest(
     std::optional<int64_t> total_size_bytes) {
   StreamInitializeRequest request;
   auto write_configuration = request.mutable_write_configuration();
-  *write_configuration->mutable_data() = std::string(data);
+  write_configuration->set_data(data);
   write_configuration->set_commit(commit);
   if (configuration_id.has_value()) {
     auto first_request_metadata =

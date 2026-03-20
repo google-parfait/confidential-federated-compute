@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
@@ -40,17 +41,18 @@ std::string CreateTempFilePath(std::string directory,
                       std::to_string(basename_id));
 }
 
-absl::Status AppendBytesToTempFile(std::string& file_path,
-                                   std::ios_base::openmode mode,
-                                   const char* data,
-                                   std::streamsize data_size) {
+absl::Status WriteCordToTempFile(std::string& file_path,
+                                 std::ios_base::openmode mode,
+                                 const absl::Cord& data) {
   // Write or append binary content to file depending on mode.
   std::ofstream temp_file(file_path, mode);
   if (!temp_file.is_open()) {
     return absl::DataLossError(
         absl::StrCat("Failed to open temp file for writing: ", file_path));
   }
-  temp_file.write(data, data_size);
+  for (absl::string_view chunk : data.Chunks()) {
+    temp_file.write(chunk.data(), chunk.size());
+  }
   temp_file.close();
   return absl::OkStatus();
 }
@@ -160,9 +162,8 @@ absl::Status FnConfidentialTransform::ReadWriteConfigurationRequest(
 
   auto& [current_file_path, expected_total_size_bytes, commit] =
       write_configuration_map_[current_configuration_id_];
-  FCP_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
-                                            write_configuration.data().data(),
-                                            write_configuration.data().size()));
+  FCP_RETURN_IF_ERROR(WriteCordToTempFile(current_file_path, file_open_mode,
+                                          write_configuration.data()));
   // Update the commit status of the data blob in write_configuration_map_.
   commit = write_configuration.commit();
 

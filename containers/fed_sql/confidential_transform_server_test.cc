@@ -484,13 +484,14 @@ class FedSqlServerTest : public Test {
     return {metadata, encrypt_result.value().ciphertext};
   }
 
-  std::string Decrypt(BlobMetadata metadata, absl::string_view ciphertext) {
+  std::string Decrypt(BlobMetadata metadata, const absl::Cord& ciphertext) {
     BlobHeader blob_header;
     blob_header.ParseFromString(metadata.hpke_plus_aead_data()
                                     .kms_symmetric_key_associated_data()
                                     .record_header());
     auto decrypted = message_decryptor_->Decrypt(
-        ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+        std::string(ciphertext),
+        metadata.hpke_plus_aead_data().ciphertext_associated_data(),
         metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
         metadata.hpke_plus_aead_data()
             .kms_symmetric_key_associated_data()
