@@ -227,6 +227,7 @@ fn explain_pipeline_variant_policy(
         if !transform.dst_node_ids.is_empty() {
             writeln!(buf, "Destination node IDs: {:?}", transform.dst_node_ids)?;
         }
+        writeln!(buf, "Configuration constraints: {:?}", transform.config_constraints);
         writeln!(buf)?;
         explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
         writeln!(buf)?;
