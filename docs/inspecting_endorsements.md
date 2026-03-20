@@ -39,7 +39,12 @@ for more details on this approach.
 ## Inspecting binary transparency log entries
 
 The endorsement keys client devices use to validate the KMS can be found in the
-[`/kms/reference_values`](/kms/reference_values) directory.
+[`/kms/reference_values`](/kms/reference_values) directory. There are at least
+two ways for finding Rekor transparency log entries for endorsement keys: via
+the `rekor-monitor` tool, and via Rekor's public BigQuery dataset. These are
+documented in the next sections.
+
+### Finding transparency log entries using the `rekor-monitor` tool
 
 To find transparency log entries for these endorsement keys you can use the
 [rekor-monitor](https://github.com/sigstore/rekor-monitor) tool. For example,
@@ -69,9 +74,54 @@ Note that the above configuration limits the tool's search to a log index range,
 but you can also omit the start and end indices and run the tool periodically
 (say, every 10 minutes), in which case the tool will scan all new log entries
 added since the last run, and print out any that match the configured endorsement
-keys. Rekor also exposes a [REST API](https://www.sigstore.dev/swagger/) and a
+keys.
+
+Because the `rekor-monitor` tool scans all Rekor log entries in the range it is
+told to look at, and because it verifies the correctness of the sequence of log
+entries, it will produce an authoritative list of log entries created by the
+configured endorsement keys. But it also means the tool can be quite slow. It
+is best suited for actively monitoring for newly created log entries from some
+point in time onwards, rather than finding already-created entries.
+
+Rekor also exposes a [REST API](https://www.sigstore.dev/swagger/) and a
 [GCP Pub/Sub event stream](https://docs.sigstore.dev/logging/event_stream/)
 which you can use to monitor for new log entries instead.
+
+### Finding previously-created entries using Rekor's BigQuery dataset
+
+Since [August 2025](https://blog.sigstore.dev/rekor-bigquery-dataset/) Rekor
+also exposes a public BigQuery dataset called `rekor`.  This dataset can be
+used to query for previously-created log entries much more conveniently.
+
+The following query can be used to find log entries and hash of the endorsed
+payloads, endorsed by one or more endorsement keys:
+
+```sql
+/*
+Will return one row per endorsement, with an EntrySha256 column containing the
+endorsement's SHA256 digest (which can be used to fetch the endorsement
+payload), and a KeyDigest specifying which endorsement key endorsed it.
+*/
+SELECT Entries.*, (
+  SELECT Key FROM `bigquery-public-data.rekor.IndexKeys` AS IndexKeys
+  WHERE IndexKeys.EntryUUID = Entries.EntryUUID AND Key LIKE 'sha256:%'
+  ) AS EntrySha256, KeyDigest
+FROM `bigquery-public-data.rekor.Entries` AS Entries
+INNER JOIN `bigquery-public-data.rekor.Identities` AS Keys USING (EntryUUID)
+INNER JOIN UNNEST(Keys.Digests) AS KeyDigest
+-- This queries for application endorsements made by the KMS endorsement key.
+WHERE KeyDigest IN ("ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f")
+ORDER BY IntegratedTime DESC;
+```
+
+For example, this is the information that would be returned for the same log
+entry as found with the `rekor-tool` above.
+
+|index|EntryUUID|LogIndex|LogID|IntegratedTime|Kind|APIVersion|Size|EntrySha256|KeyDigest|
+|---|---|---|---|---|---|---|---|---|---|
+|...|108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a|175178226|c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d|2025-02-27 19:50:39+00:00|rekord|0\.0\.1|2912|sha256:cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7|ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f|
+
+### Inspecting transparency log entries in detail
 
 For each of the entries matching the keys we're interested in, the full Rekor
 log entry can then be accessed via the URL pattern
@@ -540,26 +590,17 @@ set of privacy properties that the corresponding app will ensure are upheld by
 every endorsed data access policy.
 
 Just as with the KMS or ledger binary endorsements, you can use the
-`rekor-monitor` tool to find transparency log entries for this endorsement key.
-The following example configuration will surface a recent data access policy
-endorsement for the
-[Gboard](https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin)
-app:
+`rekor-monitor` tool or the Rekor public BigQuery dataset to find transparency
+log entries for this endorsement key. For example, using the SQL query provided
+earlier with
+[Gboard](https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin)'s
+endorsement key of
+`3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560` would
+produce the following row:
 
-```console
-$ cat > config.yml << 'EOF'
-startIndex: 175189128
-endIndex: 175189129
-monitoredValues:
-  fingerprints:
-    - 3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560 # Gboard
-EOF
-
-$ go run github.com/sigstore/rekor-monitor/cmd/rekor_monitor@6248cd70ec4f0c18e4d23901041caea126da36bc \
-    --config-file config.yml
-...
-Found 3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560 175189129 108e9186e8c5677af9f63f6c97d4bcaee3210af2da8ae214ebb56b76e2456c2bccdee68bc44c5e48
-```
+|index|EntryUUID|LogIndex|LogID|IntegratedTime|Kind|APIVersion|Size|EntrySha256|KeyDigest|
+|---|---|---|---|---|---|---|---|---|---|
+|...|108e9186e8c5677af9f63f6c97d4bcaee3210af2da8ae214ebb56b76e2456c2bccdee68bc44c5e48|175189129|c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d|2025-02-27 20:24:58+00:00|rekord|0\.0\.1|2577|sha256:d72534e0cae135b3ac11395d37956dbb89b328df4274a28b35cca22500845033|3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560|
 
 The data access policy endorsement transparency log entry with UUID
 [`108e9186e8c5677af9f63f6c97d4bcaee3210af2da8ae214ebb56b76e2456c2bccdee68bc44c5e48`](108e9186e8c5677af9f63f6c97d4bcaee3210af2da8ae214ebb56b76e2456c2bccdee68bc44c5e48)
