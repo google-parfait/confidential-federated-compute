@@ -106,6 +106,11 @@ class FedSqlConfidentialTransform final
   std::shared_ptr<MessageFactory> message_factory_;
   // The name of query that was executed on-device.
   std::string on_device_query_name_ = "";
+  // The maximum number of output partitions allowed when using partitioned
+  // aggregation. If set to std::nullopt, then unpartitioned aggregation will
+  // be used i.e. all aggregates are merged together in a single worker before
+  // release.
+  std::optional<uint64_t> max_output_partitions_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

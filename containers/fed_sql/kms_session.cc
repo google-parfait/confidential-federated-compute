@@ -111,14 +111,16 @@ KmsFedSqlSession::KmsFedSqlSession(
     const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<MessageFactory> message_factory,
     absl::string_view on_device_query_name,
-    confidential_federated_compute::Decryptor& decryptor)
+    confidential_federated_compute::Decryptor& decryptor,
+    std::optional<uint64_t> max_output_partitions)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       private_state_(std::move(private_state)),
       dp_unit_parameters_(dp_unit_parameters),
       message_factory_(std::move(message_factory)),
       on_device_query_name_(on_device_query_name),
-      decryptor_(decryptor) {
+      decryptor_(decryptor),
+      max_output_partitions_(max_output_partitions) {
   CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(expired_key_ids);
   if (inference_configuration.has_value()) {
@@ -522,6 +524,18 @@ KmsFedSqlSession::SerializePrivateState(Context& context) {
 
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::Partition(Context& context, uint64_t num_partitions) {
+  if (!max_output_partitions_.has_value()) {
+    return absl::InvalidArgumentError(
+        "max_output_partitions_ is not set for this session.");
+  }
+
+  if (num_partitions > max_output_partitions_) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of partitions requested (", num_partitions,
+                     ") exceeds the maximum allowed (",
+                     max_output_partitions_.value(), ")."));
+  }
+
   if (num_partitions == 0) {
     return absl::InvalidArgumentError(
         "Number of partitions must be greater than zero.");
