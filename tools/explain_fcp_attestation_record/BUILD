@@ -37,6 +37,7 @@ rust_library(
     ),
     tags = ["no-clippy"],
     deps = [
+        ":fed_sql_container_config_prost_proto",
         ":verification_record_prost_proto",
         "@crates//:clap",
         "@oak//oak_attestation_explain",
@@ -44,6 +45,7 @@ rust_library(
         "@oak//oak_proto_rust",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:prost-types",
     ],
 )
 
@@ -72,4 +74,9 @@ rust_test(
 rust_prost_library(
     name = "verification_record_prost_proto",
     proto = "@federated-compute//fcp/protos/confidentialcompute:verification_record_proto",
+)
+
+rust_prost_library(
+    name = "fed_sql_container_config_prost_proto",
+    proto = "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_proto",
 )

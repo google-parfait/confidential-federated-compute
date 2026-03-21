@@ -13,12 +13,14 @@
 // limitations under the License.
 
 use anyhow::{bail, Context};
+use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
     extracted_evidence::EvidenceValues, Evidence, OakContainersData, OakRestrictedKernelData,
     ReferenceValues,
 };
 use prost::Message;
+use prost_types::Any;
 use verification_record_proto::{
     access_policy_proto::fcp::confidentialcompute::{
         access_budget::Kind, data_access_policy, pipeline_variant_policy, AccessBudget,
@@ -227,7 +229,22 @@ fn explain_pipeline_variant_policy(
         if !transform.dst_node_ids.is_empty() {
             writeln!(buf, "Destination node IDs: {:?}", transform.dst_node_ids)?;
         }
-        writeln!(buf, "Configuration constraints: {:?}", transform.config_constraints);
+        writeln!(buf)?;
+        if let Some(config_constraints) = &transform.config_constraints {
+            writeln!(buf, "Configuration constraints: {}", config_constraints.type_url)?;
+            // If we know the type of config constraint, then parse it and pretty-print it
+            // for readability. Otherwise print the bytes as-is. They could be
+            // parsed using another tool in that case.
+            if let Ok(fed_sql_config_constraints) =
+                config_constraints.to_msg::<FedSqlContainerConfigConstraints>()
+            {
+                writeln!(buf, "{:?}", fed_sql_config_constraints)?;
+            } else {
+                writeln!(buf, "{:?}", config_constraints)?;
+            }
+        } else {
+            writeln!(buf, "Configuration constraints: None")?;
+        }
         writeln!(buf)?;
         explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
         writeln!(buf)?;

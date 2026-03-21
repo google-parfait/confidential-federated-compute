@@ -24,6 +24,8 @@ rust_library_group(
 
 rust_prost_toolchain(
     name = "prost_toolchain_impl",
+    compile_well_known_types = False,
+    prost_opts = ["enable_type_names"],
     prost_plugin = "@crates//:protoc-gen-prost__protoc-gen-prost",
     prost_runtime = ":prost_runtime",
     prost_types = "@oak_crates_index//:prost-types",
