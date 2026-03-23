@@ -23,8 +23,8 @@
 #include "absl/status/status.h"
 #include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/signing_key_handle.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/batched_inference/batched_inference_fn.h"
-#include "containers/batched_inference/batched_inference_provider.h"
 #include "containers/fns/confidential_transform_server.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
@@ -37,6 +37,7 @@ namespace {
 using ::confidential_federated_compute::fns::FnFactory;
 using ::confidential_federated_compute::fns::FnFactoryProvider;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
+using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::google::protobuf::Any;
 using ::grpc::Server;
@@ -50,8 +51,9 @@ using ::oak::crypto::SigningKeyHandle;
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 
 FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
-    std::shared_ptr<BatchedInferenceProvider> batched_inference_provider) {
-  return [batched_inference_provider](
+    std::shared_ptr<BatchedInferenceEngineProvider>
+        batched_inference_engine_provider) {
+  return [batched_inference_engine_provider](
              const Any& configuration, const Any& config_constraints,
              const WriteConfigurationMap& write_configuration_map)
              -> absl::StatusOr<std::unique_ptr<FnFactory>> {
@@ -60,8 +62,13 @@ FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
       return absl::InvalidArgumentError(
           "Failed to unpack InferenceInitializeConfiguration");
     }
-    return CreateBatchedInferenceFnFactory(batched_inference_provider,
-                                           init_config.inference_config());
+    const InferenceConfiguration& inference_config =
+        init_config.inference_config();
+    std::shared_ptr<BatchedInferenceEngine> batched_inference_engine =
+        batched_inference_engine_provider->GetEngineForInferenceConfig(
+            inference_config);
+    return CreateBatchedInferenceFnFactory(batched_inference_engine,
+                                           inference_config);
   };
 }
 
@@ -91,7 +98,8 @@ class BatchedInferenceServerImpl : public BatchedInferenceServer {
 
 absl::StatusOr<std::unique_ptr<BatchedInferenceServer>>
 CreateBatchedInferenceServer(
-    std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+    std::shared_ptr<BatchedInferenceEngineProvider>
+        batched_inference_engine_provider,
     int incoming_port, std::unique_ptr<SigningKeyHandle> signing_handle,
     std::unique_ptr<EncryptionKeyHandle> encryption_handle) {
   ServerBuilder builder;
@@ -106,7 +114,8 @@ CreateBatchedInferenceServer(
   std::unique_ptr<fns::FnConfidentialTransform> service =
       std::make_unique<fns::FnConfidentialTransform>(
           std::move(signing_handle),
-          CreateBatchedInferenceFnFactoryProvider(batched_inference_provider),
+          CreateBatchedInferenceFnFactoryProvider(
+              batched_inference_engine_provider),
           std::move(encryption_handle));
   builder.RegisterService(service.get());
 

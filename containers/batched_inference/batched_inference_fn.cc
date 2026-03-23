@@ -21,7 +21,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/fed_sql/inference_model_helper.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/fns/do_fn.h"
@@ -205,9 +205,9 @@ class BatchedInferenceFn final
     : public confidential_federated_compute::fns::DoFn {
  public:
   explicit BatchedInferenceFn(
-      std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+      std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
       InferenceConfiguration inference_config)
-      : batched_inference_provider_(batched_inference_provider),
+      : batched_inference_engine_(batched_inference_engine),
         inference_config_(std::move(inference_config)) {}
 
   ~BatchedInferenceFn() {}
@@ -231,7 +231,7 @@ class BatchedInferenceFn final
       const std::vector<CallLevelWorkItem*>& batched_call_items,
       std::queue<BlobLevelWorkItem*>* blob_items, Context& context);
 
-  std::shared_ptr<BatchedInferenceProvider> batched_inference_provider_;
+  std::shared_ptr<BatchedInferenceEngine> batched_inference_engine_;
   InferenceConfiguration inference_config_;
   std::vector<std::unique_ptr<BlobLevelWorkItem>> uncommitted_blob_items_;
 };
@@ -350,7 +350,7 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
     prompts.push_back(call_item->prompt);
   }
   std::vector<absl::StatusOr<std::string>> results =
-      batched_inference_provider_->DoBatchedInference(prompts);
+      batched_inference_engine_->DoBatchedInference(prompts);
   if (results.size() != prompts.size()) {
     return absl::InternalError(absl::StrCat(
         "The number of results (", results.size(),
@@ -454,28 +454,28 @@ class BatchedInferenceFnFactory
     : public confidential_federated_compute::fns::FnFactory {
  public:
   explicit BatchedInferenceFnFactory(
-      std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+      std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
       InferenceConfiguration inference_config)
-      : batched_inference_provider_(batched_inference_provider),
+      : batched_inference_engine_(batched_inference_engine),
         inference_config_(std::move(inference_config)) {}
 
   absl::StatusOr<std::unique_ptr<fns::Fn>> CreateFn() const override {
-    return std::make_unique<BatchedInferenceFn>(batched_inference_provider_,
+    return std::make_unique<BatchedInferenceFn>(batched_inference_engine_,
                                                 inference_config_);
   }
 
  private:
-  std::shared_ptr<BatchedInferenceProvider> batched_inference_provider_;
+  std::shared_ptr<BatchedInferenceEngine> batched_inference_engine_;
   InferenceConfiguration inference_config_;
 };
 
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> CreateBatchedInferenceFnFactory(
-    std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+    std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
     InferenceConfiguration inference_config) {
   return std::make_unique<BatchedInferenceFnFactory>(
-      batched_inference_provider, std::move(inference_config));
+      batched_inference_engine, std::move(inference_config));
 }
 
 }  // namespace confidential_federated_compute::batched_inference

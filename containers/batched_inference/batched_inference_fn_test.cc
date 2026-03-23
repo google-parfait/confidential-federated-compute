@@ -48,7 +48,7 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::Test;
 
-class MockBatchedInferenceProvider : public BatchedInferenceProvider {
+class MockBatchedInferenceEngine : public BatchedInferenceEngine {
  public:
   MOCK_METHOD((std::vector<absl::StatusOr<std::string>>), DoBatchedInference,
               (std::vector<std::string> prompts), (override));
@@ -62,17 +62,17 @@ class BatchedInferenceFnTest : public Test {
   // blob.
   void RunTestCaseFor(
       std::vector<std::vector<std::vector<std::string>>> commits) {
-    std::shared_ptr<NiceMock<MockBatchedInferenceProvider>> mock_provider =
-        std::make_shared<NiceMock<MockBatchedInferenceProvider>>();
+    std::shared_ptr<NiceMock<MockBatchedInferenceEngine>> mock_engine =
+        std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
     InferenceConfiguration inference_config =
         testing::GetInferenceConfigForTest();
     absl::StatusOr<std::unique_ptr<fns::FnFactory>> factory =
-        CreateBatchedInferenceFnFactory(mock_provider, inference_config);
+        CreateBatchedInferenceFnFactory(mock_engine, inference_config);
     ASSERT_THAT(factory.status(), IsOk());
     auto fn = factory.value()->CreateFn();
     ASSERT_THAT(fn.status(), IsOk());
     MockContext mock_context;
-    EXPECT_CALL(*mock_provider, DoBatchedInference(_)).Times(0);
+    EXPECT_CALL(*mock_engine, DoBatchedInference(_)).Times(0);
     EXPECT_CALL(mock_context, EmitEncrypted(_, _)).Times(0);
     int commit_no = 0;
     for (auto& commit : commits) {
@@ -97,12 +97,12 @@ class BatchedInferenceFnTest : public Test {
         absl::StatusOr<WriteFinishedResponse> write_result =
             fn.value()->Write(write_request, unencrypted_data, mock_context);
         EXPECT_THAT(write_result.status(), IsOk());
-        Mock::VerifyAndClearExpectations(mock_provider.get());
+        Mock::VerifyAndClearExpectations(mock_engine.get());
         Mock::VerifyAndClearExpectations(&mock_context);
       }
 
       // Now commit and verify inference calls and integrity of the results.
-      EXPECT_CALL(*mock_provider, DoBatchedInference(_))
+      EXPECT_CALL(*mock_engine, DoBatchedInference(_))
           .WillRepeatedly(Invoke(
               [&total_num_inference_calls](std::vector<std::string> prompts) {
                 ++total_num_inference_calls;
@@ -135,7 +135,7 @@ class BatchedInferenceFnTest : public Test {
       absl::StatusOr<CommitResponse> commit_result =
           fn.value()->Commit(commit_request, mock_context);
       EXPECT_THAT(commit_result.status(), IsOk());
-      Mock::VerifyAndClearExpectations(mock_provider.get());
+      Mock::VerifyAndClearExpectations(mock_engine.get());
       Mock::VerifyAndClearExpectations(&mock_context);
 
       const int expected_total_num_inference_calls = static_cast<int>(

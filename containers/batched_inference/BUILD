@@ -23,9 +23,9 @@ package(
 )
 
 cc_library(
-    name = "batched_inference_provider",
+    name = "batched_inference_engine",
     srcs = [],
-    hdrs = ["batched_inference_provider.h"],
+    hdrs = ["batched_inference_engine.h"],
     deps = ["@com_google_absl//absl/status:statusor"],
 )
 
@@ -34,7 +34,7 @@ cc_library(
     srcs = ["batched_inference_fn.cc"],
     hdrs = ["batched_inference_fn.h"],
     deps = [
-        ":batched_inference_provider",
+        ":batched_inference_engine",
         "//containers/fed_sql:inference_model_helper",
         "//containers/fed_sql:session_utils",
         "//containers/fns",
@@ -106,8 +106,8 @@ cc_library(
         "batched_inference_server.h",
     ],
     deps = [
+        ":batched_inference_engine",
         ":batched_inference_fn",
-        ":batched_inference_provider",
         "//containers/fns",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -127,7 +127,7 @@ cc_test(
     srcs = ["batched_inference_server_test.cc"],
     defines = ["FCP_CLIENT_SUPPORT_CONFIDENTIAL_AGG"],
     deps = [
-        ":batched_inference_provider",
+        ":batched_inference_engine",
         ":batched_inference_server",
         ":batched_inference_test_utils",
         "//containers:crypto_test_utils",
@@ -166,7 +166,7 @@ cc_binary(
     name = "main_for_testing",
     srcs = ["main_for_testing.cc"],
     deps = [
-        ":batched_inference_provider",
+        ":batched_inference_engine",
         ":batched_inference_server",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",

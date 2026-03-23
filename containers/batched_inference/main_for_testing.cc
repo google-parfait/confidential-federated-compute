@@ -20,7 +20,7 @@
 #include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/batched_inference/batched_inference_server.h"
 
 namespace confidential_federated_compute::batched_inference {
@@ -34,9 +34,9 @@ using ::oak::crypto::SigningKeyHandle;
 
 const int INCOMING_PORT = 8080;
 
-class TestBatchedInferenceProviderImpl : public BatchedInferenceProvider {
+class TestBatchedInferenceEngineImpl : public BatchedInferenceEngine {
  public:
-  virtual ~TestBatchedInferenceProviderImpl() {}
+  virtual ~TestBatchedInferenceEngineImpl() {}
 
   std::vector<absl::StatusOr<std::string>> DoBatchedInference(
       std::vector<std::string> prompts) override {
@@ -48,11 +48,23 @@ class TestBatchedInferenceProviderImpl : public BatchedInferenceProvider {
   }
 };
 
+class TestBatchedInferenceEngineProviderImpl
+    : public BatchedInferenceEngineProvider {
+ public:
+  virtual ~TestBatchedInferenceEngineProviderImpl() {}
+
+  virtual std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceConfiguration& inference_config)
+      override {
+    return std::make_shared<TestBatchedInferenceEngineImpl>();
+  }
+};
+
 void RunServer() {
   absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server =
       CreateBatchedInferenceServer(
-          std::make_shared<TestBatchedInferenceProviderImpl>(), INCOMING_PORT,
-          std::make_unique<InstanceSigningKeyHandle>(),
+          std::make_shared<TestBatchedInferenceEngineProviderImpl>(),
+          INCOMING_PORT, std::make_unique<InstanceSigningKeyHandle>(),
           std::make_unique<InstanceEncryptionKeyHandle>());
   CHECK_OK(server);
   CHECK_OK(OrchestratorClient().NotifyAppReady());
