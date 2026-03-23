@@ -34,7 +34,7 @@
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
 #include "client.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/batched_inference/batched_inference_server.h"
 #include "google/protobuf/text_format.h"
 #include "grpcpp/grpcpp.h"
@@ -53,7 +53,7 @@ ABSL_FLAG(bool, dump_jwt, false, "Dump JWT payload (DEBUG).");
 namespace confidential_federated_compute::gcp {
 namespace {
 
-const int SERVER_PORT = 8000;
+const int DEFAULT_HOST_PROXY_PORT_WHEN_UNSPECIFIED = 8000;
 const int CLIENT_PORT = 8080;
 
 using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
@@ -62,7 +62,8 @@ using ::oak::containers::sdk::OrchestratorClient;
 using ::oak::crypto::EncryptionKeyHandle;
 using ::oak::crypto::SigningKeyHandle;
 
-using batched_inference::BatchedInferenceProvider;
+using batched_inference::BatchedInferenceEngine;
+using batched_inference::BatchedInferenceEngineProvider;
 using batched_inference::BatchedInferenceServer;
 
 AttestationPolicy ReadPolicyOrDie() {
@@ -129,12 +130,12 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
   return outputs;
 }
 
-class TestBatchedInferenceProviderImpl : public BatchedInferenceProvider {
+class TestBatchedInferenceEngineImpl : public BatchedInferenceEngine {
  public:
-  explicit TestBatchedInferenceProviderImpl(std::unique_ptr<Client> client)
+  explicit TestBatchedInferenceEngineImpl(std::unique_ptr<Client> client)
       : client_(std::move(client)) {}
 
-  virtual ~TestBatchedInferenceProviderImpl() {}
+  virtual ~TestBatchedInferenceEngineImpl() {}
 
   std::vector<absl::StatusOr<std::string>> DoBatchedInference(
       std::vector<std::string> prompts) override {
@@ -152,32 +153,68 @@ class TestBatchedInferenceProviderImpl : public BatchedInferenceProvider {
   std::unique_ptr<Client> client_;
 };
 
+class TestBatchedInferenceEngineProviderImpl
+    : public BatchedInferenceEngineProvider {
+ public:
+  TestBatchedInferenceEngineProviderImpl(AttestationPolicy attestation_policy,
+                                         std::string jwks_payload,
+                                         bool dump_jwt)
+      : attestation_policy_(attestation_policy),
+        jwks_payload_(jwks_payload),
+        dump_jwt_(dump_jwt) {}
+
+  std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceConfiguration& inference_config)
+      override {
+    int port = DEFAULT_HOST_PROXY_PORT_WHEN_UNSPECIFIED;
+    if (inference_config.has_proxy_config() &&
+        inference_config.proxy_config().host_proxy_port() > 0) {
+      port = inference_config.proxy_config().host_proxy_port();
+    } else {
+      LOG(WARNING)
+          << "No valid host proxy port number was found in the "
+             "InferenceConfiguration received in the StreamInitializeRequest, "
+             "so falling back onto a default port number: "
+          << port;
+    }
+
+    std::string server_target =
+        absl::StrFormat("%s:%d", absl::GetFlag(FLAGS_server_address), port);
+
+    LOG(INFO) << "Connecting to server at " << server_target;
+
+    absl::StatusOr<std::unique_ptr<AttestationTokenVerifier>> verifier_or =
+        CreateAttestationTokenVerifier(attestation_policy_, jwks_payload_,
+                                       dump_jwt_);
+    CHECK_OK(verifier_or.status())
+        << "Couldn't create an attestation verifier: " << verifier_or.status();
+
+    absl::StatusOr<std::unique_ptr<Client>> client_or =
+        CreateClient(server_target, std::move(*verifier_or));
+    CHECK_OK(client_or.status())
+        << "Failed to create a GCP client: " << client_or.status();
+
+    return std::make_shared<TestBatchedInferenceEngineImpl>(
+        std::move(*client_or));
+  }
+
+ private:
+  AttestationPolicy attestation_policy_;
+  std::string jwks_payload_;
+  bool dump_jwt_;
+};
+
 void RunServer() {
-  std::string server_target = absl::StrFormat(
-      "%s:%d", absl::GetFlag(FLAGS_server_address), SERVER_PORT);
-
-  LOG(INFO) << "Connecting to server at " << server_target;
-
   AttestationPolicy attestation_policy = ReadPolicyOrDie();
   std::string jwks_payload = ReadJwksPayloadOrDie();
   bool dump_jwt = absl::GetFlag(FLAGS_dump_jwt);
 
-  absl::StatusOr<std::unique_ptr<AttestationTokenVerifier>> verifier_or =
-      CreateAttestationTokenVerifier(attestation_policy, jwks_payload,
-                                     dump_jwt);
-  CHECK_OK(verifier_or.status())
-      << "Couldn't create an attestation verifier: " << verifier_or.status();
-
-  absl::StatusOr<std::unique_ptr<Client>> client_or =
-      CreateClient(server_target, std::move(*verifier_or));
-  CHECK_OK(client_or.status())
-      << "Failed to create a GCP client: " << client_or.status();
+  auto provider = std::make_shared<TestBatchedInferenceEngineProviderImpl>(
+      attestation_policy, jwks_payload, dump_jwt);
 
   absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server_or =
       CreateBatchedInferenceServer(
-          std::make_shared<TestBatchedInferenceProviderImpl>(
-              std::move(*client_or)),
-          CLIENT_PORT, std::make_unique<InstanceSigningKeyHandle>(),
+          provider, CLIENT_PORT, std::make_unique<InstanceSigningKeyHandle>(),
           std::make_unique<InstanceEncryptionKeyHandle>());
 
   CHECK_OK(server_or.status())

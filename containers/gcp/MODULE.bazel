@@ -203,13 +203,20 @@ cc_library(
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-CFBIIYRjLuxP4DmfF1JWoV57pDMs9p4HiHXGw7LKGYA=",
+    integrity = "sha256-PTi1VArvziLrLaZxbE7occCGeWZ7SCms7H40mYKI5kw=",
     patches = [
         "//third_party/confidential-federated-compute:make_gemma_regular_dep_module.patch",
-        "//third_party/confidential-federated-compute:make_gemma_regular_dep_extensions.patch",
     ],
-    strip_prefix = "confidential-federated-compute-088060a64f0725cbde2200f6aaaaa6404916c83c",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/088060a64f0725cbde2200f6aaaaa6404916c83c.zip"],
+    strip_prefix = "confidential-federated-compute-e1df4d2d0b8dfb796c179fe5e33e7116ae34262a",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/e1df4d2d0b8dfb796c179fe5e33e7116ae34262a.zip"],
+)
+
+bazel_dep(name = "federated-compute")
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-Ss5xWqFubvQ/p2Ap/rFgVPl5NZCl/gqrGg5GNsx51o0=",
+    strip_prefix = "federated-compute-845c00825ae7bd4f3a70617d13a6b444bb90251f",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/845c00825ae7bd4f3a70617d13a6b444bb90251f.tar.gz"],
 )
 
 archive_override(
