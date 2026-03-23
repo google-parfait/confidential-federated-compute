@@ -764,7 +764,7 @@ TEST_F(FedSqlServerTest, StreamInitializeDpConfigSuccess) {
   FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
     epsilon: 1.2
     delta: 0.02
-    intrinsic_uri: "fedsql_dp_group_by"
+    intrinsic_uris: "fedsql_dp_group_by"
     access_budget { times: 5 }
   )pb");
   InitializeRequest request = CreateInitializeRequest(
