@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/status/status.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -28,7 +28,7 @@
 namespace confidential_federated_compute::batched_inference {
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> CreateBatchedInferenceFnFactory(
-    std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+    std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
     fcp::confidentialcompute::InferenceConfiguration inference_config);
 
 }  // namespace confidential_federated_compute::batched_inference

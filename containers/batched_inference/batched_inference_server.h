@@ -22,7 +22,7 @@
 #include "absl/status/status.h"
 #include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/signing_key_handle.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/fns/fn_factory.h"
 #include "google/protobuf/any.pb.h"
 
@@ -40,7 +40,8 @@ class BatchedInferenceServer {
 
 absl::StatusOr<std::unique_ptr<BatchedInferenceServer>>
 CreateBatchedInferenceServer(
-    std::shared_ptr<BatchedInferenceProvider> batched_inference_provider,
+    std::shared_ptr<BatchedInferenceEngineProvider>
+        batched_inference_engine_provider,
     int incoming_port, std::unique_ptr<SigningKeyHandle> signing_handle,
     std::unique_ptr<EncryptionKeyHandle> encryption_handle);
 

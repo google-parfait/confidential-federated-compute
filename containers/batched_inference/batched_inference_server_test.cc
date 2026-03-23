@@ -32,7 +32,7 @@
 #include "absl/status/statusor.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
-#include "containers/batched_inference/batched_inference_provider.h"
+#include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/batched_inference/batched_inference_test_utils.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/compression.h"
@@ -66,6 +66,7 @@ using ::fcp::confidentialcompute::AuthorizeConfidentialTransformResponse;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::InitializeResponse;
@@ -81,16 +82,27 @@ using ::testing::Field;
 using ::testing::Invoke;
 using ::testing::Mock;
 using ::testing::NiceMock;
+using ::testing::Property;
 using ::testing::Return;
 using ::testing::Test;
 
 static const std::string kKeyId = "test_key_id";
 static const std::string kPolicyHash = "hash_1";
 
-class MockBatchedInferenceProvider : public BatchedInferenceProvider {
+class MockBatchedInferenceEngine : public BatchedInferenceEngine {
  public:
   MOCK_METHOD((std::vector<absl::StatusOr<std::string>>), DoBatchedInference,
               (std::vector<std::string> prompts), (override));
+};
+
+class MockBatchedInferenceEngineProvider
+    : public BatchedInferenceEngineProvider {
+ public:
+  MOCK_METHOD((std::shared_ptr<BatchedInferenceEngine>),
+              GetEngineForInferenceConfig,
+              (const fcp::confidentialcompute::InferenceConfiguration&
+                   inference_config),
+              (override));
 };
 
 class BatchedInferenceServerTest : public ::testing::Test {
@@ -101,11 +113,16 @@ class BatchedInferenceServerTest : public ::testing::Test {
     auto encryption_handle = std::make_unique<EncryptionKeyProvider>(
         EncryptionKeyProvider::Create().value());
     server_public_key_ = encryption_handle->GetSerializedPublicKey();
-    mock_batched_inference_provider_ =
-        std::make_shared<NiceMock<MockBatchedInferenceProvider>>();
+    mock_batched_inference_engine_ =
+        std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+    mock_batched_inference_engine_provider_ =
+        std::make_shared<NiceMock<MockBatchedInferenceEngineProvider>>();
+    EXPECT_CALL(*mock_batched_inference_engine_provider_,
+                GetEngineForInferenceConfig(_))
+        .WillRepeatedly(Return(mock_batched_inference_engine_));
     absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server =
         CreateBatchedInferenceServer(
-            mock_batched_inference_provider_, 0,
+            mock_batched_inference_engine_provider_, 0,
             std::make_unique<confidential_federated_compute::crypto_test_utils::
                                  MockSigningKeyHandle>(),
             std::move(encryption_handle));
@@ -119,7 +136,8 @@ class BatchedInferenceServerTest : public ::testing::Test {
   void TearDown() override {
     stub_.reset();
     server_.reset();
-    mock_batched_inference_provider_.reset();
+    mock_batched_inference_engine_provider_.reset();
+    mock_batched_inference_engine_.reset();
   }
 
   typedef std::unique_ptr<
@@ -278,15 +296,39 @@ class BatchedInferenceServerTest : public ::testing::Test {
   }
 
   std::string server_public_key_;
-  std::shared_ptr<NiceMock<MockBatchedInferenceProvider>>
-      mock_batched_inference_provider_;
+  std::shared_ptr<NiceMock<MockBatchedInferenceEngine>>
+      mock_batched_inference_engine_;
+  std::shared_ptr<NiceMock<MockBatchedInferenceEngineProvider>>
+      mock_batched_inference_engine_provider_;
   std::unique_ptr<BatchedInferenceServer> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
 };
 
+TEST_F(BatchedInferenceServerTest, FactoryHandlesInferenceConfig) {
+  Mock::VerifyAndClearExpectations(
+      mock_batched_inference_engine_provider_.get());
+  InferenceConfiguration inference_config =
+      testing::GetInferenceConfigForTest();
+  EXPECT_CALL(
+      *mock_batched_inference_engine_provider_,
+      GetEngineForInferenceConfig(Property(
+          &InferenceConfiguration::runtime_config,
+          Property(&fcp::confidentialcompute::RuntimeConfig::max_batch_size,
+                   Eq(inference_config.runtime_config().max_batch_size())))))
+      .Times(1)
+      .WillOnce(Invoke([this](const InferenceConfiguration& config) {
+        return mock_batched_inference_engine_;
+      }));
+  auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
+  grpc::ClientContext session_context;
+  SessionStream session_stream;
+  InitializeSession(session_pub_key_cose, session_priv_key_cose,
+                    &session_context, &session_stream);
+  FinalizeSession(session_stream);
+}
+
 TEST_F(BatchedInferenceServerTest, NoWrites) {
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
-      .Times(0);
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_)).Times(0);
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
   grpc::ClientContext session_context;
   SessionStream session_stream;
@@ -296,8 +338,7 @@ TEST_F(BatchedInferenceServerTest, NoWrites) {
 }
 
 TEST_F(BatchedInferenceServerTest, SingleWriteNoCommit) {
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
-      .Times(0);
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_)).Times(0);
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
   fcp::confidential_compute::MessageDecryptor decryptor(
       std::vector<absl::string_view>(
@@ -319,8 +360,7 @@ TEST_F(BatchedInferenceServerTest, SingleWriteNoCommit) {
 }
 
 TEST_F(BatchedInferenceServerTest, MultipleWritesNoCommit) {
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
-      .Times(0);
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_)).Times(0);
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
   fcp::confidential_compute::MessageDecryptor decryptor(
       std::vector<absl::string_view>(
@@ -346,7 +386,7 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesNoCommit) {
 }
 
 TEST_F(BatchedInferenceServerTest, SingleWriteWithCommit) {
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_))
       .Times(1)
       .WillOnce(Invoke([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
@@ -384,7 +424,7 @@ TEST_F(BatchedInferenceServerTest, SingleWriteWithCommit) {
 }
 
 TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_))
       .WillRepeatedly(Invoke([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
         for (const auto& prompt : prompts) {
@@ -431,7 +471,7 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
 
 TEST_F(BatchedInferenceServerTest, MultipleCommits) {
   const int kNumCommits = 5;
-  EXPECT_CALL(*mock_batched_inference_provider_, DoBatchedInference(_))
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_))
       .WillRepeatedly(Invoke([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
         for (const auto& prompt : prompts) {

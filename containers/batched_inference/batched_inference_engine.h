@@ -12,24 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_PROVIDER_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_PROVIDER_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_ENGINE_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_ENGINE_H_
 
 #include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 
 namespace confidential_federated_compute::batched_inference {
 
-class BatchedInferenceProvider {
+class BatchedInferenceEngine {
  public:
-  virtual ~BatchedInferenceProvider() {}
+  virtual ~BatchedInferenceEngine() {}
 
   virtual std::vector<absl::StatusOr<std::string>> DoBatchedInference(
       std::vector<std::string> prompts) = 0;
 };
 
+class BatchedInferenceEngineProvider {
+ public:
+  virtual ~BatchedInferenceEngineProvider() {}
+
+  virtual std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceConfiguration&
+          inference_config) = 0;
+};
+
 }  // namespace confidential_federated_compute::batched_inference
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_PROVIDER_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_ENGINE_H_
