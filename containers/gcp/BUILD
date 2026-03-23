@@ -352,7 +352,7 @@ cc_binary(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@confidential-federated-compute//containers/batched_inference:batched_inference_provider",
+        "@confidential-federated-compute//containers/batched_inference:batched_inference_engine",
         "@confidential-federated-compute//containers/batched_inference:batched_inference_server",
         "@oak//cc/containers/sdk:encryption_key_handle",
         "@oak//cc/containers/sdk:orchestrator_client",
