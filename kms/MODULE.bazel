@@ -15,22 +15,23 @@
 # go/keep-sorted start
 bazel_dep(name = "boringssl")
 bazel_dep(name = "confidential-federated-compute")
+bazel_dep(name = "federated-compute")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983")
 bazel_dep(name = "oak")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "33.5", repo_name = "com_google_protobuf")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
-bazel_dep(name = "rules_python", version = "1.9.0")
+bazel_dep(name = "rules_python", version = "1.5.4")
 bazel_dep(name = "rules_rust", version = "0.69.0")
 bazel_dep(name = "rules_rust_bindgen", version = "0.69.0")
 bazel_dep(name = "rules_rust_prost")
 bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
 
-cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
-use_repo(cfc_deps, "bazel_toolchains", "federated-compute")
+fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains")
 
 # Module overrides.
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
@@ -44,9 +45,16 @@ archive_override(
 
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-ytlMGiFh1GrtnmDRalOLKLJEf0D7Re34SU+CAlROYsk=",
-    strip_prefix = "confidential-federated-compute-69d52f38e891fd7d020b33b0e6ddd6487158900f",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/69d52f38e891fd7d020b33b0e6ddd6487158900f.tar.gz"],
+    integrity = "sha256-l9x8vVCE5FUQSksyiN7OzEw8OTrSKhZQOBIcxsLWtPI=",
+    strip_prefix = "confidential-federated-compute-364cb6cbb686452b88d209c84a7cfd056d0a6181",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/364cb6cbb686452b88d209c84a7cfd056d0a6181.tar.gz"],
+)
+
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-Ss5xWqFubvQ/p2Ap/rFgVPl5NZCl/gqrGg5GNsx51o0=",
+    strip_prefix = "federated-compute-845c00825ae7bd4f3a70617d13a6b444bb90251f",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/845c00825ae7bd4f3a70617d13a6b444bb90251f.tar.gz"],
 )
 
 archive_override(
