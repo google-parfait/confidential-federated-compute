@@ -89,10 +89,9 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-pixFPDN0SkhA67jY9RmLL1YZODefPmpZfoJJP7kqpyM=",
-    patches = ["//third_party/oak:module.patch"],
-    strip_prefix = "oak-7ad6bf3867bc969603f55ba8afff42a200e03745",
-    urls = ["https://github.com/project-oak/oak/archive/7ad6bf3867bc969603f55ba8afff42a200e03745.tar.gz"],
+    integrity = "sha256-enS7uvAHO38sgs3N4wQ7cXTFhhoY6+i7QGYMoZLCZuI=",
+    strip_prefix = "oak-1748208b1a4d42262621cbac024dfafb0ab434f1",
+    urls = ["https://github.com/project-oak/oak/archive/1748208b1a4d42262621cbac024dfafb0ab434f1.tar.gz"],
 )
 
 # go/keep-sorted end
