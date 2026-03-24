@@ -57,7 +57,8 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<MessageFactory> message_factory,
       absl::string_view on_device_query_name,
-      confidential_federated_compute::Decryptor& decryptor);
+      confidential_federated_compute::Decryptor& decryptor,
+      std::optional<uint64_t> max_output_partitions);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
@@ -158,6 +159,11 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   PartitionPrivateState partition_private_state_;
   // Decryptor used to unwrap release tokens when accumulating private state.
   confidential_federated_compute::Decryptor& decryptor_;
+  // The maximum number of output partitions allowed when using partitioned
+  // aggregation. If set to std::nullopt, then unpartitioned aggregation will
+  // be used i.e. all aggregates are merged together in a single worker before
+  // release.
+  const std::optional<uint64_t> max_output_partitions_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

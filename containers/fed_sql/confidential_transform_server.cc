@@ -450,6 +450,12 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
     FCP_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
         fed_sql_config.inference_init_config()));
   }
+
+  max_output_partitions_ = std::nullopt;
+  if (fed_sql_config_constraints.has_max_output_partitions() &&
+      fed_sql_config_constraints.max_output_partitions() != 0) {
+    max_output_partitions_ = fed_sql_config_constraints.max_output_partitions();
+  }
   return absl::OkStatus();
 }
 
@@ -644,7 +650,7 @@ FedSqlConfidentialTransform::CreateSession() {
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
       dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
-      on_device_query_name_, *decryptor);
+      on_device_query_name_, *decryptor, max_output_partitions_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(

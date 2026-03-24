@@ -165,7 +165,8 @@ KmsFedSqlSession CreateDefaultSession() {
   return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
                           std::nullopt, std::nullopt, CreatePrivateState("", 1),
                           {},
-                          /*prototype=*/nullptr, "test_query", decryptor);
+                          /*prototype=*/nullptr, "test_query", decryptor,
+                          /*max_output_partitions=*/10);
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -304,7 +305,8 @@ class KmsFedSqlSessionWriteTest : public Test {
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
         std::nullopt,
         CreatePrivateState(initial_private_state_, default_budget),
-        absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor);
+        absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor,
+        /* max_output_partitions= */ 10);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -519,6 +521,42 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
     ASSERT_TRUE(configs[i].UnpackTo(&partition_config));
     EXPECT_EQ(partition_config.partition_index(), i);
   }
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, NumPartitionExceedsMaxAllowedPartitions) {
+  // Write input to the container.
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {2});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+
+  // Commit the input.
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+
+  // Partition the result into 100 partitions. This should fail since the max
+  // allowed partitions is 10.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_PARTITION
+    num_partitions: 100
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeds the maximum allowed")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
@@ -1503,7 +1541,8 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         std::move(checkpoint_aggregator_), intrinsics_, std::nullopt,
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
-        /*prototype=*/nullptr, "test_query", decryptor_);
+        /*prototype=*/nullptr, "test_query", decryptor_,
+        /*max_output_partitions=*/10);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -1678,7 +1717,8 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
-        "test_query", decryptor_);
+        "test_query", decryptor_,
+        /*max_output_partitions=*/10);
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects
