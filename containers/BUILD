@@ -269,3 +269,35 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "session_stream",
+    srcs = ["session_stream.cc"],
+    hdrs = ["session_stream.h"],
+    deps = [
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "session_stream_test",
+    srcs = ["session_stream_test.cc"],
+    deps = [
+        ":session_stream",
+        "//testing:matchers",
+        "//testing:parse_text_proto",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
