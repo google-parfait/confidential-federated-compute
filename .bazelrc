@@ -77,7 +77,7 @@ build --copt=-DSQLITE_STRICT_SUBTYPE=1
 build --copt=-DHAVE_LOCALTIME_R
 
 # Settings for remote build execution.
-build:cfc-remote --experimental_allow_tags_propagation
+build:cfc-remote --incompatible_allow_tags_propagation
 build:cfc-remote --define=EXECUTOR=remote
 build:cfc-remote --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:cfc-remote --remote_instance_name=projects/560162532548/instances/default
