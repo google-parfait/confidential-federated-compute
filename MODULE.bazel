@@ -89,11 +89,10 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-enS7uvAHO38sgs3N4wQ7cXTFhhoY6+i7QGYMoZLCZuI=",
-    strip_prefix = "oak-1748208b1a4d42262621cbac024dfafb0ab434f1",
-    urls = ["https://github.com/project-oak/oak/archive/1748208b1a4d42262621cbac024dfafb0ab434f1.tar.gz"],
+    integrity = "sha256-jjUzyg3EQw0wNllRRmtRuZTAlXPllSmkKJHRD13jEXM=",
+    strip_prefix = "oak-dd8e629ee6e198153d86fec3f55645a8330f6b66",
+    urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
-
 # go/keep-sorted end
 
 # Rust crates.
@@ -128,15 +127,6 @@ use_repo(crate, "crates")
 
 aliased_crates_repository = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
 use_repo(aliased_crates_repository, "oak_crates_index")
-
-oci = use_extension("@rules_oci//oci:extensions.bzl", "oci", dev_dependency = True)
-oci.pull(
-    name = "distroless_cc_debian12_base",
-    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
-    image = "gcr.io/distroless/cc-debian12",
-    platforms = ["linux/amd64"],
-)
-use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
 python.defaults(python_version = "3.13")

@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@oak//oak_containers/app_base:defs.bzl", "app_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_oci//oci:defs.bzl", "oci_image")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -181,21 +179,7 @@ cc_binary(
     ],
 )
 
-pkg_tar(
-    name = "tar_for_testing",
-    srcs = [":main_for_testing"],
-    include_runfiles = True,
-)
-
-oci_image(
-    name = "oci_image_for_testing",
-    base = "@distroless_cc_debian12_base",
-    cmd = [],
-    entrypoint = ["/main_for_testing"],
-    tars = [":tar_for_testing"],
-)
-
-oci_runtime_bundle(
-    name = "oci_runtime_bundle_for_testing",
-    image = ":oci_image_for_testing",
+app_bundle(
+    name = "app_bundle_for_testing",
+    binary = ":main_for_testing",
 )

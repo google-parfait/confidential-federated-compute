@@ -14,10 +14,8 @@
 
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
-load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@oak//oak_containers/app_base:defs.bzl", "app_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_oci//oci:defs.bzl", "oci_image")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 package(features = ["layering_check"])
 
@@ -564,20 +562,8 @@ cc_binary(
     ],
 )
 
-pkg_tar(
-    name = "tar",
-    srcs = [":main"],
-)
-
-oci_image(
-    name = "oci_image",
-    base = "@distroless_cc_debian12_base",
-    entrypoint = ["/main"],
-    tars = [":tar"],
-)
-
-oci_runtime_bundle(
-    name = "oci_runtime_bundle",
-    image = ":oci_image",
+app_bundle(
+    name = "app_bundle",
+    binary = ":main",
     visibility = ["//:__pkg__"],
 )

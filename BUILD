@@ -37,8 +37,8 @@ platform(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "//containers/fed_sql:oci_runtime_bundle.tar": "fed_sql/container.tar",
-    "//containers/metadata:oci_runtime_bundle.tar": "metadata/container.tar",
+    "//containers/fed_sql:app_bundle": "fed_sql/container.tar",
+    "//containers/metadata:app_bundle": "metadata/container.tar",
     # keep-sorted end
 }
 
@@ -57,7 +57,7 @@ pkg_install(
 # directory.
 _ALL_BINARIES = _RELEASE_BINARIES | {
     # keep-sorted start
-    "//containers/confidential_transform_test_concat:oci_runtime_bundle.tar": "confidential_transform_test_concat/container.tar",
+    "//containers/confidential_transform_test_concat:app_bundle": "confidential_transform_test_concat/container.tar",
     # keep-sorted end
 }
 
