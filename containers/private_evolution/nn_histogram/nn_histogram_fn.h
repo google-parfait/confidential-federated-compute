@@ -34,7 +34,7 @@ using NearestNeighborFn = absl::AnyInvocable<absl::StatusOr<int32_t>(
     const std::vector<fcp::confidentialcompute::Embedding>&)>;
 
 constexpr absl::string_view kDataTensorName = "data";
-constexpr absl::string_view kIndexTensorName = "index";
+constexpr absl::string_view kIndexTensorName = "data_index";
 
 // Creates a FnFactory for NN Histogram MapFn instances.
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideNNHistogramFnFactory(
