@@ -66,9 +66,9 @@ archive_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-Zuw1+cb6v/WMTvWpdp+0yjMybsSJifXPKL6I1U48Xi0=",
-    strip_prefix = "federated-compute-e4b55acd6d7bcf5a25e77363549a1048efce52a9",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/e4b55acd6d7bcf5a25e77363549a1048efce52a9.tar.gz"],
+    integrity = "sha256-Lq4XdaOguJQ6qGbNTSKshZy0OYm7SjVFyW8IExoVPv8=",
+    strip_prefix = "federated-compute-cf87047132741a252cc29da444e1ffabb406a7a6",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/cf87047132741a252cc29da444e1ffabb406a7a6.tar.gz"],
 )
 
 archive_override(
