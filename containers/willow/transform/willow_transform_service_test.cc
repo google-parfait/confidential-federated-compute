@@ -22,6 +22,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/cord.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
@@ -190,7 +191,7 @@ class WillowTransformServiceTest : public Test {
   }
 
   SessionRequest CreateWriteRequest(std::string blob_id, WillowOp::Kind op_kind,
-                                    std::string data) {
+                                    absl::Cord data) {
     SessionRequest request;
     WriteRequest* write_request = request.mutable_write();
     BlobMetadata metadata;
@@ -250,10 +251,10 @@ class WillowTransformServiceTest : public Test {
 
     // Create write request with the serialized message.
     return CreateWriteRequest(nonce, WillowOp::ADD_INPUT,
-                              client_message.SerializeAsString());
+                              client_message.SerializeAsCord());
   }
 
-  absl::StatusOr<DecodedData> DecryptAndDecode(std::string finalized_data) {
+  absl::StatusOr<DecodedData> DecryptAndDecode(absl::Cord finalized_data) {
     // Decrypt finalized result
     FinalizedAccumulatorResult finalized_result;
     EXPECT_TRUE(finalized_result.ParseFromString(finalized_data));
@@ -394,7 +395,7 @@ TEST_F(WillowTransformServiceTest, MultipleInputsWithMerge) {
   // Compacted result of the first session
   std::string compacted_blob_id1 =
       read_response.read().first_response_metadata().unencrypted().blob_id();
-  std::string compacted_data1 = read_response.read().data();
+  absl::Cord compacted_data1 = read_response.read().data();
 
   // Second session - submit two contributions in two separate ranges.
   {
@@ -445,7 +446,7 @@ TEST_F(WillowTransformServiceTest, MultipleInputsWithMerge) {
   // Compacted result of the second session
   std::string compacted_blob_id2 =
       read_response.read().first_response_metadata().unencrypted().blob_id();
-  std::string compacted_data2 = read_response.read().data();
+  absl::Cord compacted_data2 = read_response.read().data();
 
   // Third session - merge the two compacted data results and finalize.
   {

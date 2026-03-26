@@ -20,20 +20,23 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
-single_version_override(
-    module_name = "abseil-cpp",
-    version = "20250814.1",
-)
-
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "boringssl", version = "0.20251002.0")
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-43jF0vBd+lb0tlbupdUfVGkMmlgM/3p7tiS6GdWZd+o=",
-    strip_prefix = "confidential-federated-compute-aa6e872b932fae18cc74d3b253db32fb9f5d5b93",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/aa6e872b932fae18cc74d3b253db32fb9f5d5b93.tar.gz"],
+    integrity = "sha256-58kZ9YgX43dlhKD3t0l+/wAxnFrPrFUoK8KLEDXvfDA=",
+    strip_prefix = "confidential-federated-compute-f9aee9ed0b84f078168861ce2be16a805a3041d3",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/f9aee9ed0b84f078168861ce2be16a805a3041d3.tar.gz"],
+)
+
+bazel_dep(name = "federated-compute")
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-Lq4XdaOguJQ6qGbNTSKshZy0OYm7SjVFyW8IExoVPv8=",
+    strip_prefix = "federated-compute-cf87047132741a252cc29da444e1ffabb406a7a6",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/cf87047132741a252cc29da444e1ffabb406a7a6.tar.gz"],
 )
 
 bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
@@ -104,9 +107,8 @@ archive_override(
     ],
 )
 
-# Root CFC dependencies
-cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
-use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "libcppbor")
+fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains")
 
 http_archive(
     name = "sysroot",
