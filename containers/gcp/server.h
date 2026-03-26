@@ -41,7 +41,7 @@ class Server {
 // string-serialized form and by supplying a handler that knows how
 // to unpack and handle them.
 absl::StatusOr<std::unique_ptr<Server>> CreateServer(
-    int port,
+    int port, bool use_alts,
     std::unique_ptr<AttestationTokenProvider> attestation_token_provider,
     Server::RequestHandler request_handler);
 

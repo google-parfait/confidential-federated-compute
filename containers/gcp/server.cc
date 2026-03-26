@@ -17,6 +17,10 @@
 
 #include "grpcpp/server.h"
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -48,6 +52,36 @@ namespace confidential_federated_compute::gcp {
 namespace {
 
 using ::oak::services::OakSessionV1Service;
+
+void LogNetworkInterfaces() {
+  struct ifaddrs* ifaddr;
+  if (getifaddrs(&ifaddr) == -1) {
+    LOG(ERROR)
+        << "gRPC Server: getifaddrs failed to retrieve network interfaces.";
+    return;
+  }
+
+  LOG(INFO) << "gRPC Server: Dumping Network Interfaces:";
+  for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+    if (ifa->ifa_addr == nullptr) continue;
+
+    int family = ifa->ifa_addr->sa_family;
+    char addr_str[INET6_ADDRSTRLEN];
+
+    if (family == AF_INET) {
+      struct sockaddr_in* ipv4 = (struct sockaddr_in*)ifa->ifa_addr;
+      inet_ntop(AF_INET, &(ipv4->sin_addr), addr_str, INET_ADDRSTRLEN);
+      LOG(INFO) << "  Interface: " << ifa->ifa_name
+                << " (IPv4) Address: " << addr_str;
+    } else if (family == AF_INET6) {
+      struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)ifa->ifa_addr;
+      inet_ntop(AF_INET6, &(ipv6->sin6_addr), addr_str, INET6_ADDRSTRLEN);
+      LOG(INFO) << "  Interface: " << ifa->ifa_name
+                << " (IPv6) Address: " << addr_str;
+    }
+  }
+  freeifaddrs(ifaddr);
+}
 using ::oak::session::ServerSession;
 using ::oak::session::SessionConfig;
 using ::oak::session::SigningKeyHandle;
@@ -208,7 +242,7 @@ class ServerImpl : public Server {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<Server>> CreateServer(
-    int port,
+    int port, bool use_alts,
     std::unique_ptr<AttestationTokenProvider> attestation_token_provider,
     Server::RequestHandler request_handler) {
   if (!attestation_token_provider) {
@@ -231,15 +265,36 @@ absl::StatusOr<std::unique_ptr<Server>> CreateServer(
       std::make_unique<OakSessionV1ServiceImpl>(
           std::move(attestation_token_provider), std::move(request_handler));
 
+  LogNetworkInterfaces();
+
   grpc::ServerBuilder builder;
-  std::string server_address = absl::StrFormat("0.0.0.0:%d", port);
+  std::string server_address = absl::StrFormat("[::]:%d", port);
   int selected_port;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(),
-                           &selected_port);
+
+  LOG(INFO) << "gRPC Server: Initializing binding to " << server_address
+            << " with use_alts=" << use_alts;
+
+  if (use_alts) {
+    builder.AddListeningPort(
+        server_address,
+        grpc::experimental::AltsServerCredentials(
+            grpc::experimental::AltsServerCredentialsOptions()),
+        &selected_port);
+    LOG(INFO) << "gRPC Server: Configured with ALTS Server Credentials.";
+  } else {
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(),
+                             &selected_port);
+    LOG(INFO) << "gRPC Server: Configured with Insecure Server Credentials.";
+  }
   builder.RegisterService(service.get());
+  LOG(INFO) << "gRPC Server: registered OakSessionV1Service.";
 
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-  LOG(INFO) << "Server listening on port " << selected_port;
+  if (!server) {
+    LOG(ERROR) << "gRPC Server: Failed to Start!";
+    return nullptr;
+  }
+  LOG(INFO) << "gRPC Server: Successfully listening on port " << selected_port;
 
   return std::make_unique<ServerImpl>(std::move(service), std::move(server),
                                       selected_port);

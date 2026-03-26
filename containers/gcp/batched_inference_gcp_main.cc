@@ -44,11 +44,12 @@ ABSL_FLAG(int32_t, gpu_layers, 0,
           "Number of layers to offload to GPU. Set to 0 for CPU only, or a "
           "large number (e.g., 999) to offload all layers.");
 
+ABSL_FLAG(bool, use_alts, false, "Use ALTS for transport security.");
+
+ABSL_FLAG(int32_t, port, 8000, "The port on which the server should listen.");
+
 namespace confidential_federated_compute::gcp {
 namespace {
-
-// Default server port.
-const int PORT = 8000;
 
 void RunServer() {
   std::string provider_flag = absl::GetFlag(FLAGS_attestation_provider);
@@ -113,8 +114,10 @@ void RunServer() {
     return response_payload;
   };
 
+  bool use_alts = absl::GetFlag(FLAGS_use_alts);
   absl::StatusOr<std::unique_ptr<Server>> server_or = CreateServer(
-      PORT, std::move(attestation_token_provider), std::move(request_handler));
+      absl::GetFlag(FLAGS_port), use_alts,
+      std::move(attestation_token_provider), std::move(request_handler));
   if (!server_or.ok()) {
     LOG(FATAL) << "Failed to create the server: " << server_or.status();
   }
