@@ -274,6 +274,7 @@ cc_library(
     name = "session_stream",
     srcs = ["session_stream.cc"],
     hdrs = ["session_stream.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
