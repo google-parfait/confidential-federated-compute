@@ -19,6 +19,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -155,10 +156,11 @@ class ContextImpl : public Session::Context {
     return stream_->Write(response);
   }
 
+  // TODO: consider data to be changed to Cord.
   bool Emit(std::string data, google::protobuf::Any key,
             BlobMetadata metadata) {
     ReadResponse response;
-    *response.mutable_data() = std::move(data);
+    response.set_data(std::move(data));
     *response.mutable_first_response_configuration() = std::move(key);
     *response.mutable_first_response_metadata() = std::move(metadata);
     return Emit(std::move(response));
@@ -220,7 +222,9 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
       }
 
       case SessionRequest::kWrite: {
-        std::string data = std::move(*request.mutable_write()->mutable_data());
+        // TODO: Consider passing this by Cord
+        std::string data;
+        absl::CopyCordToString(request.write().data(), &data);
         FCP_ASSIGN_OR_RETURN(
             WriteFinishedResponse write_response,
             session->Write(request.write(), std::move(data), context));
