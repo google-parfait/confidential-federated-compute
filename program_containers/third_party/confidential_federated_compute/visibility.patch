@@ -1,0 +1,13 @@
+diff --git containers/testing/BUILD containers/testing/BUILD
+index ae5e345..2d0dd63 100644
+--- containers/testing/BUILD
++++ containers/testing/BUILD
+@@ -15,7 +15,7 @@
+ load("@rules_cc//cc:defs.bzl", "cc_library")
+ 
+ package(
+-    default_visibility = ["//containers:__subpackages__"],
++    default_visibility = ["//visibility:public"],
+     features = ["layering_check"],
+ )
+ 

@@ -67,10 +67,8 @@ class FakeDataReadWriteServiceTest : public ::testing::Test {
   void SetUp() override {
     fake_data_read_write_service_ =
         std::make_unique<FakeDataReadWriteService>();
-    google::protobuf::Struct config_properties;
     input_blob_decryptor_ =
-        std::make_unique<confidential_federated_compute::BlobDecryptor>(
-            mock_signing_key_handle_, config_properties,
+        std::make_unique<confidential_federated_compute::Decryptor>(
             std::vector<absl::string_view>(
                 {fake_data_read_write_service_->GetInputPublicPrivateKeyPair()
                      .second}));
@@ -95,9 +93,7 @@ class FakeDataReadWriteServiceTest : public ::testing::Test {
   void TearDown() override { fake_data_read_write_server_->Shutdown(); }
 
  protected:
-  NiceMock<MockSigningKeyHandle> mock_signing_key_handle_;
-  std::unique_ptr<BlobDecryptor> input_blob_decryptor_;
-
+  std::unique_ptr<Decryptor> input_blob_decryptor_;
   std::unique_ptr<FakeDataReadWriteService> fake_data_read_write_service_;
   std::unique_ptr<Server> fake_data_read_write_server_;
   std::unique_ptr<DataReadWrite::Stub> stub_;
@@ -248,6 +244,7 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   WriteRequest write_request_2;
   auto result_public_key =
       fake_data_read_write_service_->GetResultPublicPrivateKeyPair().first;
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle_;
   ASSERT_TRUE(CreateWriteRequestForRelease(
                   &write_request_1, mock_signing_key_handle_, result_public_key,
                   "key_1", "write_request_1", kAccessPolicyHash, "state_a",

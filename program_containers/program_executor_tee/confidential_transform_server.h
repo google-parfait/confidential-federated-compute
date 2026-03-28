@@ -45,7 +45,7 @@ class ProgramExecutorTeeSession final
       fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig
           initialize_config,
       std::map<std::string, std::string> model_id_to_zip_file,
-      confidential_federated_compute::BlobDecryptor* blob_decryptor,
+      confidential_federated_compute::Decryptor* blob_decryptor,
       std::string reencryption_key, absl::string_view reencryption_policy_hash,
       PrivateState* private_state,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
@@ -94,7 +94,7 @@ class ProgramExecutorTeeSession final
   std::map<std::string, std::string> model_id_to_zip_file_;
 
   // Blob decryptor.
-  confidential_federated_compute::BlobDecryptor* blob_decryptor_;
+  confidential_federated_compute::Decryptor* blob_decryptor_;
 
   // The fields below are set only when KMS is being used.
   // Reencryption key for any outputs that are being released.
@@ -125,17 +125,9 @@ class ProgramExecutorTeeConfidentialTransform
                                   std::move(encryption_key_handle)) {}
 
  protected:
-  // This method is only used for ledger integrations, and the ledger is
-  // now deprecated.
-  absl::StatusOr<google::protobuf::Struct> StreamInitializeTransform(
-      const fcp::confidentialcompute::InitializeRequest* request) override;
-
-  // This method is only used for KMS integrations.
-  absl::Status StreamInitializeTransformWithKms(
+  absl::Status StreamInitializeTransform(
       const google::protobuf::Any& configuration,
-      const google::protobuf::Any& config_constraints,
-      std::vector<std::string> reencryption_keys,
-      absl::string_view reencryption_policy_hash) override;
+      const google::protobuf::Any& config_constraints) override;
 
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&

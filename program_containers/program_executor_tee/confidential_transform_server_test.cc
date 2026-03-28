@@ -18,13 +18,13 @@
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/program_executor_tee_config.pb.h"
-#include "fcp/testing/parse_text_proto.h"
 #include "gmock/gmock.h"
 #include "grpcpp/client_context.h"
 #include "gtest/gtest.h"
 #include "program_executor_tee/program_context/cc/generate_checkpoint.h"
 #include "program_executor_tee/testing_base.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
+#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::program_executor_tee {
 

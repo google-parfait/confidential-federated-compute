@@ -1,17 +1,17 @@
 diff --git containers/BUILD containers/BUILD
-index 9f757e6..cd37d1a 100644
+index 30962fd..e083ff4 100644
 --- containers/BUILD
 +++ containers/BUILD
-@@ -33,7 +33,7 @@ cc_library(
-         "@com_google_absl//absl/strings",
-         "@com_google_absl//absl/strings:cord",
-         "@com_google_absl//absl/strings:str_format",
--        "@com_google_protobuf//:struct_cc_proto",
+@@ -68,7 +68,7 @@ cc_test(
+         "@com_github_grpc_grpc//:grpc++",
+         "@com_google_absl//absl/status:status_matchers",
+         "@com_google_absl//absl/time",
+-        "@com_google_protobuf//:any_cc_proto",
 +        "@com_google_protobuf//:protobuf",
-         "@federated-compute//fcp/base",
-         "@federated-compute//fcp/base:compression",
-         "@federated-compute//fcp/base:status_converters",
-@@ -143,8 +143,7 @@ cc_test(
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+         "@googletest//:gtest",
+         "@googletest//:gtest_main",
+@@ -138,8 +138,7 @@ cc_test(
          "@com_google_absl//absl/log:check",
          "@com_google_absl//absl/status",
          "@com_google_absl//absl/status:status_matchers",
@@ -21,22 +21,89 @@ index 9f757e6..cd37d1a 100644
          "@federated-compute//fcp/base",
          "@federated-compute//fcp/base:compression",
          "@federated-compute//fcp/confidentialcompute:cose",
-@@ -176,8 +175,7 @@ cc_library(
-         "@com_google_absl//absl/status",
+@@ -205,8 +204,7 @@ cc_library(
          "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
          "@com_google_absl//absl/synchronization",
 -        "@com_google_protobuf//:any_cc_proto",
 -        "@com_google_protobuf//:protobuf_lite",
 +        "@com_google_protobuf//:protobuf",
          "@federated-compute//fcp/base",
          "@federated-compute//fcp/base:status_converters",
-         "@federated-compute//fcp/confidentialcompute:nonce",
-@@ -206,7 +204,7 @@ cc_test(
+         "@federated-compute//fcp/confidentialcompute:cose",
+@@ -235,8 +233,7 @@ cc_test(
          "@com_google_absl//absl/log:check",
          "@com_google_absl//absl/status:status_matchers",
          "@com_google_absl//absl/strings:str_format",
 -        "@com_google_protobuf//:protobuf_lite",
+-        "@com_google_protobuf//:struct_cc_proto",
 +        "@com_google_protobuf//:protobuf",
          "@federated-compute//fcp/base:status_converters",
-         "@federated-compute//fcp/confidentialcompute:cose",
-         "@federated-compute//fcp/confidentialcompute:crypto",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
+         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+diff --git containers/kms_encryptor.cc containers/kms_encryptor.cc
+index 6c3c832..179005e 100644
+--- containers/kms_encryptor.cc
++++ containers/kms_encryptor.cc
+@@ -48,7 +48,7 @@ absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
+   FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
+ 
+   BlobHeader header;
+-  header.set_blob_id(blob_id);
++  header.set_blob_id(std::string(blob_id));
+   header.set_key_id(okp_key.key_id);
+   header.set_access_policy_sha256(reencryption_policy_hash_);
+   return header.SerializeAsString();
+@@ -63,14 +63,15 @@ BlobMetadata KmsEncryptor::CreateMetadata(
+ 
+   BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+       metadata.mutable_hpke_plus_aead_data();
+-  hpke_plus_aead_metadata->set_ciphertext_associated_data(associated_data);
++  hpke_plus_aead_metadata->set_ciphertext_associated_data(
++      std::string(associated_data));
+   hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+       encrypted_message.encrypted_symmetric_key);
+   hpke_plus_aead_metadata->set_encapsulated_public_key(
+       encrypted_message.encapped_key);
+   hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
+-      ->set_record_header(associated_data);
+-  hpke_plus_aead_metadata->set_blob_id(blob_id);
++      ->set_record_header(std::string(associated_data));
++  hpke_plus_aead_metadata->set_blob_id(std::string(blob_id));
+   return metadata;
+ }
+ 
+diff --git containers/confidential_transform_server_base.cc containers/confidential_transform_server_base.cc
+index 0db1f5d..4aaa79b 100644
+--- containers/confidential_transform_server_base.cc
++++ containers/confidential_transform_server_base.cc
+@@ -109,9 +109,9 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
+   if (!mutable_read->finish_read()) {
+     // Chunked write implemented by splitting the provided
+     // ReadResponse.
+-    absl::Cord data = mutable_read->data();
++    absl::Cord data = absl::Cord(mutable_read->data());
+     do {
+-      mutable_read->set_data(data.Subcord(0, chunk_size_));
++      mutable_read->set_data(std::string(data.Subcord(0, chunk_size_)));
+       data.RemovePrefix(chunk_size_);
+       if (!stream_->Write(response)) {
+         return false;
+@@ -120,7 +120,7 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
+       mutable_read->clear_first_response_metadata();
+     } while (data.size() > chunk_size_);
+ 
+-    mutable_read->set_data(std::move(data));
++    mutable_read->set_data(std::string(data));
+     mutable_read->set_finish_read(true);
+   }
+ 
+@@ -445,7 +445,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
+           // This is a write request for a new blob i.e. the first chunk of a
+           // multi-chunk blob or a small blob consisting of a single chunk of
+           // data.
+-          absl::Cord data = write_request.data();
++          absl::Cord data = absl::Cord(write_request.data());
+           write_request.clear_data();
+           write_state = WriteState{.first_request = std::move(write_request),
+                                    .data = data};

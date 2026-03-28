@@ -32,7 +32,6 @@ TEST(KmsHelperTest, CreateWriteRequestForRelease) {
   std::pair<std::string, std::string> public_private_key_pair =
       crypto_test_utils::GenerateKeyPair(kKeyId);
   NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
-
   WriteRequest write_request;
   ASSERT_TRUE(CreateWriteRequestForRelease(
                   &write_request, mock_signing_key_handle,
@@ -40,10 +39,8 @@ TEST(KmsHelperTest, CreateWriteRequestForRelease) {
                   "my_access_policy_hash", "src_state", "dst_state")
                   .ok());
 
-  google::protobuf::Struct config_properties;
   auto blob_decryptor =
-      std::make_unique<confidential_federated_compute::BlobDecryptor>(
-          mock_signing_key_handle, config_properties,
+      std::make_unique<confidential_federated_compute::Decryptor>(
           std::vector<absl::string_view>({public_private_key_pair.second}));
   auto plaintext_result = blob_decryptor->DecryptBlob(
       write_request.first_request_metadata(), write_request.data(), kKeyId);
