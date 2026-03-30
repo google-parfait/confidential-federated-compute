@@ -176,16 +176,8 @@ class WillowTransformServiceTest : public Test {
 
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
   StartSession(grpc::ClientContext* context) {
-    SessionRequest session_request;
-    SessionResponse session_response;
-    // TODO: implement chunking
-    session_request.mutable_configure()->set_chunk_size(1000);
-
     std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-        stream;
-    stream = stub_->Session(context);
-    CHECK(stream->Write(session_request));
-    CHECK(stream->Read(&session_response));
+        stream = stub_->Session(context);
     LOG(INFO) << "Session created";
     return stream;
   }

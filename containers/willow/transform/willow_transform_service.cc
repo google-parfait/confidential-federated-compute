@@ -17,10 +17,12 @@
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "containers/session.h"
+#include "containers/session_stream.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -47,8 +49,9 @@ grpc::Status WillowTransformService::StreamInitialize(
   return ToGrpcStatus(StreamInitializeImpl(reader, response));
 }
 
-grpc::Status WillowTransformService::Session(ServerContext* context,
-                                             SessionStream* stream) {
+grpc::Status WillowTransformService::Session(
+    ServerContext* context,
+    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
   SessionTracker* session_tracker;
   {
     absl::MutexLock l(&mutex_);
@@ -67,7 +70,8 @@ grpc::Status WillowTransformService::Session(ServerContext* context,
       !session_status.ok()) {
     return ToGrpcStatus(session_status);
   }
-  grpc::Status status = ToGrpcStatus(SessionImpl(stream));
+  SessionStream session_stream(stream);
+  grpc::Status status = ToGrpcStatus(SessionImpl(&session_stream));
   absl::Status remove_session = session_tracker->RemoveSession();
   if (!remove_session.ok()) {
     return ToGrpcStatus(remove_session);
@@ -151,9 +155,11 @@ class ContextImpl : public Session::Context {
     SessionResponse response;
     ReadResponse* mutable_read = response.mutable_read();
     *mutable_read = std::move(read_response);
-    // TODO: implement chunking
-    mutable_read->set_finish_read(true);
-    return stream_->Write(response);
+    auto status = stream_->Write(std::move(response));
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return status.ok();
   }
 
   // TODO: consider data to be changed to Cord.
@@ -206,40 +212,40 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
 
   ContextImpl context(stream);
 
-  // Base implementation of the SessionRequest handling.
-  // TODO: refactor to share the blob chunking with
-  // ConfidentialTransformServerBase
-  SessionRequest request;
-  while (stream->Read(&request)) {
-    switch (request.kind_case()) {
+  absl::StatusOr<SessionRequest> request;
+  // Since a successful session is always terminated on the server side,
+  // reading from the stream is expected to always succeed.
+  while (request = stream->Read(), request.ok()) {
+    switch (request->kind_case()) {
       case SessionRequest::kConfigure: {
         // Ignore the session configuration for now and just generate the
         // successful response.
         SessionResponse response;
         response.mutable_configure();
-        stream->Write(response);
+        FCP_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
       case SessionRequest::kWrite: {
         // TODO: Consider passing this by Cord
         std::string data;
-        absl::CopyCordToString(request.write().data(), &data);
+        absl::CopyCordToString(request->write().data(), &data);
+        request->mutable_write()->clear_data();
         FCP_ASSIGN_OR_RETURN(
             WriteFinishedResponse write_response,
-            session->Write(request.write(), std::move(data), context));
+            session->Write(request->write(), std::move(data), context));
         SessionResponse response;
         *response.mutable_write() = std::move(write_response);
-        stream->Write(response);
+        FCP_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
       case SessionRequest::kCommit: {
         FCP_ASSIGN_OR_RETURN(CommitResponse commit_response,
-                             session->Commit(request.commit(), context));
+                             session->Commit(request->commit(), context));
         SessionResponse response;
         *response.mutable_commit() = std::move(commit_response);
-        stream->Write(response);
+        FCP_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
@@ -249,23 +255,21 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
         BlobMetadata result_blob_metadata;
         result_blob_metadata.mutable_unencrypted();
         FCP_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
-                             session->Finalize(request.finalize(),
+                             session->Finalize(request->finalize(),
                                                result_blob_metadata, context));
         SessionResponse response;
         *response.mutable_finalize() = std::move(finalize_response);
-        stream->Write(response);
-        return absl::OkStatus();
+        return stream->Write(response);
       }
 
       default:
         return absl::FailedPreconditionError(
             absl::StrCat("Session received an unexpected request of type: ",
-                         request.kind_case()));
+                         request->kind_case()));
     }
   }
 
-  return absl::AbortedError(
-      "Session failed to read client write or finalize message.");
+  return request.status();
 }
 
 }  // namespace confidential_federated_compute::willow

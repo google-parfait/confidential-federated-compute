@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/session.h"
+#include "containers/session_stream.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -31,10 +32,6 @@
 #include "willow/proto/willow/aggregation_config.pb.h"
 
 namespace confidential_federated_compute::willow {
-
-using SessionStream =
-    grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                             fcp::confidentialcompute::SessionRequest>;
 
 // Implementation of Willow specific Transform.
 // TODO: refactor the implementation of the Service so that it derives
@@ -50,8 +47,11 @@ class WillowTransformService final
           reader,
       fcp::confidentialcompute::InitializeResponse* response) override;
 
-  grpc::Status Session(grpc::ServerContext* context,
-                       SessionStream* stream) override;
+  grpc::Status Session(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
+                               fcp::confidentialcompute::SessionRequest>*
+          stream) override;
 
  private:
   absl::Status StreamInitializeImpl(
