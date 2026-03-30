@@ -26,9 +26,9 @@ bazel_dep(name = "boringssl", version = "0.20251002.0")
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-58kZ9YgX43dlhKD3t0l+/wAxnFrPrFUoK8KLEDXvfDA=",
-    strip_prefix = "confidential-federated-compute-f9aee9ed0b84f078168861ce2be16a805a3041d3",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/f9aee9ed0b84f078168861ce2be16a805a3041d3.tar.gz"],
+    integrity = "sha256-lMOjJOvADvYz/UGRL3BPuwmffH5LvyBuu4jSJTh+3Ko=",
+    strip_prefix = "confidential-federated-compute-199846cdd20b731a294886492cb9bce6a1e0fac4",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/199846cdd20b731a294886492cb9bce6a1e0fac4.tar.gz"],
 )
 
 bazel_dep(name = "federated-compute")
