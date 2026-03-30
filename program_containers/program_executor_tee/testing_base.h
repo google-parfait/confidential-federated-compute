@@ -256,8 +256,6 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     CHECK(writer->WritesDone());
     CHECK(writer->Finish().ok());
 
-    public_key_ = response.public_key();
-
     SessionRequest session_request;
     SessionResponse session_response;
     session_request.mutable_configure()->set_chunk_size(1000);
@@ -271,7 +269,6 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
   grpc::ClientContext session_context_;
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream_;
-  std::string public_key_;
 
   std::string data_read_write_server_address_;
   FakeDataReadWriteService fake_data_read_write_service_;

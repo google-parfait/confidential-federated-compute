@@ -20,6 +20,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "fcp/base/random_token.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
@@ -36,7 +37,7 @@ inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 class DataParser {
  public:
   DataParser(
-      confidential_federated_compute::BlobDecryptor* blob_decryptor,
+      confidential_federated_compute::Decryptor* blob_decryptor,
       std::string outgoing_server_address, std::string reencryption_key = "",
       std::string reencryption_policy_hash = "",
       PrivateState* private_state = nullptr,
@@ -62,7 +63,7 @@ class DataParser {
       std::string uri,
       const fcp::confidentialcompute::outgoing::ReadResponse& read_response);
 
-  BlobDecryptor* blob_decryptor_;
+  Decryptor* blob_decryptor_;
   std::unique_ptr<
       fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface>
       stub_;

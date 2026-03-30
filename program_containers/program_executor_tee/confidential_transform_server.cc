@@ -56,12 +56,11 @@ using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
-using ::google::protobuf::Struct;
 
 PYBIND11_EMBEDDED_MODULE(data_parser, m) {
   pybind11_protobuf::ImportNativeProtoCasters();
 
-  pybind11::class_<BlobDecryptor>(m, "BlobDecryptor");
+  pybind11::class_<Decryptor>(m, "Decryptor");
 
   pybind11::class_<PrivateState>(m, "PrivateState");
 
@@ -70,8 +69,8 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
       m, "SigningKeyHandle");
 
   pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<BlobDecryptor*, std::string&, std::string&,
-                          std::string&, PrivateState*,
+      .def(pybind11::init<Decryptor*, std::string&, std::string&, std::string&,
+                          PrivateState*,
                           std::shared_ptr<oak::crypto::SigningKeyHandle>,
                           std::set<std::string>>())
       .def("resolve_uri_to_tensor",
@@ -167,13 +166,6 @@ ProgramExecutorTeeSession::Finalize(
   return fcp::confidentialcompute::FinalizeResponse();
 }
 
-absl::StatusOr<google::protobuf::Struct>
-ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
-    const fcp::confidentialcompute::InitializeRequest* request) {
-  return absl::UnimplementedError(
-      "The program executor TEE cannot be used with the ledger.");
-}
-
 absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
     uint32_t num_runs) {
   auto it = write_configuration_map_.find(kPrivateStateConfigId);
@@ -202,12 +194,9 @@ absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
   return absl::OkStatus();
 }
 
-absl::Status
-ProgramExecutorTeeConfidentialTransform::StreamInitializeTransformWithKms(
+absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
     const google::protobuf::Any& configuration,
-    const google::protobuf::Any& config_constraints,
-    std::vector<std::string> reencryption_keys,
-    absl::string_view reencryption_policy_hash) {
+    const google::protobuf::Any& config_constraints) {
   ProgramExecutorTeeInitializeConfig program_executor_config;
   if (!configuration.UnpackTo(&program_executor_config)) {
     return absl::InvalidArgumentError(
@@ -242,13 +231,15 @@ ProgramExecutorTeeConfidentialTransform::StreamInitializeTransformWithKms(
         "the policy, if any are specified.");
   }
 
+  const std::vector<std::string>& reencryption_keys = GetReencryptionKeys();
   if (reencryption_keys.size() != 1) {
     return absl::FailedPreconditionError(
         "Expected exactly one reencryption key (for releasing results).");
   }
 
   reencryption_key_ = std::move(reencryption_keys[0]);
-  reencryption_policy_hash_ = reencryption_policy_hash;
+  reencryption_policy_hash_ =
+      *GetAuthorizedLogicalPipelinePoliciesHashes().begin();
 
   return InitializePrivateState(program_executor_config_constraints.num_runs());
 }
@@ -348,7 +339,7 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
     model_id_to_zip_file_[model_id] = config_metadata.file_path;
   }
 
-  FCP_ASSIGN_OR_RETURN(BlobDecryptor * blob_decryptor, GetBlobDecryptor());
+  FCP_ASSIGN_OR_RETURN(Decryptor * blob_decryptor, GetDecryptor());
 
   auto get_program_initialize_fn =
       [this]() -> std::optional<pybind11::function> {

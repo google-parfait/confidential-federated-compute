@@ -1,0 +1,110 @@
+diff --git fcp/base/monitoring.h fcp/base/monitoring.h
+index 080dd64..b7a87a1 100644
+--- fcp/base/monitoring.h
++++ fcp/base/monitoring.h
+@@ -140,84 +140,28 @@ namespace fcp {
+ #define FCP_STATUS(code) \
+   ::fcp::internal::MakeStatusBuilder(code, __FILE__, __LINE__)
+ 
+-using Status [[deprecated("Use absl::Status instead")]] ABSL_REFACTOR_INLINE =
+-    absl::Status;
+-using StatusCode
+-    [[deprecated("Use absl::StatusCode "
+-                 "instead")]] ABSL_REFACTOR_INLINE = absl::StatusCode;
++using Status = absl::Status;
++using StatusCode = absl::StatusCode;
+ template <typename T>
+-using StatusOr
+-    [[deprecated("Use absl::StatusOr "
+-                 "instead")]] ABSL_REFACTOR_INLINE = absl::StatusOr<T>;
+-
+-[[deprecated(
+-    "Use absl::StatusCode::kOk "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto OK =
+-    StatusCode::kOk;
+-[[deprecated(
+-    "Use absl::StatusCode::kCancelled "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto CANCELLED =
+-    StatusCode::kCancelled;
+-[[deprecated(
+-    "Use absl::StatusCode::kUnknown "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto UNKNOWN =
+-    StatusCode::kUnknown;
+-[[deprecated(
+-    "Use absl::StatusCode::kInvalidArgument "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto INVALID_ARGUMENT =
+-    StatusCode::kInvalidArgument;
+-[[deprecated(
+-    "Use absl::StatusCode::kDeadlineExceeded "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto DEADLINE_EXCEEDED =
+-    StatusCode::kDeadlineExceeded;
+-[[deprecated(
+-    "Use absl::StatusCode::kNotFound "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto NOT_FOUND =
+-    StatusCode::kNotFound;
+-[[deprecated(
+-    "Use absl::StatusCode::kAlreadyExists "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto ALREADY_EXISTS =
+-    StatusCode::kAlreadyExists;
+-[[deprecated(
+-    "Use absl::StatusCode::kPermissionDenied "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto PERMISSION_DENIED =
+-    StatusCode::kPermissionDenied;
+-[[deprecated(
+-    "Use absl::StatusCode::kResourceExhausted "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto RESOURCE_EXHAUSTED =
+-    StatusCode::kResourceExhausted;
+-[[deprecated(
+-    "Use absl::StatusCode::kFailedPrecondition "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto
+-    FAILED_PRECONDITION = StatusCode::kFailedPrecondition;
+-[[deprecated(
+-    "Use absl::StatusCode::kAborted "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto ABORTED =
+-    StatusCode::kAborted;
+-[[deprecated(
+-    "Use absl::StatusCode::kOutOfRange "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto OUT_OF_RANGE =
+-    StatusCode::kOutOfRange;
+-[[deprecated(
+-    "Use absl::StatusCode::kUnimplemented "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto UNIMPLEMENTED =
+-    StatusCode::kUnimplemented;
+-[[deprecated(
+-    "Use absl::StatusCode::kInternal "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto INTERNAL =
+-    StatusCode::kInternal;
+-[[deprecated(
+-    "Use absl::StatusCode::kUnavailable "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto UNAVAILABLE =
+-    StatusCode::kUnavailable;
+-[[deprecated(
+-    "Use absl::StatusCode::kDataLoss "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto DATA_LOSS =
+-    StatusCode::kDataLoss;
+-[[deprecated(
+-    "Use absl::StatusCode::kUnauthenticated "
+-    "instead")]] ABSL_REFACTOR_INLINE inline constexpr auto UNAUTHENTICATED =
+-    StatusCode::kUnauthenticated;
++using StatusOr = absl::StatusOr<T>;
++
++constexpr auto OK = StatusCode::kOk;
++constexpr auto CANCELLED = StatusCode::kCancelled;
++constexpr auto UNKNOWN = StatusCode::kUnknown;
++constexpr auto INVALID_ARGUMENT = StatusCode::kInvalidArgument;
++constexpr auto DEADLINE_EXCEEDED = StatusCode::kDeadlineExceeded;
++constexpr auto NOT_FOUND = StatusCode::kNotFound;
++constexpr auto ALREADY_EXISTS = StatusCode::kAlreadyExists;
++constexpr auto PERMISSION_DENIED = StatusCode::kPermissionDenied;
++constexpr auto RESOURCE_EXHAUSTED = StatusCode::kResourceExhausted;
++constexpr auto FAILED_PRECONDITION = StatusCode::kFailedPrecondition;
++constexpr auto ABORTED = StatusCode::kAborted;
++constexpr auto OUT_OF_RANGE = StatusCode::kOutOfRange;
++constexpr auto UNIMPLEMENTED = StatusCode::kUnimplemented;
++constexpr auto INTERNAL = StatusCode::kInternal;
++constexpr auto UNAVAILABLE = StatusCode::kUnavailable;
++constexpr auto DATA_LOSS = StatusCode::kDataLoss;
++constexpr auto UNAUTHENTICATED = StatusCode::kUnauthenticated;
+ 
+ namespace internal {
+ /** Functions to assist with FCP_RETURN_IF_ERROR() */

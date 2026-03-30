@@ -46,25 +46,26 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute",
-    integrity = "sha256-6o5OWJ6pnl1zDqQvq5hoPhILhXG/G2/dBn00lt2r3BU=",
+    integrity = "sha256-lMOjJOvADvYz/UGRL3BPuwmffH5LvyBuu4jSJTh+3Ko=",
     patches = [
         "//third_party/confidential_federated_compute:protobuf.patch",
+        "//third_party/confidential_federated_compute:visibility.patch",
     ],
-    strip_prefix = "confidential-federated-compute-960b5b0c3f33e374ed902c42c835695b50f97b55",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/960b5b0c3f33e374ed902c42c835695b50f97b55.tar.gz",
+    strip_prefix = "confidential-federated-compute-199846cdd20b731a294886492cb9bce6a1e0fac4",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/199846cdd20b731a294886492cb9bce6a1e0fac4.tar.gz",
 )
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-3cH11WXKtGhGK/Fjug9+wwVRbR1D5ywlkXKgspH4FjA=",
+    integrity = "sha256-Lq4XdaOguJQ6qGbNTSKshZy0OYm7SjVFyW8IExoVPv8=",
     patches = [
+        "//third_party/federated_compute:absl.patch",
         "//third_party/federated_compute:libcppbor.patch",
-        "//third_party/federated_compute:testing.patch",
-        "//third_party/federated_compute:visibility.patch",
+        "//third_party/federated_compute:protobuf.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-fc709162a1fb4af59b127cf5705a3982b1210733",
-    url = "https://github.com/google/federated-compute/archive/fc709162a1fb4af59b127cf5705a3982b1210733.tar.gz",
+    strip_prefix = "federated-compute-cf87047132741a252cc29da444e1ffabb406a7a6",
+    url = "https://github.com/google/federated-compute/archive/cf87047132741a252cc29da444e1ffabb406a7a6.tar.gz",
 )
 
 http_archive(
@@ -253,7 +254,7 @@ http_archive(
 # Stubbed out dependencies
 ################################################################################
 
-load("@confidential-federated-compute//:stub_repo.bzl", "stub_repo")
+load("stub_repo.bzl", "stub_repo")
 
 # go/keep-sorted start block=yes newline_separated=yes
 stub_repo(

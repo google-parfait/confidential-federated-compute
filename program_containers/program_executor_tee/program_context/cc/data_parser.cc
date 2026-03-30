@@ -19,6 +19,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
+#include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
@@ -35,7 +36,7 @@
 
 namespace confidential_federated_compute::program_executor_tee {
 
-using ::confidential_federated_compute::BlobDecryptor;
+using ::confidential_federated_compute::Decryptor;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
@@ -49,7 +50,7 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorProto;
 
 DataParser::DataParser(
-    confidential_federated_compute::BlobDecryptor* blob_decryptor,
+    confidential_federated_compute::Decryptor* blob_decryptor,
     std::string outgoing_server_address, std::string reencryption_key,
     std::string reencryption_policy_hash, PrivateState* private_state,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,

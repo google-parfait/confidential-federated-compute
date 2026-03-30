@@ -77,16 +77,14 @@ class DataParserTest : public ::testing::Test {
     data_read_write_server_address_ =
         localhost + std::to_string(data_read_write_service_port);
 
-    mock_signing_key_handle_ =
-        std::make_shared<NiceMock<MockSigningKeyHandle>>();
-    google::protobuf::Struct config_properties;
     input_blob_decryptor_ =
-        std::make_unique<confidential_federated_compute::BlobDecryptor>(
-            *mock_signing_key_handle_, config_properties,
+        std::make_unique<confidential_federated_compute::Decryptor>(
             std::vector<absl::string_view>(
                 {fake_data_read_write_service_->GetInputPublicPrivateKeyPair()
                      .second}));
 
+    mock_signing_key_handle_ =
+        std::make_shared<NiceMock<MockSigningKeyHandle>>();
     data_parser_ = std::make_unique<DataParser>(
         input_blob_decryptor_.get(), data_read_write_server_address_,
         absl::Base64Escape(
@@ -106,7 +104,7 @@ class DataParserTest : public ::testing::Test {
 
   MockPrivateState mock_private_state_;
   std::shared_ptr<NiceMock<MockSigningKeyHandle>> mock_signing_key_handle_;
-  std::unique_ptr<BlobDecryptor> input_blob_decryptor_;
+  std::unique_ptr<Decryptor> input_blob_decryptor_;
   std::unique_ptr<DataParser> data_parser_;
 };
 
