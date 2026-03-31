@@ -18,6 +18,7 @@ from unittest import mock
 
 from absl.testing import absltest
 from program_executor_tee.program_context import external_service_handle
+from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 
 class ExternalServiceHandleTest(unittest.TestCase):
@@ -25,7 +26,12 @@ class ExternalServiceHandleTest(unittest.TestCase):
   def test_unencrypted_release(self):
     mock_release_fn = mock.MagicMock(spec=Callable)
     handle = external_service_handle.ExternalServiceHandle(
-        "fake_address", mock_release_fn
+        "fake_address",
+        release_unencrypted_fn = mock_release_fn,
+        client_ids = [],
+        client_data_directory = "",
+        config_id_to_filename = {},
+        resolve_uri_to_tensor_fn = lambda uri, key: tensor_pb2.TensorProto(),
     )
 
     test_value = b"my_data"

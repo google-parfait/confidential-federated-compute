@@ -14,6 +14,7 @@
 
 from collections.abc import Callable
 from fcp.confidentialcompute.python import external_service_handle
+from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 
 class ExternalServiceHandle(external_service_handle.ExternalServiceHandle):
@@ -23,9 +24,21 @@ class ExternalServiceHandle(external_service_handle.ExternalServiceHandle):
       self,
       outgoing_server_address: str,
       release_unencrypted_fn: Callable[[bytes, bytes], None],
+      client_ids: list[str],
+      client_data_directory: str,
+      config_id_to_filename: dict[str, str],
+      resolve_uri_to_tensor_fn: Callable[
+          [str, str], tensor_pb2.TensorProto
+      ],
   ):
-    """Establishes a channel to the DataReadWrite service."""
-    super().__init__(outgoing_server_address)
+    """Initializes the ExternalServiceHandle."""
+    super().__init__(
+        outgoing_server_address,
+        client_ids,
+        client_data_directory,
+        config_id_to_filename,
+        resolve_uri_to_tensor_fn,
+    )
     self.release_unencrypted_fn = release_unencrypted_fn
 
   def release_unencrypted(self, value: bytes, key: bytes) -> None:
