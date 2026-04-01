@@ -47,6 +47,7 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfidentialTransform;
+using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::InitializeRequest;
@@ -66,9 +67,9 @@ using ::oak::crypto::ServerEncryptor;
 // threadsafe.
 class SessionContextImpl : public Session::Context {
  public:
-  SessionContextImpl(SessionStream* stream, uint32_t chunk_size,
+  SessionContextImpl(SessionStream* stream,
                      const std::optional<KmsEncryptor>& encryptor)
-      : stream_(stream), chunk_size_(chunk_size), encryptor_(encryptor) {}
+      : stream_(stream), encryptor_(encryptor) {}
 
   void ApplyCountersToResponse(SessionResponse* response) {
     if (!counters_.empty()) {
@@ -94,7 +95,6 @@ class SessionContextImpl : public Session::Context {
             BlobMetadata metadata);
 
   SessionStream* stream_;
-  uint32_t chunk_size_;
   const std::optional<KmsEncryptor>& encryptor_;
   Counters counters_;
 };
@@ -102,31 +102,13 @@ class SessionContextImpl : public Session::Context {
 Counters& SessionContextImpl::GetCounters() { return counters_; }
 
 bool SessionContextImpl::Emit(ReadResponse read_response) {
-  SessionResponse response;
-  ReadResponse* mutable_read = response.mutable_read();
-  *mutable_read = std::move(read_response);
-  mutable_read->set_finish_read(mutable_read->data().size() <= chunk_size_);
-  if (!mutable_read->finish_read()) {
-    // Chunked write implemented by splitting the provided
-    // ReadResponse.
-    absl::Cord data = mutable_read->data();
-    do {
-      mutable_read->set_data(data.Subcord(0, chunk_size_));
-      data.RemovePrefix(chunk_size_);
-      if (!stream_->Write(response)) {
-        return false;
-      }
-      mutable_read->clear_first_response_configuration();
-      mutable_read->clear_first_response_metadata();
-    } while (data.size() > chunk_size_);
-
-    mutable_read->set_data(std::move(data));
-    mutable_read->set_finish_read(true);
+  SessionResponse session_response;
+  *session_response.mutable_read() = std::move(read_response);
+  if (auto status = stream_->Write(session_response); !status.ok()) {
+    LOG(ERROR) << "Failed to write ReadResponse to SessionStream: " << status;
+    return false;
   }
-
-  // Final chunk of data (or the only chunk if the data was smaller or
-  // equal than the chunk size).
-  return stream_->Write(response);
+  return true;
 }
 
 bool SessionContextImpl::Emit(std::string data, google::protobuf::Any key,
@@ -204,8 +186,7 @@ bool SessionContextImpl::EmitReleasable(
 // Returns a WriteFinishedResponse with the status of the operation.
 absl::StatusOr<WriteFinishedResponse> ConfidentialTransformBase::HandleWrite(
     confidential_federated_compute::Session* session, WriteRequest request,
-    absl::Cord blob_data, Decryptor* decryptor, SessionStream* stream,
-    Session::Context& context) {
+    Decryptor* decryptor, Session::Context& context) {
   // Get the key ID from the metadata.
   absl::StatusOr<std::string> key_id =
       GetKeyId(request.first_request_metadata());
@@ -215,16 +196,19 @@ absl::StatusOr<WriteFinishedResponse> ConfidentialTransformBase::HandleWrite(
 
   // TODO: Avoid flattening the cord, which requires the downstream
   // code to parse directly from the chunked cord.
+  absl::Cord data = request.data();
+  // Clear the memory used by the original encrypted data.
+  request.set_data("");
+
   absl::StatusOr<std::string> unencrypted_data = decryptor->DecryptBlob(
-      request.first_request_metadata(), blob_data.Flatten(), key_id.value());
+      request.first_request_metadata(), data.Flatten(), key_id.value());
+  data.Clear();
   if (!unencrypted_data.ok()) {
     LOG_EVERY_N(WARNING, 1000) << "Blob decryption failed for key_id "
                                << absl::BytesToHexString(key_id.value())
                                << " with status: " << unencrypted_data.status();
     return ToWriteFinishedResponse(unencrypted_data.status());
   }
-  // Clear the memory used by the original encrypted data.
-  blob_data.Clear();
 
   return session->Write(std::move(request), std::move(unencrypted_data.value()),
                         context);
@@ -327,7 +311,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
   }
 
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (decryptor_ != std::nullopt) {
       return absl::FailedPreconditionError(
           "StreamInitialize can only be called once.");
@@ -363,7 +347,7 @@ absl::Status ConfidentialTransformBase::SetActiveKeyIds(
 absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   Decryptor* decryptor;
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (decryptor_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "Initialize must be called before Session.");
@@ -376,137 +360,103 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
     decryptor = &*decryptor_;
   }
 
-  SessionRequest configure_request;
-  bool success = stream->Read(&configure_request);
-  if (!success) {
-    return absl::AbortedError("Session failed to read client message.");
+  absl::StatusOr<SessionRequest> session_request = stream->Read();
+  if (!session_request.ok()) {
+    return session_request.status();
   }
 
-  if (!configure_request.has_configure()) {
-    return absl::FailedPreconditionError(
-        "Session must be configured with a ConfigureRequest before any other "
-        "requests.");
-  }
-  uint32_t chunk_size = configure_request.configure().chunk_size();
-  if (chunk_size == 0) {
-    return absl::FailedPreconditionError(
-        "chunk_size must be specified in the session ConfigureRequest.");
-  }
-
-  // This provides the context for encryption and writing of ReadResponse
-  // messages.
-  SessionContextImpl context(stream, chunk_size, kms_encryptor_);
-
+  // Create the session.
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
       CreateSession());
+  // This provides the context for encryption and writing of ReadResponse
+  // messages.
+  SessionContextImpl context(stream, kms_encryptor_);
+
+  // If the first request is ConfigureRequest, it is used to configure the
+  // session; otherwise a default ConfigureRequest is used to configure the
+  // session.
+  ConfigureRequest configure_request;
+  if (session_request->has_configure()) {
+    configure_request = std::move(*session_request->mutable_configure());
+  }
+
+  // ConfigureResponse is used further below in the loop to write the response.
+  // The response is wrapped in std::optional to verify that only the first
+  // ConfigureRequest received before other requests is valid.
   FCP_ASSIGN_OR_RETURN(
-      ConfigureResponse configure_response,
-      session->Configure(std::move(*configure_request.mutable_configure()),
-                         context));
-  SessionResponse response;
-  *response.mutable_configure() = std::move(configure_response);
-  context.ApplyCountersToResponse(&response);
-  stream->Write(response);
+      std::optional<ConfigureResponse> configure_response,
+      session->Configure(std::move(configure_request), context));
 
   // Initialize result_blob_metadata with unencrypted metadata since
   // EarliestExpirationTimeMetadata expects inputs to have either unencrypted or
   // hpke_plus_aead_data.
   BlobMetadata result_blob_metadata;
   result_blob_metadata.mutable_unencrypted();
-  SessionRequest session_request;
 
-  // Describes in-progress write state when it arrives in multiple chunks.
-  struct WriteState {
-    // The request from the first chunk containing metadata and configuration
-    // but with emptied out data field.
-    WriteRequest first_request;
-    // The data combined from all chunks.
-    absl::Cord data;
-  };
-  std::optional<WriteState> write_state = std::nullopt;
+  do {
+    switch (session_request->kind_case()) {
+      case SessionRequest::kConfigure: {
+        if (!configure_response.has_value()) {
+          // configure_response would have the value only if it was initialized
+          // before the loop in the first request. This will fail on a
+          // subsequent ConfigureRequest or any out of order ConfigureRequest.
+          return absl::FailedPreconditionError(
+              "Unexpected out of sequence ConfigureRequest");
+        }
+        SessionResponse session_response;
+        *session_response.mutable_configure() =
+            std::move(configure_response).value();
+        context.ApplyCountersToResponse(&session_response);
+        FCP_RETURN_IF_ERROR(stream->Write(session_response));
+        break;
+      }
 
-  while (stream->Read(&session_request)) {
-    switch (session_request.kind_case()) {
       case SessionRequest::kWrite: {
-        WriteRequest& write_request = *session_request.mutable_write();
-        bool is_commit = write_request.commit();
-        if (write_state.has_value()) {
-          // This is a continuation of an in-progress chunked blob write.
-          // This request isn't supposed to have metadata.
-          if (write_request.has_first_request_metadata()) {
-            return absl::FailedPreconditionError(
-                "Session expected a continuation of chunked blob Write request "
-                "but received a Write request for another blob");
-          }
-          // Append the chunk.
-          write_state->data.Append(write_request.data());
-        } else {
-          // This is a write request for a new blob i.e. the first chunk of a
-          // multi-chunk blob or a small blob consisting of a single chunk of
-          // data.
-          absl::Cord data = write_request.data();
-          write_request.clear_data();
-          write_state = WriteState{.first_request = std::move(write_request),
-                                   .data = data};
-        }
-        if (is_commit) {
-          FCP_ASSIGN_OR_RETURN(
-              WriteFinishedResponse response,
-              HandleWrite(session.get(), std::move(write_state->first_request),
-                          std::move(write_state->data), decryptor, stream,
-                          context));
-          SessionResponse session_response;
-          *session_response.mutable_write() = std::move(response);
-          context.ApplyCountersToResponse(&session_response);
-          stream->Write(session_response);
-          write_state.reset();
-        }
+        FCP_ASSIGN_OR_RETURN(
+            WriteFinishedResponse write_response,
+            HandleWrite(session.get(),
+                        std::move(*session_request->mutable_write()), decryptor,
+                        context));
+        SessionResponse session_response;
+        *session_response.mutable_write() = std::move(write_response);
+        context.ApplyCountersToResponse(&session_response);
+        FCP_RETURN_IF_ERROR(stream->Write(session_response));
         break;
       }
 
       case SessionRequest::kCommit: {
-        if (write_state.has_value()) {
-          return absl::FailedPreconditionError(
-              "Session expected a continuation of chunked blob Write request "
-              "but received a Commit request");
-        }
-        const CommitRequest& commit_request = session_request.commit();
-        FCP_ASSIGN_OR_RETURN(CommitResponse commit_response,
-                             session->Commit(commit_request, context));
-        SessionResponse response;
-        *response.mutable_commit() = std::move(commit_response);
-        context.ApplyCountersToResponse(&response);
-        stream->Write(response);
+        FCP_ASSIGN_OR_RETURN(
+            CommitResponse commit_response,
+            session->Commit(session_request->commit(), context));
+        SessionResponse session_response;
+        *session_response.mutable_commit() = std::move(commit_response);
+        context.ApplyCountersToResponse(&session_response);
+        FCP_RETURN_IF_ERROR(stream->Write(session_response));
         break;
       }
 
       case SessionRequest::kFinalize: {
-        if (write_state.has_value()) {
-          return absl::FailedPreconditionError(
-              "Session expected a continuation of chunked blob Write request "
-              "but received a Finalize request");
-        }
         FCP_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
-                             session->Finalize(session_request.finalize(),
+                             session->Finalize(session_request->finalize(),
                                                result_blob_metadata, context));
-        SessionResponse response;
-        *response.mutable_finalize() = std::move(finalize_response);
-        context.ApplyCountersToResponse(&response);
-        stream->Write(response);
+        SessionResponse session_response;
+        *session_response.mutable_finalize() = std::move(finalize_response);
+        context.ApplyCountersToResponse(&session_response);
+        FCP_RETURN_IF_ERROR(stream->Write(session_response));
         return absl::OkStatus();
       }
 
-      case SessionRequest::kConfigure:
       default:
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Session expected a write request but received request of type: ",
-            session_request.kind_case()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("Session received unexpected request of type: ",
+                         session_request->kind_case()));
     }
-  }
 
-  return absl::AbortedError(
-      "Session failed to read client write or finalize message.");
+    // Read the next request.
+  } while ((session_request = stream->Read()).ok());
+
+  return session_request.status();
 }
 
 grpc::Status ConfidentialTransformBase::StreamInitialize(
@@ -515,36 +465,43 @@ grpc::Status ConfidentialTransformBase::StreamInitialize(
   return ToGrpcStatus(StreamInitializeInternal(reader, response));
 }
 
-grpc::Status ConfidentialTransformBase::Session(ServerContext* context,
-                                                SessionStream* stream) {
+grpc::Status ConfidentialTransformBase::Session(
+    ServerContext* context,
+    grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
   SessionTracker* session_tracker;
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (session_tracker_ == std::nullopt) {
       return ToGrpcStatus(absl::FailedPreconditionError(
           "StreamInitialize must be called before Session."));
     }
 
     // Since session_tracker_ is set once in Initialize and never
-    // modified, and the underlying object is threadsafe, it is safe to store a
-    // local pointer to it and access the object without a lock after we check
-    // under the mutex that a value has been set for the std::optional wrapper.
+    // modified, and the underlying object is threadsafe, it is safe to store
+    // a local pointer to it and access the object without a lock after we
+    // check under the mutex that a value has been set for the std::optional
+    // wrapper.
     session_tracker = &*session_tracker_;
   }
   if (absl::Status session_status = session_tracker->AddSession();
       !session_status.ok()) {
     return ToGrpcStatus(session_status);
   }
-  grpc::Status status = ToGrpcStatus(SessionImpl(stream));
+  SessionStream session_stream(stream);
+  auto status = SessionImpl(&session_stream);
+  if (!status.ok()) {
+    LOG(ERROR) << "SessionImpl failed: " << status;
+  }
+
   absl::Status remove_session = session_tracker->RemoveSession();
   if (!remove_session.ok()) {
     return ToGrpcStatus(remove_session);
   }
-  return status;
+  return ToGrpcStatus(status);
 }
 
 absl::StatusOr<Decryptor*> ConfidentialTransformBase::GetDecryptor() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (decryptor_ == std::nullopt) {
     return absl::FailedPreconditionError(
         "Initialize must be called before GetDecryptor.");

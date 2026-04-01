@@ -539,20 +539,35 @@ TEST_F(ConfidentialTransformServerBaseTest,
   ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
 
-TEST_F(ConfidentialTransformServerBaseTest, ChunkSizeNotSpecified) {
+TEST_F(ConfidentialTransformServerBaseTest, SkippedConfigureRequest) {
   InitializeTransform();
-  grpc::ClientContext session_context;
-  SessionRequest configure_request;
-  SessionResponse configure_response;
-  configure_request.mutable_configure()->mutable_configuration();
 
+  auto mock_session = std::make_unique<MockSession>();
+
+  // Session->Configure call is still expected with default parameters.
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
+  service_->AddSession(std::move(mock_session));
+
+  // Create a session but don't explicitly make ConfigureRequest.
+  grpc::ClientContext session_context;
   std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
-  ASSERT_TRUE(stream->Write(configure_request));
-  ASSERT_FALSE(stream->Read(&configure_response));
-  auto status = stream->Finish();
-  ASSERT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
-  ASSERT_THAT(status.error_message(),
-              HasSubstr("chunk_size must be specified"));
+
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  SessionRequest finalize_request;
+  SessionResponse read_response, finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
