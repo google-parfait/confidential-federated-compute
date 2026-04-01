@@ -31,10 +31,9 @@ class PrivateState {
  public:
   virtual ~PrivateState() = default;
 
-  // Construct a PrivateState instance based on the initial state, if provided,
-  // or the default max number of runs.
+  // Construct a PrivateState instance based on the initial state, if provided.
   static absl::StatusOr<std::unique_ptr<PrivateState>> CreatePrivateState(
-      std::optional<std::string> initial_state, uint32_t default_max_num_runs);
+      std::optional<std::string> initial_state);
 
   // Update the "initial state" to use for the next release operation.
   virtual void SetReleaseInitialState(std::string initial_state);

@@ -19,12 +19,10 @@ package confidential_federated_compute.program_executor_tee;
 // BudgetState represents the budget maintained by the program executor
 // containers for a given logical pipeline name.
 message BudgetState {
-  // The remaining number of times any program may be executed.
-  uint32 num_runs_remaining = 1;
-
   // A strictly increasing counter to ensure that the state changes between
   // releases. Without this field, KMS would fail all but the first release
-  // operation for a given program run since the num_runs_remaining field
-  // is only updated on the very first release operation in a program.
+  // operation for a given program run.
   uint32 counter = 2;
+
+  reserved 1;
 }

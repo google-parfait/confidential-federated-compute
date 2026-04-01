@@ -226,7 +226,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
   *request.mutable_protected_response() = encrypted_request;
 
   BudgetState initial_budget;
-  initial_budget.set_num_runs_remaining(0);
   initial_budget.set_counter(100);
   auto writer = this->stub_->StreamInitialize(&context, &response);
   EXPECT_TRUE(WritePipelinePrivateState(
@@ -235,37 +234,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
       WriteInitializeRequest(std::move(writer), std::move(request));
   ASSERT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   ASSERT_THAT(status.message(), HasSubstr("No budget remaining"));
-}
-
-TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsInvalidBudget) {
-  grpc::ClientContext context;
-  InitializeResponse response;
-
-  InitializeRequest request;
-  request.mutable_configuration()->PackFrom(
-      CreateProgramExecutorTeeInitializeConfig("my_program"));
-  request.set_max_num_sessions(kMaxNumSessions);
-
-  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
-  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-  associated_data.mutable_config_constraints()->PackFrom(
-      CreateProgramExecutorTeeConfigConstraints("my_program"));
-  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
-  auto encrypted_request = this->oak_client_encryptor_
-                               ->Encrypt(protected_response.SerializeAsString(),
-                                         associated_data.SerializeAsString())
-                               .value();
-  *request.mutable_protected_response() = encrypted_request;
-
-  auto writer = this->stub_->StreamInitialize(&context, &response);
-  EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
-                                        /*state=*/"invalid_budget_proto"));
-  absl::Status status =
-      WriteInitializeRequest(std::move(writer), std::move(request));
-  ASSERT_EQ(status.code(), absl::StatusCode::kInternal);
-  ASSERT_THAT(status.message(),
-              HasSubstr("Failed to parse initial budget state"));
 }
 
 TYPED_TEST(ProgramExecutorTeeTest,
@@ -392,8 +360,7 @@ def incorrectly_named_trusted_program(input_provider, external_service_handle):
       HasSubstr("The provided program must have a trusted_program function"));
 }
 
-TYPED_TEST(ProgramExecutorTeeSessionTest,
-           ValidFinalizeSessionWithoutStartingState) {
+TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
   this->CreateSession(R"(
 def trusted_program(input_provider, external_service_handle):
   result_1 = "a" + "b" + "c"
@@ -419,7 +386,6 @@ def trusted_program(input_provider, external_service_handle):
   // The first release operation triggers a state change that should decrease
   // the number of remaining runs and increment the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result_1"].second.value(),
             expected_first_release_budget.SerializeAsString());
@@ -428,59 +394,7 @@ def trusted_program(input_provider, external_service_handle):
   // The second release operations triggers a state change that should keep
   // the number of remaining runs the same and further increment the counter.
   BudgetState expected_second_release_budget;
-  expected_second_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_second_release_budget.set_counter(2);
-  ASSERT_EQ(released_state_changes["result_2"].second.value(),
-            expected_second_release_budget.SerializeAsString());
-
-  ASSERT_TRUE(session_response.has_finalize());
-}
-
-TYPED_TEST(ProgramExecutorTeeSessionTest,
-           ValidFinalizeSessionWithStartingState) {
-  int initial_num_runs = 3;
-  int initial_counter = 10;
-  BudgetState initial_budget;
-  initial_budget.set_num_runs_remaining(initial_num_runs);
-  initial_budget.set_counter(initial_counter);
-
-  this->CreateSession(R"(
-def trusted_program(input_provider, external_service_handle):
-  result_1 = "a" + "b" + "c"
-  result_2 = "d" + "e" + "f"
-  external_service_handle.release_unencrypted(result_1.encode(), b"result_1")
-  external_service_handle.release_unencrypted(result_2.encode(), b"result_2")
-  )",
-                      initial_budget.SerializeAsString());
-  SessionRequest session_request;
-  SessionResponse session_response;
-  session_request.mutable_finalize();
-
-  ASSERT_TRUE(this->stream_->Write(session_request));
-  ASSERT_TRUE(this->stream_->Read(&session_response));
-
-  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
-  ASSERT_EQ(released_data["result_1"], "abc");
-  ASSERT_EQ(released_data["result_2"], "def");
-
-  auto released_state_changes =
-      this->fake_data_read_write_service_.GetReleasedStateChanges();
-  ASSERT_EQ(released_state_changes["result_1"].first.value().value(),
-            initial_budget.SerializeAsString());
-  // The first release operation triggers a state change that should decrease
-  // the number of remaining runs and increment the counter.
-  BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(initial_num_runs - 1);
-  expected_first_release_budget.set_counter(initial_counter + 1);
-  ASSERT_EQ(released_state_changes["result_1"].second.value(),
-            expected_first_release_budget.SerializeAsString());
-  ASSERT_EQ(released_state_changes["result_2"].first.value().value(),
-            expected_first_release_budget.SerializeAsString());
-  // The second release operations triggers a state change that should keep
-  // the number of remaining runs the same and further increment the counter.
-  BudgetState expected_second_release_budget;
-  expected_second_release_budget.set_num_runs_remaining(initial_num_runs - 1);
-  expected_second_release_budget.set_counter(initial_counter + 2);
   ASSERT_EQ(released_state_changes["result_2"].second.value(),
             expected_second_release_budget.SerializeAsString());
 

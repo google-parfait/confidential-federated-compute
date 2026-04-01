@@ -154,7 +154,7 @@ class ProgramExecutorTeeConfidentialTransform
 
  private:
   // Initialize the private state using the budget provided by KMS.
-  absl::Status InitializePrivateState(uint32_t num_runs);
+  absl::Status InitializePrivateState();
 
   // Initialization config.
   fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig

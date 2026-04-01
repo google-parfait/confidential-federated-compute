@@ -26,11 +26,9 @@
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
-constexpr uint32_t kDefaultMaxRuns = 5;
-
 TEST(PrivateStateTest, CreatePrivateState_NoInitialState) {
   absl::StatusOr<std::unique_ptr<PrivateState>> result =
-      PrivateState::CreatePrivateState(std::nullopt, kDefaultMaxRuns);
+      PrivateState::CreatePrivateState(std::nullopt);
   ASSERT_TRUE(result.ok());
   std::unique_ptr<PrivateState> state = std::move(result.value());
 
@@ -39,27 +37,16 @@ TEST(PrivateStateTest, CreatePrivateState_NoInitialState) {
   EXPECT_FALSE(state->GetReleaseInitialState().has_value());
   BudgetState update_state;
   ASSERT_TRUE(update_state.ParseFromString(state->GetReleaseUpdateState()));
-  EXPECT_EQ(update_state.num_runs_remaining(), kDefaultMaxRuns - 1);
+  EXPECT_EQ(update_state.counter(), 1);
 }
 
-TEST(PrivateStateTest, CreatePrivateState_InvalidInitialState) {
-  absl::StatusOr<std::unique_ptr<PrivateState>> result =
-      PrivateState::CreatePrivateState("invalid state", kDefaultMaxRuns);
-
-  // Expect failure due to failed parsing.
-  ASSERT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), absl::StatusCode::kInternal);
-  EXPECT_EQ(result.status().message(), "Failed to parse initial budget state.");
-}
-
-TEST(PrivateStateTest, CreatePrivateState_ExhaustedInitialState) {
+TEST(PrivateStateTest, CreatePrivateState_ExistingInitialState) {
   BudgetState initial_budget_state;
-  initial_budget_state.set_num_runs_remaining(0);
   initial_budget_state.set_counter(100);
 
   absl::StatusOr<std::unique_ptr<PrivateState>> result =
-      PrivateState::CreatePrivateState(initial_budget_state.SerializeAsString(),
-                                       kDefaultMaxRuns);
+      PrivateState::CreatePrivateState(
+          initial_budget_state.SerializeAsString());
 
   // Expect failure due to exhausted budget.
   ASSERT_FALSE(result.ok());
@@ -67,35 +54,9 @@ TEST(PrivateStateTest, CreatePrivateState_ExhaustedInitialState) {
   EXPECT_EQ(result.status().message(), "No budget remaining.");
 }
 
-TEST(PrivateStateTest, CreatePrivateState_ValidInitialState) {
-  BudgetState initial_budget_state;
-  initial_budget_state.set_num_runs_remaining(3);
-  initial_budget_state.set_counter(100);
-
-  absl::StatusOr<std::unique_ptr<PrivateState>> result =
-      PrivateState::CreatePrivateState(initial_budget_state.SerializeAsString(),
-                                       kDefaultMaxRuns);
-  ASSERT_TRUE(result.ok());
-  std::unique_ptr<PrivateState> state = std::move(result.value());
-
-  // For the first release operation, the initial state should match and the
-  // update state should show a decremented run count.
-  EXPECT_EQ(state->GetReleaseInitialState().value(),
-            initial_budget_state.SerializeAsString());
-  BudgetState update_state;
-  ASSERT_TRUE(update_state.ParseFromString(state->GetReleaseUpdateState()));
-  EXPECT_EQ(update_state.num_runs_remaining(), 2);
-  EXPECT_EQ(update_state.counter(), 101);
-}
-
 TEST(PrivateStateTest, CreatePrivateState_MultipleReleaseOperations) {
-  BudgetState initial_budget_state;
-  initial_budget_state.set_num_runs_remaining(3);
-  initial_budget_state.set_counter(100);
-
   absl::StatusOr<std::unique_ptr<PrivateState>> result =
-      PrivateState::CreatePrivateState(initial_budget_state.SerializeAsString(),
-                                       kDefaultMaxRuns);
+      PrivateState::CreatePrivateState(std::nullopt);
   ASSERT_TRUE(result.ok());
   std::unique_ptr<PrivateState> state = std::move(result.value());
 
@@ -111,8 +72,7 @@ TEST(PrivateStateTest, CreatePrivateState_MultipleReleaseOperations) {
   EXPECT_EQ(state->GetReleaseInitialState().value(), release_update);
   BudgetState update_state;
   ASSERT_TRUE(update_state.ParseFromString(state->GetReleaseUpdateState()));
-  EXPECT_EQ(update_state.num_runs_remaining(), 2);
-  EXPECT_EQ(update_state.counter(), 102);
+  EXPECT_EQ(update_state.counter(), 2);
 }
 
 }  // namespace
