@@ -18,6 +18,8 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 
 package(features = ["layering_check"])
 
+exports_files([".rustfmt.toml"])
+
 platform(
     name = "remote_platform",
     constraint_values = [

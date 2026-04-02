@@ -6,6 +6,17 @@ build --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 --incompatible_strict_act
 build --output_filter='^//'  # Suppress warnings from external dependencies.
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --incompatible_default_to_explicit_init_py
+build --@rules_rust//rust/toolchain/channel=nightly
+build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
+
+# Bazel relies on its configured C++ toolchain (e.g., toolchains_llvm in this
+# project) to provide the linker and manage linking flags. This ensures that all
+# binaries, whether built from C++ or Rust, use the same linker. Rust toolchains
+# typically come with a bundled copy of the LLVM linker, called rust-lld.  The
+# two flags below force rustc to fall back to the external linker provided by
+# Bazel's C++ toolchain.
+build --@rules_rust//rust/settings:extra_rustc_flag="-Clink-self-contained=no"
+build --@rules_rust//rust/settings:extra_exec_rustc_flag="-Clink-self-contained=no"
 
 common --experimental_repo_remote_exec
 
