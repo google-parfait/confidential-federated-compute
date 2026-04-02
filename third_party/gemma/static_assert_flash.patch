@@ -1,0 +1,10 @@
+--- gemma/flash_attention.cc
++++ gemma/flash_attention.cc
+@@ -1632,6 +1632,6 @@
+           x_4_p_1, x_5_p_0, x_5_p_1, x_6_p_0, x_6_p_1, x_7_p_0, x_7_p_1);
+     } else {
+-      static_assert(false,
++      static_assert(sizeof(Q_T) == 0,
+                     "Query type not supported, only float, BF16, and "
+                     "Int16 are supported");
+     }

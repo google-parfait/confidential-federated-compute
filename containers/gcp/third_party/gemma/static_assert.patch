@@ -1,0 +1,20 @@
+--- gemma/tiled_attention.cc
++++ gemma/tiled_attention.cc
+@@ -443,7 +443,7 @@
+           hn::Store(demoted, d_out,
+                     transposed_queries.data() + i * num_queries + j * 2);
+         } else {
+-          static_assert(false, "Unsupported type");
++          static_assert(sizeof(OutT) == 0, "Unsupported type");
+         }
+       }
+     }
+@@ -462,7 +462,7 @@
+                    transposed_queries.data() + i * num_queries + j * 2,
+                    num_numbers_to_gather - j * 2);
+       } else {
+-        static_assert(false, "Unsupported type");
++        static_assert(sizeof(OutT) == 0, "Unsupported type");
+       }
+     }
+   }
