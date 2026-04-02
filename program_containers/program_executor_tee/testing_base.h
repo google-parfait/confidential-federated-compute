@@ -60,7 +60,6 @@ using ::testing::NiceMock;
 using ::testing::Test;
 
 inline constexpr int kMaxNumSessions = 8;
-inline constexpr int kMaxNumRuns = 5;
 
 class PythonEnvironment : public ::testing::Environment {
  public:
@@ -125,7 +124,6 @@ ProgramExecutorTeeConfigConstraints CreateProgramExecutorTeeConfigConstraints(
     config_constraints.set_worker_reference_values(
         absl::Base64Escape(worker_reference_values.SerializeAsString()));
   }
-  config_constraints.set_num_runs(kMaxNumRuns);
   return config_constraints;
 }
 

@@ -70,7 +70,6 @@ def trusted_program(input_provider, external_service_handle):
   // The first release operation triggers a state change that should decrease
   // the number of remaining runs and increment the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result"].second.value(),
             expected_first_release_budget.SerializeAsString());
@@ -115,7 +114,6 @@ def trusted_program(input_provider, external_service_handle):
   // The first release operation triggers a state change that should decrease
   // the number of remaining runs and increment the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result"].second.value(),
             expected_first_release_budget.SerializeAsString());

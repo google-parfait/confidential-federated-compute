@@ -166,8 +166,7 @@ ProgramExecutorTeeSession::Finalize(
   return fcp::confidentialcompute::FinalizeResponse();
 }
 
-absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
-    uint32_t num_runs) {
+absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState() {
   auto it = write_configuration_map_.find(kPrivateStateConfigId);
   if (it == write_configuration_map_.end()) {
     return absl::InvalidArgumentError(
@@ -184,12 +183,11 @@ absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState(
   if (size > 0) {
     std::string private_state(size, '\0');
     file.read(private_state.data(), size);
-    FCP_ASSIGN_OR_RETURN(
-        private_state_,
-        PrivateState::CreatePrivateState(std::move(private_state), num_runs));
-  } else {
     FCP_ASSIGN_OR_RETURN(private_state_, PrivateState::CreatePrivateState(
-                                             std::nullopt, num_runs));
+                                             std::move(private_state)));
+  } else {
+    FCP_ASSIGN_OR_RETURN(private_state_,
+                         PrivateState::CreatePrivateState(std::nullopt));
   }
   return absl::OkStatus();
 }
@@ -241,7 +239,7 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
   reencryption_policy_hash_ =
       *GetAuthorizedLogicalPipelinePoliciesHashes().begin();
 
-  return InitializePrivateState(program_executor_config_constraints.num_runs());
+  return InitializePrivateState();
 }
 
 absl::Status AppendBytesToTempFile(std::string& file_path,

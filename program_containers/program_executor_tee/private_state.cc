@@ -24,22 +24,13 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 absl::StatusOr<std::unique_ptr<PrivateState>> PrivateState::CreatePrivateState(
-    std::optional<std::string> initial_state, uint32_t default_max_num_runs) {
-  BudgetState next_update_state;
+    std::optional<std::string> initial_state) {
+  // TODO: b/487997314 - Allow a non-empty initial state upon successful
+  // recovery.
   if (initial_state.has_value()) {
-    if (!next_update_state.ParseFromString(*initial_state)) {
-      return absl::InternalError("Failed to parse initial budget state.");
-    }
-  } else {
-    next_update_state.set_num_runs_remaining(default_max_num_runs);
-  }
-  if (next_update_state.num_runs_remaining() <= 0) {
     return absl::FailedPreconditionError("No budget remaining.");
   }
-  // Decrease the number of runs remaining to account for the program that will
-  // run.
-  next_update_state.set_num_runs_remaining(
-      next_update_state.num_runs_remaining() - 1);
+  BudgetState next_update_state;
   return std::unique_ptr<PrivateState>(
       new PrivateState(std::move(initial_state), std::move(next_update_state)));
 }
