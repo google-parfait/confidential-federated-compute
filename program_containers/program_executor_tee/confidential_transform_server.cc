@@ -230,12 +230,9 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
   }
 
   const std::vector<std::string>& reencryption_keys = GetReencryptionKeys();
-  if (reencryption_keys.size() != 1) {
-    return absl::FailedPreconditionError(
-        "Expected exactly one reencryption key (for releasing results).");
-  }
-
-  reencryption_key_ = std::move(reencryption_keys[0]);
+  // Use last re-encryption key for releasing unencrypted results.
+  reencryption_key_ =
+      std::move(reencryption_keys[reencryption_keys.size() - 1]);
   reencryption_policy_hash_ =
       *GetAuthorizedLogicalPipelinePoliciesHashes().begin();
 
