@@ -28,7 +28,6 @@ namespace {
 using ::confidential_federated_compute::program_executor_tee::BudgetState;
 using ::confidential_federated_compute::program_executor_tee::
     BuildClientCheckpointFromInts;
-using ::confidential_federated_compute::program_executor_tee::kMaxNumRuns;
 using ::confidential_federated_compute::program_executor_tee::
     ProgramExecutorTeeConfidentialTransform;
 using ::confidential_federated_compute::program_executor_tee::
@@ -163,10 +162,9 @@ def trusted_program(input_provider, external_service_handle):
   // There is no initial state.
   ASSERT_FALSE(
       released_state_changes["resulting_sum"].first.value().has_value());
-  // The first release operation triggers a state change that should decrease
-  // the number of remaining runs and increment the counter.
+  // The first release operation triggers a state change that should increment
+  // the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["resulting_sum"].second.value(),
             expected_first_release_budget.SerializeAsString());
@@ -234,10 +232,9 @@ def trusted_program(input_provider, external_service_handle):
       this->fake_data_read_write_service_.GetReleasedStateChanges();
   // There is no initial state.
   ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
-  // The first release operation triggers a state change that should decrease
-  // the number of remaining runs and increment the counter.
+  // The first release operation triggers a state change that should increment
+  // the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result"].second.value(),
             expected_first_release_budget.SerializeAsString());
@@ -310,10 +307,9 @@ def trusted_program(input_provider, external_service_handle):
       this->fake_data_read_write_service_.GetReleasedStateChanges();
   // There is no initial state.
   ASSERT_FALSE(released_state_changes["result"].first.value().has_value());
-  // The first release operation triggers a state change that should decrease
-  // the number of remaining runs and increment the counter.
+  // The first release operation triggers a state change that should increment
+  // the counter.
   BudgetState expected_first_release_budget;
-  expected_first_release_budget.set_num_runs_remaining(kMaxNumRuns - 1);
   expected_first_release_budget.set_counter(1);
   ASSERT_EQ(released_state_changes["result"].second.value(),
             expected_first_release_budget.SerializeAsString());
