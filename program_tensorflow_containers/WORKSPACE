@@ -63,15 +63,15 @@ http_archive(
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-nKBpuK6qofzcUiJ761Qlax7pgdj8vzjapLTn6KT4N1w=",
+    integrity = "sha256-8CLHJ81AMgOPnRLB2BhOCwRCWQFFV+Ez70vHtAkMhwM=",
     patches = [
         "@confidential-federated-compute-program//third_party/federated_compute:absl.patch",
         "@confidential-federated-compute-program//third_party/federated_compute:protobuf.patch",
         "//third_party/federated_compute:dpmf.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-0edd6b8ea2c90b9a0fa22954e96f9df7d7f56dc5",
-    url = "https://github.com/google/federated-compute/archive/0edd6b8ea2c90b9a0fa22954e96f9df7d7f56dc5.tar.gz",
+    strip_prefix = "federated-compute-1e1141a6544b8095c343ae590886e7fc854ea3ac",
+    url = "https://github.com/google/federated-compute/archive/1e1141a6544b8095c343ae590886e7fc854ea3ac.tar.gz",
 )
 
 http_archive(
