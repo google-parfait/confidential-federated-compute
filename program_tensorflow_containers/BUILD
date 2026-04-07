@@ -107,6 +107,7 @@ trusted_py_runtime(
     py_deps = [
         "@confidential-federated-compute-program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
+        "@federated-compute//fcp/confidentialcompute/python:accounting",
         "@federated-compute//fcp/confidentialcompute/python:dp_mf_aggregator",
         "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@pypi//jax",
