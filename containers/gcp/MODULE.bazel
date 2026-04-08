@@ -36,13 +36,9 @@ http_file(
 bazel_dep(name = "gemma", version = "0.0.1")
 archive_override(
     module_name = "gemma",
-    patches = [
-        "//third_party/gemma:module.patch",
-        "//third_party/gemma:static_assert.patch",
-        "//third_party/gemma:static_assert_flash.patch",
-    ],
-    strip_prefix = "gemma.cpp-3892763e4e7ed99c53560e004a624e53d3226bb7",
-    urls = ["https://github.com/google/gemma.cpp/archive/3892763e4e7ed99c53560e004a624e53d3226bb7.tar.gz"],
+    patches = ["//third_party/gemma:module.patch"],
+    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
+    urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
 )
 
 single_version_override(
@@ -225,9 +221,9 @@ archive_override(
 
 archive_override(
     module_name = "highway",
-    integrity = "sha256-zuyAtAEspOYkdSynS/epuYiDY1tMh1kwNCxbRWUkktc=",
-    strip_prefix = "highway-c971dbe61bd2751923e3458666450bf95dfbbd98",
-    urls = ["https://github.com/google/highway/archive/c971dbe61bd2751923e3458666450bf95dfbbd98.tar.gz"],
+    integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
+    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
+    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
 )
 
 bazel_dep(name = "oak")
