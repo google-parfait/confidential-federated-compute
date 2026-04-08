@@ -153,11 +153,23 @@ class MessageRowViewTest : public ::testing::Test {
       package: "confidential_federated_compute.sql"
       message_type {
         name: "TestMessage"
+        enum_type {
+          name: "TestEnum"
+          value { name: "UNKNOWN" number: 0 }
+          value { name: "TEST_VAL" number: 88 }
+        }
         field { name: "col1" number: 1 type: TYPE_INT32 label: LABEL_OPTIONAL }
         field { name: "col2" number: 2 type: TYPE_INT64 label: LABEL_OPTIONAL }
         field { name: "col3" number: 3 type: TYPE_FLOAT label: LABEL_OPTIONAL }
         field { name: "col4" number: 4 type: TYPE_DOUBLE label: LABEL_OPTIONAL }
         field { name: "col5" number: 5 type: TYPE_STRING label: LABEL_OPTIONAL }
+        field {
+          name: "col6"
+          number: 6
+          type: TYPE_ENUM
+          type_name: "TestEnum"
+          label: LABEL_OPTIONAL
+        }
       }
     )pb");
     pool_ = std::make_unique<DescriptorPool>();
@@ -184,6 +196,8 @@ class MessageRowViewTest : public ::testing::Test {
                           5.5);
     reflection->SetString(message_.get(), descriptor->FindFieldByName("col5"),
                           "bar");
+    reflection->SetEnumValue(message_.get(),
+                             descriptor->FindFieldByName("col6"), 88);
     absl::StatusOr<Tensor> t1 = Tensor::Create(
         DataType::DT_STRING, TensorShape({2}),
         CreateTestData<absl::string_view>({"baz", "qux"}), "system_col1");
@@ -216,8 +230,9 @@ TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
   EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("baz"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(123));
+  EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("baz"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(123));
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
@@ -229,15 +244,16 @@ TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
   EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("qux"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(456));
+  EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("qux"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(456));
 }
 
 TEST_F(MessageRowViewTest, GetColumnCount) {
   absl::StatusOr<RowView> row_view =
       RowView::CreateFromMessage(message_.get(), system_columns_, 0);
   ASSERT_THAT(row_view, IsOk());
-  EXPECT_THAT(row_view->GetColumnCount(), Eq(7));
+  EXPECT_THAT(row_view->GetColumnCount(), Eq(8));
 }
 
 TEST_F(MessageRowViewTest, GetColumnType) {
@@ -249,8 +265,9 @@ TEST_F(MessageRowViewTest, GetColumnType) {
   EXPECT_THAT(row_view->GetColumnType(2), Eq(DataType::DT_FLOAT));
   EXPECT_THAT(row_view->GetColumnType(3), Eq(DataType::DT_DOUBLE));
   EXPECT_THAT(row_view->GetColumnType(4), Eq(DataType::DT_STRING));
-  EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_STRING));
-  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_INT32));
+  EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_INT32));
+  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_STRING));
+  EXPECT_THAT(row_view->GetColumnType(7), Eq(DataType::DT_INT32));
 }
 
 TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {

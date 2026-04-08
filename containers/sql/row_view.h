@@ -181,6 +181,9 @@ T RowView::MessageRowView::GetMessageValue(
 template <>
 inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
     const google::protobuf::FieldDescriptor* field) const {
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+    return reflection_->GetEnumValue(*message_, field);
+  }
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_INT32)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
