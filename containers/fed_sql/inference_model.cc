@@ -263,6 +263,9 @@ InferenceModel::RunGemmaCppInference(
     env_ptr = per_session_model->env_.get();
     allocator_ptr = &per_session_model->ctx_->allocator;
   }
+  std::mt19937 gen;
+  std::random_device rd;
+  gen.seed(rd());
 
   TimingInfo timing_info;
 
@@ -335,6 +338,7 @@ InferenceModel::RunGemmaCppInference(
     gcpp::RuntimeConfig runtime_config = {
         .max_generated_tokens = max_output_tokens,
         .temperature = temperature,
+        .gen = &gen,
         .verbosity = 0,
         .batch_stream_token = batch_stream_token,
     };

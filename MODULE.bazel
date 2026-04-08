@@ -73,22 +73,18 @@ archive_override(
 
 archive_override(
     module_name = "gemma",
-    integrity = "sha256-Bw7xLY7vjQrtPVcvax6ltn4YPDkbvYmNB7i0PqFj/ns=",
-    patches = [
-        "//third_party/gemma:module.patch",
-        "//third_party/gemma:static_assert.patch",
-        "//third_party/gemma:static_assert_flash.patch",
-    ],
-    strip_prefix = "gemma.cpp-3892763e4e7ed99c53560e004a624e53d3226bb7",
-    urls = ["https://github.com/google/gemma.cpp/archive/3892763e4e7ed99c53560e004a624e53d3226bb7.tar.gz"],
+    integrity = "sha256-nJsct9hZ1G+26LO4FIGBEVJrwja7Jp10lsumnzkv5cE=",
+    patches = ["//third_party/gemma:module.patch"],
+    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
+    urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
 )
 
 # gemma requires a more recent version of highway.
 archive_override(
     module_name = "highway",
-    integrity = "sha256-zuyAtAEspOYkdSynS/epuYiDY1tMh1kwNCxbRWUkktc=",
-    strip_prefix = "highway-c971dbe61bd2751923e3458666450bf95dfbbd98",
-    urls = ["https://github.com/google/highway/archive/c971dbe61bd2751923e3458666450bf95dfbbd98.tar.gz"],
+    integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
+    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
+    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
 )
 
 archive_override(
@@ -98,11 +94,6 @@ archive_override(
     urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
 # go/keep-sorted end
-
-single_version_override(
-    module_name = "rules_python",
-    version = "1.5.4",
-)
 
 # Rust crates.
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate", dev_dependency = True)
