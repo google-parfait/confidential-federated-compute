@@ -28,6 +28,7 @@
 #include "containers/crypto.h"
 #include "containers/kms_encryptor.h"
 #include "containers/session.h"
+#include "containers/session_stream.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -36,10 +37,6 @@
 #include "grpcpp/support/status.h"
 
 namespace confidential_federated_compute {
-
-using SessionStream =
-    grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
-                             fcp::confidentialcompute::SessionRequest>;
 
 // Base class that implements the ConfidentialTransform service protocol.
 class ConfidentialTransformBase
@@ -51,8 +48,11 @@ class ConfidentialTransformBase
           reader,
       fcp::confidentialcompute::InitializeResponse* response) override;
 
-  grpc::Status Session(grpc::ServerContext* context,
-                       SessionStream* stream) override;
+  grpc::Status Session(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<fcp::confidentialcompute::SessionResponse,
+                               fcp::confidentialcompute::SessionRequest>*
+          stream) override;
 
  protected:
   ConfidentialTransformBase(
@@ -123,8 +123,8 @@ class ConfidentialTransformBase
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> HandleWrite(
       confidential_federated_compute::Session* session,
-      fcp::confidentialcompute::WriteRequest request, absl::Cord blob_data,
-      Decryptor* decryptor, SessionStream* stream, Session::Context& context);
+      fcp::confidentialcompute::WriteRequest request, Decryptor* decryptor,
+      Session::Context& context);
 
   absl::Status SetActiveKeyIds(
       const std::vector<absl::string_view>& decryption_keys,
