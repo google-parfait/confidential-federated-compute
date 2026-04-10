@@ -88,7 +88,8 @@ TYPED_TEST(ProgramExecutorTeeTest,
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       CreateProgramExecutorTeeConfigConstraints("my_program"));
@@ -119,7 +120,8 @@ TYPED_TEST(ProgramExecutorTeeTest,
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = this->oak_client_encryptor_
@@ -147,7 +149,8 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsMismatchingProgram) {
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       CreateProgramExecutorTeeConfigConstraints("mismatching_program"));
@@ -180,7 +183,8 @@ TYPED_TEST(ProgramExecutorTeeTest,
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   auto config_constraints =
       CreateProgramExecutorTeeConfigConstraints("my_program");
@@ -214,7 +218,8 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       CreateProgramExecutorTeeConfigConstraints("my_program"));
@@ -251,7 +256,8 @@ TYPED_TEST(ProgramExecutorTeeTest,
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       CreateProgramExecutorTeeConfigConstraints("my_program"));
@@ -282,7 +288,8 @@ TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigureWithKms) {
   request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
-  *protected_response.add_result_encryption_keys() = "result_encryption_key";
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       CreateProgramExecutorTeeConfigConstraints(

@@ -28,6 +28,7 @@
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "gmock/gmock.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
@@ -45,6 +46,53 @@ using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
 using ::fcp::confidentialcompute::outgoing::WriteRequest;
 using ::fcp::confidentialcompute::outgoing::WriteResponse;
+
+FakeDataReadWriteService::FakeDataReadWriteService()
+    : input_public_private_key_pair_(
+          crypto_test_utils::GenerateKeyPair(kInputKeyId)),
+      result_public_private_key_pair_(
+          crypto_test_utils::GenerateKeyPair("result")),
+      kms_signer_(fcp::confidential_compute::EcdsaP256R1Signer::Create()),
+      vm_signer_(fcp::confidential_compute::EcdsaP256R1Signer::Create()),
+      message_decryptor_(std::vector<absl::string_view>(
+          {result_public_private_key_pair_.second})) {
+  fcp::confidential_compute::Ec2Key kms_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = kms_signer_.GetPublicKey().substr(1, 32),
+      .y = kms_signer_.GetPublicKey().substr(33, 32),
+  };
+  encoded_kms_public_key_ = kms_public_key.Encode().value();
+
+  fcp::confidential_compute::Ec2Key vm_public_key = {
+      .algorithm = -7 /* ES256 */,
+      .curve = 1 /* P-256 */,
+      .x = vm_signer_.GetPublicKey().substr(1, 32),
+      .y = vm_signer_.GetPublicKey().substr(33, 32),
+  };
+
+  fcp::confidential_compute::Ec2Cwt signing_key_endorsement = {
+      .algorithm = -7 /* ES256 */,
+      .public_key = vm_public_key,
+      .invocation_id = kTestInvocationId,
+      .transform_index = 0,
+  };
+  signing_key_endorsement.signature = kms_signer_.Sign(
+      signing_key_endorsement.BuildSigStructureForSigning("").value());
+
+  signing_key_endorsement_ = signing_key_endorsement.Encode().value();
+
+  auto mock_handle = std::make_shared<
+      testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>();
+  EXPECT_CALL(*mock_handle, Sign(testing::_))
+      .WillRepeatedly(testing::Invoke([this](absl::string_view message) {
+        std::string sig_bytes = vm_signer_.Sign(message);
+        oak::crypto::v1::Signature signature;
+        signature.set_signature(sig_bytes);
+        return signature;
+      }));
+  signing_key_handle_ = mock_handle;
+}
 
 grpc::Status FakeDataReadWriteService::Read(
     ::grpc::ServerContext*, const ReadRequest* request,
@@ -73,6 +121,31 @@ grpc::Status FakeDataReadWriteService::Write(
                         "Chunked WriteRequests are not supported by the "
                         "FakeDataReadWriteService");
   }
+
+  // If the release token does not exist, this is a request to write an
+  // intermediate result. Wrap it in an IntermediateResult message and store it
+  // within a ReadResponse so that a future ReadRequest with a matching uri can
+  // access it.
+  if (!requests[0].has_release_token()) {
+    fcp::confidentialcompute::outgoing::IntermediateResult result;
+    *result.mutable_metadata() = requests[0].first_request_metadata();
+    result.set_data(requests[0].data());
+    result.set_signature(requests[0].signature());
+    result.set_signing_key_endorsement(signing_key_endorsement_);
+
+    fcp::confidentialcompute::outgoing::ReadResponse read_response;
+    read_response.set_data(result.SerializeAsString());
+    *read_response.mutable_first_response_metadata() =
+        requests[0].first_request_metadata();
+    read_response.set_finish_read(true);
+
+    uri_to_read_response_[requests[0].key()] = read_response;
+
+    return grpc::Status::OK;
+  }
+
+  // This is a request to write an unencrypted result. Decrypt it and store it
+  // in the released_data_ map.
   BlobMetadata metadata = requests[0].first_request_metadata();
   auto ciphertext = requests[0].data();
   BlobHeader blob_header;

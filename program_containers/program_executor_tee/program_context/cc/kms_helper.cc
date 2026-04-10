@@ -33,11 +33,10 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::WriteRequest;
 
-absl::Status CreateWriteRequestForRelease(
-    WriteRequest* write_request, oak::crypto::SigningKeyHandle& signing_key,
-    absl::string_view encryption_key, std::string key, std::string data,
-    std::string access_policy_hash, std::optional<std::string> src_state,
-    std::string dst_state) {
+namespace {
+
+absl::StatusOr<std::string> CreateBlobHeader(
+    absl::string_view encryption_key, absl::string_view access_policy_hash) {
   FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(encryption_key));
   BlobHeader header;
   std::string blob_id(kBlobIdSize, '\0');
@@ -45,20 +44,14 @@ absl::Status CreateWriteRequestForRelease(
                    blob_id.size());
   header.set_blob_id(blob_id);
   header.set_key_id(okp_key.key_id);
-  header.set_access_policy_sha256(access_policy_hash);
-  std::string serialized_blob_header = header.SerializeAsString();
+  header.set_access_policy_sha256(std::string(access_policy_hash));
+  return header.SerializeAsString();
+}
 
-  MessageEncryptor message_encryptor;
-  FCP_ASSIGN_OR_RETURN(
-      EncryptMessageResult encrypted_message,
-      message_encryptor.EncryptForRelease(
-          data, encryption_key, serialized_blob_header, src_state, dst_state,
-          [&signing_key](
-              absl::string_view message) -> absl::StatusOr<std::string> {
-            FCP_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(message));
-            return std::move(*signature.mutable_signature());
-          }));
-
+absl::Status CreateWriteRequest(WriteRequest* write_request,
+                                absl::string_view serialized_blob_header,
+                                EncryptMessageResult encrypted_message,
+                                std::string key) {
   BlobMetadata metadata;
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
   metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
@@ -76,10 +69,55 @@ absl::Status CreateWriteRequestForRelease(
   *write_request->mutable_first_request_metadata() = std::move(metadata);
   write_request->set_commit(true);
   write_request->set_data(encrypted_message.ciphertext);
-  write_request->set_release_token(encrypted_message.release_token);
   write_request->set_key(key);
 
   return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status CreateWriteRequestForEncryptedValue(
+    WriteRequest* write_request, oak::crypto::SigningKeyHandle& signing_key,
+    absl::string_view encryption_key, std::string key, std::string data,
+    std::string access_policy_hash) {
+  FCP_ASSIGN_OR_RETURN(std::string serialized_blob_header,
+                       CreateBlobHeader(encryption_key, access_policy_hash));
+
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor.Encrypt(data, encryption_key, serialized_blob_header));
+
+  FCP_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(data));
+  *write_request->mutable_signature() = signature.signature();
+
+  return CreateWriteRequest(write_request, serialized_blob_header,
+                            std::move(encrypted_message), key);
+}
+
+absl::Status CreateWriteRequestForRelease(
+    WriteRequest* write_request, oak::crypto::SigningKeyHandle& signing_key,
+    absl::string_view encryption_key, std::string key, std::string data,
+    std::string access_policy_hash, std::optional<std::string> src_state,
+    std::string dst_state) {
+  FCP_ASSIGN_OR_RETURN(std::string serialized_blob_header,
+                       CreateBlobHeader(encryption_key, access_policy_hash));
+
+  MessageEncryptor message_encryptor;
+  FCP_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor.EncryptForRelease(
+          data, encryption_key, serialized_blob_header, src_state, dst_state,
+          [&signing_key](
+              absl::string_view message) -> absl::StatusOr<std::string> {
+            FCP_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(message));
+            return std::move(*signature.mutable_signature());
+          }));
+
+  write_request->set_release_token(encrypted_message.release_token);
+
+  return CreateWriteRequest(write_request, serialized_blob_header,
+                            std::move(encrypted_message), key);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

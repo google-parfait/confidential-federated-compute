@@ -239,7 +239,7 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
   EXPECT_EQ(store_result, absl::InvalidArgumentError("Uri already set."));
 }
 
-TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
+TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForReleaseData) {
   WriteRequest write_request_1;
   WriteRequest write_request_2;
   auto result_public_key =
@@ -285,6 +285,66 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccess) {
   auto state_change_2 = released_state_changes["key_2"];
   ASSERT_EQ(state_change_2.first.value().value(), "state_b");
   ASSERT_EQ(state_change_2.second.value(), "state_c");
+}
+
+TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
+  WriteRequest write_request;
+  auto result_public_key =
+      fake_data_read_write_service_->GetResultPublicPrivateKeyPair().first;
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle_;
+  oak::crypto::v1::Signature signature;
+  signature.set_signature("my_signature");
+  EXPECT_CALL(mock_signing_key_handle_, Sign("intermediate_data"))
+      .WillOnce(testing::Return(signature));
+
+  ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
+                  &write_request, mock_signing_key_handle_, result_public_key,
+                  "key_1", "intermediate_data", kAccessPolicyHash)
+                  .ok());
+
+  ClientContext client_context;
+  WriteResponse response;
+  std::unique_ptr<ClientWriter<WriteRequest>> stream(
+      stub_->Write(&client_context, &response));
+  stream->Write(write_request);
+  stream->WritesDone();
+  ASSERT_TRUE(stream->Finish().ok());
+
+  ReadRequest read_request;
+  read_request.set_uri("key_1");
+  ClientContext read_client_context;
+  std::unique_ptr<ClientReader<ReadResponse>> reader(
+      stub_->Read(&read_client_context, read_request));
+
+  ReadResponse read_response;
+  ASSERT_TRUE(reader->Read(&read_response));
+
+  fcp::confidentialcompute::outgoing::IntermediateResult intermediate_result;
+  ASSERT_TRUE(intermediate_result.ParseFromString(read_response.data()));
+
+  EXPECT_EQ(intermediate_result.data(), write_request.data());
+  EXPECT_EQ(intermediate_result.signature(), "my_signature");
+
+  auto blob_decryptor =
+      std::make_unique<confidential_federated_compute::Decryptor>(
+          std::vector<absl::string_view>(
+              {fake_data_read_write_service_->GetResultPublicPrivateKeyPair()
+                   .second}));
+
+  ASSERT_TRUE(read_response.has_first_response_metadata());
+  BlobHeader blob_header;
+  ASSERT_TRUE(
+      blob_header.ParseFromString(read_response.first_response_metadata()
+                                      .hpke_plus_aead_data()
+                                      .kms_symmetric_key_associated_data()
+                                      .record_header()));
+
+  auto plaintext_result = blob_decryptor->DecryptBlob(
+      intermediate_result.metadata(), intermediate_result.data(),
+      blob_header.key_id());
+
+  ASSERT_TRUE(plaintext_result.ok());
+  ASSERT_EQ(*plaintext_result, "intermediate_data");
 }
 
 }  // namespace

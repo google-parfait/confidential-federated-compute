@@ -227,6 +227,10 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     initialize_request->mutable_configuration()->PackFrom(config);
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
+    // TODO(b/487997314): Add a real first encryption key for recovery info. For
+    // now we just add an empty one so that the encryption key to use for the
+    // unencrypted results is in the expected position.
+    protected_response.add_result_encryption_keys("fake_key");
     protected_response.add_result_encryption_keys(
         fake_data_read_write_service_.GetResultPublicPrivateKeyPair().first);
     protected_response.add_decryption_keys(

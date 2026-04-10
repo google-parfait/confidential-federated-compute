@@ -46,8 +46,8 @@ class ProgramExecutorTeeSession final
           initialize_config,
       std::map<std::string, std::string> model_id_to_zip_file,
       confidential_federated_compute::Decryptor* blob_decryptor,
-      std::string reencryption_key, absl::string_view reencryption_policy_hash,
-      PrivateState* private_state,
+      std::vector<std::string> reencryption_keys,
+      absl::string_view reencryption_policy_hash, PrivateState* private_state,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
       absl::flat_hash_set<std::string>
           authorized_logical_pipeline_policies_hashes,
@@ -56,7 +56,7 @@ class ProgramExecutorTeeSession final
       : initialize_config_(initialize_config),
         model_id_to_zip_file_(model_id_to_zip_file),
         blob_decryptor_(blob_decryptor),
-        reencryption_key_(reencryption_key),
+        reencryption_keys_(reencryption_keys),
         reencryption_policy_hash_(reencryption_policy_hash),
         private_state_(private_state),
         signing_key_handle_(signing_key_handle),
@@ -97,8 +97,8 @@ class ProgramExecutorTeeSession final
   confidential_federated_compute::Decryptor* blob_decryptor_;
 
   // The fields below are set only when KMS is being used.
-  // Reencryption key for any outputs that are being released.
-  std::string reencryption_key_;
+  // Reencryption keys for any outputs that are being released.
+  std::vector<std::string> reencryption_keys_;
   // The policy hash used to re-encrypt the outputs that are being released.
   std::string reencryption_policy_hash_;
   // Initial private state provided at initialization time.
@@ -181,8 +181,8 @@ class ProgramExecutorTeeConfidentialTransform
       write_configuration_map_;
 
   // The fields below are set only when KMS is being used.
-  // Reencryption key for any outputs that are being released.
-  std::string reencryption_key_;
+  // Reencryption keys for any outputs that are being released.
+  std::vector<std::string> reencryption_keys_;
   // The policy hash used to re-encrypt the outputs that are being released.
   std::string reencryption_policy_hash_;
   // Initial private state provided at initialization time.

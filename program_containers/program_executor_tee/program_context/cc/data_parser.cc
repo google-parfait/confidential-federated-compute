@@ -38,6 +38,7 @@ namespace confidential_federated_compute::program_executor_tee {
 
 using ::confidential_federated_compute::Decryptor;
 using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::outgoing::IntermediateResult;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
 using ::fcp::confidentialcompute::outgoing::WriteRequest;
@@ -51,23 +52,29 @@ using ::tensorflow_federated::aggregation::TensorProto;
 
 DataParser::DataParser(
     confidential_federated_compute::Decryptor* blob_decryptor,
-    std::string outgoing_server_address, std::string reencryption_key,
-    std::string reencryption_policy_hash, PrivateState* private_state,
+    std::string outgoing_server_address,
+    std::vector<std::string> reencryption_keys,
+    std::string reencryption_policy_hash, std::string kms_public_key,
+    std::string invocation_id, PrivateState* private_state,
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
     std::set<std::string> authorized_logical_pipeline_policies_hashes)
     : blob_decryptor_(blob_decryptor),
+      kms_public_key_(kms_public_key),
+      invocation_id_(invocation_id),
       private_state_(private_state),
       signing_key_handle_(signing_key_handle) {
   // All hashes and encryption keys are Base64Escaped before being passed over
   // the pybind boundary, so they must be decoded here.
-  std::string decoded_reencryption_key;
-  absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
-  reencryption_key_ = decoded_reencryption_key;
+  for (const auto& reencryption_key : reencryption_keys) {
+    std::string decoded_reencryption_key;
+    absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
+    reencryption_keys_.push_back(decoded_reencryption_key);
+  }
 
   std::string decoded_reencryption_policy_hash;
   absl::Base64Unescape(reencryption_policy_hash,
                        &decoded_reencryption_policy_hash);
-  reencryption_policy_hash_ = reencryption_policy_hash;
+  reencryption_policy_hash_ = decoded_reencryption_policy_hash;
 
   for (const auto& hash : authorized_logical_pipeline_policies_hashes) {
     std::string decoded_hash;
@@ -169,7 +176,8 @@ absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
   WriteRequest write_request;
   std::string next_state = private_state_->GetReleaseUpdateState();
   FCP_RETURN_IF_ERROR(CreateWriteRequestForRelease(
-      &write_request, *signing_key_handle_, reencryption_key_, key, data,
+      &write_request, *signing_key_handle_,
+      reencryption_keys_[kReleaseValueEncryptionKeyIndex], key, data,
       reencryption_policy_hash_, private_state_->GetReleaseInitialState(),
       next_state));
 
@@ -186,6 +194,102 @@ absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
   }
   private_state_->SetReleaseInitialState(next_state);
   return absl::OkStatus();
+}
+
+absl::Status DataParser::SaveRecoveryInfo(
+    std::string recovery_info, std::string recovery_key,
+    std::vector<std::pair<std::string, std::string>> release_queue) {
+  WriteRequest write_request;
+  FCP_RETURN_IF_ERROR(CreateWriteRequestForEncryptedValue(
+      &write_request, *signing_key_handle_,
+      reencryption_keys_[kRecoveryInfoEncryptionKeyIndex], recovery_key,
+      recovery_info, reencryption_policy_hash_));
+  ClientContext client_context;
+  WriteResponse response;
+  std::unique_ptr<::grpc::ClientWriterInterface<WriteRequest>> writer =
+      stub_->Write(&client_context, &response);
+
+  if (!writer->Write(write_request)) {
+    return absl::InternalError("Failed to write WriteRequest");
+  }
+  if (!writer->WritesDone() || !writer->Finish().ok()) {
+    return absl::InternalError("Failed to complete Write");
+  }
+
+  // TODO(b/487997314): Update the latest committed recovery info in the private
+  // state in preparation for releasing unencrypted results.
+
+  for (const auto& [data, key] : release_queue) {
+    FCP_RETURN_IF_ERROR(ReleaseUnencrypted(data, key));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
+    std::string recovery_key) {
+  ReadRequest read_request;
+  read_request.set_uri(recovery_key);
+  ClientContext client_context;
+  auto reader = stub_->Read(&client_context, read_request);
+  ReadResponse response;
+  std::string combined_data = "";
+  fcp::confidentialcompute::BlobMetadata first_response_metadata;
+  bool is_first = true;
+  while (reader->Read(&response)) {
+    if (is_first) {
+      first_response_metadata = response.first_response_metadata();
+      is_first = false;
+    }
+    combined_data += response.data();
+    if (response.finish_read()) {
+      break;
+    }
+  }
+  FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
+
+  // Parse the BlobHeader to get the access policy hash and key ID.
+  BlobHeader blob_header;
+  if (!blob_header.ParseFromString(first_response_metadata.hpke_plus_aead_data()
+                                       .kms_symmetric_key_associated_data()
+                                       .record_header())) {
+    return absl::InvalidArgumentError(
+        "kms_symmetric_key_associated_data.record_header() cannot be "
+        "parsed to BlobHeader.");
+  }
+
+  IntermediateResult intermediate_result;
+  if (!intermediate_result.ParseFromString(combined_data)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse IntermediateResult from combined data.");
+  }
+
+  FCP_ASSIGN_OR_RETURN(std::string decrypted_data,
+                       blob_decryptor_->DecryptBlob(first_response_metadata,
+                                                    intermediate_result.data(),
+                                                    blob_header.key_id()));
+
+  FCP_ASSIGN_OR_RETURN(
+      BlobProvenance blob_provenance,
+      VerifyBlobProvenance(decrypted_data, intermediate_result.signature(),
+                           intermediate_result.signing_key_endorsement(),
+                           kms_public_key_, invocation_id_));
+  if (blob_provenance.transform_index != 0) {
+    return absl::InvalidArgumentError(
+        "The recovery info blob must be produced by the first transform in the "
+        "pipeline.");
+  }
+
+  RecoveryInfo recovery_info;
+  if (!recovery_info.ParseFromString(decrypted_data)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse RecoveryInfo from decrypted data.");
+  }
+
+  // TODO(b/487997314): Check that the recovery info matches the expected
+  // private state, otherwise fail.
+
+  return recovery_info.value();
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee
