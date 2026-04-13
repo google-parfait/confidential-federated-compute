@@ -39,6 +39,7 @@ _RELEASE_BINARIES = {
     # keep-sorted start
     "//containers/fed_sql:app_bundle": "fed_sql/container.tar",
     "//containers/metadata:app_bundle": "metadata/container.tar",
+    "//containers/sql_data_ingress:app_bundle": "sql_data_ingress/container.tar",
     # keep-sorted end
 }
 
