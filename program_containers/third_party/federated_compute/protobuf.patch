@@ -11,14 +11,14 @@ index 3d65bb8..3577736 100644
 +        "@com_google_protobuf//:protobuf",
      ],
  )
- 
+
 diff --git fcp/client/BUILD fcp/client/BUILD
 index e13aebc..1d0e32f 100644
 --- fcp/client/BUILD
 +++ fcp/client/BUILD
 @@ -13,10 +13,7 @@
  # limitations under the License.
- 
+
  load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 -load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 -load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
@@ -34,7 +34,7 @@ index 6b51c62..876138b 100644
 +++ fcp/protos/confidentialcompute/BUILD
 @@ -13,12 +13,7 @@
  # limitations under the License.
- 
+
  load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 -load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
 -load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
@@ -43,7 +43,7 @@ index 6b51c62..876138b 100644
 -load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 -load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 +load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
- 
+
  package(
      default_applicable_licenses = ["//fcp:license"],
 diff --git fcp/protos/confidentialcompute/confidential_transform.proto fcp/protos/confidentialcompute/confidential_transform.proto
@@ -57,7 +57,7 @@ index cdec7ae..1eb7c97 100644
 -  bytes data = 3 [ctype = CORD];
 +  bytes data = 3;
  }
- 
+
  // Message indicating that the TEE was successfully initialized
 @@ -276,7 +276,7 @@ message WriteRequest {
    // Indicates that this is the final WriteRequest for a given blob.
@@ -66,7 +66,7 @@ index cdec7ae..1eb7c97 100644
 -  bytes data = 4 [ctype = CORD];
 +  bytes data = 4;
  }
- 
+
  // Acknowledges successful receipt of all chunks of an encrypted blob.
 @@ -309,7 +309,7 @@ message ReadResponse {
    // Indicates that this is the last chunk of data for the current blob.
@@ -75,39 +75,48 @@ index cdec7ae..1eb7c97 100644
 -  bytes data = 3 [ctype = CORD];
 +  bytes data = 3;
  }
- 
+
  // Request to incorporate all previously cached blobs into the session.
-@@ -373,7 +373,7 @@ message MergeRequest {
+@@ -373,6 +373,6 @@ message MergeRequest {
    // Indicates that this is the final MergeRequest for a given snapshot.
    bool commit = 3;
    // A chunk of data for the snapshot being merged into the session.
 -  bytes data = 4 [ctype = CORD];
 +  bytes data = 4;
  }
- 
- // Response indicating that a serialized snapshot has been successfully merged
+
 diff --git fcp/protos/confidentialcompute/data_read_write.proto fcp/protos/confidentialcompute/data_read_write.proto
-index b4f0cb8..6ab40dd 100644
+index 37c77e9..f6974f6 100644
 --- fcp/protos/confidentialcompute/data_read_write.proto
 +++ fcp/protos/confidentialcompute/data_read_write.proto
-@@ -45,7 +45,7 @@ message ReadResponse {
+@@ -47,7 +47,7 @@ message ReadResponse {
    bool finish_read = 2;
    // A chunk of data resolved from the URI in ReadRequest, encrypted with the
    // public key of the requestor TEE.
 -  bytes data = 3 [ctype = CORD];
 +  bytes data = 3;
  }
- 
+
  // Request to write data out from the TEE. This can be used to release data.
-@@ -63,7 +63,7 @@ message WriteRequest {
+@@ -73,7 +73,7 @@ message WriteRequest {
    // Indicates that this is the final WriteRequest for a given blob.
    bool commit = 2;
-   // A chunk of data to be written out by the TEE.
+   // A chunk of data being written out by the TEE.
 -  bytes data = 3 [ctype = CORD];
 +  bytes data = 3;
  }
- 
+
  // Write response.
+@@ -89,7 +89,7 @@ message IntermediateResult {
+   // Metadata that can be used at a later time within a TEE to decrypt the data.
+   BlobMetadata metadata = 1;
+   // The encrypted data.
+-  bytes data = 2 [ctype = CORD];
++  bytes data = 2;
+   // The generating TEE's signature for the data.
+   bytes signature = 3;
+   // The generating TEE's signing key endorsement.
+
 diff --git fcp/testing/BUILD fcp/testing/BUILD
 index c411f00..1109f07 100644
 --- fcp/testing/BUILD
@@ -115,7 +124,7 @@ index c411f00..1109f07 100644
 @@ -12,8 +12,6 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
- 
+
 -load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 -load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
  load("@rules_cc//cc:cc_library.bzl", "cc_library")
