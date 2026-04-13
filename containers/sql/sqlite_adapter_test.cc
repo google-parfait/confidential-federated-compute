@@ -71,10 +71,23 @@ class MessageHelper {
       package: "confidential_federated_compute.sql"
       message_type {
         name: "TestMessage"
+        enum_type {
+          name: "TestEnum"
+          value { name: "UNKNOWN" number: 0 }
+          value { name: "TEST_VAL_1" number: 1 }
+          value { name: "TEST_VAL_2" number: 2 }
+        }
         field {
           name: "int_vals"
           number: 1
           type: TYPE_INT64
+          label: LABEL_OPTIONAL
+        }
+        field {
+          name: "enum_vals"
+          number: 2
+          type: TYPE_ENUM
+          type_name: "TestEnum"
           label: LABEL_OPTIONAL
         }
       }
@@ -89,11 +102,15 @@ class MessageHelper {
     prototype_ = factory_.GetPrototype(descriptor_);
   }
 
-  std::unique_ptr<Message> CreateMessage(int64_t val1) {
+  std::unique_ptr<Message> CreateMessage(int64_t val1, int32_t enum_val = 0) {
     std::unique_ptr<Message> message(prototype_->New());
     const Reflection* reflection = message->GetReflection();
     reflection->SetInt64(message.get(),
                          descriptor_->FindFieldByName("int_vals"), val1);
+    if (enum_val != 0) {
+      reflection->SetEnumValue(
+          message.get(), descriptor_->FindFieldByName("enum_vals"), enum_val);
+    }
     return message;
   }
 
@@ -734,6 +751,54 @@ TEST_F(EvaluateQueryTest, MessageContentsResultsFromTable) {
   ASSERT_EQ(result.at(0).num_elements(), 2);
   ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(0), 24);
   ASSERT_EQ(result.at(0).AsSpan<int64_t>().at(1), 42);
+}
+
+TEST_F(AddTableContentsTest, EnumMessageContentsResultsFromTable) {
+  TableSchema schema = CreateInputTableSchema("t", "int_vals", "str_vals");
+  ColumnSchema* col3 = schema.add_column();
+  col3->set_name("enum_vals");
+  col3->set_type(google::internal::federated::plan::INT32);
+  schema.set_create_table_sql(
+      R"sql(CREATE TABLE t (int_vals INTEGER, str_vals TEXT, enum_vals INTEGER))sql");
+  ASSERT_THAT(sqlite_->DefineTable(schema), IsOk());
+
+  std::vector<std::unique_ptr<Message>> messages;
+  MessageHelper message_helper;
+  messages.push_back(message_helper.CreateMessage(42, 1));
+  messages.push_back(message_helper.CreateMessage(24, 2));
+
+  std::vector<Tensor> system_columns;
+  absl::StatusOr<Tensor> str_vals_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({2}),
+      CreateTestData<absl::string_view>({"foo", "bar"}), "str_vals");
+  ASSERT_THAT(str_vals_tensor, IsOk());
+  system_columns.push_back(*std::move(str_vals_tensor));
+
+  std::vector<Input> storage;
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages), std::move(system_columns), {});
+  ASSERT_THAT(input, IsOk());
+  storage.push_back(*std::move(input));
+  std::vector<RowLocation> locations = CreateRowLocations(2);
+  absl::StatusOr<RowSet> row_set = RowSet::Create(locations, storage);
+  ASSERT_THAT(row_set, IsOk());
+  ASSERT_THAT(sqlite_->AddTableContents(*std::move(row_set)), IsOk());
+
+  std::string output_col_name = "enum_vals";
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), output_col_name,
+                       google::internal::federated::plan::INT32);
+
+  auto result_status = sqlite_->EvaluateQuery(
+      R"sql(SELECT enum_vals FROM t WHERE enum_vals = 1 OR enum_vals = 2 ORDER BY enum_vals;)sql",
+      output_schema.column());
+  ASSERT_THAT(result_status, IsOk());
+  std::vector<Tensor> result = std::move(result_status.value());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).dtype(), DataType::DT_INT32);
+  ASSERT_EQ(result.at(0).num_elements(), 2);
+  ASSERT_EQ(result.at(0).AsSpan<int32_t>().at(0), 1);
+  ASSERT_EQ(result.at(0).AsSpan<int32_t>().at(1), 2);
 }
 
 TEST_F(EvaluateQueryTest, MultipleAddTableContents) {

@@ -72,6 +72,7 @@ RowView::MessageRowView::GetMessageColumnType(int column_index) const {
   const google::protobuf::FieldDescriptor* field =
       descriptor_->field(column_index);
   switch (field->cpp_type()) {
+    case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
     case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
       return tensorflow_federated::aggregation::DataType::DT_INT32;
     case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
