@@ -408,9 +408,18 @@ cc_test(
 )
 
 cc_library(
+    name = "interval",
+    hdrs = ["interval.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
     name = "interval_set",
     hdrs = ["interval_set.h"],
     deps = [
+        ":interval",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log:check",
     ],
@@ -422,6 +431,29 @@ cc_test(
     srcs = ["interval_set_test.cc"],
     deps = [
         ":interval_set",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "interval_map",
+    hdrs = ["interval_map.h"],
+    deps = [
+        ":interval",
+        ":interval_set",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_test(
+    name = "interval_map_test",
+    size = "small",
+    srcs = ["interval_map_test.cc"],
+    deps = [
+        ":interval",
+        ":interval_map",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],

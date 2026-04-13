@@ -17,69 +17,15 @@
 
 #include <algorithm>
 #include <initializer_list>
-#include <limits>
 #include <optional>
-#include <ostream>
 #include <type_traits>
 #include <utility>  // For std::move
 
 #include "absl/container/btree_set.h"
 #include "absl/log/check.h"
+#include "containers/fed_sql/interval.h"
 
 namespace confidential_federated_compute::fed_sql {
-
-// Forward declaration of IntervalSet.
-template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>
-class IntervalSet;
-
-// A simple numeric type interval with exclusive end.
-template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>
-class Interval {
- public:
-  Interval() : start_(), end_() {}
-  Interval(std::tuple<T, T> interval)
-      : Interval(std::get<0>(interval), std::get<1>(interval)) {}
-  Interval(T start, T end) : start_(start), end_(end) {
-    CHECK_LE(start, end) << "Interval must have start <= end";
-  }
-
-  // The start is inclusive.
-  T start() const { return start_; };
-  // The end is exclusive.
-  T end() const { return end_; };
-
-  // Returns true if the interval is empty.
-  bool empty() const { return start_ == end_; }
-
-  friend bool operator==(const Interval& a, const Interval& b) {
-    return a.start_ == b.start_ && a.end_ == b.end_;
-  }
-
-  // Returns true if the interval contains the specified value.
-  bool Contains(T value) const {
-    // There is a special case for interval end being at the max
-    // value, in which case the value is considered to be included.
-    return value >= start_ &&
-           (value < end_ ||
-            (end_ == std::numeric_limits<T>::max() && value == end_));
-  }
-
- private:
-  friend class IntervalSet<T>;
-  // Used by IntervalSet to extend the end of the interval.
-  // Despite the Interval being used as a key in a btree set, it's safe to
-  // mutate the end since IntervalSet only orders by the start of each interval.
-  void extend_end(T end) const { end_ = std::max(end_, end); }
-
-  T start_;
-  mutable T end_;
-};
-
-template <typename T>
-auto operator<<(std::ostream& out, const Interval<T>& i)
-    -> decltype(out << i.start()) {
-  return out << "[" << i.start() << ", " << i.end() << ")";
-}
 
 // Ordered set of non-overlapping, non-adjacent intervals.
 // This invariant is maintained when adding new intervals or joining with
@@ -87,32 +33,9 @@ auto operator<<(std::ostream& out, const Interval<T>& i)
 // Adding or merging overlapping intervals isn't allowed.
 template <typename T, typename>
 class IntervalSet {
- private:
-  // Comparer with heterogeneous lookup (https://abseil.io/tips/144).
-  // Since intervals are non-overlapping in the map, we can compare
-  // intervals based on their start.
-  struct IntervalLess {
-    using is_transparent = void;
-    // Implementation of the "less" operator
-    bool operator()(const Interval<T>& a, const Interval<T>& b) const {
-      return a.start() < b.start();
-    }
-
-    // Transparent overload  for an implicit point
-    // interval `Interval<T>(a, a)`.
-    bool operator()(const T& a, const Interval<T>& b) const {
-      return a < b.start();
-    }
-
-    // Transparent overload for an implicit point interval `Interval<T>(b, b)`.
-    bool operator()(const Interval<T>& a, const T& b) const {
-      return a.start() < b;
-    }
-  };
-
  public:
   // Intervals are stored in a btree set, ordered by their start.
-  using InnerSet = absl::btree_set<Interval<T>, IntervalLess>;
+  using InnerSet = absl::btree_set<Interval<T>, IntervalLess<T>>;
   using const_iterator = typename InnerSet::const_iterator;
   using value_type = Interval<T>;
 
