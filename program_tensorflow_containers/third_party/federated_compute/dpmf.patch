@@ -1,5 +1,5 @@
 diff --git fcp/confidentialcompute/python/BUILD fcp/confidentialcompute/python/BUILD
-index 2855692..a7df79c 100644
+index f84ee24..7d7a0b2 100644
 --- fcp/confidentialcompute/python/BUILD
 +++ fcp/confidentialcompute/python/BUILD
 @@ -33,9 +33,9 @@ py_library(
@@ -13,3 +13,23 @@ index 2855692..a7df79c 100644
          "@pypi//optax",
          "@pypi//tensorflow",
      ],
+@@ -133,7 +133,7 @@ py_library(
+     tags = ["manual"],
+     visibility = ["//visibility:public"],
+     deps = [
+-        "@pypi//jax_privacy",
++        "@jax_privacy//jax_privacy",
+         "@pypi//numpy",
+     ],
+ )
+@@ -144,9 +144,9 @@ py_test(
+     tags = ["manual"],
+     deps = [
+         ":accounting",
++        "@jax_privacy//jax_privacy",
+         "@pypi//absl_py",
+         "@pypi//jax",
+-        "@pypi//jax_privacy",
+         "@pypi//numpy",
+     ],
+ )
