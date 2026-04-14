@@ -140,6 +140,7 @@ cc_library(
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@googletest//:gtest",
     ],
 )
 

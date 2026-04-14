@@ -30,6 +30,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/session.h"
@@ -69,8 +70,8 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
       m, "SigningKeyHandle");
 
   pybind11::class_<DataParser>(m, "DataParser")
-      .def(pybind11::init<Decryptor*, std::string&, std::string&, std::string&,
-                          PrivateState*,
+      .def(pybind11::init<Decryptor*, std::string, std::vector<std::string>,
+                          std::string, std::string, std::string, PrivateState*,
                           std::shared_ptr<oak::crypto::SigningKeyHandle>,
                           std::set<std::string>>())
       .def("resolve_uri_to_tensor",
@@ -143,12 +144,18 @@ ProgramExecutorTeeSession::Finalize(
             .attr("run_program");
 
     // Create a DataParser object bound to the BlobDecryptor pointer.
+    std::vector<std::string> escaped_reencryption_keys;
+    for (const auto& key : reencryption_keys_) {
+      escaped_reencryption_keys.push_back(absl::Base64Escape(key));
+    }
+    // TODO(b/487997314): Populate kms_public_key and invocation_id correctly.
     pybind11::object data_parser_instance =
         pybind11::module::import("data_parser")
             .attr("DataParser")(
                 blob_decryptor_, initialize_config_.outgoing_server_address(),
-                absl::Base64Escape(reencryption_key_),
-                absl::Base64Escape(reencryption_policy_hash_), private_state_,
+                escaped_reencryption_keys,
+                absl::Base64Escape(reencryption_policy_hash_),
+                /*kms_public_key=*/"", /*invocation_id=*/"", private_state_,
                 signing_key_handle_, authorized_hashes_set);
 
     // Run the program.
@@ -229,10 +236,13 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
         "the policy, if any are specified.");
   }
 
-  const std::vector<std::string>& reencryption_keys = GetReencryptionKeys();
-  // Use last re-encryption key for releasing unencrypted results.
-  reencryption_key_ =
-      std::move(reencryption_keys[reencryption_keys.size() - 1]);
+  // The reencryption keys used to re-encrypt the final blobs.
+  reencryption_keys_ = GetReencryptionKeys();
+  if (reencryption_keys_.size() != kNumEncryptionKeys) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Expected exactly %d re-encryption keys, but got %d",
+                        kNumEncryptionKeys, reencryption_keys_.size()));
+  }
   reencryption_policy_hash_ =
       *GetAuthorizedLogicalPipelinePoliciesHashes().begin();
 
@@ -343,7 +353,7 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
 
   return std::make_unique<ProgramExecutorTeeSession>(
       initialize_config_, model_id_to_zip_file_, blob_decryptor,
-      reencryption_key_, reencryption_policy_hash_, private_state_.get(),
+      reencryption_keys_, reencryption_policy_hash_, private_state_.get(),
       GetOakSigningKeyHandle(), GetAuthorizedLogicalPipelinePoliciesHashes(),
       get_program_initialize_fn);
 }

@@ -20,9 +20,23 @@ package confidential_federated_compute.program_executor_tee;
 // containers for a given logical pipeline name.
 message BudgetState {
   // A strictly increasing counter to ensure that the state changes between
-  // releases. Without this field, KMS would fail all but the first release
-  // operation for a given program run.
+  // releases.
   uint32 counter = 2;
+  // A recovery info blob id. Recovery is permitted from the corresponding
+  // recovery info value as well as any more recent recovery info values that
+  // can be traced back to this one. Unencrypted results are always released in
+  // conjunction with an update to this value in order to prevent replay
+  // attacks.
+  bytes recovery_blob_id = 3;
 
   reserved 1;
+}
+
+// RecoveryInfo contains information about a recovery value.
+message RecoveryInfo {
+  // The recovery value, which may contain arbitrary recovery information as
+  // configured by the program.
+  bytes value = 1;
+  // The last recovery info blob id stored in BudgetState committed to KMS.
+  bytes committed_blob_id = 2;
 }

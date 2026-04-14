@@ -77,21 +77,28 @@ class DataParserTest : public ::testing::Test {
     data_read_write_server_address_ =
         localhost + std::to_string(data_read_write_service_port);
 
-    input_blob_decryptor_ =
-        std::make_unique<confidential_federated_compute::Decryptor>(
-            std::vector<absl::string_view>(
-                {fake_data_read_write_service_->GetInputPublicPrivateKeyPair()
-                     .second}));
-
-    mock_signing_key_handle_ =
-        std::make_shared<NiceMock<MockSigningKeyHandle>>();
-    data_parser_ = std::make_unique<DataParser>(
-        input_blob_decryptor_.get(), data_read_write_server_address_,
+    recovery_info_public_private_key_pair_ =
+        crypto_test_utils::GenerateKeyPair("recovery");
+    std::string input_private_key =
+        fake_data_read_write_service_->GetInputPublicPrivateKeyPair().second;
+    auto decryption_keys = std::vector<absl::string_view>(
+        {input_private_key, recovery_info_public_private_key_pair_.second});
+    auto reencryption_keys = std::vector<std::string>{
+        absl::Base64Escape(recovery_info_public_private_key_pair_.first),
         absl::Base64Escape(
             fake_data_read_write_service_->GetResultPublicPrivateKeyPair()
-                .first),
-        absl::Base64Escape(kAccessPolicyHash), &mock_private_state_,
-        mock_signing_key_handle_,
+                .first)};
+
+    input_blob_decryptor_ =
+        std::make_unique<confidential_federated_compute::Decryptor>(
+            std::move(decryption_keys));
+
+    data_parser_ = std::make_unique<DataParser>(
+        input_blob_decryptor_.get(), data_read_write_server_address_,
+        std::move(reencryption_keys), absl::Base64Escape(kAccessPolicyHash),
+        fake_data_read_write_service_->GetKmsPublicKey(), kTestInvocationId,
+        &mock_private_state_,
+        fake_data_read_write_service_->GetOakSigningKeyHandle(),
         std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}));
   }
 
@@ -103,9 +110,11 @@ class DataParserTest : public ::testing::Test {
   std::unique_ptr<Server> fake_data_read_write_server_;
 
   MockPrivateState mock_private_state_;
-  std::shared_ptr<NiceMock<MockSigningKeyHandle>> mock_signing_key_handle_;
-  std::unique_ptr<Decryptor> input_blob_decryptor_;
   std::unique_ptr<DataParser> data_parser_;
+  std::unique_ptr<confidential_federated_compute::Decryptor>
+      input_blob_decryptor_;
+
+  std::pair<std::string, std::string> recovery_info_public_private_key_pair_;
 };
 
 TEST_F(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
@@ -272,6 +281,52 @@ TEST_F(DataParserTest, ReleaseUnencrypted) {
   auto state_change_2 = released_state_changes["my_key_2"];
   ASSERT_EQ(state_change_2.first.value().value(), kStateAfterFirstRelease);
   ASSERT_EQ(state_change_2.second.value(), kStateAfterSecondRelease);
+}
+
+TEST_F(DataParserTest, SaveAndResolveRecoveryInfo) {
+  std::string kStateAfterFirstRelease = "state_after_first_release";
+  std::string kStateAfterSecondRelease = "state_after_second_release";
+
+  Sequence s;
+  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterFirstRelease));
+  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
+      .InSequence(s)
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(mock_private_state_,
+              SetReleaseInitialState(kStateAfterFirstRelease))
+      .InSequence(s);
+  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterSecondRelease));
+  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
+      .InSequence(s)
+      .WillOnce(Return(kStateAfterFirstRelease));
+  EXPECT_CALL(mock_private_state_,
+              SetReleaseInitialState(kStateAfterSecondRelease))
+      .InSequence(s);
+
+  RecoveryInfo recovery_info_proto;
+  recovery_info_proto.set_value("recovery_info_value");
+  recovery_info_proto.set_committed_blob_id("committed_blob_id");
+  std::string serialized_recovery_info =
+      recovery_info_proto.SerializeAsString();
+
+  ASSERT_TRUE(data_parser_
+                  ->SaveRecoveryInfo(serialized_recovery_info, "recovery_key",
+                                     {{"abc", "my_key_1"}, {"def", "my_key_2"}})
+                  .ok());
+
+  auto recovery_info = data_parser_->RestoreRecoveryInfo("recovery_key");
+  ASSERT_TRUE(recovery_info.ok()) << recovery_info.status().ToString();
+  EXPECT_EQ(recovery_info.value(), "recovery_info_value");
+
+  // Check that the unencrypted data was also released.
+  auto released_data = fake_data_read_write_service_->GetReleasedData();
+  EXPECT_EQ(released_data.size(), 2);
+  EXPECT_EQ(released_data["my_key_1"], "abc");
+  EXPECT_EQ(released_data["my_key_2"], "def");
 }
 
 }  // namespace

@@ -34,13 +34,19 @@ namespace confidential_federated_compute::program_executor_tee {
 // Increase gRPC message size limit to 2GB
 inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 
+// The reencryption key indices used to re-encrypt the final blobs.
+static constexpr int kRecoveryInfoEncryptionKeyIndex = 0;
+static constexpr int kReleaseValueEncryptionKeyIndex = 1;
+static constexpr int kNumEncryptionKeys = 2;
+
 class DataParser {
  public:
   DataParser(
       confidential_federated_compute::Decryptor* blob_decryptor,
-      std::string outgoing_server_address, std::string reencryption_key = "",
-      std::string reencryption_policy_hash = "",
-      PrivateState* private_state = nullptr,
+      std::string outgoing_server_address,
+      std::vector<std::string> reencryption_keys,
+      std::string reencryption_policy_hash, std::string kms_public_key,
+      std::string invocation_id, PrivateState* private_state = nullptr,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle =
           nullptr,
       std::set<std::string> authorized_logical_pipeline_policies_hashes = {});
@@ -52,6 +58,12 @@ class DataParser {
 
   // Wraps the data in a release token and sends it to untrusted space.
   absl::Status ReleaseUnencrypted(std::string data, std::string key);
+
+  absl::Status SaveRecoveryInfo(
+      std::string recovery_info, std::string recovery_key,
+      std::vector<std::pair<std::string, std::string>> release_queue);
+
+  absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key);
 
  private:
   // Retrieve the FC checkpoint for a uri, either by using the cache or
@@ -68,8 +80,10 @@ class DataParser {
       fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface>
       stub_;
 
-  // The reencryption keys used to re-encrypt the final blobs.
-  std::string reencryption_key_;
+  std::string kms_public_key_;
+  std::string invocation_id_;
+
+  std::vector<std::string> reencryption_keys_;
   // The policy hash used to re-encrypt the final blobs with.
   std::string reencryption_policy_hash_;
   // Private state.

@@ -33,19 +33,14 @@ namespace confidential_federated_compute::program_executor_tee {
 
 constexpr char kInputKeyId[] = "input";
 constexpr char kAccessPolicyHash[] = "access_policy_hash";
+constexpr char kTestInvocationId[] = "test_invocation_id";
 
 // Fake DataReadWrite service that retains information about past requests
 // and can send mock responses.
 class FakeDataReadWriteService
     : public fcp::confidentialcompute::outgoing::DataReadWrite::Service {
  public:
-  FakeDataReadWriteService()
-      : input_public_private_key_pair_(
-            crypto_test_utils::GenerateKeyPair(kInputKeyId)),
-        result_public_private_key_pair_(
-            crypto_test_utils::GenerateKeyPair("result")),
-        message_decryptor_(std::vector<absl::string_view>(
-            {result_public_private_key_pair_.second})) {}
+  FakeDataReadWriteService();
 
   grpc::Status Read(
       ::grpc::ServerContext*,
@@ -80,6 +75,17 @@ class FakeDataReadWriteService
     return result_public_private_key_pair_;
   }
 
+  std::string GetKmsPublicKey() const { return encoded_kms_public_key_; }
+
+  std::shared_ptr<oak::crypto::SigningKeyHandle> GetOakSigningKeyHandle()
+      const {
+    return signing_key_handle_;
+  }
+
+  std::string GetSigningKeyEndorsement() const {
+    return signing_key_endorsement_;
+  }
+
   // Returns a list of uris from received ReadRequest args.
   std::vector<std::string> GetReadRequestUris() { return read_request_uris_; }
 
@@ -101,6 +107,17 @@ class FakeDataReadWriteService
 
   // The keypair to use when releasing results in the KMS case.
   std::pair<std::string, std::string> result_public_private_key_pair_;
+
+  // The endorsement for the signing key.
+  std::string signing_key_endorsement_;
+  // The encoded KMS public key.
+  std::string encoded_kms_public_key_;
+  // The signing key handle.
+  std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
+
+  // Signers held to keep them alive for the mock handle.
+  fcp::confidential_compute::EcdsaP256R1Signer kms_signer_;
+  fcp::confidential_compute::EcdsaP256R1Signer vm_signer_;
 
   // Map that stores the ReadResponse to return for a ReadRequest with a
   // particular uri.

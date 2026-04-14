@@ -49,6 +49,40 @@ TEST(KmsHelperTest, CreateWriteRequestForRelease) {
 
   ASSERT_EQ(write_request.key(), "my_key");
   ASSERT_TRUE(write_request.commit());
+  ASSERT_FALSE(write_request.has_signature());
+  ASSERT_TRUE(write_request.has_release_token());
+}
+
+TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
+  std::pair<std::string, std::string> public_private_key_pair =
+      crypto_test_utils::GenerateKeyPair(kKeyId);
+  NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
+  WriteRequest write_request;
+
+  oak::crypto::v1::Signature signature;
+  signature.set_signature("my_signature");
+
+  EXPECT_CALL(mock_signing_key_handle, Sign("my_data"))
+      .WillOnce(testing::Return(signature));
+
+  ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
+                  &write_request, mock_signing_key_handle,
+                  public_private_key_pair.first, "my_key", "my_data",
+                  "my_access_policy_hash")
+                  .ok());
+
+  auto blob_decryptor =
+      std::make_unique<confidential_federated_compute::Decryptor>(
+          std::vector<absl::string_view>({public_private_key_pair.second}));
+  auto plaintext_result = blob_decryptor->DecryptBlob(
+      write_request.first_request_metadata(), write_request.data(), kKeyId);
+  ASSERT_TRUE(plaintext_result.ok());
+  ASSERT_EQ(*plaintext_result, "my_data");
+
+  ASSERT_EQ(write_request.key(), "my_key");
+  ASSERT_TRUE(write_request.commit());
+  ASSERT_EQ(write_request.signature(), "my_signature");
+  ASSERT_FALSE(write_request.has_release_token());
 }
 
 }  // namespace
