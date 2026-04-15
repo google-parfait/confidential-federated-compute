@@ -31,6 +31,22 @@
 
 namespace confidential_federated_compute::sql {
 
+// Represents a direct mapping from a root message level to a leaf field.
+// Each `FieldDescriptor` in the path describes navigation through a single
+// nested message field, sequentially resolving values to mapped leaf fields.
+// Safety: Pointers to FieldDescriptors are owned by static DescriptorPools
+// and remain valid across runtime executions.
+using FieldPath = std::vector<const google::protobuf::FieldDescriptor*>;
+
+// An ordered flat array of field paths matching mapped table columns.
+// The list maps 1:1 with flat columns computed once per table schema execution
+// by Input::CreateFromMessages during initialization via GetFlattenedSchema.
+//
+// Safety: Pointers referencing this list are safe to pass because lists are
+// owned by Input::MessageContents which is guaranteed to outlive all RowView
+// instances generated during operations.
+using FieldPathList = std::vector<FieldPath>;
+
 // A non-owning view of a single row of data, abstracting the underlying
 // storage mechanism (e.g., Tensors, Messages) via absl::variant.
 class RowView {
@@ -52,7 +68,7 @@ class RowView {
       const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
       absl::Span<const tensorflow_federated::aggregation::Tensor>
           system_columns,
-      uint32_t row_index);
+      uint32_t row_index, const FieldPathList* field_paths);
 
   // Returns the data type of a column.
   tensorflow_federated::aggregation::DataType GetColumnType(
@@ -130,11 +146,11 @@ class RowView {
   // A RowView backed by a Message and a list of system columns.
   class MessageRowView {
    public:
-    explicit MessageRowView(
-        const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
-        absl::Span<const tensorflow_federated::aggregation::Tensor>
-            system_columns,
-        uint32_t row_index);
+    MessageRowView(const google::protobuf::Message* message
+                       ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                   absl::Span<const tensorflow_federated::aggregation::Tensor>
+                       system_columns,
+                   uint32_t row_index, const FieldPathList* field_paths);
 
     tensorflow_federated::aggregation::DataType GetColumnType(
         int column_index) const;
@@ -148,17 +164,18 @@ class RowView {
     size_t GetSystemColumnIndex(int column_index) const;
 
     template <typename T>
-    T GetMessageValue(const google::protobuf::FieldDescriptor* field) const;
+    T GetMessageValue(const google::protobuf::Message& msg,
+                      const google::protobuf::FieldDescriptor* field) const;
 
     tensorflow_federated::aggregation::DataType GetMessageColumnType(
         int column_index) const;
 
     const google::protobuf::Message* message_;
-    const google::protobuf::Reflection* reflection_;
-    const google::protobuf::Descriptor* descriptor_;
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns_;
     // The index of the row within the system columns.
     uint32_t row_index_;
+    // Flattened list of field paths for message columns. Owned by Input.
+    const FieldPathList* field_paths_;
   };
 
   static_assert(has_row_view_interface<MessageRowView>::value,
@@ -174,56 +191,63 @@ class RowView {
 
 template <typename T>
 T RowView::MessageRowView::GetMessageValue(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   FCP_LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
 }
 
 template <>
 inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
+  const google::protobuf::Reflection* reflection = msg.GetReflection();
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
-    return reflection_->GetEnumValue(*message_, field);
+    return reflection->GetEnumValue(msg, field);
   }
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_INT32)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int32";
-  return reflection_->GetInt32(*message_, field);
+  return reflection->GetInt32(msg, field);
 }
 
 template <>
 inline int64_t RowView::MessageRowView::GetMessageValue<int64_t>(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_INT64)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int64";
-  return reflection_->GetInt64(*message_, field);
+  return msg.GetReflection()->GetInt64(msg, field);
 }
 
 template <>
 inline float RowView::MessageRowView::GetMessageValue<float>(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_FLOAT)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected float";
-  return reflection_->GetFloat(*message_, field);
+  return msg.GetReflection()->GetFloat(msg, field);
 }
 
 template <>
 inline double RowView::MessageRowView::GetMessageValue<double>(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected double";
-  return reflection_->GetDouble(*message_, field);
+  return msg.GetReflection()->GetDouble(msg, field);
 }
 
 template <>
 inline absl::string_view
 RowView::MessageRowView::GetMessageValue<absl::string_view>(
+    const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_STRING)
@@ -237,13 +261,21 @@ RowView::MessageRowView::GetMessageValue<absl::string_view>(
   // that ctype == STRING, `unused` won't be used and GetStringReference
   // will return a reference to the underlying field.
   std::string unused;
-  return reflection_->GetStringReference(*message_, field, &unused);
+  return msg.GetReflection()->GetStringReference(msg, field, &unused);
 }
 
 template <typename T>
 T RowView::MessageRowView::GetValue(int column_index) const {
-  if (column_index < descriptor_->field_count()) {
-    return GetMessageValue<T>(descriptor_->field(column_index));
+  if (column_index < field_paths_->size()) {
+    // Navigate the pre-computed path of field descriptors to retrieve the
+    // value from the correct nested message instance.
+    const auto& path = (*field_paths_)[column_index];
+    const google::protobuf::Message* current_msg = message_;
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+      current_msg =
+          &current_msg->GetReflection()->GetMessage(*current_msg, path[i]);
+    }
+    return GetMessageValue<T>(*current_msg, path.back());
   }
   // This will CHECK-fail if T does not match the column's dtype.
   return system_columns_[GetSystemColumnIndex(column_index)].AsSpan<T>().at(

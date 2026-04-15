@@ -138,9 +138,11 @@ class Input {
    public:
     MessageContents(
         std::vector<std::unique_ptr<google::protobuf::Message>> messages,
-        std::vector<tensorflow_federated::aggregation::Tensor> system_columns)
+        std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
+        FieldPathList field_paths)
         : messages_(std::move(messages)),
-          system_columns_(std::move(system_columns)) {}
+          system_columns_(std::move(system_columns)),
+          field_paths_(std::move(field_paths)) {}
 
     void AddColumn(tensorflow_federated::aggregation::Tensor&& column) {
       system_columns_.push_back(std::move(column));
@@ -158,6 +160,7 @@ class Input {
    private:
     std::vector<std::unique_ptr<google::protobuf::Message>> messages_;
     std::vector<tensorflow_federated::aggregation::Tensor> system_columns_;
+    FieldPathList field_paths_;
   };
 
   static_assert(has_input_contents_interface<MessageContents>::value,
