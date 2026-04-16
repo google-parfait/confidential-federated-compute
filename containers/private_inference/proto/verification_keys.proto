@@ -1,0 +1,13 @@
+edition = "2023";
+
+package private_inference.proto;
+
+import "google/protobuf/timestamp.proto";
+
+message VerificationKeys {
+  // Serialized com.google.crypto.tink.TinkProtoKeysetFormat keyset.
+  bytes tink_serialized_public_keyset = 1;
+
+  // Time until keyset is guaranteed to be valid for verification.
+  google.protobuf.Timestamp valid_until = 2;
+}

@@ -1,0 +1,168 @@
+edition = "2023";
+
+package private_inference.proto;
+
+message PrivateArateaRequest {
+  FeatureName feature_name = 1;
+  // Do not introduce new fields here. Instead, extend the PaicMessage.
+  oneof request {
+    GenerateContentRequest generate_content_request = 4;
+  }
+}
+
+message GenerateContentRequest {
+  repeated Content contents = 2;
+  GenerationConfig generation_config = 6;
+}
+
+// The base structured datatype containing multi-part content of a message.
+//
+// A `Content` includes a `role` field designating the producer of the `Content`
+// and a `parts` field containing multi-part data that contains the content of
+// the message turn.
+message Content {
+  // The producer of the content. Must be either 'user' or 'model'.
+  //
+  // Useful to set for multi-turn conversations, otherwise can be left blank
+  // or unset.
+  string role = 1;
+
+  // Ordered `Parts` that constitute a single message. Parts may have different
+  // IANA MIME types.
+  repeated Part parts = 2;
+}
+
+// A datatype containing media that is part of a multi-part `Content` message.
+//
+// A `Part` consists of data which has an associated datatype. A `Part` can only
+// contain one of the accepted types in `Part.data`.
+//
+// A `Part` must have a fixed IANA MIME type identifying the type and subtype
+// of the media if `inline_data` field is filled with raw bytes.
+// (-- Next ID: 6 --)
+message Part {
+  oneof data {
+    // Text part (can be code).
+    string text = 1;
+  }
+}
+
+enum FeatureName {
+  FEATURE_NAME_UNSPECIFIED = 0;
+  FEATURE_NAME_TEST_SUMMARIZATION = 1;
+  FEATURE_NAME_TEST_STRUCTURED_SUMMARIZATION = 2;
+  // New demos should use this feature name and specify model_id in the
+  // PrivateArateaRequest if a model other than the default is needed.
+  FEATURE_NAME_DEMO_GEMINI_GENERATE_CONTENT = 3;
+  // Demo feature name for generating embeddings for the given content.
+  FEATURE_NAME_DEMO_GEMINI_EMBED_CONTENT = 4;
+  // Sealed Memory feature names. go/sealed-memory-rearch.
+  FEATURE_NAME_SEALED_MEMORY_PLANNER = 5;
+
+  // Pixel System Intelligence feature names (100-199)
+  FEATURE_NAME_PSI_MEMORY_GENERATION = 100;
+  // PSI RG/Mini-RG PRD:
+  // https://docs.google.com/document/d/1GcmiYuWS7rs7QILUxDMSubqS3dcrj2q84sz_-7q427s
+  FEATURE_NAME_PSI_RESPONSE_GENERATION = 101;
+  FEATURE_NAME_PSI_MINI_RESPONSE_GENERATION = 102;
+  FEATURE_NAME_PSI_SCREENSHOT_MEMORY_GENERATION = 103;
+
+  // Collaborative Listening feature names (200-299)
+  FEATURE_NAME_COLLABORATIVE_LISTENING_CLASSIFICATION = 200;
+  FEATURE_NAME_COLLABORATIVE_LISTENING_TRANSCRIPTION = 201;
+
+  // Recorder feature names (300-399)
+  FEATURE_NAME_RECORDER_TRANSCRIPT_SUMMARIZATION = 300;
+
+  // Gboard feature names (400-499)
+  FEATURE_NAME_GBOARD_CONVERSATIONAL_WRITING_TOOLS = 400;
+
+  // Cosmo feature names (500-599)
+  FEATURE_NAME_COSMO_FULFILLMENT = 500;
+  FEATURE_NAME_COSMO_TRANSCRIPTION = 501;
+
+  // Kiki feature names (600-699). go/kiki-g3doc, go/pi-screenshots-infra.
+  FEATURE_NAME_KIKI_MEMORY_GENERATION = 600;
+  FEATURE_NAME_KIKI_RESPONSE_GENERATION = 601;
+
+  // Chrome feature names (700-799)
+  FEATURE_NAME_CHROME_ZERO_STATE_SUGGESTION = 700;
+  FEATURE_NAME_CHROME_FORMS_AI = 701;
+
+  // MobServe feature names (800-899)
+  FEATURE_NAME_DEMO_FETCH_MOBSERVE_CONFIGURATION = 800;
+
+  // Teaspoon feature names (900-999)
+  FEATURE_NAME_TEASPOON_DEEP_DIVE = 900;
+  FEATURE_NAME_TEASPOON_REFLECTION = 901;
+  FEATURE_NAME_TEASPOON_EMOTION_AND_TOPIC = 902;
+  FEATURE_NAME_TEASPOON_PAST_TOPICS = 903;
+  FEATURE_NAME_TEASPOON_AUTO_FORMAT = 904;
+
+  // Eval only feature names (1000-1099)
+  // Model aliases from
+  // research/air/foundation/private_inference/model/model.textproto.
+  FEATURE_NAME_EVEREST_EVAL_V3_XS = 1000;
+  FEATURE_NAME_EVEREST_EVAL_V3P1_S = 1001;
+
+  // SmartTrust feature names (1100-1199)
+  FEATURE_NAME_SMART_TRUST_EXPERIMENTATION = 1100;
+  FEATURE_NAME_SMART_TRUST_ENTITY_EXTRACTION = 1101;
+}
+
+
+// Generation config.
+// (-- Next ID: 10 --)
+message GenerationConfig {
+  // Controls the randomness of predictions.
+  float temperature = 1;
+
+  // If specified, nucleus sampling will be used.
+  float top_p = 2;
+
+  // If specified, top-k sampling will be used.
+  float top_k = 3;
+
+  // Number of candidates to generate.
+  int32 candidate_count = 4;
+
+  // The maximum number of output tokens to generate per message.
+  // connects to LMRoot using StreamGenerate, so will be ignored.
+  int32 max_output_tokens = 5;
+
+  // Seed.
+  int32 seed = 6;
+
+  // Media resolution for the input media.
+  enum MediaResolution {
+    // Media resolution has not been set.
+    MEDIA_RESOLUTION_UNSPECIFIED = 0;
+    // Media resolution set to low (64 tokens).
+    MEDIA_RESOLUTION_LOW = 1;
+    // Media resolution set to medium (256 tokens).
+    MEDIA_RESOLUTION_MEDIUM = 2;
+    // Media resolution set to high (zoomed reframing with 256 tokens).
+    MEDIA_RESOLUTION_HIGH = 3;
+  }
+  // If specified, the media resolution specified will be used.
+  // Not supported yet, will be ignored.
+  MediaResolution media_resolution = 7;
+
+  // Output response mimetype of the generated candidate text.
+  // Supported mimetype:
+  // - `text/plain`: (default) Text output.
+  // - `application/json`: JSON response in the candidates.
+  // The model needs to be prompted to output the appropriate response type,
+  // otherwise the behavior is undefined.
+  // This is a preview feature.
+  string response_mime_type = 8;
+
+  // The `Schema` object allows the definition of input and output data types.
+  // These types can be objects, but also primitives and arrays.
+  // Represents a select subset of an [OpenAPI 3.0 schema
+  // object](https://spec.openapis.org/oas/v3.0.3#schema).
+  // If set, a compatible response_mime_type must also be set.
+  // Compatible mimetypes:
+  // `application/json`: Schema for JSON response.
+  // Schema response_schema = 9;
+}
