@@ -27,6 +27,7 @@
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "gtest/gtest.h"
+#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::batched_inference {
 namespace {
@@ -38,6 +39,7 @@ using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
+using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::testing::_;
 using ::testing::Eq;
@@ -187,6 +189,118 @@ TEST_F(BatchedInferenceFnTest, LotsOfEverything) {
     commits.push_back(blobs);
   }
   RunTestCaseFor(commits);
+}
+
+TEST_F(BatchedInferenceFnTest, OneTaskWithMultiRowOutput) {
+  // 1-task config, using PARSER_DELIMITER to split results into multiple rows.
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "topic"
+      }
+      prompt { prompt_template: "Hello, {transcript}" parser: PARSER_DELIMITER }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  // Write 2 input rows.
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"foo", "bar"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          // 2 results for row 0, 1 result for row 1.
+          if (p == "Hello, foo")
+            results.push_back("res_a,res_b");
+          else if (p == "Hello, bar")
+            results.push_back("res_c");
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetPrivateInferenceOutputCheckpointForTest(
+      {"foo", "foo", "bar"}, {"res_a", "res_b", "res_c"});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, AllOf(Field(&Session::KV::blob_id, Eq("blob1")),
+                                     Field(&Session::KV::data, Eq(expected)))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+}
+
+TEST_F(BatchedInferenceFnTest, TwoTasksBothMultiRowReturnsError) {
+  // 2-task config, BOTH with PARSER_DELIMITER.
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "topic"
+      }
+      prompt { prompt_template: "Hello, {transcript}" parser: PARSER_DELIMITER }
+    }
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "keywords"
+      }
+      prompt { prompt_template: "KW {transcript}" parser: PARSER_DELIMITER }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  // Write 1 input row.
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  // Both tasks return multiple rows.
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (p == "Hello, bark")
+            results.push_back("a,b");
+          else if (p == "KW bark")
+            results.push_back("x,y");
+        }
+        return results;
+      });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace

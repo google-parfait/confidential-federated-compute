@@ -20,9 +20,11 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -62,6 +64,17 @@ class InferencePromptProcessor {
   void AppendSystemInstructions(std::string& prompt,
                                 const std::string& output_column_name);
 };
+
+// Duplicates rows in a vector/column of tensors according to
+// per_row_output_counts. For each tensor, row i is repeated
+// per_row_output_counts[i] times. Returns a new vector of tensors with the
+// expanded row counts. Supported dtypes are DT_STRING, DT_INT64, DT_INT32,
+// DT_FLOAT, DT_DOUBLE.
+absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+DuplicateTensorRows(
+    const std::vector<tensorflow_federated::aggregation::Tensor>& tensors,
+    size_t original_row_count,
+    const std::vector<size_t>& per_row_output_counts);
 
 }  // namespace confidential_federated_compute::fed_sql
 

@@ -82,6 +82,7 @@ cc_test(
         "//containers:session",
         "//containers/fns",
         "//containers/testing",
+        "//testing:parse_text_proto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
