@@ -42,6 +42,7 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::SizeIs;
 
 class InferenceModelInternalTest : public ::testing::Test {
  protected:
@@ -52,6 +53,13 @@ class InferenceModelInternalTest : public ::testing::Test {
     return Tensor::Create(
         DataType::DT_STRING, TensorShape({static_cast<int64_t>(values.size())}),
         std::make_unique<MutableVectorData<absl::string_view>>(values), name);
+  }
+  // Helper to build an int64 tensor for our test data.
+  absl::StatusOr<Tensor> CreateInt64Tensor(
+      std::initializer_list<int64_t> values, const std::string& name) {
+    return Tensor::Create(
+        DataType::DT_INT64, TensorShape({static_cast<int64_t>(values.size())}),
+        std::make_unique<MutableVectorData<int64_t>>(values), name);
   }
 };
 
@@ -397,6 +405,61 @@ TEST_F(InferenceModelInternalTest,
   const auto* data_ptr =
       static_cast<const absl::string_view*>(output_string_data->data());
   EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
+}
+
+TEST_F(InferenceModelInternalTest, DuplicateTensorRowsAllOnes) {
+  // 3 rows, counts all 1 -> 3 output rows, no expansion.
+  absl::StatusOr<Tensor> t = CreateStringTensor({"a", "b", "c"}, "col");
+  ASSERT_THAT(t, IsOk());
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*t));
+
+  absl::StatusOr<std::vector<Tensor>> result =
+      DuplicateTensorRows(tensors, 3, {1, 1, 1});
+
+  ASSERT_THAT(result, IsOkAndHolds(SizeIs(1)));
+
+  auto span = (*result)[0].AsSpan<absl::string_view>();
+  EXPECT_THAT(span, ElementsAre("a", "b", "c"));
+}
+
+TEST_F(InferenceModelInternalTest, DuplicateTensorRowsMixedCounts) {
+  // 3 rows, counts [1, 2, 1] -> 4 output rows.
+  absl::StatusOr<Tensor> t = CreateStringTensor({"a", "b", "c"}, "col");
+  ASSERT_THAT(t, IsOk());
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*t));
+
+  absl::StatusOr<std::vector<Tensor>> result =
+      DuplicateTensorRows(tensors, 3, {1, 2, 1});
+  ASSERT_THAT(result, IsOkAndHolds(SizeIs(1)));
+
+  auto span = (*result)[0].AsSpan<absl::string_view>();
+  EXPECT_THAT(span, ElementsAre("a", "b", "b", "c"));
+}
+
+TEST_F(InferenceModelInternalTest, DuplicateTensorRowsMultipleDtypes) {
+  // 2 tensors (string + int64), 2 rows, counts [2, 1] -> 3 output rows per
+  // tensor.
+  absl::StatusOr<Tensor> str_t =
+      CreateStringTensor({"hello", "world"}, "str_col");
+  ASSERT_THAT(str_t, IsOk());
+  absl::StatusOr<Tensor> int_t = CreateInt64Tensor({10, 20}, "int_col");
+  ASSERT_THAT(int_t, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*str_t));
+  tensors.push_back(std::move(*int_t));
+
+  absl::StatusOr<std::vector<Tensor>> result =
+      DuplicateTensorRows(tensors, 2, {2, 1});
+  ASSERT_THAT(result, IsOkAndHolds(SizeIs(2)));
+
+  auto str_span = (*result)[0].AsSpan<absl::string_view>();
+  EXPECT_THAT(str_span, ElementsAre("hello", "hello", "world"));
+
+  auto int_span = (*result)[1].AsSpan<int64_t>();
+  EXPECT_THAT(int_span, ElementsAre(10, 10, 20));
 }
 
 }  // namespace

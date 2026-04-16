@@ -28,6 +28,8 @@
 #include "google/protobuf/struct.pb.h"
 #include "google/protobuf/util/json_util.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
@@ -41,6 +43,43 @@ using ::google::protobuf::Value;
 using ::google::protobuf::util::JsonParseOptions;
 using ::google::protobuf::util::JsonStringToMessage;
 using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::MutableStringData;
+using ::tensorflow_federated::aggregation::MutableVectorData;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorData;
+using ::tensorflow_federated::aggregation::TensorShape;
+
+// Duplicates the data in a single column based on the per_row_output_counts.
+// T is the C++ type of the data in the column.
+template <typename T>
+void DuplicateVectorData(const Tensor& original_column,
+                         size_t original_row_count,
+                         const std::vector<size_t>& per_row_output_counts,
+                         TensorData* new_data_ptr) {
+  auto* new_data = static_cast<MutableVectorData<T>*>(new_data_ptr);
+  const auto original_span = original_column.AsSpan<T>();
+  for (size_t i = 0; i < original_row_count; ++i) {
+    const T& val = original_span[i];
+    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
+      new_data->push_back(val);
+    }
+  }
+}
+
+// Overload for DT_STRING.
+void DuplicateStringData(const Tensor& original_column,
+                         size_t original_row_count,
+                         const std::vector<size_t>& per_row_output_counts,
+                         TensorData* new_data_ptr) {
+  auto* new_data = static_cast<MutableStringData*>(new_data_ptr);
+  const auto original_span = original_column.AsSpan<absl::string_view>();
+  for (size_t i = 0; i < original_row_count; ++i) {
+    const absl::string_view val = original_span[i];
+    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
+      new_data->Add(std::string(val));
+    }
+  }
+}
 
 }  // namespace
 
@@ -212,6 +251,82 @@ absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
     AppendSystemInstructions(populated_prompt, output_column_name);
   }
   return populated_prompt;
+}
+
+absl::StatusOr<std::vector<Tensor>> DuplicateTensorRows(
+    const std::vector<Tensor>& original_columns, size_t original_row_count,
+    const std::vector<size_t>& per_row_output_counts) {
+  size_t total_new_rows = 0;
+  for (size_t count : per_row_output_counts) {
+    total_new_rows += count;
+  }
+
+  std::vector<std::unique_ptr<TensorData>> new_data_vec;
+  new_data_vec.reserve(original_columns.size());
+  for (const auto& col : original_columns) {
+    switch (col.dtype()) {
+      case DataType::DT_STRING: {
+        auto new_data = std::make_unique<
+            tensorflow_federated::aggregation::MutableStringData>(
+            total_new_rows);
+        DuplicateStringData(col, original_row_count, per_row_output_counts,
+                            new_data.get());
+        new_data_vec.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_INT64: {
+        auto new_data = std::make_unique<MutableVectorData<int64_t>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<int64_t>(col, original_row_count,
+                                     per_row_output_counts, new_data.get());
+        new_data_vec.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_INT32: {
+        auto new_data = std::make_unique<MutableVectorData<int32_t>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<int32_t>(col, original_row_count,
+                                     per_row_output_counts, new_data.get());
+        new_data_vec.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_FLOAT: {
+        auto new_data = std::make_unique<MutableVectorData<float>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<float>(col, original_row_count,
+                                   per_row_output_counts, new_data.get());
+        new_data_vec.push_back(std::move(new_data));
+        break;
+      }
+      case DataType::DT_DOUBLE: {
+        auto new_data = std::make_unique<MutableVectorData<double>>();
+        new_data->reserve(total_new_rows);
+        DuplicateVectorData<double>(col, original_row_count,
+                                    per_row_output_counts, new_data.get());
+        new_data_vec.push_back(std::move(new_data));
+        break;
+      }
+      default:
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported data type for duplication: ",
+                         DataType_Name(col.dtype())));
+    }
+  }
+
+  // Wrap each expanded column (new_data_vec[i]) data into a Tensor object.
+  std::vector<Tensor> result;
+  result.reserve(original_columns.size());
+  for (size_t i = 0; i < original_columns.size(); ++i) {
+    absl::StatusOr<Tensor> t =
+        Tensor::Create(original_columns[i].dtype(),
+                       TensorShape({static_cast<long>(total_new_rows)}),
+                       std::move(new_data_vec[i]), original_columns[i].name());
+    if (!t.ok()) {
+      return t.status();
+    }
+    result.push_back(std::move(*t));
+  }
+  return result;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

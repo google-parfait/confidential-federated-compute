@@ -82,38 +82,6 @@ constexpr size_t kNumTokensPerBatch = 2048;
 // Maximum number of rows to process in a single GenerateBatch call.
 constexpr size_t kMaxBatchSize = 64;
 
-// Duplicates the data in a single column based on the per_row_output_counts.
-// T is the C++ type of the data in the column.
-template <typename T>
-void DuplicateVectorData(const Tensor& original_column,
-                         size_t original_row_count,
-                         const std::vector<size_t>& per_row_output_counts,
-                         TensorData* new_data_ptr) {
-  auto* new_data = static_cast<MutableVectorData<T>*>(new_data_ptr);
-  const auto original_span = original_column.AsSpan<T>();
-  for (size_t i = 0; i < original_row_count; ++i) {
-    const T& val = original_span[i];
-    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
-      new_data->push_back(val);
-    }
-  }
-}
-
-// Overload for DT_STRING.
-void DuplicateStringData(const Tensor& original_column,
-                         size_t original_row_count,
-                         const std::vector<size_t>& per_row_output_counts,
-                         TensorData* new_data_ptr) {
-  auto* new_data = static_cast<MutableStringData*>(new_data_ptr);
-  const auto original_span = original_column.AsSpan<absl::string_view>();
-  for (size_t i = 0; i < original_row_count; ++i) {
-    const absl::string_view val = original_span[i];
-    for (size_t k = 0; k < per_row_output_counts[i]; ++k) {
-      new_data->Add(std::string(val));
-    }
-  }
-}
-
 }  // namespace
 
 absl::Status InferenceModel::BuildGemmaCppModel(
@@ -619,66 +587,11 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
     total_new_rows += count;
   }
 
-  std::vector<std::unique_ptr<TensorData>> new_original_data;
-  new_original_data.reserve(original_columns.size());
-  for (const auto& col : original_columns) {
-    switch (col.dtype()) {
-      case DataType::DT_STRING: {
-        auto new_data = std::make_unique<MutableStringData>(total_new_rows);
-        DuplicateStringData(col, original_row_count, per_row_output_counts,
-                            new_data.get());
-        new_original_data.push_back(std::move(new_data));
-        break;
-      }
-      case DataType::DT_INT64: {
-        auto new_data = std::make_unique<MutableVectorData<int64_t>>();
-        new_data->reserve(total_new_rows);
-        DuplicateVectorData<int64_t>(col, original_row_count,
-                                     per_row_output_counts, new_data.get());
-        new_original_data.push_back(std::move(new_data));
-        break;
-      }
-      case DataType::DT_INT32: {
-        auto new_data = std::make_unique<MutableVectorData<int32_t>>();
-        new_data->reserve(total_new_rows);
-        DuplicateVectorData<int32_t>(col, original_row_count,
-                                     per_row_output_counts, new_data.get());
-        new_original_data.push_back(std::move(new_data));
-        break;
-      }
-      case DataType::DT_FLOAT: {
-        auto new_data = std::make_unique<MutableVectorData<float>>();
-        new_data->reserve(total_new_rows);
-        DuplicateVectorData<float>(col, original_row_count,
-                                   per_row_output_counts, new_data.get());
-        new_original_data.push_back(std::move(new_data));
-        break;
-      }
-      case DataType::DT_DOUBLE: {
-        auto new_data = std::make_unique<MutableVectorData<double>>();
-        new_data->reserve(total_new_rows);
-        DuplicateVectorData<double>(col, original_row_count,
-                                    per_row_output_counts, new_data.get());
-        new_original_data.push_back(std::move(new_data));
-        break;
-      }
-      default:
-        return absl::UnimplementedError(
-            absl::StrCat("Unsupported data type for duplication: ",
-                         DataType_Name(col.dtype())));
-    }
-  }
+  // Use the shared helper for tensor row duplication.
+  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> final_columns,
+                       DuplicateTensorRows(original_columns, original_row_count,
+                                           per_row_output_counts));
 
-  std::vector<Tensor> final_columns;
-  final_columns.reserve(original_columns.size());
-  for (size_t i = 0; i < original_columns.size(); ++i) {
-    FCP_ASSIGN_OR_RETURN(Tensor t,
-                         Tensor::Create(original_columns[i].dtype(),
-                                        TensorShape({(long)total_new_rows}),
-                                        std::move(new_original_data[i]),
-                                        original_columns[i].name()));
-    final_columns.push_back(std::move(t));
-  }
   std::optional<Tensor> privacy_id_tensor;
   if (original_privacy_id.has_value()) {
     privacy_id_tensor = Tensor(*original_privacy_id, "privacy_id");

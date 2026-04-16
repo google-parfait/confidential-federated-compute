@@ -117,6 +117,23 @@ struct BlobLevelWorkItem {
   std::vector<std::unique_ptr<TaskLevelWorkItem>> task_items;
 };
 
+// Holds the processed output for a single inference task.
+struct TaskOutput {
+  // Output tensors for this task. Currently each task produces a single output
+  // column, but using a vector allows future extension to multi-column output.
+  std::vector<Tensor> output_columns;
+  // The number of output values generated for each input row. For example,
+  // {1, 2, 1} means row 0 produced 1 output, row 1 produced 2, row 2 produced
+  // 1. For PARSER_NONE this is always all 1s.
+  std::vector<size_t> per_row_output_counts;
+  // True if any entry in per_row_output_counts is not 1.
+  bool HasMultiRowOutput() const {
+    return std::any_of(per_row_output_counts.begin(),
+                       per_row_output_counts.end(),
+                       [](size_t count) { return count != 1; });
+  }
+};
+
 // Unpacks a single inference tqask into a set of input columns and an output.
 absl::Status UnpackTasksForBlob(const InferenceConfiguration& inference_config,
                                 BlobLevelWorkItem* blob_item) {
@@ -189,6 +206,54 @@ absl::Status UnpackCallsForTask(const Input& input, size_t max_prompt_size,
         std::make_unique<CallLevelWorkItem>(std::move(*prompt_or)));
   }
   return absl::OkStatus();
+}
+
+// Processes the raw inference results for all tasks in a blob, parsing each
+// result using the configured parser and tracking how many output values each
+// input row produced. Returns a vector of TaskOutput, one per inference task.
+absl::StatusOr<std::vector<TaskOutput>> ProcessTaskOutputs(
+    BlobLevelWorkItem* blob_item) {
+  const long num_rows = static_cast<long>(blob_item->input->GetRowCount());
+  std::vector<TaskOutput> task_outputs;
+  InferenceOutputProcessor output_processor;
+
+  for (auto& task_item : blob_item->task_items) {
+    auto output_string_data = std::make_unique<MutableStringData>(0);
+    std::vector<size_t> per_row_output_counts;
+    per_row_output_counts.reserve(num_rows);
+    long total_output_rows = 0;
+
+    // Process each row of the inference result through the configured parser.
+    for (auto& call_item : task_item->call_items) {
+      absl::StatusOr<size_t> process_result =
+          output_processor.ProcessInferenceOutput(
+              task_item->task.prompt(), std::move(call_item->result),
+              task_item->output_column_name, output_string_data.get());
+      if (!process_result.ok()) {
+        return absl::InternalError(absl::StrCat(
+            "Couldn't process inference output: ", process_result.status()));
+      }
+      per_row_output_counts.push_back(*process_result);
+      total_output_rows += *process_result;
+    }
+
+    // Create the output tensor sized to the actual number of output values
+    absl::StatusOr<Tensor> output_tensor = Tensor::Create(
+        DataType::DT_STRING, TensorShape({total_output_rows}),
+        std::move(output_string_data), task_item->output_column_name);
+    if (!output_tensor.ok()) {
+      return absl::InternalError(absl::StrCat(
+          "Couldn't create an output tensor for column ",
+          task_item->output_column_name, ": ", output_tensor.status()));
+    }
+
+    std::vector<Tensor> output_columns;
+    output_columns.push_back(std::move(*output_tensor));
+    task_outputs.push_back(TaskOutput{std::move(output_columns),
+                                      std::move(per_row_output_counts)});
+  }
+
+  return task_outputs;
 }
 
 // A class that batches all writes received until a Commit(), and then
@@ -369,16 +434,55 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
 absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
                                               Context& context) {
   const long num_rows = static_cast<long>(blob_item->input->GetRowCount());
-  absl::StatusOr<std::vector<Tensor>> tensors_or =
-      std::move(*blob_item->input).MoveToTensors();
-  if (!tensors_or.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Couldn't recover input tensors: ", tensors_or.status()));
+
+  // Process all task output and parse each inference result.
+  absl::StatusOr<std::vector<TaskOutput>> task_outputs_or =
+      ProcessTaskOutputs(blob_item);
+  if (!task_outputs_or.ok()) {
+    return task_outputs_or.status();
   }
+  std::vector<TaskOutput>& task_outputs = *task_outputs_or;
+
+  // Determine which task produced multi-row output. Currently, at most one
+  // task may produce multi-row. Producing multi-row from multiple tasks
+  // would require a Cartesian product which is not yet implemented.
+  const std::vector<size_t>* per_row_output_counts = nullptr;
+  for (const auto& task_output : task_outputs) {
+    if (task_output.HasMultiRowOutput()) {
+      if (per_row_output_counts != nullptr) {
+        return absl::UnimplementedError(
+            "Multiple inference tasks with multi-row output is not yet "
+            "supported.");
+      }
+      per_row_output_counts = &task_output.per_row_output_counts;
+    }
+  }
+
+  // Extract input tensors from the input blob.
+  absl::StatusOr<std::vector<Tensor>> input_tensors =
+      std::move(*blob_item->input).MoveToTensors();
+  if (!input_tensors.ok()) {
+    return absl::InternalError(absl::StrCat("Couldn't recover input tensors: ",
+                                            input_tensors.status()));
+  }
+  // If multi-row was detected, duplicate each input tensor's rows to match the
+  // expanded output row count.
+  if (per_row_output_counts != nullptr) {
+    absl::StatusOr<std::vector<Tensor>> duplicated =
+        fed_sql::DuplicateTensorRows(*input_tensors, num_rows,
+                                     *per_row_output_counts);
+    if (!duplicated.ok()) {
+      return absl::InternalError(absl::StrCat(
+          "Couldn't duplicate input tensors: ", duplicated.status()));
+    }
+    *input_tensors = std::move(*duplicated);
+  }
+
+  // Add the possibly duplicated input tensors to the output checkpoint.
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  for (auto& tensor : *tensors_or) {
+  for (auto& tensor : *input_tensors) {
     absl::Status add_status =
         checkpoint_builder->Add(tensor.name(), std::move(tensor));
     if (!add_status.ok()) {
@@ -386,40 +490,35 @@ absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
           absl::StrCat("Couldn't add input tensor: ", tensor.name()));
     }
   }
-  InferenceOutputProcessor output_processor;
-  for (auto& task_item : blob_item->task_items) {
-    auto output_string_data = std::make_unique<MutableStringData>(num_rows);
-    for (auto& call_item : task_item->call_items) {
-      absl::StatusOr<size_t> process_result =
-          output_processor.ProcessInferenceOutput(
-              task_item->task.prompt(), std::move(call_item->result),
-              task_item->output_column_name, output_string_data.get());
-      if (!process_result.ok()) {
+
+  // Add output tensors to the checkpoint. If one task produced multi-row
+  // but another task produced 1:1 output, the 1:1 task's output tensor must
+  // be duplicated to match the expanded row count.
+  for (auto& task_output : task_outputs) {
+    if (per_row_output_counts != nullptr && !task_output.HasMultiRowOutput()) {
+      // This task produced 1:1 output, but another task expanded rows.
+      // Duplicate this task's outputs using per_row_output_counts.
+      absl::StatusOr<std::vector<Tensor>> duplicated =
+          fed_sql::DuplicateTensorRows(task_output.output_columns, num_rows,
+                                       *per_row_output_counts);
+      if (!duplicated.ok()) {
         return absl::InternalError(absl::StrCat(
-            "Couldn't process inference output: ", process_result.status()));
+            "Couldn't duplicate output tensors: ", duplicated.status()));
       }
-      if (*process_result != 1) {
+      task_output.output_columns = std::move(*duplicated);
+    }
+    // Add each output column tensor to the checkpoint.
+    for (auto& tensor : task_output.output_columns) {
+      absl::Status add_status =
+          checkpoint_builder->Add(tensor.name(), std::move(tensor));
+      if (!add_status.ok()) {
         return absl::InternalError(
-            absl::StrCat("Processing of inference output generated more or "
-                         "less than one row: ",
-                         *process_result));
+            absl::StrCat("Couldn't add output tensor: ", tensor.name()));
       }
-    }
-    absl::StatusOr<Tensor> output_tensor_or = Tensor::Create(
-        DataType::DT_STRING, TensorShape({num_rows}),
-        std::move(output_string_data), task_item->output_column_name);
-    if (!output_tensor_or.ok()) {
-      return absl::InternalError(absl::StrCat(
-          "Couldn't create an output tensor for column ",
-          task_item->output_column_name, ": ", output_tensor_or.status()));
-    }
-    absl::Status add_status = checkpoint_builder->Add(
-        task_item->output_column_name, std::move(*output_tensor_or));
-    if (!add_status.ok()) {
-      return absl::InternalError(absl::StrCat("Couldn't add output tensor: ",
-                                              task_item->output_column_name));
     }
   }
+
+  // Build the final checkpoint and emit it as encrypted output.
   absl::StatusOr<absl::Cord> checkpoint_or = checkpoint_builder->Build();
   if (!checkpoint_or.ok()) {
     return absl::InternalError(
