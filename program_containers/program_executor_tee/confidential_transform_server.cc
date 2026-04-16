@@ -94,6 +94,26 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
                throw std::runtime_error("Failed to release data: " +
                                         std::string(result.message()));
              }
+           })
+      .def("save_recovery_info",
+           [](DataParser& self, std::string& recovery_info,
+              std::string& recovery_key,
+              std::vector<std::pair<std::string, std::string>>& release_queue) {
+             auto result = self.SaveRecoveryInfo(recovery_info, recovery_key,
+                                                 release_queue);
+             if (!result.ok()) {
+               throw std::runtime_error("Failed to save recovery info: " +
+                                        std::string(result.message()));
+             }
+           })
+      .def("restore_recovery_info",
+           [](DataParser& self, std::string& recovery_key) {
+             auto result = self.RestoreRecoveryInfo(recovery_key);
+             if (!result.ok()) {
+               throw std::runtime_error("Failed to restore recovery info: " +
+                                        std::string(result.status().message()));
+             }
+             return pybind11::bytes(*result);
            });
 }
 
@@ -164,7 +184,9 @@ ProgramExecutorTeeSession::Finalize(
                 initialize_config_.client_data_dir(), model_id_to_zip_file_,
                 initialize_config_.outgoing_server_address(),
                 data_parser_instance.attr("resolve_uri_to_tensor"),
-                data_parser_instance.attr("release_unencrypted"));
+                data_parser_instance.attr("release_unencrypted"),
+                data_parser_instance.attr("save_recovery_info"),
+                data_parser_instance.attr("restore_recovery_info"));
   };
 
   // Submit the work to the python execution queue and wait for the result.

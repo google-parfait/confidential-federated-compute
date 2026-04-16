@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import inspect
 from typing import Optional
 
 from fcp.confidentialcompute.python import program_input_provider
-from program_executor_tee.program_context import external_service_handle
+from fcp.confidentialcompute.python import external_service_handle
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
@@ -33,8 +33,12 @@ def run_program(
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
-    resolve_uri_to_tensor: Callable[[str, str], tensor_pb2.TensorProto],
-    release_unencrypted: Callable[[bytes, bytes], None],
+    resolve_uri_to_tensor_fn: Callable[[str, str], tensor_pb2.TensorProto],
+    release_unencrypted_fn: Callable[[bytes, str], None],
+    save_recovery_info_fn: Callable[
+        [bytes, str, Sequence[tuple[bytes, str]]], None
+    ],
+    restore_recovery_info_fn: Callable[[str], bytes],
 ):
   """Executes a federated program.
 
@@ -54,9 +58,15 @@ def run_program(
     outgoing_server_address: The address at which the untrusted root server can
       be reached for data read/write requests and computation delegation
       requests.
-    resolve_uri_to_tensor: Function that resolves pointers to data. Expects a
-      uri and key and returns an AggCore tensor proto.
-    release_unencrypted: Function for releasing data. Expects a value and key.
+    resolve_uri_to_tensor_fn: A function that resolves pointers to data.
+      Expects two args (the uri and the key) and returns the resolved tensor.
+    release_unencrypted_fn: A function that releases unencrypted values to the
+      external service. Expects two args (the data and the key).
+    save_recovery_info_fn: A function that saves recovery information. Expects
+      three args (the recovery info, the recovery key, and a list of value and
+      key pairs to release as unencrypted data).
+    restore_recovery_info_fn: A function that restores recovery information.
+      Expects one arg (the key) and returns the recovery info.
 
   Raises:
     ValueError: If the provided python code doesn't contain TRUSTED_PROGRAM_KEY.
@@ -83,11 +93,13 @@ def run_program(
   initialized_external_service_handle = (
       external_service_handle.ExternalServiceHandle(
           outgoing_server_address,
-          release_unencrypted,
           client_ids,
           client_data_directory,
           model_id_to_zip_file,
-          resolve_uri_to_tensor,
+          resolve_uri_to_tensor_fn = resolve_uri_to_tensor_fn,
+          release_unencrypted_fn = release_unencrypted_fn,
+          save_recovery_info_fn = save_recovery_info_fn,
+          restore_recovery_info_fn = restore_recovery_info_fn,
       )
   )
 
@@ -105,7 +117,7 @@ def run_program(
         client_ids,
         client_data_directory,
         model_id_to_zip_file,
-        resolve_uri_to_tensor,
+        resolve_uri_to_tensor_fn,
     )
     trusted_program(input_provider, initialized_external_service_handle)
   else:
