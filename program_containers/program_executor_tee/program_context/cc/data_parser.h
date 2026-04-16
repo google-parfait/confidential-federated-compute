@@ -60,7 +60,7 @@ class DataParser {
   absl::Status ReleaseUnencrypted(std::string data, std::string key);
 
   absl::Status SaveRecoveryInfo(
-      std::string recovery_info, std::string recovery_key,
+      std::string recovery_value, std::string recovery_key,
       std::vector<std::pair<std::string, std::string>> release_queue);
 
   absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key);
@@ -74,6 +74,8 @@ class DataParser {
   absl::StatusOr<std::string> ParseReadResponseToFcCheckpoint(
       std::string uri,
       const fcp::confidentialcompute::outgoing::ReadResponse& read_response);
+
+  absl::Status ReleaseUnencryptedInternal(std::string data, std::string key);
 
   Decryptor* blob_decryptor_;
   std::unique_ptr<

@@ -58,6 +58,7 @@ TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
       crypto_test_utils::GenerateKeyPair(kKeyId);
   NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
   WriteRequest write_request;
+  std::string blob_id;
 
   oak::crypto::v1::Signature signature;
   signature.set_signature("my_signature");
@@ -66,7 +67,7 @@ TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
       .WillOnce(testing::Return(signature));
 
   ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
-                  &write_request, mock_signing_key_handle,
+                  &write_request, &blob_id, mock_signing_key_handle,
                   public_private_key_pair.first, "my_key", "my_data",
                   "my_access_policy_hash")
                   .ok());

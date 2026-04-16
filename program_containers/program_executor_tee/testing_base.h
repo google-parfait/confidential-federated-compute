@@ -130,7 +130,11 @@ ProgramExecutorTeeConfigConstraints CreateProgramExecutorTeeConfigConstraints(
 template <typename T>
 class ProgramExecutorTeeTest : public Test {
  public:
-  ProgramExecutorTeeTest() {
+  void SetUp() override { InitServer(); }
+
+  void InitServer(
+      std::unique_ptr<oak::crypto::SigningKeyHandle> signing_key_handle = std::
+          make_unique<NiceMock<crypto_test_utils::MockSigningKeyHandle>>()) {
     const std::string localhost = "[::1]:";
 
     auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
@@ -138,9 +142,8 @@ class ProgramExecutorTeeTest : public Test {
     oak_client_encryptor_ =
         ClientEncryptor::Create(encryption_key_handle->GetSerializedPublicKey())
             .value();
-    service_ = std::make_unique<T>(
-        std::make_unique<NiceMock<crypto_test_utils::MockSigningKeyHandle>>(),
-        std::move(encryption_key_handle));
+    service_ = std::make_unique<T>(std::move(signing_key_handle),
+                                   std::move(encryption_key_handle));
 
     int confidential_transform_server_port;
     ServerBuilder builder;
@@ -168,7 +171,7 @@ class ProgramExecutorTeeTest : public Test {
 template <typename T>
 class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
  public:
-  ProgramExecutorTeeSessionTest() {
+  void SetUp() override {
     const std::string localhost = "[::1]:";
     int data_read_write_service_port;
     ServerBuilder data_read_write_builder;
@@ -188,6 +191,12 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
       std::vector<std::string> client_ids = {},
       std::string client_data_dir = "",
       std::map<std::string, std::string> file_id_to_filepath = {}) {
+    if (this->server_) {
+      this->server_->Shutdown();
+    }
+
+    this->InitServer(fake_data_read_write_service_.GetOakSigningKeyHandle());
+
     grpc::ClientContext configure_context;
 
     std::vector<StreamInitializeRequest> requests;
@@ -227,19 +236,22 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     initialize_request->mutable_configuration()->PackFrom(config);
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
-    // TODO(b/487997314): Add a real first encryption key for recovery info. For
-    // now we just add an empty one so that the encryption key to use for the
-    // unencrypted results is in the expected position.
-    protected_response.add_result_encryption_keys("fake_key");
+    auto recovery_key_pair =
+        fake_data_read_write_service_.GetRecoveryPublicPrivateKeyPair();
+    protected_response.add_result_encryption_keys(recovery_key_pair.first);
     protected_response.add_result_encryption_keys(
         fake_data_read_write_service_.GetResultPublicPrivateKeyPair().first);
     protected_response.add_decryption_keys(
         fake_data_read_write_service_.GetInputPublicPrivateKeyPair().second);
+    protected_response.add_decryption_keys(recovery_key_pair.second);
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
     associated_data.mutable_config_constraints()->PackFrom(
         CreateProgramExecutorTeeConfigConstraints(program));
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         kAccessPolicyHash);
+    associated_data.set_cluster_public_key(
+        fake_data_read_write_service_.GetKmsPublicKey());
+    associated_data.set_invocation_id(kTestInvocationId);
     auto encrypted_request =
         this->oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),
@@ -256,19 +268,21 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
       writer->Write(request);
     }
     CHECK(writer->WritesDone());
-    CHECK(writer->Finish().ok());
+    auto status = writer->Finish();
+    CHECK(status.ok()) << "StreamInitialize failed: " << status.error_message();
 
     SessionRequest session_request;
     SessionResponse session_response;
     session_request.mutable_configure()->set_chunk_size(1000);
 
-    stream_ = this->stub_->Session(&session_context_);
+    session_context_ = std::make_unique<grpc::ClientContext>();
+    stream_ = this->stub_->Session(session_context_.get());
     CHECK(stream_->Write(session_request));
     CHECK(stream_->Read(&session_response));
   }
 
  protected:
-  grpc::ClientContext session_context_;
+  std::unique_ptr<grpc::ClientContext> session_context_;
   std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
       stream_;
 

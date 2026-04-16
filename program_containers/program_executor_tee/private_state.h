@@ -29,36 +29,48 @@ namespace confidential_federated_compute::program_executor_tee {
 // private state that is persisted via KMS.
 class PrivateState {
  public:
-  virtual ~PrivateState() = default;
+  ~PrivateState() = default;
 
   // Construct a PrivateState instance based on the initial state, if provided.
   static absl::StatusOr<std::unique_ptr<PrivateState>> CreatePrivateState(
       std::optional<std::string> initial_state);
 
-  // Update the "initial state" to use for the next release operation.
-  virtual void SetReleaseInitialState(std::string initial_state);
+  // Whether recovery from a given blob is permitted.
+  bool AllowRecovery(std::string recovery_blob_id,
+                     const RecoveryInfo& recovery_info) const;
 
-  // Return the "initial state" to use for the next release operation.
-  virtual std::optional<std::string> GetReleaseInitialState() const;
+  // Whether any save recovery calls have been made in the current run or have
+  // been committed to KMS in previous runs.
+  bool HasPriorSaveRecovery() const;
 
-  // Return the "update state" to use for the next release operation.
-  virtual std::string GetReleaseUpdateState();
+  // Return the recovery blob ID from the last committed state.
+  std::optional<std::string> GetCommittedRecoveryBlobId() const;
+
+  // Update the recovery blob ID to use for the next release operation.
+  void SetRecoveryBlobId(std::string blob_id);
+
+  // Return the "initial state" for use in a release operation.
+  std::optional<std::string> GetState() const;
+
+  // Commit a new "update state" and return it for use in a release operation.
+  std::string CommitNewState();
 
  protected:
   PrivateState(std::optional<std::string> initial_state,
-               BudgetState next_update_state)
-      : initial_serialized_state_(std::move(initial_state)),
-        next_update_state_(next_update_state) {}
+               BudgetState internal_state)
+      : committed_serialized_state_(std::move(initial_state)),
+        internal_state_(std::move(internal_state)) {}
 
  private:
   // Each release operation produces a release token containing a "initial
   // state" that must match KMS's current stored state as well as an "update
   // state" that KMS should update its stored state to.
   // The "initial state" to use for the next release operation.
-  std::optional<std::string> initial_serialized_state_;
-  // The "update state" to use for the next release operation. This field is not
-  // initialized until InitializeState is called.
-  BudgetState next_update_state_;
+  std::optional<std::string> committed_serialized_state_;
+  // The internal state from which the "update state" can be derived for a
+  // release operation. Opon a release operation, this becomes the committed
+  // state.
+  BudgetState internal_state_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

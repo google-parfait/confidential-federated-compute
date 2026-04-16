@@ -24,10 +24,11 @@ message BudgetState {
   uint32 counter = 2;
   // A recovery info blob id. Recovery is permitted from the corresponding
   // recovery info value as well as any more recent recovery info values that
-  // can be traced back to this one. Unencrypted results are always released in
-  // conjunction with an update to this value in order to prevent replay
-  // attacks.
-  bytes recovery_blob_id = 3;
+  // can be traced back to this one. If a program supports recovery,
+  // unencrypted results should always be released in conjunction with an
+  // update to this value in order to prevent replay attacks. If a program
+  // does not support recovery, this field will not be set.
+  optional bytes recovery_blob_id = 3;
 
   reserved 1;
 }
@@ -38,5 +39,7 @@ message RecoveryInfo {
   // configured by the program.
   bytes value = 1;
   // The last recovery info blob id stored in BudgetState committed to KMS.
-  bytes committed_blob_id = 2;
+  // If no BudgetState has been committed to KMS yet, this field will not be
+  // set.
+  optional bytes committed_blob_id = 2;
 }

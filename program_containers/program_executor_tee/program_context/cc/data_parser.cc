@@ -59,10 +59,10 @@ DataParser::DataParser(
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
     std::set<std::string> authorized_logical_pipeline_policies_hashes)
     : blob_decryptor_(blob_decryptor),
-      kms_public_key_(kms_public_key),
       invocation_id_(invocation_id),
       private_state_(private_state),
       signing_key_handle_(signing_key_handle) {
+  absl::Base64Unescape(kms_public_key, &kms_public_key_);
   // All hashes and encryption keys are Base64Escaped before being passed over
   // the pybind boundary, so they must be decoded here.
   for (const auto& reencryption_key : reencryption_keys) {
@@ -172,14 +172,14 @@ absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
                                       blob_header.key_id());
 }
 
-absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
+absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,
+                                                    std::string key) {
   WriteRequest write_request;
-  std::string next_state = private_state_->GetReleaseUpdateState();
   FCP_RETURN_IF_ERROR(CreateWriteRequestForRelease(
       &write_request, *signing_key_handle_,
       reencryption_keys_[kReleaseValueEncryptionKeyIndex], key, data,
-      reencryption_policy_hash_, private_state_->GetReleaseInitialState(),
-      next_state));
+      reencryption_policy_hash_, private_state_->GetState(),
+      private_state_->CommitNewState()));
 
   ClientContext client_context;
   WriteResponse response;
@@ -192,18 +192,37 @@ absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
   if (!writer->WritesDone() || !writer->Finish().ok()) {
     return absl::InternalError("Failed to complete Write");
   }
-  private_state_->SetReleaseInitialState(next_state);
   return absl::OkStatus();
 }
 
+absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
+  if (private_state_->HasPriorSaveRecovery()) {
+    return absl::FailedPreconditionError(
+        "Releasing unencrypted information without associated recovery "
+        "information is unsupported if there has been a prior attempt to "
+        "save recovery information.");
+  }
+  return ReleaseUnencryptedInternal(std::move(data), std::move(key));
+}
+
 absl::Status DataParser::SaveRecoveryInfo(
-    std::string recovery_info, std::string recovery_key,
+    std::string recovery_value, std::string recovery_key,
     std::vector<std::pair<std::string, std::string>> release_queue) {
+  // Build the RecoveryInfo proto from the raw value and the committed recovery
+  // blob ID from the private state.
+  RecoveryInfo recovery_info;
+  recovery_info.set_value(std::move(recovery_value));
+  auto committed_blob_id = private_state_->GetCommittedRecoveryBlobId();
+  if (committed_blob_id.has_value()) {
+    recovery_info.set_committed_blob_id(*committed_blob_id);
+  }
+
   WriteRequest write_request;
+  std::string blob_id;
   FCP_RETURN_IF_ERROR(CreateWriteRequestForEncryptedValue(
-      &write_request, *signing_key_handle_,
+      &write_request, &blob_id, *signing_key_handle_,
       reencryption_keys_[kRecoveryInfoEncryptionKeyIndex], recovery_key,
-      recovery_info, reencryption_policy_hash_));
+      recovery_info.SerializeAsString(), reencryption_policy_hash_));
   ClientContext client_context;
   WriteResponse response;
   std::unique_ptr<::grpc::ClientWriterInterface<WriteRequest>> writer =
@@ -216,11 +235,14 @@ absl::Status DataParser::SaveRecoveryInfo(
     return absl::InternalError("Failed to complete Write");
   }
 
-  // TODO(b/487997314): Update the latest committed recovery info in the private
-  // state in preparation for releasing unencrypted results.
+  // Update the private state with the new recovery blob id. Next time an
+  // unencrypted value is released, the updated private state will be committed
+  // to KMS and recovery from earlier RecoveryInfo messages will become
+  // unallowed.
+  private_state_->SetRecoveryBlobId(blob_id);
 
   for (const auto& [data, key] : release_queue) {
-    FCP_RETURN_IF_ERROR(ReleaseUnencrypted(data, key));
+    FCP_RETURN_IF_ERROR(ReleaseUnencryptedInternal(data, key));
   }
 
   return absl::OkStatus();
@@ -286,8 +308,10 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
         "Failed to parse RecoveryInfo from decrypted data.");
   }
 
-  // TODO(b/487997314): Check that the recovery info matches the expected
-  // private state, otherwise fail.
+  if (!private_state_->AllowRecovery(blob_header.blob_id(), recovery_info)) {
+    return absl::InvalidArgumentError(
+        "The recovery info does not match the expected state for recovery.");
+  }
 
   return recovery_info.value();
 }

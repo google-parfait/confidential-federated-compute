@@ -46,6 +46,7 @@ class ProgramExecutorTeeSession final
           initialize_config,
       std::map<std::string, std::string> model_id_to_zip_file,
       confidential_federated_compute::Decryptor* blob_decryptor,
+      std::string kms_public_key, std::string invocation_id,
       std::vector<std::string> reencryption_keys,
       absl::string_view reencryption_policy_hash, PrivateState* private_state,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
@@ -56,6 +57,8 @@ class ProgramExecutorTeeSession final
       : initialize_config_(initialize_config),
         model_id_to_zip_file_(model_id_to_zip_file),
         blob_decryptor_(blob_decryptor),
+        kms_public_key_(kms_public_key),
+        invocation_id_(invocation_id),
         reencryption_keys_(reencryption_keys),
         reencryption_policy_hash_(reencryption_policy_hash),
         private_state_(private_state),
@@ -96,7 +99,10 @@ class ProgramExecutorTeeSession final
   // Blob decryptor.
   confidential_federated_compute::Decryptor* blob_decryptor_;
 
-  // The fields below are set only when KMS is being used.
+  // The KMS public key provided during initialization.
+  std::string kms_public_key_;
+  // The pipeline invocation id provided during initialization.
+  std::string invocation_id_;
   // Reencryption keys for any outputs that are being released.
   std::vector<std::string> reencryption_keys_;
   // The policy hash used to re-encrypt the outputs that are being released.

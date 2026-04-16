@@ -238,7 +238,10 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
   absl::Status status =
       WriteInitializeRequest(std::move(writer), std::move(request));
   ASSERT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  ASSERT_THAT(status.message(), HasSubstr("No budget remaining"));
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr(
+          "Programs may recover, but cannot run from scratch multiple times."));
 }
 
 TYPED_TEST(ProgramExecutorTeeTest,
@@ -453,6 +456,188 @@ def trusted_program(input_provider, external_service_handle):
   int32_t result;
   std::memcpy(&result, released_data["result"].data(), sizeof(int32_t));
   ASSERT_EQ(result, 100);
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSessionWithRecovery) {
+  std::string program = R"(
+def trusted_program(external_service_handle):
+  recovery_val = external_service_handle.restore_recovery_info("recovery_key")
+  if recovery_val is not None:
+    start_index = int(recovery_val.decode()) + 1
+  else:
+    start_index = 0
+  
+  for i in range(start_index, 3):
+    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key", [(f"value_{i}".encode(), f"key_{i}")])
+    if i == 1:
+      raise Exception("Simulated interruption")
+  )";
+
+  // Session 1: First run. No recovery info available yet, so should fail to
+  // recover and then run the loop for i=0 and i=1 before the simulated
+  // interruption.
+  this->CreateSession(program);
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  // Read should fail because the program throws an exception.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(), HasSubstr("Simulated interruption"));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 2);
+  ASSERT_EQ(released_data["key_0"], "value_0");
+  ASSERT_EQ(released_data["key_1"], "value_1");
+
+  // Session 2: Second run. Recovery should be successful from recovery_key
+  // and resume from index 2.
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  std::string kms_state = released_state_changes["key_1"].second.value();
+  this->CreateSession(program, kms_state);
+  session_request.Clear();
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  session_response.Clear();
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+  ASSERT_TRUE(session_response.has_finalize());
+
+  released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 3);
+  ASSERT_EQ(released_data["key_2"], "value_2");
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           FinalizeSessionWithStaleRecoveryNotAllowed) {
+  std::string program = R"(
+def trusted_program(external_service_handle):
+  recovery_val = external_service_handle.restore_recovery_info("recovery_key_0")
+  if recovery_val is not None:
+    start_index = int(recovery_val.decode()) + 1
+  else:
+    start_index = 0
+  
+  for i in range(start_index, 3):
+    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
+    if i == 1:
+      raise Exception("Simulated interruption")
+  )";
+
+  // Session 1: First run. No recovery info available yet, so should fail to
+  // recover and then run the loop for i=0 and i=1 before the simulated
+  // interruption.
+  this->CreateSession(program);
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  // Read should fail because the program throws an exception.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(), HasSubstr("Simulated interruption"));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 2);
+  ASSERT_EQ(released_data["key_0"], "value_0");
+  ASSERT_EQ(released_data["key_1"], "value_1");
+
+  // Session 2: Second run. Recovery should be unsuccessful from recovery_key_0
+  // since a later recovery info (the one corresponding to recovery_key_1) has
+  // been committed.
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  std::string kms_state = released_state_changes["key_1"].second.value();
+  this->CreateSession(program, kms_state);
+  session_request.Clear();
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  session_response.Clear();
+  // Read should fail because the expected state is not provided for recovery.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("does not match the expected state for recovery"));
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           FinalizeSessionWithFailureBeforeSavingRecovery) {
+  std::string program = R"(
+def trusted_program(external_service_handle):
+  recovery_val = external_service_handle.restore_recovery_info("recovery_key_0")
+  if recovery_val is not None:
+    start_index = int(recovery_val.decode()) + 1
+  else:
+    start_index = 0
+  
+  for i in range(start_index, 3):
+    raise Exception(f"Simulated interruption for round {i}")
+    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
+  )";
+
+  // Session 1: First run. No recovery info available yet, so should fail to
+  // recover and then hit a simulated interruption before finishing the round
+  // for i=0.
+  this->CreateSession(program);
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  // Read should fail because the program throws an exception.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Simulated interruption for round 0"));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 0);
+
+  // Session 2: Second run. Recovery should be unsuccessful from recovery_key_0
+  // since no recovery info has been committed yet. The program should run but
+  // fail again at the same spot.
+  this->CreateSession(program);
+  session_request.Clear();
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  session_response.Clear();
+  // Read should fail because the program throws an exception.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Simulated interruption for round 0"));
+
+  released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 0);
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           ReleaseUnencryptedUnsupportedAfterSaveRecovery) {
+  std::string program = R"(
+def trusted_program(external_service_handle):
+  external_service_handle.save_recovery_info(b"checkpoint", "recovery_key", [])
+  external_service_handle.release_unencrypted(b"value_1", "key_1")
+  )";
+
+  this->CreateSession(program);
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  // Read should fail because the program throws an exception due to the error.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Releasing unencrypted information without associated "
+                        "recovery information is unsupported if there has been "
+                        "a prior attempt to save recovery information."));
 }
 
 }  // namespace

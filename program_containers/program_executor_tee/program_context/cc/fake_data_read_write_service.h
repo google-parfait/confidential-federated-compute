@@ -75,12 +75,13 @@ class FakeDataReadWriteService
     return result_public_private_key_pair_;
   }
 
+  std::pair<std::string, std::string> GetRecoveryPublicPrivateKeyPair() {
+    return recovery_public_private_key_pair_;
+  }
+
   std::string GetKmsPublicKey() const { return encoded_kms_public_key_; }
 
-  std::shared_ptr<oak::crypto::SigningKeyHandle> GetOakSigningKeyHandle()
-      const {
-    return signing_key_handle_;
-  }
+  std::unique_ptr<oak::crypto::SigningKeyHandle> GetOakSigningKeyHandle() const;
 
   std::string GetSigningKeyEndorsement() const {
     return signing_key_endorsement_;
@@ -108,12 +109,13 @@ class FakeDataReadWriteService
   // The keypair to use when releasing results in the KMS case.
   std::pair<std::string, std::string> result_public_private_key_pair_;
 
+  // The keypair to use for recovery info.
+  std::pair<std::string, std::string> recovery_public_private_key_pair_;
+
   // The endorsement for the signing key.
   std::string signing_key_endorsement_;
   // The encoded KMS public key.
   std::string encoded_kms_public_key_;
-  // The signing key handle.
-  std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
 
   // Signers held to keep them alive for the mock handle.
   fcp::confidential_compute::EcdsaP256R1Signer kms_signer_;
