@@ -274,7 +274,8 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
              protected_response.decryption_keys().end()},
             {associated_data.omitted_decryption_key_ids().begin(),
              associated_data.omitted_decryption_key_ids().end()}));
-
+        kms_public_key_ = associated_data.cluster_public_key();
+        invocation_id_ = associated_data.invocation_id();
         FCP_RETURN_IF_ERROR(
             StreamInitializeTransform(initialize_request.configuration(),
                                       associated_data.config_constraints()));

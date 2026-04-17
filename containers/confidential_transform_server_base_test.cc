@@ -85,6 +85,8 @@ using SessionStream =
 
 inline constexpr int kMaxNumSessions = 8;
 constexpr absl::string_view kKeyId = "key_id";
+constexpr absl::string_view kKmsPublicKey = "kms_public_key";
+constexpr absl::string_view kInvocationId = "invocation_id";
 
 class MockSession final : public confidential_federated_compute::Session {
  public:
@@ -145,6 +147,14 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
       std::unique_ptr<confidential_federated_compute::Session> session) {
     session_ = std::move(session);
   };
+
+  std::string GetKmsPublicKey() const {
+    return ConfidentialTransformBase::GetKmsPublicKey();
+  }
+
+  std::string GetInvocationId() const {
+    return ConfidentialTransformBase::GetInvocationId();
+  }
 
   absl::flat_hash_set<std::string> GetActiveKeyIds() const {
     return ConfidentialTransformBase::GetActiveKeyIds();
@@ -234,6 +244,8 @@ class ConfidentialTransformServerBaseTest : public Test {
         public_private_key_pair.first;
     *protected_response.add_decryption_keys() = public_private_key_pair.second;
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+    associated_data.set_cluster_public_key(kKmsPublicKey);
+    associated_data.set_invocation_id(kInvocationId);
     associated_data.add_authorized_logical_pipeline_policies_hashes(
         "policy_hash");
     associated_data.add_omitted_decryption_key_ids("omitted_key_id");
@@ -344,6 +356,8 @@ TEST_F(ConfidentialTransformServerBaseTest, ValidStreamInitialize) {
   // stream.
   ASSERT_THAT(FromGrpcStatus(writer->Finish()), IsOk());
   ASSERT_TRUE(service_->ActiveKeyIdsIncludeAllKeysets());
+  ASSERT_EQ(service_->GetKmsPublicKey(), kKmsPublicKey);
+  ASSERT_EQ(service_->GetInvocationId(), kInvocationId);
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,

@@ -89,6 +89,12 @@ class ConfidentialTransformBase
     return authorized_logical_pipeline_policies_hashes_;
   }
 
+  // Returns the KMS public key provided during initialization.
+  std::string GetKmsPublicKey() const { return kms_public_key_; }
+
+  // Returns the pipeline invocation id provided during initialization.
+  std::string GetInvocationId() const { return invocation_id_; }
+
   // Returns the active key ids for this container.
   absl::flat_hash_set<std::string> GetActiveKeyIds() const {
     return active_key_ids_;
@@ -144,6 +150,8 @@ class ConfidentialTransformBase
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
   absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
+  std::string kms_public_key_;
+  std::string invocation_id_;
   // Tracks the keys ids that are still active i.e. not expired.
   absl::flat_hash_set<std::string> active_key_ids_;
   bool active_key_ids_include_all_keysets_;
