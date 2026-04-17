@@ -33,8 +33,9 @@ absl::StatusOr<RowView> RowView::CreateFromTensors(
 absl::StatusOr<RowView> RowView::CreateFromMessage(
     const google::protobuf::Message* message,
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
-    uint32_t row_index) {
-  return RowView(MessageRowView(message, system_columns, row_index));
+    uint32_t row_index, const FieldPathList* field_paths) {
+  return RowView(
+      MessageRowView(message, system_columns, row_index, field_paths));
 }
 
 absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
@@ -56,21 +57,20 @@ absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
 RowView::MessageRowView::MessageRowView(
     const google::protobuf::Message* message,
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
-    uint32_t row_index)
+    uint32_t row_index, const FieldPathList* field_paths)
     : message_(message),
-      reflection_(message->GetReflection()),
-      descriptor_(message->GetDescriptor()),
       system_columns_(system_columns),
-      row_index_(row_index) {}
+      row_index_(row_index),
+      field_paths_(field_paths) {}
 
 size_t RowView::MessageRowView::GetSystemColumnIndex(int column_index) const {
-  return column_index - descriptor_->field_count();
+  return column_index - field_paths_->size();
 }
 
 tensorflow_federated::aggregation::DataType
 RowView::MessageRowView::GetMessageColumnType(int column_index) const {
   const google::protobuf::FieldDescriptor* field =
-      descriptor_->field(column_index);
+      (*field_paths_)[column_index].back();
   switch (field->cpp_type()) {
     case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
     case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
@@ -90,13 +90,13 @@ RowView::MessageRowView::GetMessageColumnType(int column_index) const {
 
 tensorflow_federated::aggregation::DataType
 RowView::MessageRowView::GetColumnType(int column_index) const {
-  if (column_index < descriptor_->field_count()) {
+  if (column_index < field_paths_->size()) {
     return GetMessageColumnType(column_index);
   }
   return system_columns_[GetSystemColumnIndex(column_index)].dtype();
 }
 
 size_t RowView::MessageRowView::GetColumnCount() const {
-  return descriptor_->field_count() + system_columns_.size();
+  return field_paths_->size() + system_columns_.size();
 }
 }  // namespace confidential_federated_compute::sql

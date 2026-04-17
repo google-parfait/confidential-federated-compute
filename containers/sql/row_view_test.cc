@@ -208,8 +208,13 @@ class MessageRowViewTest : public ::testing::Test {
                        CreateTestData<int32_t>({123, 456}), "system_col2");
     CHECK_OK(t2);
     system_columns_.push_back(*std::move(t2));
+
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+      field_paths_.push_back({descriptor->field(i)});
+    }
   }
 
+  FieldPathList field_paths_;
   std::unique_ptr<DescriptorPool> pool_;
   std::unique_ptr<DynamicMessageFactory> factory_;
   std::unique_ptr<Message> message_;
@@ -217,13 +222,14 @@ class MessageRowViewTest : public ::testing::Test {
 };
 
 TEST_F(MessageRowViewTest, CreateFromMessageSuccess) {
-  ASSERT_THAT(RowView::CreateFromMessage(message_.get(), system_columns_, 0),
+  ASSERT_THAT(RowView::CreateFromMessage(message_.get(), system_columns_, 0,
+                                         &field_paths_),
               IsOk());
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
-  absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
+      message_.get(), system_columns_, 0, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
   EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
@@ -236,8 +242,8 @@ TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
-  absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message_.get(), system_columns_, 1);
+  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
+      message_.get(), system_columns_, 1, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
   EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
@@ -250,15 +256,15 @@ TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
 }
 
 TEST_F(MessageRowViewTest, GetColumnCount) {
-  absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
+      message_.get(), system_columns_, 0, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetColumnCount(), Eq(8));
 }
 
 TEST_F(MessageRowViewTest, GetColumnType) {
-  absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
+      message_.get(), system_columns_, 0, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetColumnType(0), Eq(DataType::DT_INT32));
   EXPECT_THAT(row_view->GetColumnType(1), Eq(DataType::DT_INT64));
@@ -271,8 +277,8 @@ TEST_F(MessageRowViewTest, GetColumnType) {
 }
 
 TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {
-  absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message_.get(), system_columns_, 0);
+  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
+      message_.get(), system_columns_, 0, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_DEATH(row_view->GetValue<absl::string_view>(0), "but expected string");
 }
@@ -305,8 +311,10 @@ TEST_F(MessageRowViewTest, CordCtype) {
   const Reflection* reflection = message->GetReflection();
   reflection->SetString(
       message.get(), descriptor->FindFieldByName("cord_field"), "some value");
+  FieldPathList local_field_paths;
+  local_field_paths.push_back({descriptor->field(0)});
   absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message.get(), {}, 0);
+      RowView::CreateFromMessage(message.get(), {}, 0, &local_field_paths);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_EQ(row_view->GetValue<absl::string_view>(0), "some value");
 }

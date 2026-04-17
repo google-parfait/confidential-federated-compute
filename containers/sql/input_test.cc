@@ -291,12 +291,44 @@ class MessageInputTest : public ::testing::Test {
       name: "test.proto"
       package: "confidential_federated_compute.sql"
       message_type {
+        name: "DeeplyNestedMessage"
+        field {
+          name: "deep_col1"
+          number: 1
+          type: TYPE_INT32
+          label: LABEL_OPTIONAL
+        }
+      }
+      message_type {
+        name: "NestedMessage"
+        field {
+          name: "sub_col1"
+          number: 1
+          type: TYPE_INT32
+          label: LABEL_OPTIONAL
+        }
+        field {
+          name: "deep"
+          number: 2
+          type: TYPE_MESSAGE
+          type_name: ".confidential_federated_compute.sql.DeeplyNestedMessage"
+          label: LABEL_OPTIONAL
+        }
+      }
+      message_type {
         name: "TestMessage"
         field { name: "col1" number: 1 type: TYPE_INT32 label: LABEL_OPTIONAL }
         field { name: "col2" number: 2 type: TYPE_INT64 label: LABEL_OPTIONAL }
         field { name: "col3" number: 3 type: TYPE_FLOAT label: LABEL_OPTIONAL }
         field { name: "col4" number: 4 type: TYPE_DOUBLE label: LABEL_OPTIONAL }
         field { name: "col5" number: 5 type: TYPE_STRING label: LABEL_OPTIONAL }
+        field {
+          name: "nested"
+          number: 6
+          type: TYPE_MESSAGE
+          type_name: ".confidential_federated_compute.sql.NestedMessage"
+          label: LABEL_OPTIONAL
+        }
       }
     )pb");
 
@@ -310,8 +342,10 @@ class MessageInputTest : public ::testing::Test {
     ASSERT_NE(descriptor, nullptr);
 
     factory_ = std::make_unique<DynamicMessageFactory>(pool_.get());
-    messages_.push_back(CreateMessage(descriptor, 1, 2, 3.0f, 4.0, "foo"));
-    messages_.push_back(CreateMessage(descriptor, 11, 12, 13.0f, 14.0, "bar"));
+    messages_.push_back(
+        CreateMessage(descriptor, 1, 2, 3.0f, 4.0, "foo", 100, 300));
+    messages_.push_back(
+        CreateMessage(descriptor, 11, 12, 13.0f, 14.0, "bar", 200, 400));
 
     auto t1 = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
                              CreateTestData<int64_t>({42, 24}), "system_col1");
@@ -329,7 +363,9 @@ class MessageInputTest : public ::testing::Test {
   std::unique_ptr<Message> CreateMessage(const Descriptor* descriptor,
                                          int32_t int32_val, int64_t int64_val,
                                          float float_val, double double_val,
-                                         std::string string_val) {
+                                         std::string string_val,
+                                         int32_t sub_int32_val,
+                                         int32_t deep_int32_val) {
     std::unique_ptr<Message> message =
         std::unique_ptr<Message>(factory_->GetPrototype(descriptor)->New());
 
@@ -344,6 +380,24 @@ class MessageInputTest : public ::testing::Test {
                           double_val);
     reflection->SetString(message.get(), descriptor->FindFieldByName("col5"),
                           string_val);
+    const google::protobuf::FieldDescriptor* nested_field =
+        descriptor->FindFieldByName("nested");
+    google::protobuf::Message* nested_message =
+        reflection->MutableMessage(message.get(), nested_field);
+    nested_message->GetReflection()->SetInt32(
+        nested_message,
+        nested_field->message_type()->FindFieldByName("sub_col1"),
+        sub_int32_val);
+
+    const google::protobuf::FieldDescriptor* deep_field =
+        nested_field->message_type()->FindFieldByName("deep");
+    google::protobuf::Message* deep_message =
+        nested_message->GetReflection()->MutableMessage(nested_message,
+                                                        deep_field);
+    deep_message->GetReflection()->SetInt32(
+        deep_message, deep_field->message_type()->FindFieldByName("deep_col1"),
+        deep_int32_val);
+
     return message;
   }
 
@@ -484,8 +538,9 @@ TEST_F(MessageInputTest, GetColumnNames) {
       /*privacy_id=*/std::nullopt);
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetColumnNames(),
-            std::vector<std::string>({"col1", "col2", "col3", "col4", "col5",
-                                      "system_col1", "system_col2"}));
+            std::vector<std::string>(
+                {"col1", "col2", "col3", "col4", "col5", "nested__sub_col1",
+                 "nested__deep__deep_col1", "system_col1", "system_col2"}));
 }
 
 TEST_F(MessageInputTest, GetRowCount) {
@@ -508,13 +563,14 @@ TEST_F(MessageInputTest, AddColumn) {
   EXPECT_EQ(
       input->GetColumnNames(),
       std::vector<std::string>({"col1", "col2", "col3", "col4", "col5",
+                                "nested__sub_col1", "nested__deep__deep_col1",
                                 "system_col1", "system_col2", "new_col"}));
   absl::StatusOr<RowView> row0 = input->GetRow(0);
   ASSERT_THAT(row0, IsOk());
-  EXPECT_EQ(row0->GetValue<int64_t>(7), 100);
+  EXPECT_EQ(row0->GetValue<int64_t>(9), 100);
   absl::StatusOr<RowView> row1 = input->GetRow(1);
   ASSERT_THAT(row1, IsOk());
-  EXPECT_EQ(row1->GetValue<int64_t>(7), 200);
+  EXPECT_EQ(row1->GetValue<int64_t>(9), 200);
 }
 
 TEST_F(MessageInputTest, GetRow) {
@@ -524,14 +580,16 @@ TEST_F(MessageInputTest, GetRow) {
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
-  EXPECT_EQ(row->GetColumnCount(), 7);
+  EXPECT_EQ(row->GetColumnCount(), 9);
   EXPECT_EQ(row->GetValue<int32_t>(0), 1);
   EXPECT_EQ(row->GetValue<int64_t>(1), 2);
   EXPECT_EQ(row->GetValue<float>(2), 3.0f);
   EXPECT_EQ(row->GetValue<double>(3), 4.0);
   EXPECT_EQ(row->GetValue<absl::string_view>(4), "foo");
-  EXPECT_EQ(row->GetValue<int64_t>(5), 42);
-  EXPECT_EQ(row->GetValue<absl::string_view>(6), "baz");
+  EXPECT_EQ(row->GetValue<int32_t>(5), 100);
+  EXPECT_EQ(row->GetValue<int32_t>(6), 300);
+  EXPECT_EQ(row->GetValue<int64_t>(7), 42);
+  EXPECT_EQ(row->GetValue<absl::string_view>(8), "baz");
 
   absl::StatusOr<RowView> row1 = input->GetRow(1);
   ASSERT_THAT(row1, IsOk());
@@ -540,8 +598,10 @@ TEST_F(MessageInputTest, GetRow) {
   EXPECT_EQ(row1->GetValue<float>(2), 13.0f);
   EXPECT_EQ(row1->GetValue<double>(3), 14.0);
   EXPECT_EQ(row1->GetValue<absl::string_view>(4), "bar");
-  EXPECT_EQ(row1->GetValue<int64_t>(5), 24);
-  EXPECT_EQ(row1->GetValue<absl::string_view>(6), "qux");
+  EXPECT_EQ(row1->GetValue<int32_t>(5), 200);
+  EXPECT_EQ(row1->GetValue<int32_t>(6), 400);
+  EXPECT_EQ(row1->GetValue<int64_t>(7), 24);
+  EXPECT_EQ(row1->GetValue<absl::string_view>(8), "qux");
 }
 
 TEST_F(MessageInputTest, MoveToTensors) {
@@ -552,7 +612,7 @@ TEST_F(MessageInputTest, MoveToTensors) {
   absl::StatusOr<std::vector<Tensor>> tensors =
       std::move(*input).MoveToTensors();
   ASSERT_THAT(tensors, IsOk());
-  ASSERT_EQ(tensors->size(), 7);
+  ASSERT_EQ(tensors->size(), 9);
 
   EXPECT_EQ(tensors->at(0).name(), "col1");
   EXPECT_EQ(tensors->at(0).dtype(), DataType::DT_INT32);
@@ -581,15 +641,25 @@ TEST_F(MessageInputTest, MoveToTensors) {
   EXPECT_THAT(tensors->at(4).AsSpan<absl::string_view>(),
               testing::ElementsAre("foo", "bar"));
 
-  EXPECT_EQ(tensors->at(5).name(), "system_col1");
-  EXPECT_EQ(tensors->at(5).dtype(), DataType::DT_INT64);
+  EXPECT_EQ(tensors->at(5).name(), "nested__sub_col1");
+  EXPECT_EQ(tensors->at(5).dtype(), DataType::DT_INT32);
   EXPECT_EQ(tensors->at(5).shape(), TensorShape({2}));
-  EXPECT_THAT(tensors->at(5).AsSpan<int64_t>(), testing::ElementsAre(42, 24));
+  EXPECT_THAT(tensors->at(5).AsSpan<int32_t>(), testing::ElementsAre(100, 200));
 
-  EXPECT_EQ(tensors->at(6).name(), "system_col2");
-  EXPECT_EQ(tensors->at(6).dtype(), DataType::DT_STRING);
+  EXPECT_EQ(tensors->at(6).name(), "nested__deep__deep_col1");
+  EXPECT_EQ(tensors->at(6).dtype(), DataType::DT_INT32);
   EXPECT_EQ(tensors->at(6).shape(), TensorShape({2}));
-  EXPECT_THAT(tensors->at(6).AsSpan<absl::string_view>(),
+  EXPECT_THAT(tensors->at(6).AsSpan<int32_t>(), testing::ElementsAre(300, 400));
+
+  EXPECT_EQ(tensors->at(7).name(), "system_col1");
+  EXPECT_EQ(tensors->at(7).dtype(), DataType::DT_INT64);
+  EXPECT_EQ(tensors->at(7).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(7).AsSpan<int64_t>(), testing::ElementsAre(42, 24));
+
+  EXPECT_EQ(tensors->at(8).name(), "system_col2");
+  EXPECT_EQ(tensors->at(8).dtype(), DataType::DT_STRING);
+  EXPECT_EQ(tensors->at(8).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(8).AsSpan<absl::string_view>(),
               testing::ElementsAre("baz", "qux"));
 }
 }  // namespace

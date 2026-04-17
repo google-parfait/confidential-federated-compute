@@ -103,6 +103,41 @@ std::unique_ptr<TensorData> CreateVectorTensorData(
   return builder;
 }
 
+// Recursively flattens a nested protobuf schema into flat table columns.
+//
+// For each scalar field, produces a column name based on the traversed path
+// and pushes the sequence of FieldDescriptor pointers that can locate the
+// field value within messages into `field_paths`. This computation happens
+// once during table initialization, avoiding repeating path calculations per
+// row.
+void GetFlattenedSchema(const google::protobuf::Descriptor* descriptor,
+                        std::string prefix, FieldPath& current_path,
+                        std::vector<std::string>& column_names,
+                        FieldPathList& field_paths) {
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const google::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (field->is_repeated()) {
+      FCP_LOG(WARNING)
+          << "Repeated fields are not supported and will be skipped: "
+          << field->full_name();
+      continue;
+    }
+    current_path.push_back(field);
+    if (field->cpp_type() ==
+        google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      // Use double underscore separator to flatten nested fields to avoid SQL
+      // identifier quoting issues in SQLite.
+      GetFlattenedSchema(field->message_type(),
+                         absl::StrCat(prefix, field->name(), "__"),
+                         current_path, column_names, field_paths);
+    } else {
+      column_names.push_back(absl::StrCat(prefix, field->name()));
+      field_paths.push_back(current_path);
+    }
+    current_path.pop_back();
+  }
+}
+
 }  // namespace
 Input::Input(ContentsVariant contents,
              fcp::confidentialcompute::BlobHeader blob_header,
@@ -209,14 +244,15 @@ absl::StatusOr<Input> Input::CreateFromMessages(
                        ExtractPrivacyIdAndValidate(privacy_id));
   FCP_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
   std::vector<std::string> column_names;
-  for (int i = 0; i < messages[0]->GetDescriptor()->field_count(); ++i) {
-    column_names.push_back(
-        std::string(messages[0]->GetDescriptor()->field(i)->name()));
-  }
+  FieldPath current_path;
+  FieldPathList field_paths;
+  GetFlattenedSchema(messages[0]->GetDescriptor(), "", current_path,
+                     column_names, field_paths);
   for (const auto& system_column : system_columns) {
     column_names.push_back(system_column.name());
   }
-  return Input(MessageContents(std::move(messages), std::move(system_columns)),
+  return Input(MessageContents(std::move(messages), std::move(system_columns),
+                               std::move(field_paths)),
                std::move(blob_header), std::move(column_names),
                std::move(privacy_id_string));
 }
@@ -227,7 +263,7 @@ absl::StatusOr<RowView> Input::MessageContents::GetRow(
     return absl::InvalidArgumentError("Row index is out of bounds.");
   }
   return RowView::CreateFromMessage(messages_[row_index].get(), system_columns_,
-                                    row_index);
+                                    row_index, &field_paths_);
 }
 
 absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
@@ -239,15 +275,17 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
   // The contents of the Message must be copied due to the constraints of the
   // reflection API.
   size_t num_rows = messages_.size();
-  size_t num_message_columns = messages_[0]->GetDescriptor()->field_count();
   std::vector<RowView> row_views;
   row_views.reserve(num_rows);
   for (size_t i = 0; i < num_rows; ++i) {
     FCP_ASSIGN_OR_RETURN(
         RowView row_view,
-        RowView::CreateFromMessage(messages_[i].get(), system_columns_, i));
+        RowView::CreateFromMessage(messages_[i].get(), system_columns_, i,
+                                   &field_paths_));
     row_views.push_back(row_view);
   }
+  size_t num_message_columns =
+      row_views[0].GetColumnCount() - system_columns_.size();
 
   std::vector<Tensor> tensors;
   tensors.reserve(row_views[0].GetColumnCount());
