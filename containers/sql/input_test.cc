@@ -662,5 +662,77 @@ TEST_F(MessageInputTest, MoveToTensors) {
   EXPECT_THAT(tensors->at(8).AsSpan<absl::string_view>(),
               testing::ElementsAre("baz", "qux"));
 }
+TEST(IsolatedInputTest, EnumFieldGeneratesDuplicateStringColumn) {
+  const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+    name: "enum_test.proto"
+    package: "confidential_federated_compute.sql"
+    message_type {
+      name: "EnumMessage"
+      enum_type {
+        name: "TestEnum"
+        value { name: "UNKNOWN" number: 0 }
+        value { name: "TEST_VAL" number: 88 }
+        value { name: "TEST_VAL2" number: 99 }
+      }
+      field {
+        name: "enum_col"
+        number: 1
+        type: TYPE_ENUM
+        type_name: ".confidential_federated_compute.sql.EnumMessage.TestEnum"
+        label: LABEL_OPTIONAL
+      }
+    }
+  )pb");
+
+  DescriptorPool pool;
+  const google::protobuf::FileDescriptor* file_descriptor =
+      pool.BuildFile(file_proto);
+  ASSERT_NE(file_descriptor, nullptr);
+
+  const Descriptor* descriptor =
+      file_descriptor->FindMessageTypeByName("EnumMessage");
+  ASSERT_NE(descriptor, nullptr);
+
+  DynamicMessageFactory factory(&pool);
+  std::unique_ptr<Message> message =
+      std::unique_ptr<Message>(factory.GetPrototype(descriptor)->New());
+
+  const Reflection* reflection = message->GetReflection();
+  const google::protobuf::EnumDescriptor* enum_desc =
+      descriptor->FindEnumTypeByName("TestEnum");
+  reflection->SetEnum(message.get(), descriptor->FindFieldByName("enum_col"),
+                      enum_desc->FindValueByNumber(88));
+
+  std::unique_ptr<Message> message2 =
+      std::unique_ptr<Message>(factory.GetPrototype(descriptor)->New());
+  reflection->SetEnum(message2.get(), descriptor->FindFieldByName("enum_col"),
+                      enum_desc->FindValueByNumber(99));
+
+  std::vector<std::unique_ptr<Message>> messages;
+  messages.push_back(std::move(message));
+  messages.push_back(std::move(message2));
+
+  fcp::confidentialcompute::BlobHeader blob_header;
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages), {}, blob_header, /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>({"enum_col", "enum_col_as_str"}));
+
+  auto tensors = std::move(*input).MoveToTensors();
+  ASSERT_THAT(tensors, IsOk());
+  ASSERT_EQ(tensors->size(), 2);
+
+  EXPECT_EQ(tensors->at(0).name(), "enum_col");
+  EXPECT_EQ(tensors->at(0).dtype(), DataType::DT_INT32);
+  EXPECT_THAT(tensors->at(0).AsSpan<int32_t>(), testing::ElementsAre(88, 99));
+
+  EXPECT_EQ(tensors->at(1).name(), "enum_col_as_str");
+  EXPECT_EQ(tensors->at(1).dtype(), DataType::DT_STRING);
+  EXPECT_THAT(tensors->at(1).AsSpan<absl::string_view>(),
+              testing::ElementsAre("TEST_VAL", "TEST_VAL2"));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::sql

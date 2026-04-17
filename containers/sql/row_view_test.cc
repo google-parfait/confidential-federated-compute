@@ -237,6 +237,7 @@ TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("baz"));
   EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(123));
 }
@@ -251,6 +252,7 @@ TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("qux"));
   EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(456));
 }

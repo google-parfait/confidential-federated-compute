@@ -249,6 +249,12 @@ inline absl::string_view
 RowView::MessageRowView::GetMessageValue<absl::string_view>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
+  const google::protobuf::Reflection* reflection = msg.GetReflection();
+  // This is a special case placed before target checks to return enum values
+  // directly via reflection, bypassing following logic that expects strings.
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+    return reflection->GetEnum(msg, field)->name();
+  }
   FCP_CHECK(field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_STRING)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
@@ -261,7 +267,7 @@ RowView::MessageRowView::GetMessageValue<absl::string_view>(
   // that ctype == STRING, `unused` won't be used and GetStringReference
   // will return a reference to the underlying field.
   std::string unused;
-  return msg.GetReflection()->GetStringReference(msg, field, &unused);
+  return reflection->GetStringReference(msg, field, &unused);
 }
 
 template <typename T>
