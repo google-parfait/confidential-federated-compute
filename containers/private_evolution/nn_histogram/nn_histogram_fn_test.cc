@@ -61,7 +61,8 @@ class MockContext : public confidential_federated_compute::Session::Context {
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
               (override));
-  MOCK_METHOD(bool, EmitError, (absl::Status), (override));
+  MOCK_METHOD(confidential_federated_compute::Counters&, GetCounters, (),
+              (override));
 };
 
 Any CreateValidInitConfig() {
@@ -168,9 +169,7 @@ TEST(NNHistogramFnFactoryTest, ReadRecordFailed) {
 
 TEST_F(NNHistogramFnTest, InvalidInputData) {
   auto result = fn_->Write(WriteRequest(), "Invalid_input_data", context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, InvalidMissingRequiredTensor) {
@@ -182,9 +181,7 @@ TEST_F(NNHistogramFnTest, InvalidMissingRequiredTensor) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kNotFound));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(NNHistogramFnTest, WrongInputTensorType) {
@@ -196,9 +193,7 @@ TEST_F(NNHistogramFnTest, WrongInputTensorType) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, WrongInputTensorDimension) {
@@ -215,9 +210,7 @@ TEST_F(NNHistogramFnTest, WrongInputTensorDimension) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, MismatchEmbeddingDimension) {
@@ -233,9 +226,7 @@ TEST_F(NNHistogramFnTest, MismatchEmbeddingDimension) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, MissingInputBlobId) {
@@ -251,9 +242,7 @@ TEST_F(NNHistogramFnTest, MissingInputBlobId) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, Success) {
@@ -306,9 +295,7 @@ TEST_F(NNHistogramFnTest, EmitFailed) {
   EXPECT_CALL(context_, EmitEncrypted(_, _)).WillOnce(Return(false));
 
   auto result = fn_->Write(request, std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NNHistogramFnTest, CalculateNearestNeighborFailed) {
@@ -341,9 +328,7 @@ TEST_F(NNHistogramFnTest, CalculateNearestNeighborFailed) {
   ASSERT_THAT(ckpt, IsOk());
 
   auto result = (*fn)->Write(request, std::string(*ckpt), context_);
-  ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(result->status().code(),
-              static_cast<int32_t>(absl::StatusCode::kInternal));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // anonymous namespace

@@ -21,30 +21,36 @@ module(
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # Keep sorted
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "boringssl", version = "0.20250514.0")
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-fbSviH6hWRuvo6EsEFq9iJFPkAgbhDToaBWzPrt5+nc=",
-    strip_prefix = "confidential-federated-compute-1b10ca792af509f4064e3a552b982945983b3de8",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/1b10ca792af509f4064e3a552b982945983b3de8.tar.gz"],
+    integrity = "sha256-za3cvTnE2ANuqaMIwDwIMp/luixj4/J93zoorEjvM7g=",
+    strip_prefix = "confidential-federated-compute-dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6.tar.gz"],
 )
 
-bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
+bazel_dep(name = "federated-compute")
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-ebc/RIdgTEG5dQJKjyM8ACFLJaLgeVUeD9tEK969JC0=",
+    strip_prefix = "federated-compute-86887cbc804aef55430bff26c05e458eb4a83386",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/86887cbc804aef55430bff26c05e458eb4a83386.tar.gz"],
+)
+
+bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
-bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.8")
-bazel_dep(name = "rules_distroless", version = "0.5.1")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_oci", version = "2.2.6")
-bazel_dep(name = "rules_pkg", version = "1.1.0")
-bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "rules_python", version = "1.7.0")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_python", version = "1.5.4")
+bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 bazel_dep(name = "riegeli")
 archive_override(
     module_name = "riegeli",
@@ -56,13 +62,13 @@ archive_override(
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
-    integrity = "sha256-ayZil41/X2ieLpdpJNvuHdRyeWNqVPtoEMCrDL23YjU=",
-    strip_prefix = "oak-7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a",
-    url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
+    integrity = "sha256-jjUzyg3EQw0wNllRRmtRuZTAlXPllSmkKJHRD13jEXM=",
+    strip_prefix = "oak-dd8e629ee6e198153d86fec3f55645a8330f6b66",
+    urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
 
-cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
-use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "org_tensorflow_federated")
+fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
 
 http_archive(
     name = "sysroot",
@@ -84,12 +90,3 @@ llvm.sysroot(
 use_repo(llvm, "llvm_toolchain")
 
 register_toolchains("@llvm_toolchain//:all")
-
-oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
-oci.pull(
-    name = "distroless_cc_debian12_base",
-    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
-    image = "gcr.io/distroless/cc-debian12",
-    platforms = ["linux/amd64"],
-)
-use_repo(oci, "distroless_cc_debian12_base")

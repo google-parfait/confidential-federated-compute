@@ -15,10 +15,9 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "containers/fns/fn.h"
+#include "containers/fns/do_fn.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/base/monitoring.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/nn_histogram_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "google/protobuf/any.h"
@@ -29,18 +28,12 @@
 namespace confidential_federated_compute::nn_histogram {
 namespace {
 
+using ::confidential_federated_compute::fns::DoFn;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
-using ::confidential_federated_compute::fns::KeyValue;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
-using ::fcp::confidentialcompute::BlobHeader;
-using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::CommitRequest;
-using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::NNHistogramContainerInitializeConfiguration;
-using ::fcp::confidentialcompute::WriteFinishedResponse;
-using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_FLOAT;
 using ::tensorflow_federated::aggregation::
@@ -49,38 +42,16 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 
-std::string ExtractBlobId(const BlobMetadata& blob_metadata) {
-  switch (blob_metadata.encryption_metadata_case()) {
-    case fcp::confidentialcompute::BlobMetadata::kUnencrypted:
-      return blob_metadata.unencrypted().blob_id();
-    case fcp::confidentialcompute::BlobMetadata::kHpkePlusAeadData:
-      return blob_metadata.hpke_plus_aead_data().blob_id();
-    default:
-      return "";
-  }
-}
-
-// TODO: Migrate to DoFn once a new CFC release is cut.
-class NNHistogramFn : public Fn {
+class NNHistogramFn : public DoFn {
  public:
   explicit NNHistogramFn(
       const std::vector<Embedding>& synthetic_data_embeddings,
       std::shared_ptr<NearestNeighborFn> nn_fn)
       : synthetic_data_embeddings_(synthetic_data_embeddings), nn_fn_(nn_fn) {}
 
-  absl::StatusOr<WriteFinishedResponse> Write(WriteRequest write_request,
-                                              std::string unencrypted_data,
-                                              Context& context) override final;
-
-  // No-op.
-  absl::StatusOr<CommitResponse> Commit(CommitRequest commit_request,
-                                        Context& context) override final {
-    return CommitResponse();
-  }
+  absl::Status Do(KV input, Context& context) override;
 
  private:
-  absl::Status WriteInternal(WriteRequest write_request,
-                             std::string unencrypted_data, Context& context);
   const std::vector<Embedding>& synthetic_data_embeddings_;
   std::shared_ptr<NearestNeighborFn> nn_fn_;
 };
@@ -101,13 +72,10 @@ class NNHistogramFnFactory : public FnFactory {
   std::shared_ptr<NearestNeighborFn> nn_fn_;
 };
 
-absl::Status NNHistogramFn::WriteInternal(WriteRequest write_request,
-                                          std::string unencrypted_data,
-                                          Context& context) {
+absl::Status NNHistogramFn::Do(KV input, Context& context) {
   FederatedComputeCheckpointParserFactory parser_factory;
   FCP_ASSIGN_OR_RETURN(
-      auto parser,
-      parser_factory.Create(absl::Cord(std::move(unencrypted_data))));
+      auto parser, parser_factory.Create(absl::Cord(std::move(input.data))));
   FCP_ASSIGN_OR_RETURN(auto tensor,
                        parser->GetTensor(std::string(kDataTensorName)));
   if (tensor.dtype() != DT_FLOAT) {
@@ -136,34 +104,18 @@ absl::Status NNHistogramFn::WriteInternal(WriteRequest write_request,
   FCP_RETURN_IF_ERROR(
       builder->Add(std::string(kIndexTensorName), std::move(index_t)));
   FCP_ASSIGN_OR_RETURN(auto checkpoint, builder->Build());
-  std::string blob_id = ExtractBlobId(write_request.first_request_metadata());
-  if (blob_id.empty()) {
+
+  if (input.blob_id.empty()) {
     return absl::InvalidArgumentError("Missing input blob id.");
   }
 
   if (!context.EmitEncrypted(
           /*reencryption_key_index=*/0,
-          Session::KV(std::move(write_request.first_request_configuration()),
-                      std::string(std::move(checkpoint)),
-                      std::move(blob_id)))) {
+          Session::KV(std::move(input.key), std::string(std::move(checkpoint)),
+                      std::move(input.blob_id)))) {
     return absl::InvalidArgumentError("Emit failed.");
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<WriteFinishedResponse> NNHistogramFn::Write(
-    WriteRequest write_request, std::string unencrypted_data,
-    Context& context) {
-  int64_t unencrypted_data_size = unencrypted_data.size();
-  absl::Status status = WriteInternal(std::move(write_request),
-                                      std::move(unencrypted_data), context);
-  if (!status.ok()) {
-    return ToWriteFinishedResponse(status);
-  }
-
-  WriteFinishedResponse response;
-  response.set_committed_size_bytes(unencrypted_data_size);
-  return response;
 }
 
 }  // anonymous namespace

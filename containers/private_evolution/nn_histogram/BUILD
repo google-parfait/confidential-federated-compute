@@ -13,12 +13,10 @@
 # limitations under the License.
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@oak//oak_containers/app_base:defs.bzl", "app_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 platform(
     name = "remote_platform",
@@ -45,7 +43,6 @@ cc_library(
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers/fns:fns",
         "@federated-compute//fcp/base",
-        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:nn_histogram_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
@@ -117,22 +114,9 @@ cc_binary(
     ],
 )
 
-pkg_tar(
-    name = "tar",
-    srcs = [":main"],
-    include_runfiles = True,
-)
-
-oci_image(
-    name = "oci_image",
-    base = "@distroless_cc_debian12_base",
-    entrypoint = ["/main"],
-    tars = [":tar"],
-)
-
-oci_runtime_bundle(
-    name = "oci_runtime_bundle",
-    image = ":oci_image",
+app_bundle(
+    name = "app_bundle",
+    binary = ":main",
     visibility = ["//:__pkg__"],
 )
 
@@ -140,7 +124,7 @@ oci_runtime_bundle(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    "//:oci_runtime_bundle.tar": "nn_histogram/container.tar",
+    "//:app_bundle": "nn_histogram/container.tar",
     # keep-sorted end
 }
 
