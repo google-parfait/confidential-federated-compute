@@ -38,7 +38,7 @@ def run_program(
     save_recovery_info_fn: Callable[
         [bytes, str, Sequence[tuple[bytes, str]]], None
     ],
-    restore_recovery_info_fn: Callable[[str], bytes],
+    restore_recovery_info_fn: Callable[[str], bytes | None],
 ):
   """Executes a federated program.
 
