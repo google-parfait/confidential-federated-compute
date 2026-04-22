@@ -1,8 +1,7 @@
 diff --git containers/BUILD containers/BUILD
-index 30962fd..e083ff4 100644
 --- containers/BUILD
 +++ containers/BUILD
-@@ -68,7 +68,7 @@ cc_test(
+@@ -68,7 +68,7 @@
          "@com_github_grpc_grpc//:grpc++",
          "@com_google_absl//absl/status:status_matchers",
          "@com_google_absl//absl/time",
@@ -11,7 +10,7 @@ index 30962fd..e083ff4 100644
          "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
          "@googletest//:gtest",
          "@googletest//:gtest_main",
-@@ -138,8 +138,7 @@ cc_test(
+@@ -138,8 +138,7 @@
          "@com_google_absl//absl/log:check",
          "@com_google_absl//absl/status",
          "@com_google_absl//absl/status:status_matchers",
@@ -21,7 +20,7 @@ index 30962fd..e083ff4 100644
          "@federated-compute//fcp/base",
          "@federated-compute//fcp/base:compression",
          "@federated-compute//fcp/confidentialcompute:cose",
-@@ -205,8 +204,7 @@ cc_library(
+@@ -206,8 +205,7 @@
          "@com_google_absl//absl/status:statusor",
          "@com_google_absl//absl/strings",
          "@com_google_absl//absl/synchronization",
@@ -31,7 +30,7 @@ index 30962fd..e083ff4 100644
          "@federated-compute//fcp/base",
          "@federated-compute//fcp/base:status_converters",
          "@federated-compute//fcp/confidentialcompute:cose",
-@@ -235,8 +233,7 @@ cc_test(
+@@ -237,8 +235,7 @@
          "@com_google_absl//absl/log:check",
          "@com_google_absl//absl/status:status_matchers",
          "@com_google_absl//absl/strings:str_format",
@@ -42,10 +41,9 @@ index 30962fd..e083ff4 100644
          "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
          "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
 diff --git containers/kms_encryptor.cc containers/kms_encryptor.cc
-index 6c3c832..179005e 100644
 --- containers/kms_encryptor.cc
 +++ containers/kms_encryptor.cc
-@@ -48,7 +48,7 @@ absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
+@@ -48,7 +48,7 @@
    FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
  
    BlobHeader header;
@@ -54,7 +52,7 @@ index 6c3c832..179005e 100644
    header.set_key_id(okp_key.key_id);
    header.set_access_policy_sha256(reencryption_policy_hash_);
    return header.SerializeAsString();
-@@ -63,14 +63,15 @@ BlobMetadata KmsEncryptor::CreateMetadata(
+@@ -63,14 +63,15 @@
  
    BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
        metadata.mutable_hpke_plus_aead_data();
@@ -74,36 +72,97 @@ index 6c3c832..179005e 100644
  }
  
 diff --git containers/confidential_transform_server_base.cc containers/confidential_transform_server_base.cc
-index 0db1f5d..4aaa79b 100644
 --- containers/confidential_transform_server_base.cc
 +++ containers/confidential_transform_server_base.cc
-@@ -109,9 +109,9 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
-   if (!mutable_read->finish_read()) {
-     // Chunked write implemented by splitting the provided
-     // ReadResponse.
--    absl::Cord data = mutable_read->data();
-+    absl::Cord data = absl::Cord(mutable_read->data());
-     do {
--      mutable_read->set_data(data.Subcord(0, chunk_size_));
-+      mutable_read->set_data(std::string(data.Subcord(0, chunk_size_)));
-       data.RemovePrefix(chunk_size_);
-       if (!stream_->Write(response)) {
-         return false;
-@@ -120,7 +120,7 @@ bool SessionContextImpl::Emit(ReadResponse read_response) {
-       mutable_read->clear_first_response_metadata();
-     } while (data.size() > chunk_size_);
+@@ -196,7 +196,7 @@
  
--    mutable_read->set_data(std::move(data));
-+    mutable_read->set_data(std::string(data));
-     mutable_read->set_finish_read(true);
+   // TODO: Avoid flattening the cord, which requires the downstream
+   // code to parse directly from the chunked cord.
+-  absl::Cord data = request.data();
++  absl::Cord data(std::string(request.data()));
+   // Clear the memory used by the original encrypted data.
+   request.set_data("");
+ 
+@@ -312,7 +312,7 @@
    }
  
-@@ -445,7 +445,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
-           // This is a write request for a new blob i.e. the first chunk of a
-           // multi-chunk blob or a small blob consisting of a single chunk of
-           // data.
--          absl::Cord data = write_request.data();
-+          absl::Cord data = absl::Cord(write_request.data());
-           write_request.clear_data();
-           write_state = WriteState{.first_request = std::move(write_request),
-                                    .data = data};
+   {
+-    absl::MutexLock l(mutex_);
++    absl::MutexLock l(&mutex_);
+     if (decryptor_ != std::nullopt) {
+       return absl::FailedPreconditionError(
+           "StreamInitialize can only be called once.");
+@@ -348,7 +348,7 @@
+ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
+   Decryptor* decryptor;
+   {
+-    absl::MutexLock l(mutex_);
++    absl::MutexLock l(&mutex_);
+     if (decryptor_ == std::nullopt) {
+       return absl::FailedPreconditionError(
+           "Initialize must be called before Session.");
+@@ -471,7 +471,7 @@
+     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
+   SessionTracker* session_tracker;
+   {
+-    absl::MutexLock l(mutex_);
++    absl::MutexLock l(&mutex_);
+     if (session_tracker_ == std::nullopt) {
+       return ToGrpcStatus(absl::FailedPreconditionError(
+           "StreamInitialize must be called before Session."));
+@@ -502,7 +502,7 @@
+ }
+ 
+ absl::StatusOr<Decryptor*> ConfidentialTransformBase::GetDecryptor() {
+-  absl::MutexLock l(mutex_);
++  absl::MutexLock l(&mutex_);
+   if (decryptor_ == std::nullopt) {
+     return absl::FailedPreconditionError(
+         "Initialize must be called before GetDecryptor.");
+diff --git containers/session_stream.h containers/session_stream.h
+--- containers/session_stream.h
++++ containers/session_stream.h
+@@ -22,6 +22,7 @@
+ #include <memory>
+ 
+ #include "absl/status/status.h"
++#include "absl/status/statusor.h"
+ #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+ #include "grpcpp/support/sync_stream.h"
+ 
+diff --git containers/session_stream.cc containers/session_stream.cc
+--- containers/session_stream.cc
++++ containers/session_stream.cc
+@@ -67,9 +67,9 @@
+         return FailedContinuationError();
+       }
+ 
+-      absl::Cord data = compatible_first_request->data();
+-      data.Append(request->data());
+-      compatible_first_request->set_data(data);
++      absl::Cord data(std::string(compatible_first_request->data()));
++      data.Append(absl::string_view(request->data()));
++      compatible_first_request->set_data(std::string(data.Flatten()));
+     } else {
+       // This is a new blob i.e. the first chunk of a multi-chunk blob or a
+       // small blob consisting of a single chunk of data.
+@@ -141,16 +141,16 @@
+     ReadResponse* mutable_read = response.mutable_read();
+     mutable_read->set_finish_read(mutable_read->data().size() <= chunk_size_);
+     if (!mutable_read->finish_read()) {
+-      absl::Cord data = mutable_read->data();
++      absl::Cord data(std::string(mutable_read->data()));
+       do {
+-        mutable_read->set_data(data.Subcord(0, chunk_size_));
++        mutable_read->set_data(std::string(data.Subcord(0, chunk_size_).Flatten()));
+         data.RemovePrefix(chunk_size_);
+         FCP_RETURN_IF_ERROR(WriteImpl(response));
+         mutable_read->clear_first_response_configuration();
+         mutable_read->clear_first_response_metadata();
+       } while (data.size() > chunk_size_);
+ 
+-      mutable_read->set_data(std::move(data));
++      mutable_read->set_data(std::string(data.Flatten()));
+       mutable_read->set_finish_read(true);
+     }
+   }
