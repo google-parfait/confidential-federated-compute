@@ -33,31 +33,15 @@
 namespace confidential_federated_compute::program_executor_tee {
 namespace {
 
-using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::testing::NiceMock;
-using ::testing::Return;
-using ::testing::Sequence;
 
 template <typename T>
 using Pair = typename tensorflow_federated::aggregation::AggVectorIterator<
     T>::IndexValuePair;
-
-class MockPrivateState : public PrivateState {
- public:
-  MockPrivateState()
-      : PrivateState(/*initial_state=*/std::nullopt,
-                     /*next_update_state=*/BudgetState{}) {}
-  MOCK_METHOD(void, SetReleaseInitialState, (std::string initial_state),
-              (override));
-  MOCK_METHOD(std::optional<std::string>, GetReleaseInitialState, (),
-              (override, const));
-  MOCK_METHOD(std::string, GetReleaseUpdateState, (), (override));
-};
 
 class DataParserTest : public ::testing::Test {
  public:
@@ -83,7 +67,7 @@ class DataParserTest : public ::testing::Test {
         fake_data_read_write_service_->GetInputPublicPrivateKeyPair().second;
     auto decryption_keys = std::vector<absl::string_view>(
         {input_private_key, recovery_info_public_private_key_pair_.second});
-    auto reencryption_keys = std::vector<std::string>{
+    reencryption_keys_ = std::vector<std::string>{
         absl::Base64Escape(recovery_info_public_private_key_pair_.first),
         absl::Base64Escape(
             fake_data_read_write_service_->GetResultPublicPrivateKeyPair()
@@ -92,13 +76,22 @@ class DataParserTest : public ::testing::Test {
     input_blob_decryptor_ =
         std::make_unique<confidential_federated_compute::Decryptor>(
             std::move(decryption_keys));
+  }
+
+  // Create a DataParser with the given initial PrivateState.
+  void InitDataParser(std::optional<std::string> initial_state = std::nullopt) {
+    auto private_state_or =
+        PrivateState::CreatePrivateState(std::move(initial_state));
+    CHECK_OK(private_state_or);
+    private_state_ = std::move(*private_state_or);
 
     data_parser_ = std::make_unique<DataParser>(
         input_blob_decryptor_.get(), data_read_write_server_address_,
-        std::move(reencryption_keys), absl::Base64Escape(kAccessPolicyHash),
-        fake_data_read_write_service_->GetKmsPublicKey(), kTestInvocationId,
-        &mock_private_state_,
-        fake_data_read_write_service_->GetOakSigningKeyHandle(),
+        reencryption_keys_, absl::Base64Escape(kAccessPolicyHash),
+        absl::Base64Escape(fake_data_read_write_service_->GetKmsPublicKey()),
+        kTestInvocationId, private_state_.get(),
+        std::shared_ptr<oak::crypto::SigningKeyHandle>(
+            fake_data_read_write_service_->GetOakSigningKeyHandle()),
         std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}));
   }
 
@@ -109,15 +102,17 @@ class DataParserTest : public ::testing::Test {
   std::unique_ptr<FakeDataReadWriteService> fake_data_read_write_service_;
   std::unique_ptr<Server> fake_data_read_write_server_;
 
-  MockPrivateState mock_private_state_;
+  std::unique_ptr<PrivateState> private_state_;
   std::unique_ptr<DataParser> data_parser_;
   std::unique_ptr<confidential_federated_compute::Decryptor>
       input_blob_decryptor_;
 
+  std::vector<std::string> reencryption_keys_;
   std::pair<std::string, std::string> recovery_info_public_private_key_pair_;
 };
 
 TEST_F(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
+  InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string uri_1 = "test_uri_1";
   std::string uri_2 = "test_uri_2";
@@ -155,6 +150,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
 }
 
 TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
+  InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
@@ -170,6 +166,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
 }
 
 TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
+  InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string checkpoint = BuildClientCheckpointFromStrings(
       {"serialized_example_1", "serialized_example_2"}, tensor_name);
@@ -186,6 +183,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
 }
 
 TEST_F(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
+  InitDataParser();
   std::string message = "not a fc checkpoint";
   std::string uri = "test_uri";
   CHECK_OK(
@@ -198,6 +196,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
 }
 
 TEST_F(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
+  InitDataParser();
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, "tensor_name");
   std::string uri = "test_uri";
@@ -211,6 +210,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
 }
 
 TEST_F(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
+  InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
@@ -239,28 +239,7 @@ TEST_F(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
 }
 
 TEST_F(DataParserTest, ReleaseUnencrypted) {
-  std::string kStateAfterFirstRelease = "state_after_first_release";
-  std::string kStateAfterSecondRelease = "state_after_second_release";
-
-  Sequence s;
-  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterFirstRelease));
-  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-      .InSequence(s)
-      .WillOnce(Return(std::nullopt));
-  EXPECT_CALL(mock_private_state_,
-              SetReleaseInitialState(kStateAfterFirstRelease))
-      .InSequence(s);
-  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterSecondRelease));
-  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterFirstRelease));
-  EXPECT_CALL(mock_private_state_,
-              SetReleaseInitialState(kStateAfterSecondRelease))
-      .InSequence(s);
+  InitDataParser();
 
   ASSERT_TRUE(data_parser_->ReleaseUnencrypted("abc", "my_key_1").ok());
   ASSERT_TRUE(data_parser_->ReleaseUnencrypted("def", "my_key_2").ok());
@@ -270,51 +249,54 @@ TEST_F(DataParserTest, ReleaseUnencrypted) {
   EXPECT_EQ(released_data["my_key_1"], "abc");
   EXPECT_EQ(released_data["my_key_2"], "def");
 
+  // Verify the state transitions: the first release should have no initial
+  // state and a counter of 1, the second should use the first's state as its
+  // initial state and have a counter of 2.
   std::map<std::string, std::pair<std::optional<std::optional<std::string>>,
                                   std::optional<std::string>>>
       released_state_changes =
           fake_data_read_write_service_->GetReleasedStateChanges();
   ASSERT_EQ(released_state_changes.size(), 2);
+
   auto state_change_1 = released_state_changes["my_key_1"];
   ASSERT_EQ(state_change_1.first.value(), std::nullopt);
-  ASSERT_EQ(state_change_1.second.value(), kStateAfterFirstRelease);
+  BudgetState dst_state_1;
+  ASSERT_TRUE(dst_state_1.ParseFromString(state_change_1.second.value()));
+  EXPECT_EQ(dst_state_1.counter(), 1);
+
   auto state_change_2 = released_state_changes["my_key_2"];
-  ASSERT_EQ(state_change_2.first.value().value(), kStateAfterFirstRelease);
-  ASSERT_EQ(state_change_2.second.value(), kStateAfterSecondRelease);
+  BudgetState src_state_2;
+  ASSERT_TRUE(
+      src_state_2.ParseFromString(state_change_2.first.value().value()));
+  EXPECT_EQ(src_state_2.counter(), 1);
+  BudgetState dst_state_2;
+  ASSERT_TRUE(dst_state_2.ParseFromString(state_change_2.second.value()));
+  EXPECT_EQ(dst_state_2.counter(), 2);
 }
 
-TEST_F(DataParserTest, SaveAndResolveRecoveryInfo) {
-  std::string kStateAfterFirstRelease = "state_after_first_release";
-  std::string kStateAfterSecondRelease = "state_after_second_release";
+TEST_F(DataParserTest, ReleaseUnencrypted_UnsupportedAfterSaveRecovery) {
+  InitDataParser();
 
-  Sequence s;
-  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterFirstRelease));
-  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-      .InSequence(s)
-      .WillOnce(Return(std::nullopt));
-  EXPECT_CALL(mock_private_state_,
-              SetReleaseInitialState(kStateAfterFirstRelease))
-      .InSequence(s);
-  EXPECT_CALL(mock_private_state_, GetReleaseUpdateState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterSecondRelease));
-  EXPECT_CALL(mock_private_state_, GetReleaseInitialState())
-      .InSequence(s)
-      .WillOnce(Return(kStateAfterFirstRelease));
-  EXPECT_CALL(mock_private_state_,
-              SetReleaseInitialState(kStateAfterSecondRelease))
-      .InSequence(s);
+  // Save recovery info first. This sets HasPriorSaveRecovery to true.
+  ASSERT_TRUE(
+      data_parser_->SaveRecoveryInfo("recovery_info_value", "recovery_key", {})
+          .ok());
 
-  RecoveryInfo recovery_info_proto;
-  recovery_info_proto.set_value("recovery_info_value");
-  recovery_info_proto.set_committed_blob_id("committed_blob_id");
-  std::string serialized_recovery_info =
-      recovery_info_proto.SerializeAsString();
+  // Now calling ReleaseUnencrypted should fail.
+  auto status = data_parser_->ReleaseUnencrypted("abc", "my_key_1");
+  ASSERT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Releasing unencrypted information without associated recovery"));
+}
+
+TEST_F(DataParserTest, SaveAndRestoreRecoveryInfo) {
+  InitDataParser();
 
   ASSERT_TRUE(data_parser_
-                  ->SaveRecoveryInfo(serialized_recovery_info, "recovery_key",
+                  ->SaveRecoveryInfo("recovery_info_value", "recovery_key",
                                      {{"abc", "my_key_1"}, {"def", "my_key_2"}})
                   .ok());
 
@@ -327,6 +309,38 @@ TEST_F(DataParserTest, SaveAndResolveRecoveryInfo) {
   EXPECT_EQ(released_data.size(), 2);
   EXPECT_EQ(released_data["my_key_1"], "abc");
   EXPECT_EQ(released_data["my_key_2"], "def");
+}
+
+TEST_F(DataParserTest, RestoreRecoveryInfo_NotAllowed) {
+  // Initialize with a BudgetState that has a recovery_blob_id set.
+  // SaveRecoveryInfo will update it to a new blob id. Then we simulate a
+  // second SaveRecoveryInfo with a different blob id. Restoring the first
+  // recovery info should fail because AllowRecovery will reject the stale
+  // blob id.
+  BudgetState initial_state;
+  initial_state.set_recovery_blob_id("old_blob_id");
+  InitDataParser(initial_state.SerializeAsString());
+
+  // Save first recovery info.
+  ASSERT_TRUE(
+      data_parser_->SaveRecoveryInfo("first_value", "recovery_key_1", {}).ok());
+
+  // Save second recovery info, which updates the recovery blob id again.
+  // This also releases unencrypted data, which commits the state with the
+  // first recovery info's blob id.
+  ASSERT_TRUE(data_parser_
+                  ->SaveRecoveryInfo("second_value", "recovery_key_2",
+                                     {{"data", "release_key"}})
+                  .ok());
+
+  // Restoring the first recovery info should fail: the private state's
+  // recovery_blob_id was updated to the second save's blob id, which won't
+  // match the first save's blob id or its committed_blob_id.
+  auto recovery_info = data_parser_->RestoreRecoveryInfo("recovery_key_1");
+  ASSERT_FALSE(recovery_info.ok());
+  EXPECT_EQ(recovery_info.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(recovery_info.status().message(),
+              HasSubstr("does not match the expected state for recovery"));
 }
 
 }  // namespace

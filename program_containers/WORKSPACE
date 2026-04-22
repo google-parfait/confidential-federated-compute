@@ -46,13 +46,13 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute",
-    integrity = "sha256-lMOjJOvADvYz/UGRL3BPuwmffH5LvyBuu4jSJTh+3Ko=",
+    integrity = "sha256-za3cvTnE2ANuqaMIwDwIMp/luixj4/J93zoorEjvM7g=",
     patches = [
-        "//third_party/confidential_federated_compute:protobuf.patch",
         "//third_party/confidential_federated_compute:visibility.patch",
+        "//third_party/confidential_federated_compute:protobuf.patch",
     ],
-    strip_prefix = "confidential-federated-compute-199846cdd20b731a294886492cb9bce6a1e0fac4",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/199846cdd20b731a294886492cb9bce6a1e0fac4.tar.gz",
+    strip_prefix = "confidential-federated-compute-dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6.tar.gz",
 )
 
 http_archive(

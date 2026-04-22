@@ -28,7 +28,7 @@ constexpr size_t kBlobIdSize = 16;
 
 absl::Status CreateWriteRequestForEncryptedValue(
     fcp::confidentialcompute::outgoing::WriteRequest* write_request,
-    oak::crypto::SigningKeyHandle& signing_key,
+    std::string* blob_id, oak::crypto::SigningKeyHandle& signing_key,
     absl::string_view encryption_key, std::string key, std::string data,
     std::string access_policy_hash);
 

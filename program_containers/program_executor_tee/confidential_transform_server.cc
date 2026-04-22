@@ -107,9 +107,12 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
              }
            })
       .def("restore_recovery_info",
-           [](DataParser& self, std::string& recovery_key) {
+           [](DataParser& self, std::string& recovery_key) -> pybind11::object {
              auto result = self.RestoreRecoveryInfo(recovery_key);
              if (!result.ok()) {
+               if (absl::IsNotFound(result.status())) {
+                 return pybind11::none();
+               }
                throw std::runtime_error("Failed to restore recovery info: " +
                                         std::string(result.status().message()));
              }
@@ -175,8 +178,8 @@ ProgramExecutorTeeSession::Finalize(
                 blob_decryptor_, initialize_config_.outgoing_server_address(),
                 escaped_reencryption_keys,
                 absl::Base64Escape(reencryption_policy_hash_),
-                /*kms_public_key=*/"", /*invocation_id=*/"", private_state_,
-                signing_key_handle_, authorized_hashes_set);
+                absl::Base64Escape(kms_public_key_), invocation_id_,
+                private_state_, signing_key_handle_, authorized_hashes_set);
 
     // Run the program.
     run_program(get_program_initialize_fn_(),
@@ -375,9 +378,9 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
 
   return std::make_unique<ProgramExecutorTeeSession>(
       initialize_config_, model_id_to_zip_file_, blob_decryptor,
-      reencryption_keys_, reencryption_policy_hash_, private_state_.get(),
-      GetOakSigningKeyHandle(), GetAuthorizedLogicalPipelinePoliciesHashes(),
-      get_program_initialize_fn);
+      GetKmsPublicKey(), GetInvocationId(), reencryption_keys_,
+      reencryption_policy_hash_, private_state_.get(), GetOakSigningKeyHandle(),
+      GetAuthorizedLogicalPipelinePoliciesHashes(), get_program_initialize_fn);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

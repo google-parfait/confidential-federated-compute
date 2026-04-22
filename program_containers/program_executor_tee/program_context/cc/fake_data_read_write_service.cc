@@ -52,6 +52,8 @@ FakeDataReadWriteService::FakeDataReadWriteService()
           crypto_test_utils::GenerateKeyPair(kInputKeyId)),
       result_public_private_key_pair_(
           crypto_test_utils::GenerateKeyPair("result")),
+      recovery_public_private_key_pair_(
+          crypto_test_utils::GenerateKeyPair("recovery")),
       kms_signer_(fcp::confidential_compute::EcdsaP256R1Signer::Create()),
       vm_signer_(fcp::confidential_compute::EcdsaP256R1Signer::Create()),
       message_decryptor_(std::vector<absl::string_view>(
@@ -81,8 +83,11 @@ FakeDataReadWriteService::FakeDataReadWriteService()
       signing_key_endorsement.BuildSigStructureForSigning("").value());
 
   signing_key_endorsement_ = signing_key_endorsement.Encode().value();
+}
 
-  auto mock_handle = std::make_shared<
+std::unique_ptr<oak::crypto::SigningKeyHandle>
+FakeDataReadWriteService::GetOakSigningKeyHandle() const {
+  auto mock_handle = std::make_unique<
       testing::NiceMock<crypto_test_utils::MockSigningKeyHandle>>();
   EXPECT_CALL(*mock_handle, Sign(testing::_))
       .WillRepeatedly(testing::Invoke([this](absl::string_view message) {
@@ -91,7 +96,7 @@ FakeDataReadWriteService::FakeDataReadWriteService()
         signature.set_signature(sig_bytes);
         return signature;
       }));
-  signing_key_handle_ = mock_handle;
+  return mock_handle;
 }
 
 grpc::Status FakeDataReadWriteService::Read(

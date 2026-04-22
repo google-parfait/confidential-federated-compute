@@ -297,9 +297,11 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
   EXPECT_CALL(mock_signing_key_handle_, Sign("intermediate_data"))
       .WillOnce(testing::Return(signature));
 
+  std::string blob_id;
   ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
-                  &write_request, mock_signing_key_handle_, result_public_key,
-                  "key_1", "intermediate_data", kAccessPolicyHash)
+                  &write_request, &blob_id, mock_signing_key_handle_,
+                  result_public_key, "key_1", "intermediate_data",
+                  kAccessPolicyHash)
                   .ok());
 
   ClientContext client_context;
