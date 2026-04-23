@@ -255,9 +255,55 @@ FedSqlContainerInitializeConfiguration DefaultFedSqlDpContainerConfig() {
   )pb");
 }
 
+FedSqlContainerInitializeConfiguration
+DefaultFedSqlDpContainerConfigForAutotuning() {
+  return PARSE_TEXT_PROTO(R"pb(
+    agg_configuration {
+      intrinsic_configs: {
+        intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
+        intrinsic_args { parameter { dtype: DT_INT64 int64_val: 0 } }
+        output_tensors {
+          name: "key_out"
+          dtype: DT_INT64
+          shape { dim_sizes: -1 }
+        }
+        inner_intrinsics {
+          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_args: {
+            input_tensor {
+              name: "val"
+              dtype: DT_INT64
+              shape {}
+            }
+          }
+          intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
+          intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
+          intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
+          output_tensors {
+            name: "val_out"
+            dtype: DT_INT64
+            shape {}
+          }
+        }
+      }
+    }
+  )pb");
+}
+
 FedSqlContainerConfigConstraints DefaultFedSqlConfigConstraints() {
   return PARSE_TEXT_PROTO(R"pb(
     intrinsic_uris: "fedsql_group_by"
+    access_budget { times: 5 }
+  )pb");
+}
+
+FedSqlContainerConfigConstraints DefaultFedSqlDpConfigConstraints() {
+  return PARSE_TEXT_PROTO(R"pb(
+    epsilon: 1.2
+    delta: 0.02
+    intrinsic_uris: "fedsql_dp_group_by"
     access_budget { times: 5 }
   )pb");
 }
@@ -333,6 +379,19 @@ bool WritePipelinePrivateState(ClientWriter<StreamInitializeRequest>* stream,
   metadata->set_configuration_id(kPrivateStateConfigId);
   metadata->set_total_size_bytes(state.size());
   return stream->Write(stream_request);
+}
+
+absl::Cord PackAutotuningParams(
+    absl::flat_hash_map<std::string, double> params) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> checkpoint_builder =
+      builder_factory.Create();
+  for (const auto& [name, value] : params) {
+    CHECK_OK(checkpoint_builder->Add(name, Tensor(value)));
+  }
+  auto result = checkpoint_builder->Build();
+  CHECK_OK(result);
+  return result.value();
 }
 
 class FedSqlServerTest : public Test {
@@ -741,34 +800,11 @@ TEST_F(FedSqlServerTest, StreamInitializeMultipleTopLevelIntrinsics) {
           HasSubstr("Configuration must have exactly one IntrinsicConfig")));
 }
 
-TEST_F(FedSqlServerTest, StreamInitializeMoreThanOnce) {
-  InitializeRequest request = CreateInitializeRequest();
-  InitializeResponse response;
-  grpc::ClientContext context;
-
-  auto writer = stub_->StreamInitialize(&context, &response);
-  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
-  EXPECT_THAT(WriteInitializeRequest(std::move(writer), request), IsOk());
-
-  grpc::ClientContext second_context;
-  EXPECT_THAT(WriteInitializeRequest(
-                  stub_->StreamInitialize(&second_context, &response),
-                  std::move(request)),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("SetIntrinsics can only be called once")));
-}
-
 TEST_F(FedSqlServerTest, StreamInitializeDpConfigSuccess) {
   // Epsilon and delta defined in `DefaultFedSqlDpContainerConfig` are less than
   // the config_constraints below and so the request should succeed.
-  FedSqlContainerConfigConstraints config_constraints = PARSE_TEXT_PROTO(R"pb(
-    epsilon: 1.2
-    delta: 0.02
-    intrinsic_uris: "fedsql_dp_group_by"
-    access_budget { times: 5 }
-  )pb");
   InitializeRequest request = CreateInitializeRequest(
-      DefaultFedSqlDpContainerConfig(), std::move(config_constraints));
+      DefaultFedSqlDpContainerConfig(), DefaultFedSqlDpConfigConstraints());
   InitializeResponse response;
   grpc::ClientContext context;
 
@@ -881,6 +917,26 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidDelta) {
       StatusIs(absl::StatusCode::kFailedPrecondition,
                HasSubstr("Delta value must be less than or equal to the "
                          "upper bound defined in the policy ")));
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithUnencryptedAutotuningSuccess) {
+  FedSqlContainerInitializeConfiguration config =
+      DefaultFedSqlDpContainerConfigForAutotuning();
+  config.mutable_auto_tuning_config()->set_auto_tuning_data(
+      PackAutotuningParams({{"L1_0_estimated", 0.5}}));
+
+  InitializeRequest request =
+      CreateInitializeRequest(config, DefaultFedSqlDpConfigConstraints());
+  InitializeResponse response;
+  grpc::ClientContext context;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
+  BudgetState budget_state =
+      PARSE_TEXT_PROTO(R"pb(buckets { key: "foo" budget: 1 })pb");
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
+                                        budget_state.SerializeAsString()));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {

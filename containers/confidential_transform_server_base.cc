@@ -214,13 +214,83 @@ absl::StatusOr<WriteFinishedResponse> ConfidentialTransformBase::HandleWrite(
                         context);
 }
 
-absl::Status ConfidentialTransformBase::StreamInitializeInternal(
+absl::Status ConfidentialTransformBase::HandleInitialize(
+    InitializeRequest initialize_request) {
+  ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
+  FCP_ASSIGN_OR_RETURN(
+      DecryptionResult decryption_result,
+      server_encryptor.Decrypt(initialize_request.protected_response()));
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  if (!protected_response.ParseFromString(decryption_result.plaintext)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse ProtectedResponse from decrypted data.");
+  }
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  if (!associated_data.ParseFromString(decryption_result.associated_data)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse AssociatedData from decrypted data.");
+  }
+  if (associated_data.authorized_logical_pipeline_policies_hashes_size() == 0) {
+    return absl::InvalidArgumentError(
+        "Expected at least one policy hash but none were supplied.");
+  }
+
+  active_key_ids_include_all_keysets_ =
+      associated_data.omitted_decryption_key_ids_include_all_keysets();
+  // Pick any of the authorized_logical_pipeline_policies_hashes as the
+  // reencryption_policy_hash. For convenience, we pick the first one.
+  kms_encryptor_.emplace(
+      std::vector<std::string>(
+          protected_response.result_encryption_keys().begin(),
+          protected_response.result_encryption_keys().end()),
+      associated_data.authorized_logical_pipeline_policies_hashes(0),
+      oak_signing_key_handle_);
+  for (const auto& policy_hash :
+       associated_data.authorized_logical_pipeline_policies_hashes()) {
+    authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
+  }
+  FCP_RETURN_IF_ERROR(
+      SetActiveKeyIds({protected_response.decryption_keys().begin(),
+                       protected_response.decryption_keys().end()},
+                      {associated_data.omitted_decryption_key_ids().begin(),
+                       associated_data.omitted_decryption_key_ids().end()}));
+
+  kms_public_key_ = associated_data.cluster_public_key();
+  invocation_id_ = associated_data.invocation_id();
+
+  // The following block of the code is guarded with the mutex to ensure that
+  // there is only one initialization per transform and protect against the
+  // race conditions.
+  {
+    absl::MutexLock l(mutex_);
+    if (session_tracker_ != std::nullopt) {
+      return absl::FailedPreconditionError(
+          "StreamInitialize can only be called once.");
+    }
+
+    session_tracker_.emplace(initialize_request.max_num_sessions());
+
+    // Decryptor must be initialized before StreamInitializeTransform is called
+    // because StreamInitializeTransform may need to decrypt some of the
+    // configuration.
+    decryptor_.emplace(std::vector<absl::string_view>(
+        protected_response.decryption_keys().begin(),
+        protected_response.decryption_keys().end()));
+  }
+
+  FCP_RETURN_IF_ERROR(
+      StreamInitializeTransform(initialize_request.configuration(),
+                                associated_data.config_constraints()));
+
+  return absl::OkStatus();
+}
+
+absl::Status ConfidentialTransformBase::StreamInitializeImpl(
     grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
-  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   StreamInitializeRequest request;
-  bool contain_initialize_request = false;
-  uint32_t max_num_sessions;
+  bool has_initialize_request = false;
+
   while (reader->Read(&request)) {
     switch (request.kind_case()) {
       case StreamInitializeRequest::kInitializeRequest: {
@@ -228,58 +298,13 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         // sent by the client's StreamInitializeRequest stream. Each stream
         // should only have exactly one
         // StreamInitializeRequest.initialize_request.
-        if (contain_initialize_request) {
+        if (has_initialize_request) {
           return absl::FailedPreconditionError(
               "Expect one of the StreamInitializeRequests to be "
               "configured with a InitializeRequest, found more than one.");
         }
-        const InitializeRequest& initialize_request =
-            request.initialize_request();
-        max_num_sessions = initialize_request.max_num_sessions();
-        ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
-        FCP_ASSIGN_OR_RETURN(
-            DecryptionResult decryption_result,
-            server_encryptor.Decrypt(initialize_request.protected_response()));
-        if (!protected_response.ParseFromString(decryption_result.plaintext)) {
-          return absl::InvalidArgumentError(
-              "Failed to parse ProtectedResponse from decrypted data.");
-        }
-        AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-        if (!associated_data.ParseFromString(
-                decryption_result.associated_data)) {
-          return absl::InvalidArgumentError(
-              "Failed to parse AssociatedData from decrypted data.");
-        }
-        if (associated_data
-                .authorized_logical_pipeline_policies_hashes_size() == 0) {
-          return absl::InvalidArgumentError(
-              "Expected at least one policy hash but none were supplied.");
-        }
-        active_key_ids_include_all_keysets_ =
-            associated_data.omitted_decryption_key_ids_include_all_keysets();
-        // Pick any of the authorized_logical_pipeline_policies_hashes as the
-        // reencryption_policy_hash. For convenience, we pick the first one.
-        kms_encryptor_.emplace(
-            std::vector<std::string>(
-                protected_response.result_encryption_keys().begin(),
-                protected_response.result_encryption_keys().end()),
-            associated_data.authorized_logical_pipeline_policies_hashes(0),
-            oak_signing_key_handle_);
-        for (const auto& policy_hash :
-             associated_data.authorized_logical_pipeline_policies_hashes()) {
-          authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
-        }
-        FCP_RETURN_IF_ERROR(SetActiveKeyIds(
-            {protected_response.decryption_keys().begin(),
-             protected_response.decryption_keys().end()},
-            {associated_data.omitted_decryption_key_ids().begin(),
-             associated_data.omitted_decryption_key_ids().end()}));
-        kms_public_key_ = associated_data.cluster_public_key();
-        invocation_id_ = associated_data.invocation_id();
-        FCP_RETURN_IF_ERROR(
-            StreamInitializeTransform(initialize_request.configuration(),
-                                      associated_data.config_constraints()));
-        contain_initialize_request = true;
+        FCP_RETURN_IF_ERROR(HandleInitialize(request.initialize_request()));
+        has_initialize_request = true;
         break;
       }
       case StreamInitializeRequest::kWriteConfiguration: {
@@ -288,7 +313,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
         // sent before the StreamInitializeRequest.initialize_request. The first
         // write_configuration for a blob will contain the metadata about the
         // blob, while the last will have a value of `commit` set to True.
-        if (contain_initialize_request) {
+        if (has_initialize_request) {
           return absl::FailedPreconditionError(
               "Expect all StreamInitializeRequests.write_configurations to be "
               "sent before the StreamInitializeRequest.initialize_request.");
@@ -305,22 +330,10 @@ absl::Status ConfidentialTransformBase::StreamInitializeInternal(
                          request.kind_case()));
     }
   }
-  if (!contain_initialize_request) {
+  if (!has_initialize_request) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Expect one of the StreamInitializeRequests to be configured with a "
         "InitializeRequest, found zero."));
-  }
-
-  {
-    absl::MutexLock l(mutex_);
-    if (decryptor_ != std::nullopt) {
-      return absl::FailedPreconditionError(
-          "StreamInitialize can only be called once.");
-    }
-    decryptor_.emplace(std::vector<absl::string_view>(
-        protected_response.decryption_keys().begin(),
-        protected_response.decryption_keys().end()));
-    session_tracker_.emplace(max_num_sessions);
   }
 
   return absl::OkStatus();
@@ -463,7 +476,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
 grpc::Status ConfidentialTransformBase::StreamInitialize(
     ServerContext* context, grpc::ServerReader<StreamInitializeRequest>* reader,
     InitializeResponse* response) {
-  return ToGrpcStatus(StreamInitializeInternal(reader, response));
+  return ToGrpcStatus(StreamInitializeImpl(reader, response));
 }
 
 grpc::Status ConfidentialTransformBase::Session(

@@ -20,11 +20,13 @@
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "containers/fed_sql/kms_session.h"
@@ -43,10 +45,11 @@
 #include "google/protobuf/dynamic_message.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_util.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "util/threading_context.h"
 
@@ -57,6 +60,7 @@ namespace {
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::AccessBudget;
 using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::GemmaInitializeConfiguration;
@@ -70,12 +74,16 @@ using ::google::protobuf::DynamicMessageFactory;
 using ::google::protobuf::FileDescriptorSet;
 using ::google::protobuf::Message;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
-using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::DT_DOUBLE;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::kDeltaIndex;
+using ::tensorflow_federated::aggregation::kDPGroupByUri;
+using ::tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri;
 using ::tensorflow_federated::aggregation::kEpsilonIndex;
+using ::tensorflow_federated::aggregation::Tensor;
 
 absl::Status ValidateFedSqlOuterDpParameters(const Intrinsic& intrinsic) {
   if (intrinsic.parameters.size() < 2) {
@@ -201,12 +209,14 @@ FedSqlConfidentialTransform::FedSqlConfidentialTransform(
 };
 
 absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(
-    const FedSqlContainerInitializeConfiguration& config) {
-  absl::MutexLock l(&mutex_);
-  if (intrinsics_ != std::nullopt) {
-    return absl::FailedPreconditionError(
-        "SetIntrinsics can only be called once.");
-  }
+    const FedSqlContainerInitializeConfiguration& config,
+    const std::optional<AutotuningBundle>& autotuning_data) {
+  absl::MutexLock l(mutex_);
+
+  // The base class prevents the initialization code from being called more
+  // than once.
+  CHECK(intrinsics_ == std::nullopt);
+
   FCP_RETURN_IF_ERROR(
       CheckpointAggregator::ValidateConfig(config.agg_configuration()));
 
@@ -214,11 +224,15 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(
                        tensorflow_federated::aggregation::ParseFromConfig(
                            config.agg_configuration()));
   FCP_RETURN_IF_ERROR(ValidateTopLevelIntrinsics(intrinsics));
-  const Intrinsic& fedsql_intrinsic = intrinsics.at(0);
-  if (fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPGroupByUri ||
-      fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
+  Intrinsic& fedsql_intrinsic = intrinsics.at(0);
+
+  if (fedsql_intrinsic.uri == kDPGroupByUri && autotuning_data.has_value()) {
+    FCP_RETURN_IF_ERROR(tensorflow_federated::aggregation::PopulateDPParameters(
+        fedsql_intrinsic, autotuning_data->params));
+  }
+
+  if (fedsql_intrinsic.uri == kDPGroupByUri ||
+      fedsql_intrinsic.uri == kDPTensorAggregatorBundleUri) {
     FCP_RETURN_IF_ERROR(ValidateFedSqlOuterDpParameters(fedsql_intrinsic));
   }
 
@@ -230,7 +244,7 @@ absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
     const FedSqlContainerConfigConstraints& config_constraints) {
   const std::vector<Intrinsic>* intrinsics;
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (intrinsics_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "Intrinsics have not been initialized.");
@@ -248,10 +262,8 @@ absl::Status FedSqlConfidentialTransform::ValidateConfigConstraints(
         "Invalid intrinsic URI for DP configuration.");
   }
 
-  if (fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPGroupByUri ||
-      fedsql_intrinsic.uri ==
-          tensorflow_federated::aggregation::kDPTensorAggregatorBundleUri) {
+  if (fedsql_intrinsic.uri == kDPGroupByUri ||
+      fedsql_intrinsic.uri == kDPTensorAggregatorBundleUri) {
     double epsilon =
         fedsql_intrinsic.parameters.at(kEpsilonIndex).CastToScalar<double>();
     if (epsilon > config_constraints.epsilon()) {
@@ -381,7 +393,7 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
 
 absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
     const FedSqlContainerInitializeConfiguration& fed_sql_config) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (message_factory_ != nullptr) {
     return absl::FailedPreconditionError(
         "SetAndValidateMessageFactory can only be called once.");
@@ -412,6 +424,51 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
   return absl::OkStatus();
 }
 
+absl::StatusOr<FedSqlConfidentialTransform::AutotuningBundle>
+FedSqlConfidentialTransform::GetAutotuningData(
+    const fcp::confidentialcompute::FedSqlContainerAutoTuningConfig&
+        autotuning_config) {
+  AutotuningBundle autotuning_bundle;
+  const BlobMetadata& metadata = autotuning_config.auto_tuning_metadata();
+  absl::Cord data = autotuning_config.auto_tuning_data();
+
+  bool is_encrypted = metadata.has_hpke_plus_aead_data();
+  if (is_encrypted) {
+    // Decrypt and unbundle the auto-tuning data, which is expected to be
+    // bundled with RangeTracker if it was encrypted.
+    FCP_ASSIGN_OR_RETURN(Decryptor * decryptor, GetDecryptor());
+    FCP_ASSIGN_OR_RETURN(std::string key_id, GetKeyId(metadata));
+    FCP_ASSIGN_OR_RETURN(
+        std::string unencrypted_data,
+        decryptor->DecryptBlob(metadata, data.Flatten(), key_id));
+    // TODO: use AnyBundle directly
+    FCP_ASSIGN_OR_RETURN(autotuning_bundle.consumed_ranges,
+                         UnbundleRangeTracker(unencrypted_data));
+    // TODO: avoid this if AnyBundle is used
+    data = absl::Cord(std::move(unencrypted_data));
+    // Release auto-tuning only if it was originally encrypted.
+    autotuning_bundle.autotuning_data_to_release = data;
+  }
+
+  // Parse auto-tuning parameters into a key-value map.
+  FederatedComputeCheckpointParserFactory parser_factory;
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
+                       parser_factory.Create(data));
+
+  // TODO: figure out why the below LoadAllTensors call doesn't build
+  // when used with FCP_ASSIGN_OR_RETURN
+  auto autotuning_tensors = parser->LoadAllTensors();
+  if (!autotuning_tensors.ok()) {
+    return autotuning_tensors.status();
+  }
+
+  autotuning_bundle.params = AutotuningParams{};
+  for (const auto& [name, tensor] : *autotuning_tensors) {
+    autotuning_bundle.params.emplace(name, tensor.CastToScalar<double>());
+  }
+  return autotuning_bundle;
+}
+
 absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
     const ::google::protobuf::Any& configuration,
     const ::google::protobuf::Any& config_constraints) {
@@ -425,12 +482,21 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
     return absl::InvalidArgumentError(
         "FedSqlContainerConfigConstraints cannot be unpacked.");
   }
-  FCP_RETURN_IF_ERROR(SetAndValidateIntrinsics(fed_sql_config));
+
+  // Load optional auto-tuning data.
+  std::optional<AutotuningBundle> autotuning_data;
+  if (fed_sql_config.has_auto_tuning_config()) {
+    FCP_ASSIGN_OR_RETURN(
+        AutotuningBundle autotuning_data,
+        GetAutotuningData(fed_sql_config.auto_tuning_config()));
+  }
+  FCP_RETURN_IF_ERROR(
+      SetAndValidateIntrinsics(fed_sql_config, autotuning_data));
   FCP_RETURN_IF_ERROR(ValidateConfigConstraints(fed_sql_config_constraints));
   FCP_RETURN_IF_ERROR(SetAndValidateMessageFactory(fed_sql_config));
 
-  FCP_RETURN_IF_ERROR(
-      InitializePrivateState(fed_sql_config_constraints.access_budget()));
+  FCP_RETURN_IF_ERROR(InitializePrivateState(
+      fed_sql_config_constraints.access_budget(), std::move(autotuning_data)));
 
   if (fed_sql_config_constraints.has_dp_windowing_schedule()) {
     DpUnitParameters dp_params;
@@ -524,7 +590,8 @@ absl::Status FedSqlConfidentialTransform::ReadWriteConfigurationRequest(
 }
 
 absl::Status FedSqlConfidentialTransform::InitializePrivateState(
-    const AccessBudget& access_budget) {
+    const AccessBudget& access_budget,
+    std::optional<AutotuningBundle> autotuning_data) {
   auto it = write_configuration_map_.find(kPrivateStateConfigId);
   if (it == write_configuration_map_.end()) {
     return absl::InvalidArgumentError(
@@ -545,8 +612,18 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
   if (size > 0) {
     std::string private_state(size, '\0');
     file.read(private_state.data(), size);
-    private_state_ = std::make_shared<PrivateState>(std::move(private_state),
-                                                    num_access_times);
+
+    std::optional<RangeTracker> consumed_ranges;
+    absl::Cord autotuning_data_to_release;
+    if (autotuning_data.has_value()) {
+      consumed_ranges.emplace(std::move(autotuning_data->consumed_ranges));
+      autotuning_data_to_release =
+          std::move(autotuning_data->autotuning_data_to_release);
+    }
+
+    private_state_ = std::make_shared<PrivateState>(
+        std::move(private_state), num_access_times, std::move(consumed_ranges),
+        std::move(autotuning_data_to_release));
     FCP_RETURN_IF_ERROR(
         private_state_->budget.Parse(*private_state_->initial_state));
     // Compute the expired key ids.
@@ -585,7 +662,7 @@ FedSqlConfidentialTransform::CreateSession() {
   const std::vector<Intrinsic>* intrinsics;
   std::shared_ptr<MessageFactory> message_factory = nullptr;
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (intrinsics_ == std::nullopt) {
       return absl::FailedPreconditionError(
           "Initialize must be called before Session.");
@@ -609,7 +686,7 @@ FedSqlConfidentialTransform::CreateSession() {
   // in inference_configuration_ for all sessions to share.
   // Protected by mutex_ to prevent data races from concurrent session creation.
   {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     if (inference_configuration_.has_value() &&
         inference_configuration_->gemma_configuration.has_value() &&
         !inference_configuration_->shared_gemma_model) {
@@ -654,7 +731,7 @@ FedSqlConfidentialTransform::CreateSession() {
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(
-    const fcp::confidentialcompute::BlobMetadata& metadata) {
+    const BlobMetadata& metadata) {
   // For unencrypted payloads, the key_id is not used, so we
   // return an empty string.
   if (metadata.has_unencrypted()) {

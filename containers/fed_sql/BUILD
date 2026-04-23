@@ -34,12 +34,14 @@ cc_library(
         "//containers/sql:sqlite_adapter",
         "@boringssl//:crypto",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
@@ -56,7 +58,9 @@ cc_library(
         "@gemma//:threading_context",
         "@oak//cc/crypto:signing_key",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:dp_fedsql_constants",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:dp_fedsql_util",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:intrinsic",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
@@ -528,6 +532,8 @@ cc_library(
     hdrs = ["private_state.h"],
     deps = [
         ":budget",
+        ":range_tracker",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 

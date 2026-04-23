@@ -28,6 +28,7 @@
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/private_state.h"
+#include "containers/fed_sql/range_tracker.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
@@ -46,6 +47,17 @@ class FedSqlConfidentialTransform final
       std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle);
 
  private:
+  // Auto-tuning params as a map of parameter name to value.
+  using AutotuningParams = absl::flat_hash_map<std::string, double>;
+
+  // Auto-tuning bundle is bundle of auto-tuning params and the RangeTracker
+  // associated with running the auto-tuning.
+  struct AutotuningBundle {
+    AutotuningParams params;
+    RangeTracker consumed_ranges;
+    absl::Cord autotuning_data_to_release;
+  };
+
   absl::Status StreamInitializeTransform(
       const google::protobuf::Any& configuration,
       const google::protobuf::Any& config_constraints) override;
@@ -57,21 +69,28 @@ class FedSqlConfidentialTransform final
   absl::StatusOr<std::string> GetKeyId(
       const fcp::confidentialcompute::BlobMetadata& metadata) override;
 
-  // Set the logged message config based on the initialization configuration.
+  // Get optional auto-tuning data from the initialization configuration.
+  absl::StatusOr<AutotuningBundle> GetAutotuningData(
+      const fcp::confidentialcompute::FedSqlContainerAutoTuningConfig&
+          autotuning_config);
+  // Set the logged message config based on the initialization
+  // configuration.
   absl::Status SetAndValidateMessageFactory(
       const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
           config);
   //  Set the intrinsics based on the initialization configuration.
   absl::Status SetAndValidateIntrinsics(
       const fcp::confidentialcompute::FedSqlContainerInitializeConfiguration&
-          config);
+          config,
+      const std::optional<AutotuningBundle>& autotuning_data);
   // Validates the configuration constraints received from KMS.
   absl::Status ValidateConfigConstraints(
       const fcp::confidentialcompute::FedSqlContainerConfigConstraints&
           config_constraints);
   // Initialized the private state - the initial budget received from KMS.
   absl::Status InitializePrivateState(
-      const fcp::confidentialcompute::AccessBudget& access_budget);
+      const fcp::confidentialcompute::AccessBudget& access_budget,
+      std::optional<AutotuningBundle> autotuning_data);
   // Initialize the inference configuration for sessions.
   absl::Status InitializeSessionInferenceConfiguration(
       const fcp::confidentialcompute::InferenceInitializeConfiguration&

@@ -19,20 +19,35 @@
 #include <optional>
 #include <string>
 
+#include "absl/strings/cord.h"
 #include "containers/fed_sql/budget.h"
+#include "containers/fed_sql/range_tracker.h"
+#include "range_tracker.h"
 
 namespace confidential_federated_compute::fed_sql {
 
-// FedSql private state that is persisted via KMS.
+// FedSql private state shared from ConfidentialTransformServer to all
+// the sessions created by it. This combines state that is persisted in KMS
+// with the state received during the container transform initialization.
 struct PrivateState {
   PrivateState(std::optional<std::string> initial_state,
-               std::optional<uint32_t> default_budget)
-      : initial_state(std::move(initial_state)), budget(default_budget) {}
+               std::optional<uint32_t> default_budget,
+               std::optional<RangeTracker> consumed_tracker = std::nullopt,
+               absl::Cord autotuning_data_to_release = absl::Cord{})
+      : initial_state(std::move(initial_state)),
+        budget(default_budget),
+        consumed_tracker(std::move(consumed_tracker).value_or(RangeTracker())),
+        autotuning_data_to_release(std::move(autotuning_data_to_release)) {}
 
   // The initial serialized budget received from KMS.
   std::optional<std::string> initial_state;
   // The current budget.
   Budget budget;
+  // The part of the budget that is initially consumed by auto-tuning.
+  RangeTracker consumed_tracker;
+  // Optional auto-tuning data to be released. If there is no data to release
+  // this Cord remains empty.
+  absl::Cord autotuning_data_to_release;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

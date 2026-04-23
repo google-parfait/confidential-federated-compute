@@ -378,38 +378,6 @@ TEST_F(FnConfidentialTransformTest, FnFactoryCreationFails) {
                        HasSubstr("This FnFactory cannot be created.")));
 }
 
-TEST_F(FnConfidentialTransformTest, AlreadyInitializedFails) {
-  // Expect the FnFactory to be created once. The second attempted
-  // initialization should fail before calling the FnFactory factory again.
-  EXPECT_CALL(mock_fn_factory_provider_, Create(_, _, _))
-      .WillOnce(Return(std::make_unique<NiceMock<MockFnFactory>>()));
-  grpc::ClientContext context;
-  InitializeRequest request;
-  InitializeResponse response;
-
-  absl::StatusOr<EncryptedRequest> encrypted_request =
-      CreateEncryptedProtectedResponse("result_encryption_key",
-                                       *oak_client_encryptor_);
-  ASSERT_THAT(encrypted_request, IsOk());
-
-  *request.mutable_protected_response() = *encrypted_request;
-
-  auto writer = stub_->StreamInitialize(&context, &response);
-  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
-              IsOk());
-  // Second initialization should fail.
-  grpc::ClientContext second_context;
-  InitializeRequest second_request;
-  *second_request.mutable_protected_response() = *encrypted_request;
-  InitializeResponse second_response;
-  auto second_writer =
-      stub_->StreamInitialize(&second_context, &second_response);
-  EXPECT_THAT(WriteInitializeRequest(std::move(second_writer),
-                                     std::move(second_request)),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Fn container already initialized.")));
-}
-
 TEST_F(FnConfidentialTransformTest, SessionCallsCreateFn) {
   auto mock_fn = std::make_unique<MockFn>();
   // Expect the Configure method to be called once and return an OK status.

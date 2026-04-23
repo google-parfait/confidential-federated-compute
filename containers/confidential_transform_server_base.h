@@ -120,11 +120,17 @@ class ConfidentialTransformBase
   }
 
  private:
-  absl::Status StreamInitializeInternal(
+  // Implementation of StreamInitialize
+  absl::Status StreamInitializeImpl(
       grpc::ServerReader<fcp::confidentialcompute::StreamInitializeRequest>*
           reader,
       fcp::confidentialcompute::InitializeResponse* response);
 
+  // Handle the final initialization after all streams has been received.
+  absl::Status HandleInitialize(
+      fcp::confidentialcompute::InitializeRequest initialize_request);
+
+  // Implementation of Session.
   absl::Status SessionImpl(SessionStream* stream);
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> HandleWrite(

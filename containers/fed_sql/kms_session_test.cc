@@ -152,9 +152,12 @@ Configuration DefaultConfiguration() {
 }
 
 std::shared_ptr<PrivateState> CreatePrivateState(
-    const std::string& initial_state, std::optional<uint32_t> default_budget) {
-  auto private_state =
-      std::make_shared<PrivateState>(initial_state, default_budget);
+    const std::string& initial_state, std::optional<uint32_t> default_budget,
+    std::optional<RangeTracker> consumed_tracker = std::nullopt,
+    absl::Cord autotuning_data = absl::Cord{}) {
+  auto private_state = std::make_shared<PrivateState>(
+      initial_state, default_budget, std::move(consumed_tracker),
+      std::move(autotuning_data));
   EXPECT_THAT(private_state->budget.Parse(initial_state), IsOk());
   return private_state;
 }

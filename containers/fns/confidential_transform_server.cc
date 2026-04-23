@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -63,9 +64,8 @@ absl::Status FnConfidentialTransform::StreamInitializeTransform(
     const google::protobuf::Any& configuration,
     const google::protobuf::Any& config_constraints) {
   absl::WriterMutexLock l(&fn_factory_mutex_);
-  if (fn_factory_.has_value()) {
-    return absl::FailedPreconditionError("Fn container already initialized.");
-  }
+  // The base class ensures tht the initialization can only be done once.
+  CHECK(!fn_factory_.has_value());
   absl::flat_hash_map<std::string, std::string> write_configuration_map;
   for (auto& [key, value] : write_configuration_map_) {
     if (value.commit) {
