@@ -178,8 +178,9 @@ ProgramExecutorTeeSession::Finalize(
                 blob_decryptor_, initialize_config_.outgoing_server_address(),
                 escaped_reencryption_keys,
                 absl::Base64Escape(reencryption_policy_hash_),
-                absl::Base64Escape(kms_public_key_), invocation_id_,
-                private_state_, signing_key_handle_, authorized_hashes_set);
+                absl::Base64Escape(kms_public_key_),
+                absl::Base64Escape(invocation_id_), private_state_,
+                signing_key_handle_, authorized_hashes_set);
 
     // Run the program.
     run_program(get_program_initialize_fn_(),

@@ -89,7 +89,7 @@ class DataParserTest : public ::testing::Test {
         input_blob_decryptor_.get(), data_read_write_server_address_,
         reencryption_keys_, absl::Base64Escape(kAccessPolicyHash),
         absl::Base64Escape(fake_data_read_write_service_->GetKmsPublicKey()),
-        kTestInvocationId, private_state_.get(),
+        absl::Base64Escape(kTestInvocationId), private_state_.get(),
         std::shared_ptr<oak::crypto::SigningKeyHandle>(
             fake_data_read_write_service_->GetOakSigningKeyHandle()),
         std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}));

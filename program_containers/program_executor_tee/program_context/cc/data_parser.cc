@@ -59,10 +59,10 @@ DataParser::DataParser(
     std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
     std::set<std::string> authorized_logical_pipeline_policies_hashes)
     : blob_decryptor_(blob_decryptor),
-      invocation_id_(invocation_id),
       private_state_(private_state),
       signing_key_handle_(signing_key_handle) {
   absl::Base64Unescape(kms_public_key, &kms_public_key_);
+  absl::Base64Unescape(invocation_id, &invocation_id_);
   // All hashes and encryption keys are Base64Escaped before being passed over
   // the pybind boundary, so they must be decoded here.
   for (const auto& reencryption_key : reencryption_keys) {
