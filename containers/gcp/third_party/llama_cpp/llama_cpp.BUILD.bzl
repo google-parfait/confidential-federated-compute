@@ -106,29 +106,39 @@ cuda_library(
 cc_library(
     name = "llama_cpp",
     srcs = glob([
-        "src/*.cpp",
-    ]) + [
-        "common/common.cpp",
-        "common/log.cpp",
-        "common/ngram-cache.cpp",
-        "common/regex-partial.cpp",
-        "common/sampling.cpp",
-        "common/speculative.cpp",
-    ],
+        "src/**/*.cpp",
+        "common/*.cpp",
+    ], exclude = [
+        # Needs nlohmann/json
+        "common/json-schema-to-grammar.cpp",
+        "common/json-partial.cpp",
+        "common/arg.cpp",
+        "common/preset.cpp",
+        # Needs nlohmann/json + jinja templates
+        "common/chat.cpp",
+        "common/chat-auto-parser-generator.cpp",
+        "common/chat-auto-parser-helpers.cpp",
+        "common/chat-diff-analyzer.cpp",
+        "common/chat-peg-parser.cpp",
+        "common/peg-parser.cpp",
+        # Needs libcurl
+        "common/download.cpp",
+        "common/hf-cache.cpp",
+        # Needs llguidance external library
+        "common/llguidance.cpp",
+        # Terminal I/O not needed in server
+        "common/console.cpp",
+    ]),
     hdrs = glob([
         "include/*.h",
-        "src/*.h",
-    ]) + [
-        "common/base64.hpp",
-        "common/common.h",
-        "common/log.h",
-        "common/ngram-cache.h",
-        "common/regex-partial.h",
-        "common/sampling.h",
-        "common/speculative.h",
-    ],
+        "src/**/*.h",
+        "common/*.h",
+        "common/*.hpp",
+    ]),
     includes = [
+        "common",
         "include",
+        "src",
     ],
     copts = COPTS,
     deps = [
