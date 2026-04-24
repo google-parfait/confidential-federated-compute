@@ -1,0 +1,18 @@
+{
+  "images": [
+    {
+      "model": "gemma4_e4b",
+      "attestation": "ita_alts",
+      "digest": "sha256:90e4fe13e35fa203d9cae6d441710d3f87864fbac779e4ae4b0bb4983ee147d9",
+      "tag": "us-docker.pkg.dev/private-inference/offloading/batched_inference:ita_alts_gemma4_e4b_latest",
+      "created": "2026-04-24T19:36:05Z"
+    },
+    {
+      "model": "gemma4_31b",
+      "attestation": "ita_alts",
+      "digest": "sha256:6fd75f5088c86665f2060b0db42c44dd857b05414e834ad5e8e0c263901292e4",
+      "tag": "us-docker.pkg.dev/private-inference/offloading/batched_inference:ita_alts_gemma4_31b_latest",
+      "created": "2026-04-24T19:36:33Z"
+    }
+  ]
+}

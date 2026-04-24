@@ -288,11 +288,13 @@ pkg_tar(
 # for all 4 attestation variants (ita, ita_alts, gca, gca_alts).
 gcp_model_targets(
     model_name = "gemma4_31b",
+    weights_filename = "gemma-4-31B-it-Q4_K_M.gguf",
     weights_label = "@gemma4_31b_weights//:gemma-4-31B-it-Q4_K_M.gguf",
 )
 
 gcp_model_targets(
     model_name = "gemma4_e4b",
+    weights_filename = "gemma-4-E4B-it-Q4_K_M.gguf",
     weights_label = "@gemma4_e4b_weights//:gemma-4-E4B-it-Q4_K_M.gguf",
 )
 

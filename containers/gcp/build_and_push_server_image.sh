@@ -15,6 +15,7 @@ ALTS=true
 MODEL=""
 DESTINATION="us-docker.pkg.dev/private-inference/offloading"
 GCS_BUCKET=""
+UPDATE_REGISTRY=true
 DRY_RUN=false
 
 # ─── Parse flags ─────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ for arg in "$@"; do
     --no-alts)        ALTS=false ;;
     --destination=*)  DESTINATION="${arg#*=}" ;;
     --gcs_bucket=*)   GCS_BUCKET="${arg#*=}" ;;
+    --update_registry) UPDATE_REGISTRY=true ;;
+    --no-update_registry) UPDATE_REGISTRY=false ;;
     --dry-run)        DRY_RUN=true ;;
     --help|-h)
       echo "Usage: $0 --model=<model_name> [--attestation=ita|gca] [--alts|--no-alts] [--destination=<registry>]"
@@ -37,6 +40,8 @@ for arg in "$@"; do
       echo "  --no-alts        Disable ALTS transport"
       echo "  --destination    Container registry path (default: us-docker.pkg.dev/private-inference/offloading)"
       echo "  --gcs_bucket     Override GCS bucket for model weights (e.g., gs://my-bucket)"
+      echo "  --update_registry    Update server_image_registry.json after push (default: true)"
+      echo "  --no-update_registry Skip registry update"
       echo "  --dry-run        Print what would be done without executing"
       exit 0
       ;;
@@ -166,8 +171,40 @@ echo "  Remote tag:   $REMOTE_TAG"
 echo "  Pushed digest: $DIGEST"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
+echo ""
 echo "To use this digest in the client build:"
 echo "  bazel build :batched_inference_oak_ita_oci_runtime_bundle \\"
 echo "      --//:server_digest=\"$DIGEST\""
 echo ""
 
+# ─── Step 4: Update server_image_registry.json ───────────────────────────────
+REGISTRY="$(cd "$(dirname "$0")" && pwd)/server_image_registry.json"
+if [[ "$UPDATE_REGISTRY" != true ]]; then
+  echo "Registry update skipped (--no-update_registry)."
+elif [[ "$DIGEST" == "UNKNOWN" ]]; then
+  echo "WARNING: Skipping registry update (digest unknown)." >&2
+else
+  CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  python3 -c "
+import json, sys
+entry = {
+    'model': sys.argv[1],
+    'attestation': sys.argv[2],
+    'digest': sys.argv[3],
+    'tag': sys.argv[4],
+    'created': sys.argv[5],
+}
+try:
+    with open(sys.argv[6]) as f:
+        registry = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    registry = {'images': []}
+registry['images'].append(entry)
+with open(sys.argv[6], 'w') as f:
+    json.dump(registry, f, indent=2)
+    f.write('\\n')
+print(json.dumps(entry, indent=2))
+" "$MODEL" "$SUFFIX" "$DIGEST" "$REMOTE_TAG" "$CREATED" "$REGISTRY"
+  echo ""
+  echo "Updated $REGISTRY"
+fi

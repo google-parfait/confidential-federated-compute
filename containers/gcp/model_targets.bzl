@@ -18,7 +18,7 @@ load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load(":build_defs.bzl", "define_load_runner")
 
-def gcp_model_targets(model_name, weights_label):
+def gcp_model_targets(model_name, weights_label, weights_filename):
     """Generates model_layer, oci_image, oci_load, and load_runner targets for a model.
 
     Creates targets for all 4 attestation variants (ita, ita_alts, gca, gca_alts).
@@ -26,6 +26,7 @@ def gcp_model_targets(model_name, weights_label):
     Args:
         model_name: Short model identifier (e.g., "gemma4_31b"). Used in target names.
         weights_label: Bazel label for the GGUF weights file (e.g., "@gemma4_31b_weights//:file.gguf").
+        weights_filename: Filename of the GGUF file as it appears in /saved_model/ (e.g., "gemma-4-31B-it-Q4_K_M.gguf").
     """
 
     model_layer_name = "model_layer_" + model_name
@@ -75,6 +76,7 @@ def gcp_model_targets(model_name, weights_label):
             name = image_name,
             base = "@distroless_cc_debian12_base",
             cmd = variant["cmd_extra"] + [
+                "--model_path=/saved_model/" + weights_filename,
                 "--gpu_layers=999",
                 "--port=8000",
             ],
