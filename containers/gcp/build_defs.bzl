@@ -14,22 +14,73 @@ image_digest_flag = rule(
     build_setting = config.string(flag = True),
 )
 
+IntSettingInfo = provider(
+    doc = "Provider for passing int build setting values.",
+    fields = ["value"],
+)
+
+def _int_flag_impl(ctx):
+    return [IntSettingInfo(value = ctx.build_setting_value)]
+
+int_flag = rule(
+    implementation = _int_flag_impl,
+    build_setting = config.int(flag = True),
+)
+
 def _generate_policy_impl(ctx):
     digest = ctx.attr.digest_flag[BuildSettingInfo].value
+    out = ctx.actions.declare_file(ctx.attr.out)
 
-    content = """verifier_type: {type}
+    if digest and digest != "skip":
+        # Manual override: single digest from --//:server_digest flag.
+        content = """verifier_type: {type}
+allow_debug: true
+allow_outdated_hw_tcb: true
+expected_image_digest: "{digest}"
+""".format(type = ctx.attr.verifier_type, digest = digest)
+
+        # buildifier: disable=print
+        print("Generating policy (%s) [manual digest]:\n%s" % (ctx.attr.verifier_type, content))
+        ctx.actions.write(output = out, content = content)
+    elif ctx.file.registry_file:
+        # Auto mode: run generate_policy.py at execution time for date filtering.
+        model_filter = ctx.attr.server_model[BuildSettingInfo].value if ctx.attr.server_model else ""
+        attest_filter = ctx.attr.server_attestation[BuildSettingInfo].value if ctx.attr.server_attestation else ""
+        max_age = ctx.attr.server_max_age_days[IntSettingInfo].value if ctx.attr.server_max_age_days else 60
+
+        ctx.actions.run_shell(
+            outputs = [out],
+            inputs = [ctx.file.registry_file],
+            tools = [ctx.file._generate_policy_script],
+            command = (
+                "python3 {script}" +
+                " --registry={registry}" +
+                " --output={out}" +
+                " --verifier_type={type}" +
+                " --model={model}" +
+                " --attestation={attest}" +
+                " --max_age_days={age}"
+            ).format(
+                script = ctx.file._generate_policy_script.path,
+                registry = ctx.file.registry_file.path,
+                out = out.path,
+                type = ctx.attr.verifier_type,
+                model = model_filter,
+                attest = attest_filter,
+                age = max_age,
+            ),
+        )
+    else:
+        # No digest, no registry — generate policy without digest check.
+        content = """verifier_type: {type}
 allow_debug: true
 allow_outdated_hw_tcb: true
 """.format(type = ctx.attr.verifier_type)
 
-    if digest and digest != "skip":
-        content += 'expected_image_digest: "%s"\n' % digest
+        # buildifier: disable=print
+        print("Generating policy (%s) [no digest check]:\n%s" % (ctx.attr.verifier_type, content))
+        ctx.actions.write(output = out, content = content)
 
-    # buildifier: disable=print
-    print("Generating policy (%s):\n%s" % (ctx.attr.verifier_type, content))
-
-    out = ctx.actions.declare_file(ctx.attr.out)
-    ctx.actions.write(output = out, content = content)
     return [DefaultInfo(files = depset([out]))]
 
 # Rule to generate the policy file
@@ -39,6 +90,24 @@ generate_policy = rule(
         "out": attr.string(mandatory = True),
         "digest_flag": attr.label(mandatory = True),
         "verifier_type": attr.string(mandatory = True, values = ["ITA", "GCA"]),
+        "registry_file": attr.label(
+            allow_single_file = [".json"],
+            doc = "server_image_registry.json for auto-populating digests.",
+        ),
+        "server_model": attr.label(
+            doc = "Build flag to filter registry by model name.",
+        ),
+        "server_attestation": attr.label(
+            doc = "Build flag to filter registry by attestation flavor.",
+        ),
+        "server_max_age_days": attr.label(
+            doc = "Build flag: max age in days for registry entries (default: 60).",
+        ),
+        "_generate_policy_script": attr.label(
+            default = ":generate_policy.py",
+            allow_single_file = True,
+            doc = "The Python script that generates policy from the registry.",
+        ),
     },
 )
 

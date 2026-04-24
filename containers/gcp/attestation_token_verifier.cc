@@ -598,11 +598,26 @@ absl::Status AttestationTokenVerifierImpl::EnforcePolicy(
   if (!status.ok()) return status;
 
   // 6. Workload Measurement: Final integrity check on container.
-  if (!policy_.expected_image_digest().empty()) {
-    status = CheckStringMatch(claims.image_digest,
-                              policy_.expected_image_digest(), "Image Digest");
-    if (!status.ok()) return status;
-    LOG(INFO) << "  [PASS] Image digest matches expected.";
+  if (policy_.expected_image_digest_size() > 0) {
+    if (!claims.image_digest.ok()) {
+      return absl::PermissionDeniedError(
+          "Policy violation: Failed to get image digest claim.");
+    }
+    bool found = false;
+    for (const auto& d : policy_.expected_image_digest()) {
+      if (*claims.image_digest == d) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return absl::PermissionDeniedError(
+          absl::StrCat("Policy violation: Image digest '", *claims.image_digest,
+                       "' not in approved set of ",
+                       policy_.expected_image_digest_size(), " digest(s)."));
+    }
+    LOG(INFO) << "  [PASS] Image digest matches one of "
+              << policy_.expected_image_digest_size() << " approved digest(s).";
   } else {
     LOG(INFO) << "  [INFO] Image digest check skipped by policy.";
   }

@@ -19,7 +19,7 @@ load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_rust//rust:defs.bzl", "rust_library")
-load(":build_defs.bzl", "generate_policy", "image_digest_flag")
+load(":build_defs.bzl", "generate_policy", "image_digest_flag", "int_flag")
 load(":model_targets.bzl", "gcp_model_targets")
 
 # FUTURE WORK(b/452094015): Revise and migrate this to FCP in a revised form.
@@ -356,10 +356,29 @@ image_digest_flag(
     build_setting_default = "skip",
 )
 
+image_digest_flag(
+    name = "server_model",
+    build_setting_default = "",
+)
+
+image_digest_flag(
+    name = "server_attestation",
+    build_setting_default = "",
+)
+
+int_flag(
+    name = "server_max_age_days",
+    build_setting_default = 60,
+)
+
 generate_policy(
     name = "gen_policy_ita",
     out = "policy_ita.textproto",
     digest_flag = ":server_digest",
+    registry_file = ":server_image_registry.json",
+    server_attestation = ":server_attestation",
+    server_max_age_days = ":server_max_age_days",
+    server_model = ":server_model",
     verifier_type = "ITA",
 )
 
@@ -375,6 +394,10 @@ generate_policy(
     name = "gen_policy_gca",
     out = "policy_gca.textproto",
     digest_flag = ":server_digest",
+    registry_file = ":server_image_registry.json",
+    server_attestation = ":server_attestation",
+    server_max_age_days = ":server_max_age_days",
+    server_model = ":server_model",
     verifier_type = "GCA",
 )
 

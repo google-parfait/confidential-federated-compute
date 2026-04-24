@@ -61,8 +61,10 @@ message AttestationPolicy {
   string expected_project_id = 7;
   // Requires this service account to be present in the token's list.
   string expected_service_account = 8;
-  // Expected SHA-256 digest of the container image.
-  string expected_image_digest = 9;
+  // Expected SHA-256 digest(s) of the server container image.
+  // Multiple digests can be specified to accept any of them during attestation.
+  // Populated from server_image_registry.json at build time.
+  repeated string expected_image_digest = 9;
 
   // --- RETIRED FIELDS ---
   // We reserve these numbers and names to prevent accidental reuse or 
