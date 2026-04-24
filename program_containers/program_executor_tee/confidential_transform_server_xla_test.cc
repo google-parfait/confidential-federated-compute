@@ -38,7 +38,7 @@ from federated_language_jax.computation import jax_computation
 import tensorflow_federated as tff
 import federated_language
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
 
   @jax_computation.jax_computation
   def comp():
@@ -46,7 +46,7 @@ def trusted_program(input_provider, external_service_handle):
 
   result = comp()
   result_val, _ = tff.framework.serialize_value(result, federated_language.framework.infer_type(result))
-  external_service_handle.release_unencrypted(result_val.SerializeToString(), b"result")
+  external_handle.release_unencrypted(result_val.SerializeToString(), b"result")
   )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;
@@ -84,13 +84,13 @@ import jax_privacy
 import tensorflow_federated as tff
 import federated_language
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
     fn = lambda param, data: 0.5 * np.mean((data - param) ** 2)
     grad_fn = jax_privacy.clipped_grad(fn, l2_clip_norm=np.inf)
     grad = grad_fn(3.0, np.array([0, 7, -2]))
     grad = grad.tolist()
     grad_val, _ = tff.framework.serialize_value(grad, federated_language.framework.infer_type(grad))
-    external_service_handle.release_unencrypted(grad_val.SerializeToString(), b"result")
+    external_handle.release_unencrypted(grad_val.SerializeToString(), b"result")
   )");
 
   ::fcp::confidentialcompute::SessionRequest session_request;

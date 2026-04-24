@@ -102,25 +102,4 @@ def run_program(
           restore_recovery_info_fn = restore_recovery_info_fn,
       )
   )
-
-  # Dispatch based on the trusted_program's signature: 1-arg (new) programs
-  # receive only the ExternalServiceHandle, while 2-arg (legacy) programs
-  # receive both a ProgramInputProvider and an ExternalServiceHandle.
-  sig = inspect.signature(trusted_program)
-  num_params = len(sig.parameters)
-  if num_params == 1:
-    trusted_program(initialized_external_service_handle)
-  elif num_params == 2:
-    # TODO(b/497752916): Remove this legacy 2-arg dispatch path once all
-    # customer programs have been migrated to the 1-arg signature.
-    input_provider = program_input_provider.ProgramInputProvider(
-        client_ids,
-        client_data_directory,
-        model_id_to_zip_file,
-        resolve_uri_to_tensor_fn,
-    )
-    trusted_program(input_provider, initialized_external_service_handle)
-  else:
-    raise ValueError(
-        f"trusted_program must accept 1 or 2 arguments, got {num_params}."
-    )
+  trusted_program(initialized_external_service_handle)
