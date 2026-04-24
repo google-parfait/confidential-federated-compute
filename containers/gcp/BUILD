@@ -15,11 +15,12 @@
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
-load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
+load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_rust//rust:defs.bzl", "rust_library")
-load(":build_defs.bzl", "define_load_runner", "generate_policy", "image_digest_flag")
+load(":build_defs.bzl", "generate_policy", "image_digest_flag")
+load(":model_targets.bzl", "gcp_model_targets")
 
 # FUTURE WORK(b/452094015): Revise and migrate this to FCP in a revised form.
 proto_library(
@@ -282,114 +283,18 @@ pkg_tar(
     include_runfiles = True,
 )
 
-pkg_tar(
-    name = "model_layer",
-    srcs = ["@gemma_weights//:gemma-3-270m-it-q4_k_m.gguf"],
-    mode = "0444",
-    package_dir = "/saved_model",
+# Per-model GCP server container targets.
+# Each call generates: model_layer_{name}, oci_image, oci_load, and load_runner
+# for all 4 attestation variants (ita, ita_alts, gca, gca_alts).
+gcp_model_targets(
+    model_name = "gemma4_31b",
+    weights_label = "@gemma4_31b_weights//:gemma-4-31B-it-Q4_K_M.gguf",
 )
 
-oci_image(
-    name = "batched_inference_gcp_ita_oci_image",
-    base = "@distroless_cc_debian12_base",
-    cmd = [
-        "--attestation_provider=ita",
-        "--gpu_layers=999",
-        "--port=8000",
-    ],
-    entrypoint = ["/batched_inference_gcp_main"],
-    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
-    exposed_ports = ["8000/tcp"],
-    tars = [
-        ":batched_inference_gcp_tar",
-        ":model_layer",
-    ],
+gcp_model_targets(
+    model_name = "gemma4_e4b",
+    weights_label = "@gemma4_e4b_weights//:gemma-4-E4B-it-Q4_K_M.gguf",
 )
-
-oci_image(
-    name = "batched_inference_gcp_ita_alts_oci_image",
-    base = "@distroless_cc_debian12_base",
-    cmd = [
-        "--attestation_provider=ita",
-        "--gpu_layers=999",
-        "--use_alts=true",
-        "--port=8000",
-    ],
-    entrypoint = ["/batched_inference_gcp_main"],
-    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
-    exposed_ports = ["8000/tcp"],
-    tars = [
-        ":batched_inference_gcp_tar",
-        ":model_layer",
-    ],
-)
-
-oci_image(
-    name = "batched_inference_gcp_gca_oci_image",
-    base = "@distroless_cc_debian12_base",
-    cmd = [
-        "--attestation_provider=gca",
-        "--gpu_layers=999",
-        "--port=8000",
-    ],
-    entrypoint = ["/batched_inference_gcp_main"],
-    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
-    exposed_ports = ["8000/tcp"],
-    tars = [
-        ":batched_inference_gcp_tar",
-        ":model_layer",
-    ],
-)
-
-oci_image(
-    name = "batched_inference_gcp_gca_alts_oci_image",
-    base = "@distroless_cc_debian12_base",
-    cmd = [
-        "--attestation_provider=gca",
-        "--gpu_layers=999",
-        "--use_alts=true",
-        "--port=8000",
-    ],
-    entrypoint = ["/batched_inference_gcp_main"],
-    env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
-    exposed_ports = ["8000/tcp"],
-    tars = [
-        ":batched_inference_gcp_tar",
-        ":model_layer",
-    ],
-)
-
-oci_load(
-    name = "batched_inference_gcp_ita_tarball",
-    image = ":batched_inference_gcp_ita_oci_image",
-    repo_tags = ["batched_inference_gcp:ita_latest"],
-)
-
-oci_load(
-    name = "batched_inference_gcp_gca_tarball",
-    image = ":batched_inference_gcp_gca_oci_image",
-    repo_tags = ["batched_inference_gcp:gca_latest"],
-)
-
-oci_load(
-    name = "batched_inference_gcp_ita_alts_tarball",
-    image = ":batched_inference_gcp_ita_alts_oci_image",
-    repo_tags = ["batched_inference_gcp:ita_alts_latest"],
-)
-
-oci_load(
-    name = "batched_inference_gcp_gca_alts_tarball",
-    image = ":batched_inference_gcp_gca_alts_oci_image",
-    repo_tags = ["batched_inference_gcp:gca_alts_latest"],
-)
-
-define_load_runner("batched_inference_gcp_ita", "batched_inference_gcp:ita_latest")
-
-define_load_runner("batched_inference_gcp_gca", "batched_inference_gcp:gca_latest")
-
-define_load_runner("batched_inference_gcp_ita_alts", "batched_inference_gcp:ita_alts_latest")
-
-define_load_runner("batched_inference_gcp_gca_alts", "batched_inference_gcp:gca_alts_latest")
 
 cc_binary(
     name = "batched_inference_oak_main",
