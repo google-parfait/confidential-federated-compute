@@ -350,7 +350,7 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, InvalidProgramFails) {
   this->CreateSession(R"(
-def incorrectly_named_trusted_program(input_provider, external_service_handle):
+def incorrectly_named_trusted_program(external_handle):
   return 10
   )");
 
@@ -372,11 +372,11 @@ def incorrectly_named_trusted_program(input_provider, external_service_handle):
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
   this->CreateSession(R"(
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
   result_1 = "a" + "b" + "c"
   result_2 = "d" + "e" + "f"
-  external_service_handle.release_unencrypted(result_1.encode(), b"result_1")
-  external_service_handle.release_unencrypted(result_2.encode(), b"result_2")
+  external_handle.release_unencrypted(result_1.encode(), b"result_1")
+  external_handle.release_unencrypted(result_2.encode(), b"result_2")
   )");
   SessionRequest session_request;
   SessionResponse session_response;
@@ -430,16 +430,16 @@ import struct
 FORMAT_STRING = '<i' # '<' for little-endian, 'i' for 32-bit signed integer
 BYTE_COUNT = 4
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
   sum = 0
-  for client_id in input_provider.client_ids:
-    tensor = input_provider.resolve_uri_to_tensor(client_id, "my_key_name")
+  for client_id in external_handle.client_ids:
+    tensor = external_handle.resolve_uri_to_tensor(client_id, "my_key_name")
 
     for unpacked_tuple in struct.iter_unpack(FORMAT_STRING, tensor.content):
       # The tuple will contain a single element (the integer)
       sum += unpacked_tuple[0]
 
-  external_service_handle.release_unencrypted(struct.pack(FORMAT_STRING, sum), b"result")
+  external_handle.release_unencrypted(struct.pack(FORMAT_STRING, sum), b"result")
   )",
                       /*kms_private_state=*/"",
                       /*client_ids=*/{"client_1", "client_2"});
@@ -460,15 +460,15 @@ def trusted_program(input_provider, external_service_handle):
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSessionWithRecovery) {
   std::string program = R"(
-def trusted_program(external_service_handle):
-  recovery_val = external_service_handle.restore_recovery_info("recovery_key")
+def trusted_program(external_handle):
+  recovery_val = external_handle.restore_recovery_info("recovery_key")
   if recovery_val is not None:
     start_index = int(recovery_val.decode()) + 1
   else:
     start_index = 0
   
   for i in range(start_index, 3):
-    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key", [(f"value_{i}".encode(), f"key_{i}")])
+    external_handle.save_recovery_info(str(i).encode(), f"recovery_key", [(f"value_{i}".encode(), f"key_{i}")])
     if i == 1:
       raise Exception("Simulated interruption")
   )";
@@ -513,15 +513,15 @@ def trusted_program(external_service_handle):
 TYPED_TEST(ProgramExecutorTeeSessionTest,
            FinalizeSessionWithStaleRecoveryNotAllowed) {
   std::string program = R"(
-def trusted_program(external_service_handle):
-  recovery_val = external_service_handle.restore_recovery_info("recovery_key_0")
+def trusted_program(external_handle):
+  recovery_val = external_handle.restore_recovery_info("recovery_key_0")
   if recovery_val is not None:
     start_index = int(recovery_val.decode()) + 1
   else:
     start_index = 0
   
   for i in range(start_index, 3):
-    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
+    external_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
     if i == 1:
       raise Exception("Simulated interruption")
   )";
@@ -567,8 +567,8 @@ def trusted_program(external_service_handle):
 TYPED_TEST(ProgramExecutorTeeSessionTest,
            FinalizeSessionWithFailureBeforeSavingRecovery) {
   std::string program = R"(
-def trusted_program(external_service_handle):
-  recovery_val = external_service_handle.restore_recovery_info("recovery_key_0")
+def trusted_program(external_handle):
+  recovery_val = external_handle.restore_recovery_info("recovery_key_0")
   if recovery_val is not None:
     start_index = int(recovery_val.decode()) + 1
   else:
@@ -576,7 +576,7 @@ def trusted_program(external_service_handle):
   
   for i in range(start_index, 3):
     raise Exception(f"Simulated interruption for round {i}")
-    external_service_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
+    external_handle.save_recovery_info(str(i).encode(), f"recovery_key_{i}", [(f"value_{i}".encode(), f"key_{i}")])
   )";
 
   // Session 1: First run. No recovery info available yet, so should fail to
@@ -619,9 +619,9 @@ def trusted_program(external_service_handle):
 TYPED_TEST(ProgramExecutorTeeSessionTest,
            ReleaseUnencryptedUnsupportedAfterSaveRecovery) {
   std::string program = R"(
-def trusted_program(external_service_handle):
-  external_service_handle.save_recovery_info(b"checkpoint", "recovery_key", [])
-  external_service_handle.release_unencrypted(b"value_1", "key_1")
+def trusted_program(external_handle):
+  external_handle.save_recovery_info(b"checkpoint", "recovery_key", [])
+  external_handle.release_unencrypted(b"value_1", "key_1")
   )";
 
   this->CreateSession(program);
