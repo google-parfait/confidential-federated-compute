@@ -90,24 +90,25 @@ DataParser::DataParser(
                                 grpc::InsecureChannelCredentials(), args));
 }
 
+// TODO: b/487997314 - Remove this method once we have fully migrated to
+// spanner.
 absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
                                                            std::string key) {
-  FCP_ASSIGN_OR_RETURN(std::string fc_checkpoint,
-                       ResolveUriToFcCheckpoint(uri));
-  FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(
-      std::unique_ptr<CheckpointParser> parser,
-      parser_factory.Create(absl::Cord(std::move(fc_checkpoint))));
-  FCP_ASSIGN_OR_RETURN(tensorflow_federated::aggregation::Tensor agg_tensor,
-                       parser->GetTensor(key));
-  return agg_tensor.ToProto();
-}
-
-absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
-    std::string uri) {
-  ClientContext client_context;
   ReadRequest read_request;
   read_request.set_uri(uri);
+  return ResolveReadRequestToTensor(read_request, key);
+}
+
+absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
+    std::string blob_id, std::string key) {
+  ReadRequest read_request;
+  read_request.set_blob_id(blob_id);
+  return ResolveReadRequestToTensor(read_request, key);
+}
+
+absl::StatusOr<TensorProto> DataParser::ResolveReadRequestToTensor(
+    const ReadRequest& read_request, const std::string& key) {
+  ClientContext client_context;
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse combined_read_response;
   std::string combined_data = "";
@@ -124,21 +125,23 @@ absl::StatusOr<std::string> DataParser::ResolveUriToFcCheckpoint(
     }
   }
   FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
-  return ParseReadResponseToFcCheckpoint(uri, combined_read_response);
-}
 
-absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
-    std::string uri, const ReadResponse& read_response) {
-  if (read_response.first_response_metadata().has_unencrypted()) {
-    return read_response.data();
+  if (combined_read_response.first_response_metadata().has_unencrypted()) {
+    FederatedComputeCheckpointParserFactory parser_factory;
+    FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
+                         parser_factory.Create(absl::Cord(std::move(
+                             *combined_read_response.mutable_data()))));
+    FCP_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
+    return agg_tensor.ToProto();
   }
 
   // Parse the BlobHeader to get the access policy hash and key ID.
   BlobHeader blob_header;
-  if (!blob_header.ParseFromString(read_response.first_response_metadata()
-                                       .hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
+  if (!blob_header.ParseFromString(
+          combined_read_response.first_response_metadata()
+              .hpke_plus_aead_data()
+              .kms_symmetric_key_associated_data()
+              .record_header())) {
     return absl::InvalidArgumentError(
         "kms_symmetric_key_associated_data.record_header() cannot be "
         "parsed to BlobHeader.");
@@ -156,20 +159,33 @@ absl::StatusOr<std::string> DataParser::ParseReadResponseToFcCheckpoint(
         "KMS.");
   }
 
-  // Check that the returned blob has a blob id that has either never been seen
-  // before, or was previously seen for the same filename. A malicious
-  // orchestrator could return the same blob for multiple filenames.
+  // TODO: b/487997314 - Remove this logic once we have fully migrated to
+  // spanner.
+  // Check that the returned blob has a blob id that has either never
+  // been seen before, or was previously seen for the same identifier. A
+  // malicious orchestrator could return the same blob for multiple identifiers.
+  std::string identifier =
+      read_request.uri().empty() ? read_request.blob_id() : read_request.uri();
   if (blob_id_to_filename_map_.find(blob_header.blob_id()) ==
       blob_id_to_filename_map_.end()) {
-    blob_id_to_filename_map_[blob_header.blob_id()] = uri;
-  } else if (blob_id_to_filename_map_[blob_header.blob_id()] != uri) {
+    blob_id_to_filename_map_[blob_header.blob_id()] = identifier;
+  } else if (blob_id_to_filename_map_[blob_header.blob_id()] != identifier) {
     return absl::InvalidArgumentError(
         "This blob id was previously returned for a different filename.");
   }
 
-  return blob_decryptor_->DecryptBlob(read_response.first_response_metadata(),
-                                      read_response.data(),
-                                      blob_header.key_id());
+  FCP_ASSIGN_OR_RETURN(
+      std::string fc_checkpoint,
+      blob_decryptor_->DecryptBlob(
+          combined_read_response.first_response_metadata(),
+          combined_read_response.data(), blob_header.key_id()));
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  FCP_ASSIGN_OR_RETURN(
+      std::unique_ptr<CheckpointParser> parser,
+      parser_factory.Create(absl::Cord(std::move(fc_checkpoint))));
+  FCP_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
+  return agg_tensor.ToProto();
 }
 
 absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,

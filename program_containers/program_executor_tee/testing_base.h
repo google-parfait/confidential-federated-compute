@@ -91,6 +91,8 @@ void ReadTextProtoOrDie(const std::string& path,
   }
 }
 
+// TODO: b/487997314 - Remove the client_data_dir arg when the migration to
+// spanner is complete.
 ProgramExecutorTeeInitializeConfig CreateProgramExecutorTeeInitializeConfig(
     std::string program, std::vector<std::string> client_ids = {},
     std::string client_data_dir = "", std::string outgoing_server_address = "",
@@ -106,8 +108,14 @@ ProgramExecutorTeeInitializeConfig CreateProgramExecutorTeeInitializeConfig(
                        &worker_reference_values);
     *init_config.mutable_reference_values() = worker_reference_values;
   }
-  for (const std::string& client_id : client_ids) {
-    init_config.add_client_ids(client_id);
+  if (client_data_dir.empty()) {
+    for (const std::string& client_id : client_ids) {
+      init_config.add_blob_ids(client_id);
+    }
+  } else {
+    for (const std::string& client_id : client_ids) {
+      init_config.add_client_ids(client_id);
+    }
   }
   return init_config;
 }

@@ -173,6 +173,7 @@ cc_test(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
         "@confidential-federated-compute//testing:parse_text_proto",
+        "@federated-compute//fcp/base:random_token",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/confidentialcompute:private_state",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

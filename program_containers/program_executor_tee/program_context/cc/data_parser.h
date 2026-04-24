@@ -51,10 +51,17 @@ class DataParser {
           nullptr,
       std::set<std::string> authorized_logical_pipeline_policies_hashes = {});
 
+  // TODO: b/487997314 - Remove this method once we have fully migrated to
+  // spanner.
   // Retrieves the TensorProto that is described by the provided uri and
   // FcCheckpoint key.
   absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
   ResolveUriToTensor(std::string uri, std::string key);
+
+  // Retrieves the TensorProto that is described by the provided blob id and
+  // FcCheckpoint key.
+  absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
+  ResolveBlobIdToTensor(std::string blob_id, std::string key);
 
   // Wraps the data in a release token and sends it to untrusted space.
   absl::Status ReleaseUnencrypted(std::string data, std::string key);
@@ -66,14 +73,12 @@ class DataParser {
   absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key);
 
  private:
-  // Retrieve the FC checkpoint for a uri, either by using the cache or
-  // sending a ReadRequest to the DataReadWrite service.
-  absl::StatusOr<std::string> ResolveUriToFcCheckpoint(std::string uri);
-
-  // Parse a ReadResponse message into a FC checkpoint.
-  absl::StatusOr<std::string> ParseReadResponseToFcCheckpoint(
-      std::string uri,
-      const fcp::confidentialcompute::outgoing::ReadResponse& read_response);
+  // Send a ReadRequest to the DataReadWrite service, parse the FC checkpoint,
+  // and return the tensor identified by the given key.
+  absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
+  ResolveReadRequestToTensor(
+      const fcp::confidentialcompute::outgoing::ReadRequest& read_request,
+      const std::string& key);
 
   absl::Status ReleaseUnencryptedInternal(std::string data, std::string key);
 
@@ -95,6 +100,8 @@ class DataParser {
   // The authorized logical policy hashes for this container.
   std::set<std::string> authorized_logical_pipeline_policies_hashes_;
 
+  // TODO: b/487997314 - Remove this map once we have fully migrated to
+  // spanner.
   // To prevent orchestrator attacks where the same blob is returned for
   // multiple filenames, we maintain a blob_id -> filename map and check that a
   // given blob_id is only seen for one filename.

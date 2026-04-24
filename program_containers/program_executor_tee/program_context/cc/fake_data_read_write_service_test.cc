@@ -219,7 +219,7 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
   grpc::Status status = reader->Finish();
   ASSERT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
   ASSERT_THAT(status.error_message(),
-              HasSubstr("Requested uri other_uri not found"));
+              HasSubstr("Requested key other_uri not found"));
 }
 
 TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
