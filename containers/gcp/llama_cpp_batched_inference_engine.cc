@@ -17,6 +17,7 @@
 #include <iostream>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -55,6 +56,13 @@ static void LlamaVerboseLogger(ggml_log_level level, const char* text,
     LOG(INFO) << "llama.cpp: " << msg;
   }
 }
+
+// Chat template markers used to wrap prompts for instruction-tuned models.
+// These are also used as stop strings during decoding: if the model emits
+// them as regular text (which happens when the GGUF vocab doesn't register
+// them as special tokens), we truncate the output at that point.
+constexpr char kStartOfTurn[] = "<start_of_turn>";
+constexpr char kEndOfTurn[] = "<end_of_turn>";
 
 // --- Helper Functions for Manual Batch Manipulation ---
 
@@ -119,6 +127,11 @@ class LlamaCppBatchedInferenceEngine : public BatchedInferenceEngine {
   llama_model* model_;        // Owned by this class.
   const llama_vocab* vocab_;  // Owned by model_.
 
+  // Stop strings discovered from the model vocabulary at init time.
+  // These are the text representations of control tokens (e.g. <end_of_turn>)
+  // that should terminate generation if they appear in the output.
+  std::vector<std::string> stop_strings_;
+
   absl::Mutex mutex_;
   // Context (KV cache) and sampler are reused across requests to save
   // allocation time, but are reset at the start of each InferInternal() call
@@ -134,10 +147,43 @@ LlamaCppBatchedInferenceEngine::LlamaCppBatchedInferenceEngine(
     llama_model* model, const llama_vocab* vocab)
     : model_(model), vocab_(vocab) {
   // Initialize the batch structure once.
-  // We allocate enough space for kBatchSize tokens.
-  // The '1' determines the max number of sequences a single token can belong
-  // to. Since we map 1 token to 1 sequence, 1 is sufficient.
   batch_ = llama_batch_init(kBatchSize, 0, 1);
+
+  // Build the stop string list from two sources:
+  absl::flat_hash_set<std::string> seen;
+  auto add_stop = [&](std::string s) {
+    if (!s.empty() && seen.insert(s).second) {
+      stop_strings_.push_back(std::move(s));
+    }
+  };
+
+  // 1. Chat template markers.  Our Tokenize() wraps prompts with these.
+  //    If the GGUF doesn't register them as special tokens, llama_tokenize
+  //    splits them into regular text pieces, and the model may reproduce
+  //    them verbatim in its output.  Catch that here.
+  add_stop(kEndOfTurn);
+  add_stop(kStartOfTurn);
+
+  // 2. Model vocab control tokens (belt-and-suspenders for models that
+  //    DO encode their turn markers as native control tokens).
+  auto maybe_add_token = [&](llama_token id) {
+    if (id < 0) return;
+    char buf[256];
+    int n = llama_token_to_piece(vocab_, id, buf, sizeof(buf), 0, true);
+    if (n > 0) add_stop(std::string(buf, n));
+  };
+  maybe_add_token(llama_vocab_eot(vocab_));
+  int n_vocab = llama_vocab_n_tokens(vocab_);
+  for (int i = 0; i < n_vocab; i++) {
+    if (llama_vocab_get_attr(vocab_, i) & LLAMA_TOKEN_ATTR_CONTROL) {
+      maybe_add_token(i);
+    }
+  }
+
+  LOG(INFO) << "Stop strings (" << stop_strings_.size() << "):";
+  for (const auto& s : stop_strings_) {
+    LOG(INFO) << "  \"" << s << "\"";
+  }
 }
 
 LlamaCppBatchedInferenceEngine::~LlamaCppBatchedInferenceEngine() {
@@ -149,9 +195,10 @@ LlamaCppBatchedInferenceEngine::~LlamaCppBatchedInferenceEngine() {
 
 absl::StatusOr<std::vector<llama_token>>
 LlamaCppBatchedInferenceEngine::Tokenize(const std::string& prompt) {
-  // 1. Apply Gemma Chat Template
-  std::string formatted_prompt = absl::StrCat(
-      "<start_of_turn>user\n", prompt, "<end_of_turn>\n<start_of_turn>model\n");
+  // Apply chat template using the shared turn marker constants.
+  std::string formatted_prompt =
+      absl::StrCat(kStartOfTurn, "user\n", prompt, kEndOfTurn, "\n",
+                   kStartOfTurn, "model\n");
 
   // 2. Tokenize formatted prompt
   std::vector<llama_token> tokens;
@@ -264,15 +311,35 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
       } else {
         // Convert to text
         char buf[128];
+        // special=false: suppress tokens with LLAMA_TOKEN_ATTR_CONTROL.
         int n = llama_token_to_piece(vocab_, new_token_id, buf, sizeof(buf), 0,
-                                     true);
+                                     false);
         if (n > 0) {
           states[seq_id].output.append(buf, n);
         }
         states[seq_id].tokens_generated++;
 
-        // Prepare for next iteration
-        next_step_inputs.push_back({seq_id, new_token_id});
+        // Stop-string detection: some models emit turn markers as regular
+        // tokens that aren't flagged as EOG in the GGUF vocab, so
+        // llama_vocab_is_eog misses them.  Check against the stop strings
+        // we discovered from the model vocabulary at init time.
+        bool hit_stop = false;
+        for (const auto& stop : stop_strings_) {
+          auto pos = states[seq_id].output.find(stop);
+          if (pos != std::string::npos) {
+            states[seq_id].output.resize(pos);
+            hit_stop = true;
+            break;
+          }
+        }
+
+        if (hit_stop) {
+          states[seq_id].done = true;
+          active_sequences--;
+        } else {
+          // Prepare for next iteration
+          next_step_inputs.push_back({seq_id, new_token_id});
+        }
       }
     }
 
@@ -289,8 +356,14 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
     }
   }
 
-  // 5. Populate Response
-  for (const auto& state : states) {
+  // 5. Populate Response.
+  for (auto& state : states) {
+    // Trim trailing whitespace/newlines.
+    while (!state.output.empty() &&
+           (state.output.back() == '\n' || state.output.back() == ' ')) {
+      state.output.pop_back();
+    }
+
     auto* result = response.add_results();
     result->set_text(state.output);
     result->mutable_status()->set_code(google::rpc::Code::OK);
