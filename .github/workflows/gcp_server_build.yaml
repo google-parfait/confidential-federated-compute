@@ -1,0 +1,106 @@
+name: Build and push GCP server containers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'containers/gcp/**'
+      # Exclude the registry file itself to prevent infinite trigger loops.
+      - '!containers/gcp/server_image_registry.json'
+
+  # Allow manual triggering for testing or forced rebuilds.
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model to build (gemma4_e4b, gemma4_31b, or all)'
+        required: true
+        default: 'gemma4_e4b'
+        type: choice
+        options:
+          - gemma4_e4b
+          - gemma4_31b
+          - all
+
+# Only one server build at a time to avoid registry merge conflicts.
+concurrency:
+  group: server-build
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: gemma4_e4b
+            attestation: ita
+            alts: true
+          # Uncomment when disk space is validated on the runner:
+          # - model: gemma4_31b
+          #   attestation: ita
+          #   alts: true
+
+    # Skip matrix entries that don't match manual trigger selection.
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.model == 'all' ||
+      github.event.inputs.model == matrix.model
+
+    runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu24.04
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use the default GITHUB_TOKEN for now. If pushes are blocked by
+          # branch protection, switch to a PAT or GitHub App token:
+          #   token: ${{ secrets.REGISTRY_UPDATE_PAT }}
+          ref: main
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          module-root: containers/gcp
+          bazelisk-cache: true
+          disk-cache: server-${{ matrix.model }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY_JSON }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+      - name: Build and push server image
+        working-directory: containers/gcp
+        run: |
+          ALTS_FLAG=""
+          if [ "${{ matrix.alts }}" = "true" ]; then
+            ALTS_FLAG="--alts"
+          else
+            ALTS_FLAG="--no-alts"
+          fi
+
+          ./build_and_push_server_image.sh \
+            --model=${{ matrix.model }} \
+            --attestation=${{ matrix.attestation }} \
+            ${ALTS_FLAG}
+
+      - name: Commit registry update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add containers/gcp/server_image_registry.json
+          if git diff --cached --quiet; then
+            echo "No changes to server_image_registry.json — skipping commit."
+          else
+            git commit -m "ci: update server_image_registry.json (${{ matrix.model }}/${{ matrix.attestation }})"
+            # Pull with rebase to handle concurrent pushes from other matrix jobs.
+            git pull --rebase origin main
+            git push origin main
+          fi
