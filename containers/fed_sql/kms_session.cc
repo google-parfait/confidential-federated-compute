@@ -440,11 +440,13 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
       CommitRowsGroupingByInput(std::move(uncommitted_inputs_), range));
 
   for (const auto& key_id : unique_key_ids) {
-    if (!range_tracker_.AddRange(key_id, commit_config.range().start(),
-                                 commit_config.range().end())) {
-      return absl::FailedPreconditionError(
-          "Failed to commit due to conflicting ranges");
-    }
+    range_tracker_.AddKey(key_id);
+  }
+
+  if (!range_tracker_.AddRange(commit_config.range().start(),
+                               commit_config.range().end())) {
+    return absl::FailedPreconditionError(
+        "Failed to commit due to conflicting ranges");
   }
 
   uncommitted_inputs_.clear();
@@ -617,7 +619,7 @@ absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::ReportPrivateState(Context& context) {
   // Update the private state
   FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(
-      partition_private_state_.GetPerKeyRanges(),
+      partition_private_state_.GetKeys(), partition_private_state_.GetRanges(),
       partition_private_state_.GetExpiredKeys()));
   // Get all the symmetric keys for the partitions.
   std::string serialized_keys = partition_private_state_.GetSerializedKeys();

@@ -19,13 +19,12 @@ package confidential_federated_compute.fed_sql;
 // Used to serialize the state of PartitionPrivateState and pass it
 // between containers.
 message PartitionPrivateStateProto {
-  message Bucket {
-    // A key for the bucket of range data.
-    bytes key = 1;
-    // List consisting of range_start and range_end values.
-    repeated fixed64 values = 2;
-  }
-  repeated Bucket buckets = 1;
+  // Tracked keys.
+  repeated bytes keys = 4;
+
+  // Tracked ranges represented as a list consisting of range_start and
+  // range_end values.
+  repeated fixed64 values = 5;
 
   // Keys that have expired and should be removed from the budget.
   repeated bytes expired_keys = 2;
@@ -36,4 +35,6 @@ message PartitionPrivateStateProto {
     bytes symmetric_key = 2;
   }
   repeated SymmetricKeys symmetric_keys = 3;
+
+  reserved 1;
 }

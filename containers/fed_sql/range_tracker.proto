@@ -17,18 +17,20 @@ syntax = "proto3";
 package confidential_federated_compute.fed_sql;
 
 // Used to serialize the state of RangeTracker and pass it between containers.
+// This state is never persisted.
 message RangeTrackerState {
-    message Bucket {
-        // A key for the bucket of range data.
-        bytes key = 1;
-        // List consisting of range_start and range_end values.
-        repeated fixed64 values = 2;
-    }
-    repeated Bucket buckets = 1;
+  // Tracked keys.
+  repeated bytes keys = 4;
 
-    // The index of the partition that this RangeTracker is tracking.
-    uint64 partition_index = 2;
+  // Tracked ranges represented as a list consisting of range_start and
+  // range_end values.
+  repeated fixed64 values = 5;
 
-    // Keys that have expired and should be removed from the budget.
-    repeated bytes expired_keys = 3;
+  // The index of the partition that this RangeTracker is tracking.
+  uint64 partition_index = 2;
+
+  // Keys that have expired and should be removed from the budget.
+  repeated bytes expired_keys = 3;
+
+  reserved 1;
 }

@@ -37,8 +37,10 @@ TEST(PartitionPrivateStateTest, ParseAndSerialize) {
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
   )pb");
   auto state = PartitionPrivateState::Parse(proto);
   EXPECT_THAT(state, IsOk());
@@ -51,8 +53,10 @@ TEST(PartitionPrivateStateTest, ParseAndSerializeAsString) {
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
   )pb");
   std::string serialized = proto.SerializeAsString();
   auto state = PartitionPrivateState::Parse(serialized);
@@ -69,9 +73,10 @@ TEST(PartitionPrivateStateTest, ParseInvalidString) {
 }
 
 TEST(PartitionPrivateStateTest, ParseInvalidProto) {
-  PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 4 values: 7 }
-  )pb");
+  PartitionPrivateStateProto proto =
+      PARSE_TEXT_PROTO(R"pb(
+        values: 1 values: 4 values: 7
+      )pb");
   EXPECT_THAT(PartitionPrivateState::Parse(proto),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -94,8 +99,10 @@ TEST(PartitionPrivateStateTest, GetSerializedKeys) {
 
 TEST(PartitionPrivateStateTest, AddPartition) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 4 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
@@ -103,8 +110,10 @@ TEST(PartitionPrivateStateTest, AddPartition) {
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 4 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
     partition_index: 456
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
@@ -120,15 +129,14 @@ TEST(PartitionPrivateStateTest, AddPartition) {
                 symmetric_keys { id: 456 symmetric_key: "symmetric_key2" }
                 expired_keys: "expired_key1"
                 expired_keys: "expired_key2"
-                buckets { key: "foo" values: 1 values: 5 values: 7 values: 10 }
-                buckets { key: "bar" values: 0 values: 4 }
+                keys: "foo"
+                keys: "bar"
+                values: 0
+                values: 10
               )pb"));
-  RangeTracker::InnerMap per_key_ranges = state.GetPerKeyRanges();
-  EXPECT_THAT(per_key_ranges,
-              UnorderedElementsAre(
-                  Pair(Eq("foo"), ElementsAre(Interval<uint64_t>(1, 5),
-                                              Interval<uint64_t>(7, 10))),
-                  Pair(Eq("bar"), ElementsAre(Interval<uint64_t>(0, 4)))));
+  const absl::flat_hash_set<std::string>& keys = state.GetKeys();
+  EXPECT_THAT(keys, UnorderedElementsAre("foo", "bar"));
+  EXPECT_THAT(state.GetRanges(), ElementsAre(Interval<uint64_t>(0, 10)));
   auto expired_keys = state.GetExpiredKeys();
   EXPECT_THAT(expired_keys.size(), 2);
   EXPECT_TRUE(expired_keys.contains("expired_key1"));
@@ -137,7 +145,8 @@ TEST(PartitionPrivateStateTest, AddPartition) {
 
 TEST(PartitionPrivateStateTest, AddPartitionNoPartitionId) {
   RangeTracker range_tracker;
-  range_tracker.AddRange("foo", 1, 5);
+  range_tracker.AddKey("foo");
+  range_tracker.AddRange(1, 5);
   range_tracker.SetExpiredKeys({"expired_key1"});
   // No partition index set.
   PartitionPrivateState state;
@@ -146,14 +155,18 @@ TEST(PartitionPrivateStateTest, AddPartitionNoPartitionId) {
 
 TEST(PartitionPrivateStateTest, AddPartitionConflictingPartitionId) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
   )pb");
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
   )pb");
@@ -167,14 +180,18 @@ TEST(PartitionPrivateStateTest, AddPartitionConflictingPartitionId) {
 
 TEST(PartitionPrivateStateTest, AddPartitionMismatchRangeValues) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
   )pb");
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 7 }
+    keys: "foo"
+    values: 0
+    values: 15
     partition_index: 456
     expired_keys: "expired_key1"
   )pb");
@@ -188,14 +205,18 @@ TEST(PartitionPrivateStateTest, AddPartitionMismatchRangeValues) {
 
 TEST(PartitionPrivateStateTest, AddPartitionMismatchRangeKeys) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
   )pb");
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "bar" values: 1 values: 5 }
+    keys: "bar"
+    values: 0
+    values: 10
     partition_index: 456
     expired_keys: "expired_key1"
   )pb");
@@ -209,14 +230,18 @@ TEST(PartitionPrivateStateTest, AddPartitionMismatchRangeKeys) {
 
 TEST(PartitionPrivateStateTest, AddPartitionMismatchExpiredKeys) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 123
     expired_keys: "expired_key1"
   )pb");
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
     partition_index: 456
     expired_keys: "expired_key2"
   )pb");
@@ -234,16 +259,20 @@ TEST(PartitionPrivateState, Merge) {
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
   )pb");
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 3 symmetric_key: "key3" }
     symmetric_keys { id: 4 symmetric_key: "key4" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 0
+    values: 10
   )pb");
 
   PartitionPrivateState state;
@@ -256,8 +285,10 @@ TEST(PartitionPrivateState, Merge) {
                 symmetric_keys { id: 4 symmetric_key: "key4" }
                 expired_keys: "expired_key1"
                 expired_keys: "expired_key2"
-                buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-                buckets { key: "bar" values: 0 values: 3 }
+                keys: "foo"
+                keys: "bar"
+                values: 0
+                values: 10
               )pb"));
 }
 
@@ -265,12 +296,16 @@ TEST(PartitionPrivateState, MergeConflictingPartitionId) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key2" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
 
   PartitionPrivateState state;
@@ -282,12 +317,16 @@ TEST(PartitionPrivateState, MergeMismatchRangeValues) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 7 }
+    keys: "foo"
+    values: 0
+    values: 15
   )pb");
 
   PartitionPrivateState state;
@@ -299,12 +338,16 @@ TEST(PartitionPrivateState, MergeMismatchRangeKeys) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
-    buckets { key: "bar" values: 1 values: 5 }
+    keys: "bar"
+    values: 0
+    values: 10
   )pb");
 
   PartitionPrivateState state;
@@ -316,12 +359,16 @@ TEST(PartitionPrivateState, MergeMismatchExpiredKeys) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 5 }
+    keys: "foo"
+    values: 0
+    values: 10
   )pb");
 
   PartitionPrivateState state;
