@@ -37,24 +37,26 @@ absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
     state.symmetric_keys_.insert({entry.id(), entry.symmetric_key()});
   }
 
-  state.expired_keys_.insert(proto.expired_keys().begin(),
-                             proto.expired_keys().end());
+  state.expired_keys_ = absl::flat_hash_set<std::string>(
+      proto.expired_keys().begin(), proto.expired_keys().end());
 
-  for (const auto& bucket : proto.buckets()) {
-    // Each interval is represented by a pair of values (start, end) so it must
-    // be even.
-    if (bucket.values_size() % 2 != 0) {
-      return absl::InvalidArgumentError(
-          "Unexpected number of values in serialized PartitionPrivateState.");
-    }
-    std::vector<Interval<uint64_t>> intervals;
-    intervals.reserve(bucket.values_size() / 2);
-    for (int i = 0; i < bucket.values_size(); i += 2) {
-      intervals.emplace_back(bucket.values(i), bucket.values(i + 1));
-    }
-    state.per_key_ranges_[bucket.key()].Assign(intervals.begin(),
-                                               intervals.end());
+  state.keys_ = absl::flat_hash_set<std::string>(proto.keys().begin(),
+                                                 proto.keys().end());
+
+  if (proto.values_size() % 2 != 0) {
+    return absl::InvalidArgumentError(
+        "Unexpected number of values in serialized PartitionPrivateState.");
   }
+  std::vector<Interval<uint64_t>> intervals;
+  intervals.reserve(proto.values_size() / 2);
+  for (int i = 0; i < proto.values_size(); i += 2) {
+    intervals.emplace_back(proto.values(i), proto.values(i + 1));
+  }
+  if (!state.ranges_.Assign(intervals.begin(), intervals.end())) {
+    return absl::InvalidArgumentError(
+        "Unexpected order of intervals in serialized PartitionPrivateState.");
+  }
+
   return state;
 }
 
@@ -72,15 +74,12 @@ PartitionPrivateStateProto PartitionPrivateState::Serialize() const {
   for (const auto& key : expired_keys_) {
     proto.add_expired_keys(key);
   }
-  for (const auto& [key, intervals] : per_key_ranges_) {
-    auto* bucket = proto.add_buckets();
-    bucket->set_key(key);
-    auto* values = bucket->mutable_values();
-    values->Reserve(intervals.size() * 2);
-    for (const auto& interval : intervals) {
-      values->Add(interval.start());
-      values->Add(interval.end());
-    }
+  for (const auto& key : keys_) {
+    proto.add_keys(key);
+  }
+  for (const auto& interval : ranges_) {
+    proto.add_values(interval.start());
+    proto.add_values(interval.end());
   }
   return proto;
 }
@@ -100,13 +99,13 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
     return false;
   }
 
-  //  Validate ranges and expired keys match, if non-empty.
-  RangeTracker::InnerMap other_per_key_ranges;
-  for (const auto& [key, intervals] : range_tracker) {
-    other_per_key_ranges[key] = intervals;
+  //  Validate ranges, keys and expired keys match, if non-empty.
+  if (!ranges_.empty() && ranges_ != range_tracker.GetRanges()) {
+    LOG(ERROR) << "Mismatched ranges between partitions.";
+    return false;
   }
-  if (!per_key_ranges_.empty() && per_key_ranges_ != other_per_key_ranges) {
-    LOG(ERROR) << "Mismatched per_key_ranges between partitions.";
+  if (!keys_.empty() && keys_ != range_tracker.GetKeys()) {
+    LOG(ERROR) << "Mismatched keys between partitions.";
     return false;
   }
   if (!expired_keys_.empty() &&
@@ -116,8 +115,11 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
   }
 
   // All checks passed, update the state.
-  if (per_key_ranges_.empty()) {
-    per_key_ranges_ = std::move(other_per_key_ranges);
+  if (ranges_.empty()) {
+    ranges_ = range_tracker.GetRanges();
+  }
+  if (keys_.empty()) {
+    keys_ = range_tracker.GetKeys();
   }
   if (expired_keys_.empty()) {
     expired_keys_ = range_tracker.GetExpiredKeys();
@@ -136,9 +138,13 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
     }
   }
 
-  //  Validate ranges and expired keys match, if non-empty.
-  if (!per_key_ranges_.empty() && per_key_ranges_ != other.per_key_ranges_) {
-    LOG(ERROR) << "Mismatched per_key_ranges between private states.";
+  //  Validate ranges, keys and expired keys match, if non-empty.
+  if (!ranges_.empty() && ranges_ != other.ranges_) {
+    LOG(ERROR) << "Mismatched ranges between private states.";
+    return false;
+  }
+  if (!keys_.empty() && keys_ != other.keys_) {
+    LOG(ERROR) << "Mismatched keys between private states.";
     return false;
   }
   if (!expired_keys_.empty() && expired_keys_ != other.expired_keys_) {
@@ -147,8 +153,11 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
   }
 
   // All checks passed, update the state.
-  if (per_key_ranges_.empty()) {
-    per_key_ranges_ = other.per_key_ranges_;
+  if (ranges_.empty()) {
+    ranges_ = other.ranges_;
+  }
+  if (keys_.empty()) {
+    keys_ = other.keys_;
   }
   if (expired_keys_.empty()) {
     expired_keys_ = other.expired_keys_;

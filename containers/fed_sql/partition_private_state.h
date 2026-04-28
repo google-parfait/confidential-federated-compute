@@ -57,10 +57,13 @@ class PartitionPrivateState {
   // Merges another PartitionPrivateState into this one.
   bool Merge(const PartitionPrivateState& state);
 
-  // Returns the ranges tracked by the RangeTracker for all partitions.
-  const RangeTracker::InnerMap& GetPerKeyRanges() const {
-    return per_key_ranges_;
-  }
+  // Returns the set of keys that are currently being tracked by this
+  // PartitionPrivateState.
+  const absl::flat_hash_set<std::string>& GetKeys() const { return keys_; }
+
+  // Returns the set of ranges that have been visited by this
+  // PartitionPrivateState.
+  const IntervalSet<uint64_t>& GetRanges() const { return ranges_; }
 
   // Returns the expired keys.
   const absl::flat_hash_set<std::string>& GetExpiredKeys() const {
@@ -75,8 +78,10 @@ class PartitionPrivateState {
   absl::flat_hash_map<uint64_t, std::string> symmetric_keys_;
   // KMS keys that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_keys_;
-  // Per key ranges as tracked by the range tracker.
-  RangeTracker::InnerMap per_key_ranges_;
+  // KMS keys that are currently being tracked by this PartitionPrivateState.
+  absl::flat_hash_set<std::string> keys_;
+  // Stores visited ranges of blobs. These are tracked across all keys.
+  IntervalSet<uint64_t> ranges_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

@@ -36,28 +36,28 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(const std::string& data) {
 absl::StatusOr<RangeTracker> RangeTracker::Parse(
     const RangeTrackerState& state) {
   RangeTracker range_tracker;
-  for (const auto& bucket : state.buckets()) {
-    if (bucket.values_size() % 2 != 0) {
+  range_tracker.keys_ = absl::flat_hash_set<std::string>(state.keys().begin(),
+                                                         state.keys().end());
+
+  if (state.values_size() % 2 != 0) {
+    return absl::InternalError(
+        "Unexpected number of values in serialized RangeTracker state.");
+  }
+  std::vector<Interval<uint64_t>> intervals;
+  intervals.reserve(state.values_size() / 2);
+  auto it = state.values().begin();
+  while (it != state.values().end()) {
+    uint64_t start = *it++;
+    uint64_t end = *it++;
+    if (end <= start) {
       return absl::InternalError(
-          "Unexpected number of values in serialized RangeTracker state.");
+          "Unexpected order of values in serialized RangeTracker state.");
     }
-    std::vector<Interval<uint64_t>> intervals;
-    intervals.reserve(bucket.values_size() / 2);
-    auto it = bucket.values().begin();
-    while (it != bucket.values().end()) {
-      uint64_t start = *it++;
-      uint64_t end = *it++;
-      if (end <= start) {
-        return absl::InternalError(
-            "Unexpected order of values in serialized RangeTracker state.");
-      }
-      intervals.push_back(Interval(start, end));
-    }
-    if (!range_tracker.per_key_ranges_[bucket.key()].Assign(intervals.begin(),
-                                                            intervals.end())) {
-      return absl::InternalError(
-          "Unexpected order of intervals in serialized RangeTracker state.");
-    }
+    intervals.push_back(Interval(start, end));
+  }
+  if (!range_tracker.ranges_.Assign(intervals.begin(), intervals.end())) {
+    return absl::InternalError(
+        "Unexpected order of intervals in serialized RangeTracker state.");
   }
 
   range_tracker.expired_keys_ = absl::flat_hash_set<std::string>(
@@ -72,38 +72,46 @@ std::string RangeTracker::SerializeAsString() const {
 
 RangeTrackerState RangeTracker::Serialize() const {
   RangeTrackerState state;
-  for (const auto& [key, intervals] : per_key_ranges_) {
-    auto* bucket = state.add_buckets();
-    bucket->set_key(key);
-    auto* values = bucket->mutable_values();
-    values->Reserve(intervals.size() * 2);
-    for (const auto& interval : intervals) {
-      values->Add(interval.start());
-      values->Add(interval.end());
-    }
+  for (const auto& key : keys_) {
+    state.add_keys(key);
+  }
+  for (const auto& interval : ranges_) {
+    state.add_values(interval.start());
+    state.add_values(interval.end());
   }
   for (const auto& key : expired_keys_) {
     state.add_expired_keys(key);
   }
-
   if (partition_index_.has_value()) {
     state.set_partition_index(partition_index_.value());
   }
-
   return state;
 }
 
-bool RangeTracker::AddRange(const std::string& key, uint64_t start,
-                            uint64_t end) {
+void RangeTracker::AddKey(const std::string& key) {
   // Key must not be expired.
   CHECK(!expired_keys_.contains(key)) << "Found an expired key " << key;
-  return per_key_ranges_[key].Add(Interval(start, end));
+  keys_.insert(key);
+}
+
+bool RangeTracker::AddRange(uint64_t start, uint64_t end) {
+  return ranges_.Add(Interval(start, end));
 }
 
 bool RangeTracker::Merge(const RangeTracker& other) {
+  // Merge keys.
+  keys_.insert(other.keys_.begin(), other.keys_.end());
+
+  // Merge ranges (if there is no overlap)
+  if (!ranges_.Merge(other.ranges_)) {
+    return false;
+  }
+
+  // Partition keys must match (if both are set).
   if (!partition_index_.has_value()) {
     partition_index_ = other.partition_index_;
-  } else if (partition_index_ != other.partition_index_) {
+  } else if (other.partition_index_.has_value() &&
+             partition_index_ != other.partition_index_) {
     LOG(ERROR) << "Attempting to merge RangeTrackers with different partition "
                   "indices: "
                << *partition_index_ << " and " << *other.partition_index_;
@@ -114,12 +122,6 @@ bool RangeTracker::Merge(const RangeTracker& other) {
   // it's possible that different partitions hold different
   // `expired_keys_` so we merge the sets here.
   expired_keys_.insert(other.expired_keys_.begin(), other.expired_keys_.end());
-
-  for (const auto& [key, interval_set] : other.per_key_ranges_) {
-    if (!per_key_ranges_[key].Merge(interval_set)) {
-      return false;
-    }
-  }
   return true;
 }
 

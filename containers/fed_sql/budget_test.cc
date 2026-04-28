@@ -178,8 +178,9 @@ TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
 TEST(BudgetTest, UpdateDefaultBudget) {
   Budget budget(/*default_budget=*/5);
   RangeTracker range_tracker_1;
-  EXPECT_TRUE(range_tracker_1.AddRange("foo", 1, 4));
-  EXPECT_TRUE(range_tracker_1.AddRange("bar", 1, 4));
+  range_tracker_1.AddKey("foo");
+  range_tracker_1.AddKey("bar");
+  EXPECT_TRUE(range_tracker_1.AddRange(1, 4));
   EXPECT_THAT(budget.UpdateBudget(range_tracker_1), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
@@ -197,14 +198,9 @@ TEST(BudgetTest, UpdateDefaultBudget) {
               )pb"));
 
   // Use the other UpdateBudget overload.
-  RangeTracker range_tracker_2;
-  EXPECT_TRUE(range_tracker_2.AddRange("baz", 5, 8));
-  range_tracker_2.SetExpiredKeys({"bar"});
-  RangeTracker::InnerMap per_key_ranges;
-  per_key_ranges.insert(range_tracker_2.begin(), range_tracker_2.end());
-  EXPECT_THAT(
-      budget.UpdateBudget(per_key_ranges, range_tracker_2.GetExpiredKeys()),
-      IsOk());
+  IntervalSet<uint64_t> ranges;
+  ranges.Add({5, 8});
+  EXPECT_THAT(budget.UpdateBudget({"baz"}, ranges, {"bar"}), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "foo"
@@ -239,8 +235,9 @@ TEST(BudgetTest, UpdateParsedBudget) {
   // Add some extra expired keys to the range tracker.
   RangeTracker range_tracker;
   range_tracker.SetExpiredKeys({"expired_key1", "expired_key2"});
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 5));
-  EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
+  range_tracker.AddKey("bar");
+  range_tracker.AddKey("baz");
+  EXPECT_TRUE(range_tracker.AddRange(1, 5));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The "foo" bucket remains unchanged.
   // The "bar" bucket is updated.
@@ -262,8 +259,8 @@ TEST(BudgetTest, UpdateParsedBudget) {
                 buckets {
                   key: "baz"
                   budget: 4
-                  consumed_range_start: 2
-                  consumed_range_end: 3
+                  consumed_range_start: 1
+                  consumed_range_end: 5
                 }
               )pb"));
 }
@@ -271,8 +268,10 @@ TEST(BudgetTest, UpdateParsedBudget) {
 TEST(BudgetTest, UpdateBudgetNewRanges) {
   Budget budget(/*default_budget=*/5);
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 4));
-  EXPECT_TRUE(range_tracker.AddRange("bar", 10, 14));
+  range_tracker.AddKey("foo");
+  range_tracker.AddKey("bar");
+  EXPECT_TRUE(range_tracker.AddRange(1, 4));
+  EXPECT_TRUE(range_tracker.AddRange(10, 14));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   BudgetState expected_state = PARSE_TEXT_PROTO(
@@ -281,12 +280,12 @@ TEST(BudgetTest, UpdateBudgetNewRanges) {
           key: "foo"
           budget: 4
           consumed_range_start: 1
-          consumed_range_end: 4
+          consumed_range_end: 14
         }
         buckets {
           key: "bar"
           budget: 4
-          consumed_range_start: 10
+          consumed_range_start: 1
           consumed_range_end: 14
         }
       )pb");
@@ -308,7 +307,8 @@ TEST(BudgetTest, UpdateParsedBudgetExistingKeysNoOverlap) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("foo", 10, 14));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(10, 14));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget not decremented, consumed range extended
@@ -339,7 +339,8 @@ TEST(BudgetTest, UpdateParsedBudgetExistingKeysOverlap) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("foo", 5, 14));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(5, 14));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget decremented, new range is the intersection of the old and new
@@ -372,7 +373,8 @@ TEST(BudgetTest, UpdateParsedBudgetOldRangeNotContained) {
 
   RangeTracker range_tracker;
   // New range is not contained in the old range.
-  EXPECT_TRUE(range_tracker.AddRange("foo", 1, 5));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(1, 5));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget range expanded.
@@ -403,7 +405,8 @@ TEST(BudgetTest, UpdateBudgetDecrementToZero) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("foo", 3, 9));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(3, 9));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget zero, partial range is updated.
@@ -434,8 +437,8 @@ TEST(BudgetTest, UpdateBudgetZeroConsumed) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(
-      range_tracker.AddRange("foo", 11, std::numeric_limits<uint64_t>::max()));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(11, std::numeric_limits<uint64_t>::max()));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget zero, partial range is cleared.
@@ -461,8 +464,8 @@ TEST(BudgetTest, UpdateParsedBudgetUnionBecomesFullRange) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(
-      range_tracker.AddRange("foo", 10, std::numeric_limits<uint64_t>::max()));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(10, std::numeric_limits<uint64_t>::max()));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget not decremented, consumed range is cleared because the union of the
@@ -478,8 +481,8 @@ TEST(BudgetTest, UpdateParsedBudgetUnionBecomesFullRange) {
 TEST(BudgetTest, UpdateBudgetFullRange) {
   Budget budget(/*default_budget=*/2);
   RangeTracker range_tracker;
-  EXPECT_TRUE(
-      range_tracker.AddRange("foo", 0, std::numeric_limits<uint64_t>::max()));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(0, std::numeric_limits<uint64_t>::max()));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget decremented, range fields are not set because it's a full range
@@ -505,8 +508,8 @@ TEST(BudgetTest, UpdateParsedBudgetFullRangeOnPartial) {
   EXPECT_THAT(budget.Parse(initial_state), IsOk());
 
   RangeTracker range_tracker;
-  EXPECT_TRUE(
-      range_tracker.AddRange("foo", 0, std::numeric_limits<uint64_t>::max()));
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(0, std::numeric_limits<uint64_t>::max()));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
 
   // Budget decremented, consumed_range cleared.
@@ -523,7 +526,46 @@ TEST(BudgetTest, UpdateParsedBudgetFullRangeOnPartial) {
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
 }
 
-TEST(BudgetTest, UpdateExhaustedBudgetPartialRange) {
+TEST(BudgetTest, UpdateExhaustedBudgetNonOveralappingRange) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 3 }
+        buckets {
+          key: "bar"
+          budget: 0
+          consumed_range_start: 3
+          consumed_range_end: 10
+        }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(state), IsOk());
+  RangeTracker range_tracker;
+  range_tracker.AddKey("bar");
+  range_tracker.AddKey("baz");
+  EXPECT_TRUE(range_tracker.AddRange(2, 3));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  BudgetState expected_state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "foo" budget: 3 }
+        buckets {
+          key: "bar"
+          budget: 0
+          consumed_range_start: 2
+          consumed_range_end: 10
+        }
+        buckets {
+          key: "baz"
+          budget: 4
+          consumed_range_start: 2
+          consumed_range_end: 3
+        }
+      )pb");
+  EXPECT_THAT(budget.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
+}
+
+TEST(BudgetTest, UpdateExhaustedBudgetOveralappingRange) {
   BudgetState state = PARSE_TEXT_PROTO(
       R"pb(
         buckets { key: "foo" budget: 3 }
@@ -537,8 +579,9 @@ TEST(BudgetTest, UpdateExhaustedBudgetPartialRange) {
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
-  EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
+  range_tracker.AddKey("bar");
+  range_tracker.AddKey("baz");
+  EXPECT_TRUE(range_tracker.AddRange(2, 3));
   EXPECT_THAT(budget.UpdateBudget(range_tracker),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
@@ -552,8 +595,9 @@ TEST(BudgetTest, UpdateExhaustedBudgetNoPartialRange) {
   Budget budget(/*default_budget=*/5);
   EXPECT_THAT(budget.Parse(state), IsOk());
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
-  EXPECT_TRUE(range_tracker.AddRange("baz", 2, 3));
+  range_tracker.AddKey("bar");
+  range_tracker.AddKey("baz");
+  EXPECT_TRUE(range_tracker.AddRange(2, 3));
   EXPECT_THAT(budget.UpdateBudget(range_tracker),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
@@ -561,7 +605,8 @@ TEST(BudgetTest, UpdateExhaustedBudgetNoPartialRange) {
 TEST(BudgetTest, UpdateInfiniteBudget) {
   Budget budget(/*default_budget=*/std::nullopt);
   RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.AddRange("bar", 1, 4));
+  range_tracker.AddKey("bar");
+  EXPECT_TRUE(range_tracker.AddRange(1, 4));
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The budget should remain empty - no "bar" bucket.
   EXPECT_EQ(budget.begin(), budget.end());

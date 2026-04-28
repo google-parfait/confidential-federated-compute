@@ -35,10 +35,6 @@ inline constexpr const char kRangeTrackerBundleSignature[] = "RTv1";
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
  public:
-  using InnerMap = absl::flat_hash_map<std::string, IntervalSet<uint64_t>>;
-  using const_iterator = typename InnerMap::const_iterator;
-  using value_type = typename InnerMap::value_type;
-
   RangeTracker() = default;
 
   // This class is move-only.
@@ -60,21 +56,32 @@ class RangeTracker {
   // Serializes the current state to a string.
   std::string SerializeAsString() const;
 
+  void AddKey(const std::string& key);
+
   // Tracks [start, end) range as visited for the specified key. This method
   // returns false if this range overlaps with an already visited range.
-  bool AddRange(const std::string& key, uint64_t start, uint64_t end);
+  bool AddRange(uint64_t start, uint64_t end);
 
   // Merges the range data with another RangeTracker.
+  // The sets of keys are combined, and the ranges are merged together.
   // This method returns false if there are any overlapping ranges.
   bool Merge(const RangeTracker& other);
 
+  // Returns the set of keys that are currently being tracked by this
+  // RangeTracker.
+  const absl::flat_hash_set<std::string>& GetKeys() const { return keys_; }
+
+  // Returns the set of ranges that have been visited by this RangeTracker.
+  const IntervalSet<uint64_t>& GetRanges() const { return ranges_; }
+
   // Sets the index of the partition that this RangeTracker is tracking.
   void SetPartitionIndex(uint64_t index) { partition_index_ = index; }
+
   // Returns the index of the partition that this RangeTracker is tracking.
   std::optional<uint64_t> GetPartitionIndex() const { return partition_index_; }
 
   // Gets the expired keys for this RangeTracker.
-  absl::flat_hash_set<std::string> GetExpiredKeys() const {
+  const absl::flat_hash_set<std::string>& GetExpiredKeys() const {
     return expired_keys_;
   }
   // Sets the expired keys for this RangeTracker.
@@ -82,14 +89,12 @@ class RangeTracker {
     expired_keys_ = expired_keys;
   }
 
-  // Iteration support.
-  const_iterator begin() const { return per_key_ranges_.begin(); }
-  const_iterator end() const { return per_key_ranges_.end(); }
-
  private:
-  // Stores visited ranges of blobs organized by key_id of encryption key
-  // used to encrypt a blob (the same key_id that is found in BlobHeader).
-  InnerMap per_key_ranges_;
+  // Set of keys that are currently being tracked by this RangeTracker.
+  absl::flat_hash_set<std::string> keys_;
+
+  // Stores visited ranges of blobs. These are tracked across all keys.
+  IntervalSet<uint64_t> ranges_;
 
   // The index of the partition that this RangeTracker is tracking.
   std::optional<uint64_t> partition_index_;

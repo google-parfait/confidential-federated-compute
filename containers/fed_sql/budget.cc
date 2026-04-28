@@ -115,27 +115,29 @@ bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
 }
 
 absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
-  RangeTracker::InnerMap per_key_ranges;
-  per_key_ranges.insert(range_tracker.begin(), range_tracker.end());
-  return UpdateBudget(per_key_ranges, range_tracker.GetExpiredKeys());
+  return UpdateBudget(range_tracker.GetKeys(), range_tracker.GetRanges(),
+                      range_tracker.GetExpiredKeys());
 }
 
 absl::Status Budget::UpdateBudget(
-    const RangeTracker::InnerMap& per_key_ranges,
+    const absl::flat_hash_set<std::string>& keys,
+    const IntervalSet<uint64_t>& ranges,
     const absl::flat_hash_set<std::string>& expired_keys) {
-  for (const auto& [key, interval_set] : per_key_ranges) {
-    if (interval_set.empty()) {
-      return absl::FailedPreconditionError(
-          "The interval set is empty for key: " + key);
-    }
+  if (ranges.empty()) {
+    return absl::FailedPreconditionError(
+        "The interval set is empty when updating the budget.");
+  }
+
+  // The same ranges apply to all keys.
+  uint64_t interval_min = ranges.BoundingInterval().start();
+  uint64_t interval_max = ranges.BoundingInterval().end();
+
+  for (const auto& key : keys) {
     // If the default budget has no value, it means the budget is infinite.
     // In this case, there is no need to have a bucket for a infinite budget.
     if (!default_budget_.has_value()) {
       continue;
     }
-
-    uint64_t interval_min = interval_set.BoundingInterval().start();
-    uint64_t interval_max = interval_set.BoundingInterval().end();
 
     auto it = per_key_budgets_.find(key);
     if (it == per_key_budgets_.end()) {

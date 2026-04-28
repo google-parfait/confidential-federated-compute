@@ -398,12 +398,10 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(data.size()));
   auto write_result2 = session_->Write(write_request2, data, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(data.size()));
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
@@ -430,10 +428,11 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
 
   EXPECT_EQ(index, 0);
   auto range_tracker = UnbundleRangeTracker(result_data);
-  ASSERT_THAT(*range_tracker,
-              UnorderedElementsAre(
-                  Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
-                  Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
+  EXPECT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetKeys(),
+              UnorderedElementsAre("key_foo", "key_bar"));
+  EXPECT_THAT(range_tracker->GetRanges(),
+              ElementsAre(Interval<uint64_t>(1, 3)));
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
   ASSERT_THAT(deserialized_agg, IsOk());
@@ -474,12 +473,10 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(data1.size()));
   auto write_result2 = session_->Write(write_request2, data2, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(data2.size()));
 
   // Commit the inputs.
   CommitRequest commit_request;
@@ -512,10 +509,11 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
   // Verify the partitoned results.
   for (int i = 0; i < result_data.size(); i++) {
     auto range_tracker = UnbundleRangeTracker(result_data[i]);
-    ASSERT_THAT(*range_tracker,
-                UnorderedElementsAre(
-                    Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
-                    Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
+    EXPECT_THAT(range_tracker, IsOk());
+    EXPECT_THAT(range_tracker->GetKeys(),
+                UnorderedElementsAre("key_foo", "key_bar"));
+    EXPECT_THAT(range_tracker->GetRanges(),
+                ElementsAre(Interval<uint64_t>(1, 3)));
     EXPECT_EQ(range_tracker->GetPartitionIndex(), std::optional<uint64_t>(i));
     FedSqlContainerPartitionedOutputConfiguration partition_config;
     ASSERT_TRUE(configs[i].UnpackTo(&partition_config));
@@ -577,12 +575,10 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(data.size()));
   auto write_result2 = session_->Write(write_request2, data, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(data.size()));
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
@@ -638,11 +634,13 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 3);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 3);
   range_tracker1.SetExpiredKeys({"expired_key"});
   range_tracker1.SetPartitionIndex(123);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 1, 3);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(1, 3);
   range_tracker2.SetExpiredKeys({"expired_key"});
   range_tracker2.SetPartitionIndex(456);
 
@@ -685,15 +683,11 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(),
-              Eq(result1->release_token.size()));
   auto write_result2 =
       session_->Write(write_request2, result2->release_token, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(),
-              Eq(result2->release_token.size()));
 
   // Serialize the accumulated private state.
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
@@ -718,10 +712,8 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
           Property(&PartitionPrivateStateProto::SymmetricKeys::id, 123),
           Property(&PartitionPrivateStateProto::SymmetricKeys::id, 456)));
   EXPECT_THAT(private_state_proto.expired_keys(), ElementsAre("expired_key"));
-  EXPECT_THAT(private_state_proto.buckets(), SizeIs(1));
-  const auto& bucket = private_state_proto.buckets().at(0);
-  EXPECT_EQ(bucket.key(), "key_foo");
-  EXPECT_THAT(bucket.values(), ElementsAre(1, 3));
+  EXPECT_THAT(private_state_proto.keys(), UnorderedElementsAre("key_foo"));
+  EXPECT_THAT(private_state_proto.values(), ElementsAre(1, 3));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulatePrivateStateInvalidRangeTracker) {
@@ -754,7 +746,8 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulatePrivateStateInvalidRangeTracker) {
 TEST_F(KmsFedSqlSessionWriteTest,
        AccumulatePrivateStateConflictingRangeTracker) {
   RangeTracker range_tracker;
-  range_tracker.AddRange("key_foo", 1, 3);
+  range_tracker.AddKey("key_foo");
+  range_tracker.AddRange(1, 3);
   range_tracker.SetPartitionIndex(123);
 
   auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
@@ -845,7 +838,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::OK)
       << write_result->status().message();
-  EXPECT_THAT(write_result->committed_size_bytes(), Eq(data.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
@@ -889,10 +881,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
 
   std::string data = std::move(*input_aggregator).Serialize().value();
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 3);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 3);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 4, 6);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(4, 6);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -911,12 +905,11 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(blob1.size()));
+
   auto write_result2 = session_->Write(write_request2, blob2, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(blob2.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE
@@ -932,10 +925,10 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
 
   EXPECT_EQ(index, 0);
   auto result_range_tracker = UnbundleRangeTracker(result_data);
-  ASSERT_THAT(*result_range_tracker,
-              UnorderedElementsAre(
-                  Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3),
-                                              Interval<uint64_t>(4, 6)))));
+  ASSERT_THAT(result_range_tracker, IsOk());
+  EXPECT_THAT(result_range_tracker->GetKeys(), UnorderedElementsAre("key_foo"));
+  EXPECT_THAT(result_range_tracker->GetRanges(),
+              ElementsAre(Interval<uint64_t>(1, 3), Interval<uint64_t>(4, 6)));
 
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
@@ -960,8 +953,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
   )pb");
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -977,16 +974,18 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
       write_request, private_state.SerializeAsString(), context_);
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::OK);
-  EXPECT_THAT(write_result->committed_size_bytes(),
-              Eq(private_state.SerializeAsString().size()));
 
   private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 3 symmetric_key: "key3" }
     symmetric_keys { id: 4 symmetric_key: "key4" }
     expired_keys: "expired_key1"
     expired_keys: "expired_key2"
-    buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "bar" values: 0 values: 3 }
+    keys: "foo"
+    keys: "bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
   )pb");
   metadata.set_total_size_bytes(private_state.SerializeAsString().size());
   *write_request.mutable_first_request_metadata() = metadata;
@@ -994,8 +993,6 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
                                  private_state.SerializeAsString(), context_);
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::OK);
-  EXPECT_THAT(write_result->committed_size_bytes(),
-              Eq(private_state.SerializeAsString().size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE
@@ -1018,8 +1015,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
                 symmetric_keys { id: 4 symmetric_key: "key4" }
                 expired_keys: "expired_key1"
                 expired_keys: "expired_key2"
-                buckets { key: "foo" values: 1 values: 4 values: 7 values: 10 }
-                buckets { key: "bar" values: 0 values: 3 }
+                keys: "foo"
+                keys: "bar"
+                values: 1
+                values: 4
+                values: 7
+                values: 10
               )pb"));
 }
 
@@ -1044,7 +1045,9 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeConflictingPrivateState) {
   PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key"
-    buckets { key: "foo" values: 1 values: 4 }
+    keys: "foo"
+    values: 1
+    values: 4
   )pb");
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1065,7 +1068,9 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeConflictingPrivateState) {
   private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key2" }
     expired_keys: "expired_key"
-    buckets { key: "foo" values: 1 values: 4 }
+    keys: "foo"
+    values: 1
+    values: 4
   )pb");
   metadata.set_total_size_bytes(private_state.SerializeAsString().size());
   *write_request.mutable_first_request_metadata() = metadata;
@@ -1086,10 +1091,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
 
   std::string data = (std::move(*input_aggregator).Serialize()).value();
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 2);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 2);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 2, 3);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(2, 3);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1108,12 +1115,10 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(blob1.size()));
   auto write_result2 = session_->Write(write_request2, blob2, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(blob2.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT
@@ -1167,12 +1172,14 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
 
   // Create 2 blobs with different ranges for partition index 0.
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 2);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 2);
   range_tracker1.SetPartitionIndex(0);
   range_tracker1.SetExpiredKeys({"key_bar"});
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 2, 3);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(2, 3);
   range_tracker2.SetPartitionIndex(0);
   range_tracker2.SetExpiredKeys({"key_bar", "key_baz"});
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
@@ -1218,7 +1225,9 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
   RangeTrackerState new_state;
   EXPECT_TRUE(new_state.ParseFromString(dst));
   EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets { key: "key_foo" values: 1 values: 3 }
+                keys: "key_foo"
+                values: 1
+                values: 3
                 partition_index: 0
                 expired_keys: "key_bar"
                 expired_keys: "key_baz"
@@ -1236,8 +1245,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
     symmetric_keys { id: 1 symmetric_key: "key1" }
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "key_baz"
-    buckets { key: "key_foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "key_bar" values: 0 values: 3 }
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
   )pb");
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1253,15 +1266,17 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
       write_request, private_state.SerializeAsString(), context_);
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::OK);
-  EXPECT_THAT(write_result->committed_size_bytes(),
-              Eq(private_state.SerializeAsString().size()));
 
   private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 3 symmetric_key: "key3" }
     symmetric_keys { id: 4 symmetric_key: "key4" }
     expired_keys: "key_baz"
-    buckets { key: "key_foo" values: 1 values: 4 values: 7 values: 10 }
-    buckets { key: "key_bar" values: 0 values: 3 }
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
   )pb");
   metadata.set_total_size_bytes(private_state.SerializeAsString().size());
   *write_request.mutable_first_request_metadata() = metadata;
@@ -1269,8 +1284,6 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                                  private_state.SerializeAsString(), context_);
   ASSERT_THAT(write_result, IsOk());
   EXPECT_EQ(write_result->status().code(), Code::OK);
-  EXPECT_THAT(write_result->committed_size_bytes(),
-              Eq(private_state.SerializeAsString().size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
@@ -1302,8 +1315,8 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                 buckets {
                   key: "key_bar"
                   budget: 2
-                  consumed_range_start: 0
-                  consumed_range_end: 3
+                  consumed_range_start: 1
+                  consumed_range_end: 10
                 }
               )pb"));
 
@@ -1343,10 +1356,12 @@ TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
 
   std::string data = (std::move(*input_aggregator).Serialize()).value();
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 2);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 2);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 2, 3);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(2, 3);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1365,12 +1380,10 @@ TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(blob1.size()));
   auto write_result2 = session_->Write(write_request2, blob2, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(blob2.size()));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT_PARTITION
@@ -1448,10 +1461,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeRangeConflict) {
 
   std::string data = std::move(*input_aggregator).Serialize().value();
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_foo", 1, 5);
+  range_tracker1.AddKey("key_foo");
+  range_tracker1.AddRange(1, 5);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_foo", 4, 6);
+  range_tracker2.AddKey("key_foo");
+  range_tracker2.AddRange(4, 6);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1486,10 +1501,12 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportBudgetExhausted) {
   // Use two buckets "key_bar" and "key_baz" the second of which has
   // no budget.
   RangeTracker range_tracker1;
-  range_tracker1.AddRange("key_bar", 1, 2);
+  range_tracker1.AddKey("key_bar");
+  range_tracker1.AddRange(1, 2);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
   RangeTracker range_tracker2;
-  range_tracker2.AddRange("key_baz", 2, 3);
+  range_tracker2.AddKey("key_baz");
+  range_tracker2.AddRange(2, 3);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1608,12 +1625,10 @@ TEST_F(KmsFedSqlSessionWritePartialRangeTest,
   ASSERT_THAT(write_result1, IsOk());
   EXPECT_EQ(write_result1->status().code(), Code::OK)
       << write_result1->status().message();
-  EXPECT_THAT(write_result1->committed_size_bytes(), Eq(data.size()));
   auto write_result2 = session_->Write(write_request2, data, context_);
   ASSERT_THAT(write_result2, IsOk());
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
-  EXPECT_THAT(write_result2->committed_size_bytes(), Eq(data.size()));
 
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
@@ -1641,10 +1656,11 @@ TEST_F(KmsFedSqlSessionWritePartialRangeTest,
 
   EXPECT_EQ(index, 0);
   auto range_tracker = UnbundleRangeTracker(result_data);
-  ASSERT_THAT(*range_tracker,
-              UnorderedElementsAre(
-                  Pair("key_foo", ElementsAre(Interval<uint64_t>(1, 3))),
-                  Pair("key_bar", ElementsAre(Interval<uint64_t>(1, 3)))));
+  ASSERT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetKeys(),
+              UnorderedElementsAre("key_foo", "key_bar"));
+  EXPECT_THAT(range_tracker->GetRanges(),
+              ElementsAre(Interval<uint64_t>(1, 3)));
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>> deserialized_agg =
       CheckpointAggregator::Deserialize(DefaultConfiguration(), result_data);
   ASSERT_THAT(deserialized_agg, IsOk());

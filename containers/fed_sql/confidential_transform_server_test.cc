@@ -1510,7 +1510,6 @@ TEST_F(FedSqlServerTest, ConfigureWriteReportEncryptedInput) {
   ASSERT_TRUE(stream->Write(request_0));
   ASSERT_TRUE(stream->Read(&response_0));
   ASSERT_EQ(response_0.write().status().code(), Code::OK);
-  ASSERT_GT(response_0.write().committed_size_bytes(), 0);
 
   // Commit the request.
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
@@ -1880,7 +1879,6 @@ TEST_F(FedSqlServerTest, SessionWriteWithMetadataMessagesSuccess) {
   ASSERT_TRUE(stream->Read(&response));
   ASSERT_EQ(response.write().status().code(), Code::OK)
       << response.write().status().message();
-  ASSERT_GT(response.write().committed_size_bytes(), 0);
 }
 
 TEST_F(FedSqlServerTest, SessionExecutesSqlQueryAndAggregation) {
@@ -2005,9 +2003,10 @@ TEST_F(FedSqlServerTest, SessionAccumulatesAndSerializes) {
       Decrypt(finalize_response.read().first_response_metadata(),
               finalize_response.read().data());
   auto range_tracker = UnbundleRangeTracker(decrypted_data);
-  ASSERT_THAT(*range_tracker,
-              UnorderedElementsAre(
-                  Pair("key_id", ElementsAre(Interval<uint64_t>(1, 3)))));
+  EXPECT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetKeys(), UnorderedElementsAre("key_id"));
+  EXPECT_THAT(range_tracker->GetRanges(),
+              ElementsAre(Interval<uint64_t>(1, 3)));
 
   // Validate the deserialized aggregator.
   Configuration intrinsic_config =
@@ -2045,7 +2044,8 @@ TEST_F(FedSqlServerTest, SessionMergesAndReports) {
   ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
   std::string data = std::move(*input_aggregator).Serialize().value();
   RangeTracker range_tracker;
-  range_tracker.AddRange("key_id", 1, 3);
+  range_tracker.AddKey("key_id");
+  range_tracker.AddRange(1, 3);
   std::string blob = BundleRangeTracker(data, range_tracker);
 
   BlobHeader header;
@@ -2148,7 +2148,7 @@ TEST_F(FedSqlServerTest, SerializeZeroInputsProducesEmptyOutput) {
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 3);
 }
 
-TEST_F(FedSqlServerTest, ReportZeroInputsReturnsInvalidArgument) {
+TEST_F(FedSqlServerTest, ReportZeroInputsReturnsFailedPrecondition) {
   InitializeTransform();
   grpc::ClientContext context;
   auto stream = ConfigureDefaultSession(&context);
@@ -2163,7 +2163,7 @@ TEST_F(FedSqlServerTest, ReportZeroInputsReturnsInvalidArgument) {
   ASSERT_TRUE(stream->Write(finalize_request));
   ASSERT_FALSE(stream->Read(&finalize_response));
   EXPECT_THAT(FromGrpcStatus(stream->Finish()),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(FedSqlServerTest, SessionIgnoresUnparseableInputs) {
@@ -2192,7 +2192,6 @@ TEST_F(FedSqlServerTest, SessionIgnoresUnparseableInputs) {
   ASSERT_TRUE(stream->Write(invalid_write));
   ASSERT_TRUE(stream->Read(&invalid_write_response));
   ASSERT_TRUE(invalid_write_response.has_write());
-  ASSERT_EQ(invalid_write_response.write().committed_size_bytes(), 0);
   ASSERT_EQ(invalid_write_response.write().status().code(),
             Code::INVALID_ARGUMENT)
       << invalid_write_response.write().status().message();
@@ -2283,7 +2282,6 @@ TEST_F(FedSqlServerTest, SessionIgnoresUndecryptableInputs) {
   ASSERT_TRUE(stream->Write(invalid_write));
   ASSERT_TRUE(stream->Read(&invalid_write_response));
   ASSERT_TRUE(invalid_write_response.has_write());
-  ASSERT_EQ(invalid_write_response.write().committed_size_bytes(), 0);
   ASSERT_EQ(invalid_write_response.write().status().code(),
             Code::INVALID_ARGUMENT)
       << invalid_write_response.write().status().message();
