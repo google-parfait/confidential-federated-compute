@@ -67,11 +67,11 @@ import numpy as np
 from google.protobuf import any_pb2
 from fcp.confidentialcompute.python import min_sep_data_source
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
 
   data_source = min_sep_data_source.MinSepDataSource(
       min_sep=2,
-      input_provider=input_provider,
+      external_handle=external_handle,
       computation_type=computation_pb2.Type(
           tensor=computation_pb2.TensorType(
               dtype=data_type_pb2.DataType.DT_INT32,
@@ -130,10 +130,10 @@ def trusted_program(input_provider, external_service_handle):
       server_state["client_count"],
       federated_language.framework.infer_type(server_state["client_count"]),
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       sum_val.SerializeToString(), b"resulting_sum"
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       client_count_val.SerializeToString(), b"resulting_client_count"
   )
   )",
@@ -183,8 +183,8 @@ import tensorflow_federated as tff
 import tensorflow as tf
 import numpy as np
 
-def trusted_program(input_provider, external_service_handle):
-  zip_file_path = input_provider.get_filename_for_config_id('model1')
+def trusted_program(external_handle):
+  zip_file_path = external_handle.get_filename_for_config_id('model1')
   model_path = os.path.join(os.path.dirname(zip_file_path), 'model1')
   with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
     zip_ref.extractall(model_path)
@@ -207,7 +207,7 @@ def trusted_program(input_provider, external_service_handle):
           state,
       ),
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       state_val.SerializeToString(), b"result"
   )
   )",
@@ -261,7 +261,7 @@ _jax2tf_convert_cpu_native = functools.partial(
     native_serialization_platforms=['cpu'],
 )
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
 
   data_type = federated_language.FederatedType(
       federated_language.TensorType(np.int32), federated_language.SERVER
@@ -285,7 +285,7 @@ def trusted_program(input_provider, external_service_handle):
       result,
       federated_language.framework.infer_type(result),
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       result_val.SerializeToString(), b"result"
   )
   )");
@@ -366,7 +366,7 @@ _TEST_STRUCT_TYPE = federated_language.StructWithPythonType(
     container_type=tuple,
 )
 
-def trusted_program(input_provider, external_service_handle):
+def trusted_program(external_handle):
   matrix_mechanism = buffered_toeplitz.BufferedToeplitz.build(
       buf_decay=_BLT_BUF_DECAY,
       output_scale=_BLT_OUTPUT_SCALE,
@@ -396,14 +396,14 @@ def trusted_program(input_provider, external_service_handle):
       output.result,
       federated_language.framework.infer_type(output.result),
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       result_val.SerializeToString(), b"result"
   )
   num_clipped_updates, _ = tff.framework.serialize_value(
       output.measurements["num_clipped_updates"],
       federated_language.framework.infer_type(output.measurements["num_clipped_updates"]),
   )
-  external_service_handle.release_unencrypted(
+  external_handle.release_unencrypted(
       num_clipped_updates.SerializeToString(), b"num_clipped_updates"
   )
   )");
