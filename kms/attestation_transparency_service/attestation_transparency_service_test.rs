@@ -32,6 +32,7 @@ use attestation_transparency_service_proto::{
         },
         key_proto::fcp::confidentialcompute::{key, Key},
     },
+    session_proto::oak::session::v1::SessionRequest,
 };
 use bssl_crypto::{ec, ecdsa};
 use googletest::prelude::*;
@@ -394,7 +395,13 @@ async fn share_and_load_signing_key_succeeds() {
     let mut load_responses =
         client2.load_signing_key(ReceiverStream::new(rx)).await.unwrap().into_inner();
     let forward_load_messages = async move {
-        while let Some(msg) = load_responses.message().await? {
+        // Forward until an empty message is received.
+        while let msg @ SessionRequest { request: Some(..), .. } =
+            load_responses
+                .message()
+                .await?
+                .context("load_signing_key stream closed unexpectedly")?
+        {
             share_tx.send(msg).await?;
         }
         Ok::<_, anyhow::Error>(())
@@ -497,7 +504,13 @@ async fn share_and_load_signing_key_fails_with_different_evidence() {
     let mut load_responses =
         client2.load_signing_key(ReceiverStream::new(rx)).await.unwrap().into_inner();
     let forward_load_messages = async move {
-        while let Some(msg) = load_responses.message().await? {
+        // Forward until an empty message is received.
+        while let msg @ SessionRequest { request: Some(..), .. } =
+            load_responses
+                .message()
+                .await?
+                .context("load_signing_key stream closed unexpectedly")?
+        {
             share_tx.send(msg).await?;
         }
         Ok::<_, anyhow::Error>(())
