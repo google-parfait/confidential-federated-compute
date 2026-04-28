@@ -416,6 +416,8 @@ impl<S: Signer + Send + Sync + 'static>
                     .context("get_outgoing_message returned None")?
                     .convert()?))
                     .await?;
+                // Wait for the client to close the stream.
+                ensure!(in_stream.message().await?.is_none(), "client did not close the stream");
                 Ok::<_, anyhow::Error>(())
             };
             if let Err(err) = result.await {
@@ -454,6 +456,13 @@ impl<S: Signer + Send + Sync + 'static>
                     in_stream.message().await?.context("server unexpectedly closed stream")?;
                 session.put_incoming_message(response.convert()?)?;
                 let response = session.read()?.context("ClientSession::read returned None")?;
+
+                // Send an empty message to indicate that the operation is
+                // complete. This allows the client to close the stream first,
+                // which is preferred.
+                tx.send(Ok(SessionRequest::default())).await?;
+                ensure!(in_stream.message().await?.is_none(), "client did not close the stream");
+
                 *key_pair.lock().unwrap() = Some(Arc::new(
                     ciborium::from_reader(response.plaintext.as_slice())
                         .context("failed to decode KeyPair")?,
