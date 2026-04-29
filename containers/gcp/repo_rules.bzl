@@ -70,3 +70,22 @@ gcs_file = repository_rule(
     # Re-fetch if GCS_MODEL_BUCKET changes.
     environ = ["GCS_MODEL_BUCKET"],
 )
+
+def _curl_file_impl(ctx):
+    """Downloads a file using curl."""
+    url = ctx.attr.url
+
+    # Download to file/file to match http_file behavior
+    ctx.execute(["mkdir", "-p", "file"])
+    result = ctx.execute(["curl", "-s", url, "-o", "file/file"])
+    if result.return_code != 0:
+        fail("Failed to download from {}: {}".format(url, result.stderr))
+
+    ctx.file("file/BUILD", 'exports_files(["file"])')
+
+curl_file = repository_rule(
+    implementation = _curl_file_impl,
+    attrs = {
+        "url": attr.string(mandatory = True),
+    },
+)
