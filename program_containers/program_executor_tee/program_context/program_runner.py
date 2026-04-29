@@ -14,10 +14,8 @@
 
 import base64
 from collections.abc import Callable, Sequence
-import inspect
 from typing import Optional
 
-from fcp.confidentialcompute.python import program_input_provider
 from fcp.confidentialcompute.python import external_service_handle
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
@@ -29,7 +27,7 @@ TRUSTED_PROGRAM_KEY = "trusted_program"
 def run_program(
     initialize_fn: Optional[Callable[[], None]],
     program: bytes,
-    client_ids: list[str],
+    client_ids: list[bytes | str],
     client_data_directory: str,
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
@@ -49,9 +47,7 @@ def run_program(
       contains a function named TRUSTED_PROGRAM_KEY that describes the federated
       program to execute. The TRUSTED_PROGRAM_KEY function should expect a
       ReleaseManager arg.
-    client_ids: A list of strings representing the client upload base filenames
-      that can be used during program execution. The concatenation of
-      'client_data_directory' and a client id is the full path to a client file.
+    client_ids: A list representing the clients from this data source.
     client_data_directory: The directory containing the client data.
     model_id_to_zip_file: A dictionary mapping model ids to the paths of the zip
       files containing the model weights for those models.

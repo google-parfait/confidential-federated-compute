@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
+#include "fcp/base/random_token.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -411,6 +413,7 @@ def trusted_program(external_handle):
   ASSERT_TRUE(session_response.has_finalize());
 }
 
+// TODO: b/487997314 - Remove this test once we finish migrating to spanner.
 TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSessionWithInputs) {
   using InputData = std::tuple<std::string, std::string>;
   InputData input_1{"client_1",
@@ -442,7 +445,60 @@ def trusted_program(external_handle):
   external_handle.release_unencrypted(struct.pack(FORMAT_STRING, sum), b"result")
   )",
                       /*kms_private_state=*/"",
-                      /*client_ids=*/{"client_1", "client_2"});
+                      /*client_ids=*/{"client_1", "client_2"},
+                      /*client_data_dir=*/"/data/");
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+
+  int32_t result;
+  std::memcpy(&result, released_data["result"].data(), sizeof(int32_t));
+  ASSERT_EQ(result, 100);
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           ValidFinalizeSessionWithBlobIdInputs) {
+  // Generate random 16-byte blob IDs.
+  std::string blob_id_1 = fcp::RandomToken::Generate().ToString();
+  std::string blob_id_2 = fcp::RandomToken::Generate().ToString();
+
+  using InputData = std::tuple<std::string, std::string>;
+  InputData input_1{blob_id_1,
+                    BuildClientCheckpointFromInts({10, 20}, "my_key_name")};
+  InputData input_2{blob_id_2,
+                    BuildClientCheckpointFromInts({30, 40}, "my_key_name")};
+
+  for (auto [blob_id, data] : {input_1, input_2}) {
+    CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
+        blob_id, data, blob_id));
+  }
+
+  this->CreateSession(
+      R"(
+import struct
+
+FORMAT_STRING = '<i'
+BYTE_COUNT = 4
+
+def trusted_program(external_handle):
+  sum = 0
+  for client_id in external_handle.client_ids:
+    tensor = external_handle.resolve_uri_to_tensor(client_id, "my_key_name")
+
+    for unpacked_tuple in struct.iter_unpack(FORMAT_STRING, tensor.content):
+      sum += unpacked_tuple[0]
+
+  external_handle.release_unencrypted(struct.pack(FORMAT_STRING, sum), b"result")
+  )",
+      /*kms_private_state=*/"",
+      /*client_ids=*/
+      {blob_id_1, blob_id_2});
 
   SessionRequest session_request;
   SessionResponse session_response;

@@ -102,14 +102,16 @@ FakeDataReadWriteService::GetOakSigningKeyHandle() const {
 grpc::Status FakeDataReadWriteService::Read(
     ::grpc::ServerContext*, const ReadRequest* request,
     grpc::ServerWriter<ReadResponse>* response_writer) {
-  if (uri_to_read_response_.find(request->uri()) ==
-      uri_to_read_response_.end()) {
+  // Look up by uri or blob_id, whichever is set.
+  std::string lookup_key =
+      request->uri().empty() ? request->blob_id() : request->uri();
+  if (uri_to_read_response_.find(lookup_key) == uri_to_read_response_.end()) {
     return grpc::Status(grpc::StatusCode::NOT_FOUND,
-                        "Requested uri " + request->uri() + " not found.");
+                        "Requested key " + lookup_key + " not found.");
   }
-  response_writer->Write(uri_to_read_response_[request->uri()]);
-  // Store the uri from the request.
-  read_request_uris_.push_back(request->uri());
+  response_writer->Write(uri_to_read_response_[lookup_key]);
+  // Store the lookup key from the request.
+  read_request_uris_.push_back(lookup_key);
   return grpc::Status::OK;
 }
 

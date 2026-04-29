@@ -87,6 +87,16 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
              }
              return *tensor;
            })
+      .def("resolve_blob_id_to_tensor",
+           [](DataParser& self, std::string& blob_id, std::string& key) {
+             pybind11::gil_scoped_release release;
+             auto tensor = self.ResolveBlobIdToTensor(blob_id, key);
+             if (!tensor.ok()) {
+               throw std::runtime_error("Failed to fetch Tensor: " +
+                                        std::string(tensor.status().message()));
+             }
+             return *tensor;
+           })
       .def("release_unencrypted",
            [](DataParser& self, std::string& data, std::string& key) {
              auto result = self.ReleaseUnencrypted(data, key);
@@ -145,33 +155,18 @@ absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 ProgramExecutorTeeSession::Finalize(
     fcp::confidentialcompute::FinalizeRequest request,
     fcp::confidentialcompute::BlobMetadata input_metadata, Context& context) {
-  std::vector<std::string> client_ids;
-  client_ids.reserve(initialize_config_.client_ids().size());
-  for (const auto& client_id : initialize_config_.client_ids()) {
-    client_ids.push_back(client_id);
-  }
-  std::set<std::string> authorized_hashes_set;
-  for (const auto& hash : authorized_logical_pipeline_policies_hashes_) {
-    authorized_hashes_set.insert(absl::Base64Escape(hash));
-  }
-
   // Define the Python work that should be executed on the python execution
   // thread.
-  auto python_task = [this, client_ids = std::move(client_ids),
-                      authorized_hashes_set =
-                          std::move(authorized_hashes_set)]() {
-    // Load the python function for running the program.
-    auto run_program =
-        pybind11::module::import(
-            "program_executor_tee.program_context.program_runner")
-            .attr("run_program");
-
+  auto python_task = [this]() {
     // Create a DataParser object bound to the BlobDecryptor pointer.
     std::vector<std::string> escaped_reencryption_keys;
     for (const auto& key : reencryption_keys_) {
       escaped_reencryption_keys.push_back(absl::Base64Escape(key));
     }
-    // TODO(b/487997314): Populate kms_public_key and invocation_id correctly.
+    std::set<std::string> authorized_hashes_set;
+    for (const auto& hash : authorized_logical_pipeline_policies_hashes_) {
+      authorized_hashes_set.insert(absl::Base64Escape(hash));
+    }
     pybind11::object data_parser_instance =
         pybind11::module::import("data_parser")
             .attr("DataParser")(
@@ -182,12 +177,37 @@ ProgramExecutorTeeSession::Finalize(
                 absl::Base64Escape(invocation_id_), private_state_,
                 signing_key_handle_, authorized_hashes_set);
 
+    // Load the python function for running the program.
+    auto run_program =
+        pybind11::module::import(
+            "program_executor_tee.program_context.program_runner")
+            .attr("run_program");
+
+    // Use resolve_blob_id_to_tensor when there is no client data directory
+    // (spanner path), otherwise use resolve_uri_to_tensor (blobstore path).
+    auto resolve_fn =
+        initialize_config_.client_data_dir().empty()
+            ? data_parser_instance.attr("resolve_blob_id_to_tensor")
+            : data_parser_instance.attr("resolve_uri_to_tensor");
+
+    // TODO: b/487997314 - Remove the branch involving a non-empty client data
+    // directory once the migration to spanner is complete.
+    pybind11::list client_ids;
+    if (initialize_config_.client_data_dir().empty()) {
+      for (const auto& blob_id : initialize_config_.blob_ids()) {
+        client_ids.append(pybind11::bytes(blob_id));
+      }
+    } else {
+      for (const auto& client_id : initialize_config_.client_ids()) {
+        client_ids.append(client_id);
+      }
+    }
+
     // Run the program.
     run_program(get_program_initialize_fn_(),
                 pybind11::bytes(initialize_config_.program()), client_ids,
                 initialize_config_.client_data_dir(), model_id_to_zip_file_,
-                initialize_config_.outgoing_server_address(),
-                data_parser_instance.attr("resolve_uri_to_tensor"),
+                initialize_config_.outgoing_server_address(), resolve_fn,
                 data_parser_instance.attr("release_unencrypted"),
                 data_parser_instance.attr("save_recovery_info"),
                 data_parser_instance.attr("restore_recovery_info"));

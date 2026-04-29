@@ -56,7 +56,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "@federated-compute//fcp/confidentialcompute/python:external_service_handle",
-        "@federated-compute//fcp/confidentialcompute/python:program_input_provider",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_py_pb2",
     ],
 )
