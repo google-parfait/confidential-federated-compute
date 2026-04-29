@@ -65,22 +65,6 @@ class InferenceModelTest : public ::testing::Test {
         .WillByDefault(Return(absl::OkStatus()));
   }
 
-  // Helper to build a string tensor for our test data.
-  absl::StatusOr<Tensor> CreateStringTensor(
-      std::initializer_list<absl::string_view> values,
-      const std::string& name) {
-    return Tensor::Create(
-        DataType::DT_STRING, TensorShape({static_cast<int64_t>(values.size())}),
-        std::make_unique<MutableVectorData<absl::string_view>>(values), name);
-  }
-
-  absl::StatusOr<Tensor> CreatePrivacyIdTensor(std::string&& privacy_id) {
-    auto data = std::make_unique<MutableStringData>(0);
-    data->Add(std::move(privacy_id));
-    return Tensor::Create(DataType::DT_STRING, TensorShape({}), std::move(data),
-                          "privacy_id");
-  }
-
   // Helper to set expectations on RunGemmaCppInference.
   void ExpectGemmaCppInference(
       const std::vector<std::string>& input_names,
@@ -98,10 +82,7 @@ class InferenceModelTest : public ::testing::Test {
 
 TEST_F(InferenceModelTest, RunGemmaCppInferenceParserAuto) {
   MockInferenceModel::InferenceOutput output;
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, "topic");
-  ASSERT_THAT(output_tensor, IsOk());
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, "topic");
   output.per_row_output_counts = {1, 1, 1};
   EXPECT_CALL(
       inference_model_,
@@ -134,10 +115,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceParserAuto) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -183,10 +161,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceReturnsError) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -343,10 +318,7 @@ TEST_F(InferenceModelTest, BuildModelLlamaMissingSessionLlamaCppConfiguration) {
 
 TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfig) {
   MockInferenceModel::InferenceOutput output;
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, "topic");
-  ASSERT_THAT(output_tensor, IsOk());
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, "topic");
   output.per_row_output_counts = {1, 1, 1};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(output));
 
@@ -373,10 +345,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfig) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -396,10 +365,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfig) {
 
 TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfigMultipleInputs) {
   MockInferenceModel::InferenceOutput output;
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, "topic");
-  ASSERT_THAT(output_tensor, IsOk());
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, "topic");
   output.per_row_output_counts = {1, 1, 1};
   ExpectGemmaCppInference({"transcript", "transcript2"}, "topic",
                           std::move(output));
@@ -427,15 +393,8 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfigMultipleInputs) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
-
-  absl::StatusOr<Tensor> transcript2_tensor =
-      CreateStringTensor({"aol", "bat", "cat"}, "transcript2");
-  ASSERT_THAT(transcript2_tensor, IsOk());
-  columns.push_back(std::move(*transcript2_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
+  columns.push_back(Tensor({"aol", "bat", "cat"}, "transcript2"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -455,18 +414,13 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfigMultipleInputs) {
 
 TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   MockInferenceModel::InferenceOutput topic_output;
-  absl::StatusOr<Tensor> topic_tensor =
-      CreateStringTensor({"1", "2", "3"}, "topic");
-  ASSERT_THAT(topic_tensor, IsOk());
-  topic_output.tensor = std::move(*topic_tensor);
+  topic_output.tensor = Tensor({"1", "2", "3"}, "topic");
+  ;
   topic_output.per_row_output_counts = {1, 1, 1};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(topic_output));
 
   MockInferenceModel::InferenceOutput output_output;
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, "output");
-  ASSERT_THAT(output_tensor, IsOk());
-  output_output.tensor = std::move(*output_tensor);
+  output_output.tensor = Tensor({"1", "2", "3"}, "output");
   output_output.per_row_output_counts = {1, 1, 1};
   ExpectGemmaCppInference({"input"}, "output", std::move(output_output));
 
@@ -500,15 +454,8 @@ TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
-
-  absl::StatusOr<Tensor> input_tensor =
-      CreateStringTensor({"uno", "dos", "tres"}, "input");
-  ASSERT_THAT(input_tensor, IsOk());
-  columns.push_back(std::move(*input_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
+  columns.push_back(Tensor({"uno", "dos", "tres"}, "input"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -532,10 +479,7 @@ TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
 
 TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   MockInferenceModel::InferenceOutput output;
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, "topic");
-  ASSERT_THAT(output_tensor, IsOk());
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, "topic");
   output.per_row_output_counts = {1, 1, 1};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(output));
 
@@ -563,26 +507,13 @@ TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
 
   std::vector<Tensor> columns;
   // Non-prompt string column.
-  absl::StatusOr<Tensor> input_str_tensor =
-      CreateStringTensor({"uno", "dos", "tres"}, "input_str_col");
-  ASSERT_THAT(input_str_tensor, IsOk());
-  columns.push_back(std::move(*input_str_tensor));
+  columns.push_back(Tensor({"uno", "dos", "tres"}, "input_str_col"));
 
   // Non-prompt int column.
-  std::initializer_list<int64_t> input_int_values = {1, 2, 3};
-  absl::StatusOr<Tensor> input_int_tensor = Tensor::Create(
-      DataType::DT_INT64,
-      TensorShape({static_cast<int64_t>(input_int_values.size())}),
-      std::make_unique<MutableVectorData<int64_t>>(input_int_values),
-      /*name=*/"input_int_col");
-  ASSERT_THAT(input_int_tensor, IsOk());
-  columns.push_back(std::move(*input_int_tensor));
+  columns.push_back(Tensor({1, 2, 3}, "input_int_col"));
 
   // Prompt column.
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -600,7 +531,7 @@ TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
               UnorderedElementsAre("uno", "dos", "tres"));
   ASSERT_EQ(output_tensors->at(1).name(), "input_int_col");
   ASSERT_EQ(output_tensors->at(1).shape().dim_sizes()[0], 3);
-  EXPECT_THAT(output_tensors->at(1).AsSpan<int64_t>(),
+  EXPECT_THAT(output_tensors->at(1).AsSpan<int32_t>(),
               UnorderedElementsAre(1, 2, 3));
   ASSERT_EQ(output_tensors->at(2).name(), "transcript");
   ASSERT_EQ(output_tensors->at(2).shape().dim_sizes()[0], 3);
@@ -636,20 +567,8 @@ TEST_F(InferenceModelTest, RunInferenceInputColumnNotFound) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> input_str_tensor =
-      CreateStringTensor({"uno", "dos", "tres"}, "input_str_col");
-  ASSERT_THAT(input_str_tensor, IsOk());
-  columns.push_back(std::move(*input_str_tensor));
-
-  std::initializer_list<int64_t> input_int_values = {1, 2, 3};
-  absl::StatusOr<Tensor> input_int_tensor = Tensor::Create(
-      DataType::DT_INT64,
-      TensorShape({static_cast<int64_t>(input_int_values.size())}),
-      std::make_unique<MutableVectorData<int64_t>>(input_int_values),
-      /*name*/ "input_int_col");
-  ASSERT_THAT(input_int_tensor, IsOk());
-
-  columns.push_back(std::move(*input_int_tensor));
+  columns.push_back(Tensor({"uno", "dos", "tres"}, "input_str_col"));
+  columns.push_back(Tensor({1, 2, 3}, "input_int_col"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -688,10 +607,7 @@ TEST_F(InferenceModelTest, RunInferenceInputColumnNotFoundMultipleInputs) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> input_str_tensor =
-      CreateStringTensor({"uno", "dos", "tres"}, "input_str_col");
-  ASSERT_THAT(input_str_tensor, IsOk());
-  columns.push_back(std::move(*input_str_tensor));
+  columns.push_back(Tensor({"uno", "dos", "tres"}, "input_str_col"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -729,10 +645,7 @@ TEST_F(InferenceModelTest, RunInferenceNoPrompt) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -768,10 +681,7 @@ TEST_F(InferenceModelTest, RunInferenceNoPromptMultipleInputs) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -809,10 +719,7 @@ TEST_F(InferenceModelTest, RunInferenceModelNotInitialized) {
 
   std::vector<Tensor> columns;
   // Prompt column.
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   BlobHeader blob_header;
   absl::StatusOr<Input> input =
@@ -849,10 +756,7 @@ TEST_F(InferenceModelTest, RunInferenceModelNotInitializedMultipleInputs) {
 
   std::vector<Tensor> columns;
   // Prompt column.
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   BlobHeader blob_header;
   absl::StatusOr<Input> input =
@@ -874,13 +778,9 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
             EXPECT_EQ(config.runtime_config().seq_len(), 10000);
             return absl::OkStatus();
           }));
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"r1", "r2", "r3"}, "topic");
-  ASSERT_THAT(output_tensor, IsOk());
   EXPECT_CALL(inference_model_, RunGemmaCppInference(_, _, _, _))
-      .WillOnce([this, output_tensor = std::move(*output_tensor)](
-                    const Prompt&, const Input&, absl::Span<const size_t>,
-                    const std::string&) mutable
+      .WillOnce([this](const Prompt&, const Input&, absl::Span<const size_t>,
+                       const std::string&) mutable
                     -> absl::StatusOr<MockInferenceModel::InferenceOutput> {
         const auto& config = inference_model_.GetInferenceConfiguration()
                                  ->initialize_configuration.inference_config();
@@ -888,7 +788,7 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
         EXPECT_EQ(config.runtime_config().max_generated_tokens(), 50);
         EXPECT_EQ(config.runtime_config().temperature_diff(), -0.5);
         MockInferenceModel::InferenceOutput output;
-        output.tensor = std::move(output_tensor);
+        output.tensor = Tensor({"r1", "r2", "r3"}, "topic");
         output.per_row_output_counts = {1, 1, 1};
         return std::move(output);
       });
@@ -922,10 +822,7 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -947,13 +844,9 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceValidConfigMultipleInputs) {
   // This test is modified based on
   // RunGemmaCppInferenceValidConfigMultipleInputs.
   std::string output_column_name = "topic";
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, output_column_name);
-  ASSERT_THAT(output_tensor, IsOk());
-
   // Mock the RunLlamaCppInferencePerRow function to return the output tensor.
   MockInferenceModel::InferenceOutput output;
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, output_column_name);
   output.per_row_output_counts = {1, 1, 1};
   EXPECT_CALL(inference_model_,
               RunLlamaCppInference(_, _, _, Eq(output_column_name)))
@@ -981,15 +874,8 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceValidConfigMultipleInputs) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> input_1_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript_1");
-  ASSERT_THAT(input_1_tensor, IsOk());
-  columns.push_back(std::move(*input_1_tensor));
-
-  absl::StatusOr<Tensor> input_2_tensor =
-      CreateStringTensor({"aol", "bat", "cat"}, "transcript_2");
-  ASSERT_THAT(input_2_tensor, IsOk());
-  columns.push_back(std::move(*input_2_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript_1"));
+  columns.push_back(Tensor({"aol", "bat", "cat"}, "transcript_2"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -1010,13 +896,9 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceValidConfigMultipleInputs) {
 TEST_F(InferenceModelTest, RunLlamaCppInferenceSuccess) {
   // This test is modified based on RunGemmaCppInferenceValidConfig.
   std::string output_column_name = "topic";
-  absl::StatusOr<Tensor> output_tensor =
-      CreateStringTensor({"1", "2", "3"}, output_column_name);
-  ASSERT_THAT(output_tensor, IsOk());
-
   // Mock the RunLlamaCppInferencePerRow function to return the output tensor.
   MockInferenceModel::InferenceOutput output;
-  output.tensor = std::move(*output_tensor);
+  output.tensor = Tensor({"1", "2", "3"}, output_column_name);
   output.per_row_output_counts = {1, 1, 1};
   EXPECT_CALL(inference_model_,
               RunLlamaCppInference(_, _, _, Eq(output_column_name)))
@@ -1045,10 +927,7 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceSuccess) {
       "/tmp/model_weight";
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> input_tensor =
-      CreateStringTensor({"one", "two", "three"}, "transcript");
-  ASSERT_THAT(input_tensor, IsOk());
-  columns.push_back(std::move(*input_tensor));
+  columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -1068,10 +947,7 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceSuccess) {
 
 TEST_F(InferenceModelTest, RunInferenceWithDuplication) {
   MockInferenceModel::InferenceOutput topic_output;
-  absl::StatusOr<Tensor> topic_tensor =
-      CreateStringTensor({"t1", "t2", "t3"}, "topic");
-  ASSERT_THAT(topic_tensor, IsOk());
-  topic_output.tensor = std::move(*topic_tensor);
+  topic_output.tensor = Tensor({"t1", "t2", "t3"}, "topic");
   topic_output.per_row_output_counts = {1, 2};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(topic_output));
 
@@ -1091,10 +967,7 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplication) {
   inference_configuration.gemma_configuration.emplace();
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"foo", "bar"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"foo", "bar"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -1118,19 +991,13 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplication) {
 TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
   // Setup for first inference task
   MockInferenceModel::InferenceOutput topic_output;
-  absl::StatusOr<Tensor> topic_tensor =
-      CreateStringTensor({"t1", "t2", "t3"}, "topic");
-  ASSERT_THAT(topic_tensor, IsOk());
-  topic_output.tensor = std::move(*topic_tensor);
+  topic_output.tensor = Tensor({"t1", "t2", "t3"}, "topic");
   topic_output.per_row_output_counts = {1, 2};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(topic_output));
 
   // Setup for second inference task
   MockInferenceModel::InferenceOutput other_output;
-  absl::StatusOr<Tensor> other_output_tensor =
-      CreateStringTensor({"o1", "o2", "o3", "o4"}, "other_output");
-  ASSERT_THAT(other_output_tensor, IsOk());
-  other_output.tensor = std::move(*other_output_tensor);
+  other_output.tensor = Tensor({"o1", "o2", "o3", "o4"}, "other_output");
   other_output.per_row_output_counts = {1, 2, 1};
   ExpectGemmaCppInference({"other_input"}, "other_output",
                           std::move(other_output));
@@ -1158,14 +1025,8 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
   inference_configuration.gemma_configuration.emplace();
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"foo", "bar"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
-  absl::StatusOr<Tensor> other_input_tensor =
-      CreateStringTensor({"a", "b"}, "other_input");
-  ASSERT_THAT(other_input_tensor, IsOk());
-  columns.push_back(std::move(*other_input_tensor));
+  columns.push_back(Tensor({"foo", "bar"}, "transcript"));
+  columns.push_back(Tensor({"a", "b"}, "other_input"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
   BlobHeader blob_header;
@@ -1195,10 +1056,7 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
 TEST_F(InferenceModelTest,
        RunInferenceMultipleRowsPreservesBlobHeaderAndPrivacyId) {
   MockInferenceModel::InferenceOutput topic_output;
-  absl::StatusOr<Tensor> topic_tensor =
-      CreateStringTensor({"t1", "t2", "t3"}, "topic");
-  ASSERT_THAT(topic_tensor, IsOk());
-  topic_output.tensor = std::move(*topic_tensor);
+  topic_output.tensor = Tensor({"t1", "t2", "t3"}, "topic");
   topic_output.per_row_output_counts = {1, 2};
   ExpectGemmaCppInference({"transcript"}, "topic", std::move(topic_output));
   SessionInferenceConfiguration inference_configuration;
@@ -1217,10 +1075,7 @@ TEST_F(InferenceModelTest,
   inference_configuration.gemma_configuration.emplace();
 
   std::vector<Tensor> columns;
-  absl::StatusOr<Tensor> transcript_tensor =
-      CreateStringTensor({"foo", "bar"}, "transcript");
-  ASSERT_THAT(transcript_tensor, IsOk());
-  columns.push_back(std::move(*transcript_tensor));
+  columns.push_back(Tensor({"foo", "bar"}, "transcript"));
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
 
   BlobHeader blob_header;
@@ -1228,12 +1083,10 @@ TEST_F(InferenceModelTest,
   blob_header.set_access_policy_node_id(99);
   blob_header.set_key_id("key_1");
 
-  absl::StatusOr<Tensor> privacy_id_tensor =
-      CreatePrivacyIdTensor("privacy_id_1");
-  ASSERT_THAT(privacy_id_tensor, IsOk());
+  Tensor privacy_id_tensor("privacy_id_1", "privacy_id");
 
   absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(columns), blob_header, std::move(*privacy_id_tensor));
+      std::move(columns), blob_header, std::move(privacy_id_tensor));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
