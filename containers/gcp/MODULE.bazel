@@ -18,14 +18,15 @@ module(
     compatibility_level = 1,
 )
 
+curl_file = use_repo_rule("//:repo_rules.bzl", "curl_file")
+
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
-http_file(
+curl_file(
     name = "intel_jwks",
-    sha256 = "4e1d55c79b698cde4987d791594495e70432879be621a1b6e42a9daafc84bee3",
-    urls = ["https://portal.trustauthority.intel.com/certs"],
+    url = "https://portal.trustauthority.intel.com/certs",
 )
 
 http_file(
