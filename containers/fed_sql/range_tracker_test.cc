@@ -165,23 +165,6 @@ TEST(RangeTrackerTest, ParseUnexpectedOrderOfIntervals) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST(RangeTrackerTest, BundleEmptyRangeTracker) {
-  RangeTracker range_tracker;
-  EXPECT_EQ(BundleRangeTracker("foo", range_tracker),
-            absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
-                         std::string(1, '\x3'), "foo"));
-}
-
-TEST(RangeTrackerTest, UnbundleEmptyRangeTracker) {
-  std::string blob =
-      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
-                   std::string(1, '\x3'), "foo");
-  auto range_tracker = UnbundleRangeTracker(blob);
-  EXPECT_EQ(blob, "foo");
-  EXPECT_TRUE(range_tracker->GetKeys().empty());
-  EXPECT_TRUE(range_tracker->GetRanges().empty());
-}
-
 TEST(RangeTrackerTest, BundleAndUnbundleSuccess) {
   RangeTrackerState state =
       PARSE_TEXT_PROTO(R"pb(
@@ -191,14 +174,6 @@ TEST(RangeTrackerTest, BundleAndUnbundleSuccess) {
   EXPECT_THAT(range_tracker, IsOk());
 
   std::string bundle = BundleRangeTracker("foobar", *range_tracker);
-
-  size_t expected_bundle_size =
-      sizeof(kRangeTrackerBundleSignature) - 1  // size of signature
-      + 1 +
-      range_tracker->SerializeAsString()
-          .size()                          // range tracker state + its size
-      + 1 + std::string("foobar").size();  // blob + its size
-  EXPECT_EQ(bundle.size(), expected_bundle_size);
 
   auto unbundled_range_tracker = UnbundleRangeTracker(bundle);
   EXPECT_THAT(unbundled_range_tracker, IsOk());
@@ -212,38 +187,8 @@ TEST(RangeTrackerTest, BundleAndUnbundleSuccess) {
               )pb"));
 }
 
-TEST(RangeTrackerTest, UnbundleSignatureMimatch) {
-  std::string bundle1;
-  EXPECT_THAT(UnbundleRangeTracker(bundle1),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-  std::string bundle2("abcd");
-  EXPECT_THAT(UnbundleRangeTracker(bundle2),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST(RangeTrackerTest, UnbundleMissingStateSize) {
-  std::string bundle(kRangeTrackerBundleSignature);
-  EXPECT_THAT(UnbundleRangeTracker(bundle),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST(RangeTrackerTest, UnbundleIncompleteState) {
-  std::string bundle(absl::StrCat(kRangeTrackerBundleSignature, "\x06", "ab"));
-  EXPECT_THAT(UnbundleRangeTracker(bundle),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST(RangeTrackerTest, UnbundleMissingPayloadSize) {
-  std::string bundle =
-      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'));
-  EXPECT_THAT(UnbundleRangeTracker(bundle),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST(RangeTrackerTest, UnbundleIncompletePayload) {
-  std::string bundle =
-      absl::StrCat(kRangeTrackerBundleSignature, std::string(1, '\0'),
-                   std::string(1, '\x6'), "ab");
+TEST(RangeTrackerTest, UnbundleFailure) {
+  std::string bundle("invalid");
   EXPECT_THAT(UnbundleRangeTracker(bundle),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }

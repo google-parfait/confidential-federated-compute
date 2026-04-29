@@ -27,10 +27,6 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-// Signature written in the beginning of the bundled blob that
-// contains serialized RangeTracker state.
-inline constexpr const char kRangeTrackerBundleSignature[] = "RTv1";
-
 // Tracks FedSql specific private state, which consists of ranges of blobs
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
