@@ -432,18 +432,26 @@ cc_proto_library(
 )
 
 cc_library(
+    name = "any_bundle",
+    hdrs = ["any_bundle.h"],
+    deps = [
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
+    ],
+)
+
+cc_library(
     name = "range_tracker",
     srcs = ["range_tracker.cc"],
     hdrs = ["range_tracker.h"],
     deps = [
+        ":any_bundle",
         ":interval_set",
         ":range_tracker_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:protobuf",
-        "@com_google_protobuf//src/google/protobuf/io",
         "@federated-compute//fcp/base:base",
     ],
 )
@@ -457,6 +465,20 @@ cc_test(
         "//testing:parse_text_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "any_bundle_test",
+    srcs = ["any_bundle_test.cc"],
+    deps = [
+        ":any_bundle",
+        ":budget_cc_proto",
+        ":range_tracker_cc_proto",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],

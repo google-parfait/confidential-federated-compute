@@ -15,13 +15,13 @@
 #include "containers/fed_sql/range_tracker.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 #include "fcp/base/monitoring.h"
-#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
-#include "google/protobuf/text_format.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -127,61 +127,19 @@ bool RangeTracker::Merge(const RangeTracker& other) {
 
 std::string BundleRangeTracker(std::string blob,
                                const RangeTracker& range_tracker) {
-  std::string buffer;
-  google::protobuf::io::StringOutputStream stream(&buffer);
-  google::protobuf::io::CodedOutputStream coded_stream(&stream);
-  coded_stream.WriteString(kRangeTrackerBundleSignature);
-  std::string range_tracker_state = range_tracker.SerializeAsString();
-  coded_stream.WriteVarint64(range_tracker_state.size());
-  coded_stream.WriteString(range_tracker_state);
-  coded_stream.WriteVarint64(blob.size());
-  coded_stream.Trim();
-  buffer.append(blob);
-  return buffer;
+  return std::string(
+      BundleAny(range_tracker.Serialize(), absl::Cord(std::move(blob))));
 }
 
 absl::StatusOr<RangeTracker> UnbundleRangeTracker(std::string& blob) {
-  google::protobuf::io::ArrayInputStream stream(blob.data(), blob.size());
-  google::protobuf::io::CodedInputStream coded_stream(&stream);
-  std::string signature;
-  if (!coded_stream.ReadString(&signature,
-                               sizeof(kRangeTrackerBundleSignature) - 1) ||
-      signature != kRangeTrackerBundleSignature) {
-    return absl::InvalidArgumentError(
-        "Invalid input blob: RangeTracker bundle signature mismatch");
+  RangeTrackerState state;
+  absl::Cord data(std::move(blob));
+  if (!UnbundleAny(state, data)) {
+    return absl::InvalidArgumentError("Failed to unbundle RangeTracker");
   }
 
-  size_t range_tracker_state_size;
-  if (!coded_stream.ReadVarint64(&range_tracker_state_size)) {
-    return absl::InvalidArgumentError(
-        "Invalid input blob: RangeTracker state size is missing");
-  }
-
-  std::string range_tracker_state;
-  if (!coded_stream.ReadString(&range_tracker_state,
-                               range_tracker_state_size)) {
-    return absl::InvalidArgumentError(
-        "Invalid input blob: insufficient RangeTracker state");
-  }
-
-  FCP_ASSIGN_OR_RETURN(RangeTracker range_tracker,
-                       RangeTracker::Parse(range_tracker_state));
-
-  size_t payload_size;
-  if (!coded_stream.ReadVarint64(&payload_size)) {
-    return absl::InvalidArgumentError(
-        "Invalid input blob: payload size is missing");
-  }
-
-  int pos = coded_stream.CurrentPosition();
-
-  if (pos + payload_size != blob.size()) {
-    return absl::InvalidArgumentError("Invalid input blob: incomplete payload");
-  }
-
-  // Make a new blob for the remaining "payload" part of the original blob.
-  blob = blob.substr(pos);
-  return range_tracker;
+  blob = std::string(std::move(data));
+  return RangeTracker::Parse(state);
 }
 
 }  // namespace confidential_federated_compute::fed_sql
