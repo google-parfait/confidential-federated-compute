@@ -123,6 +123,11 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Handles FINALIZATION_TYPE_REPORT_PRIVATE_STATE type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> ReportPrivateState(
       Context& context);
+  // Handles FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS type of Finalize.
+  // This is used to return temporary encrypted autotuning parameters that are
+  // used to run DP aggregation.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+  ReportAutotuningParams(Context& context);
 
   // Produces the final aggregated report and returns the serialized checkpoint.
   absl::StatusOr<absl::Cord> BuildReport();

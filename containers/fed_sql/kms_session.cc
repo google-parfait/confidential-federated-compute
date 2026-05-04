@@ -26,6 +26,7 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
+#include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
@@ -76,6 +77,7 @@ using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
@@ -489,6 +491,9 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
     case FINALIZATION_TYPE_REPORT_PRIVATE_STATE: {
       return ReportPrivateState(context);
     }
+    case FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS: {
+      return ReportAutotuningParams(context);
+    }
     default:
       return absl::InvalidArgumentError(
           "Finalize configuration must specify the finalization type.");
@@ -635,6 +640,24 @@ KmsFedSqlSession::ReportPrivateState(Context& context) {
   FinalizeResponse response;
   *response.mutable_release_token() = std::move(release_token);
   return response;
+}
+
+absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
+KmsFedSqlSession::ReportAutotuningParams(Context& context) {
+  // This is a hybrid between Report and Serialize:
+  // - The result is reported from the aggregator, similar to Report.
+  // - The RangeTracker is bundled with the result, as in Serialize.
+  // - The combined result is emitted temporarily encrypted as in Serialize.
+  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+  absl::Cord bundled_data =
+      BundleAny(range_tracker_.Serialize(), std::move(checkpoint));
+
+  if (!context.EmitEncrypted(/* reencryption_key_index*/ 0,
+                             std::string(std::move(bundled_data)))) {
+    return absl::InternalError("Failed to emit encrypted result.");
+  }
+
+  return FinalizeResponse{};
 }
 
 absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {

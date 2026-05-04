@@ -315,6 +315,7 @@ cc_library(
     srcs = ["kms_session.cc"],
     hdrs = ["kms_session.h"],
     deps = [
+        ":any_bundle",
         ":dp_unit",
         ":inference_model",
         ":partition_private_state",
@@ -362,6 +363,7 @@ cc_test(
     size = "small",
     srcs = ["kms_session_test.cc"],
     deps = [
+        ":any_bundle",
         ":budget_cc_proto",
         ":inference_model",
         ":kms_session",
@@ -397,7 +399,7 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing",
     ],
 )
 
