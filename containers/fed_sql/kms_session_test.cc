@@ -25,6 +25,7 @@
 #include "containers/big_endian.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/partition_private_state.pb.h"
 #include "containers/fed_sql/private_state.h"
@@ -49,6 +50,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/testing.h"
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
@@ -57,6 +59,7 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
@@ -98,6 +101,7 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Intrinsic;
+using ::tensorflow_federated::aggregation::IsTensor;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::testing::_;
@@ -444,11 +448,9 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitSerializeSucceeds) {
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("val_out");
   // The query doubles each element of the val column and sums them.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
@@ -624,12 +626,74 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
-  auto col_values = (*parser)->GetTensor("val_out");
   // The SQL query doubles each input and the aggregation sums the
   // input column
-  EXPECT_EQ(col_values->num_elements(), 1);
-  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  int index;
+  ExpectEmitEncrypted(index, result_data);
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  EXPECT_EQ(index, 0);
+
+  RangeTrackerState range_tracker_state;
+  absl::Cord result_cord(result_data);
+  ASSERT_TRUE(UnbundleAny(range_tracker_state, result_cord));
+  auto range_tracker = RangeTracker::Parse(range_tracker_state);
+  ASSERT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetKeys(), UnorderedElementsAre("key_foo"));
+  EXPECT_THAT(range_tracker->GetRanges(),
+              ElementsAre(Interval<uint64_t>(1, 3)));
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(result_cord);
+  ASSERT_THAT(parser, IsOk());
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {2})));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsFailsIfNoInputs) {
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("no inputs were aggregated")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
@@ -940,11 +1004,9 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeSerializeSucceeds) {
   ASSERT_THAT((*deserialized_agg)->Report(*checkpoint_builder), IsOk());
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("val_out");
   // The aggregation sums the val column.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeSerializePrivateStateSucceeds) {
@@ -1153,10 +1215,8 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
-  auto col_values = (*parser)->GetTensor("val_out");
-  EXPECT_EQ(col_values->num_elements(), 1);
-  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
@@ -1234,10 +1294,8 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
-  auto col_values = (*parser)->GetTensor("val_out");
-  EXPECT_EQ(col_values->num_elements(), 1);
-  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
@@ -1397,10 +1455,8 @@ TEST_F(KmsFedSqlSessionUnlimitedBudgetTest, MergeReportPartitionSucceeds) {
 
   auto parser = parser_factory.Create(absl::Cord(result_data));
   ASSERT_THAT(parser, IsOk());
-  auto col_values = (*parser)->GetTensor("val_out");
-  EXPECT_EQ(col_values->num_elements(), 1);
-  EXPECT_EQ(col_values->dtype(), DataType::DT_INT64);
-  EXPECT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, CommitRangeConflict) {
@@ -1672,11 +1728,9 @@ TEST_F(KmsFedSqlSessionWritePartialRangeTest,
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("val_out");
   // The query doubles each element of the val column and sums them.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 4);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
 }
 
 TEST_F(KmsFedSqlSessionWritePartialRangeTest, AccumulateOverlappingBlobFails) {
@@ -1848,11 +1902,9 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest,
   absl::StatusOr<absl::Cord> checkpoint = checkpoint_builder->Build();
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(*checkpoint);
-  auto col_values = (*parser)->GetTensor("val_out");
   // The query doubles each element of the val column and sums them.
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
@@ -1907,10 +1959,8 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
-  auto col_values = (*parser)->GetTensor("val_out");
-  ASSERT_EQ(col_values->num_elements(), 1);
-  ASSERT_EQ(col_values->dtype(), DataType::DT_INT64);
-  ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 6);
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
 }
 
 TEST_F(KmsFedSqlSessionWriteWithMessageTest,
