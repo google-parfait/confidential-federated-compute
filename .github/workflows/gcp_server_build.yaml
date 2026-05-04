@@ -10,16 +10,6 @@ on:
 
   # Allow manual triggering for testing or forced rebuilds.
   workflow_dispatch:
-    inputs:
-      model:
-        description: 'Model to build (gemma4_e4b, gemma4_31b, or all)'
-        required: true
-        default: 'gemma4_e4b'
-        type: choice
-        options:
-          - gemma4_e4b
-          - gemma4_31b
-          - all
 
 # Only one server build at a time to avoid registry merge conflicts.
 concurrency:
@@ -40,11 +30,6 @@ jobs:
           #   attestation: ita
           #   alts: true
 
-    # Skip matrix entries that don't match manual trigger selection.
-    if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.model == 'all' ||
-      github.event.inputs.model == matrix.model
 
     runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu24.04
 
