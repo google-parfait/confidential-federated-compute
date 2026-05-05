@@ -17,6 +17,7 @@
 
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/base/digest.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -63,7 +64,7 @@ TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
   oak::crypto::v1::Signature signature;
   signature.set_signature("my_signature");
 
-  EXPECT_CALL(mock_signing_key_handle, Sign("my_data"))
+  EXPECT_CALL(mock_signing_key_handle, Sign(fcp::ComputeSHA256("my_data")))
       .WillOnce(testing::Return(signature));
 
   ASSERT_TRUE(CreateWriteRequestForEncryptedValue(

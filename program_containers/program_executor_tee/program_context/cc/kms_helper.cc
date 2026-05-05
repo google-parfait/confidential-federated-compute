@@ -17,6 +17,7 @@
 
 #include "absl/strings/string_view.h"
 #include "cc/crypto/signing_key.h"
+#include "fcp/base/digest.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -91,7 +92,11 @@ absl::Status CreateWriteRequestForEncryptedValue(
       message_encryptor.Encrypt(data, encryption_key,
                                 blob_header.SerializeAsString()));
 
-  FCP_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(data));
+  // Hash the data before signing to avoid sending large payloads over the
+  // gRPC channel to the Oak orchestrator's Sign RPC, which has a default
+  // message size limit of 4MB.
+  std::string data_digest = fcp::ComputeSHA256(data);
+  FCP_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(data_digest));
   *write_request->mutable_signature() = signature.signature();
 
   return CreateWriteRequest(write_request, blob_header.SerializeAsString(),
