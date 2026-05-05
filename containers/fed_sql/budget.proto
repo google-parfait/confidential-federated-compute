@@ -16,22 +16,33 @@ syntax = "proto3";
 
 package confidential_federated_compute.fed_sql;
 
-// BudgetState represents the serialized budget, which is stored as a
-// collection of buckets associated with encryption keys, with each bucket
-// having its own remaining budget. Each customer uploaded blob can be
-// associated with at most one bucket, based on which encryption key that blob
-// was encrypted with at upload. When processing blobs in a container an
-// assumption is made that all blobs associated with a bucket (i.e. the
-// corresponding encryption key) have been processed, therefore the budget
-// for that bucket is reduced by 1.
+// BudgetState represents the serialized budget state for a pipeline.
 //
-// It is up to the processing container how to interpret the budget state.
-// Normally, when the budget is fully consumed for a bucket (down to zero),
-// it should remain in the serialized budget state until the corresponding
-// encryption key is expired; then the bucket entry can be removed.
-// If there is a new unexpired encryption key that doesn't exist in the
-// budget state, the processing container must assume that there is a
-// default budget associated with that key.
+// It supports two budget tracking schemes that can coexist during migration:
+//
+// 1. KMS key-based budget (legacy): A collection of buckets associated with
+//    encryption keys, with each bucket having its own remaining budget. Each
+//    customer uploaded blob can be associated with at most one bucket, based on
+//    which encryption key that blob was encrypted with at upload. When
+//    processing blobs in a container an assumption is made that all blobs
+//    associated with a bucket (i.e. the corresponding encryption key) have been
+//    processed, therefore the budget for that bucket is reduced by 1.
+//    When a bucket's budget is fully consumed (down to zero), it should remain
+//    in the serialized budget state until the corresponding encryption key is
+//    expired; then the bucket entry can be removed. If there is a new unexpired
+//    encryption key that doesn't exist in the budget state, the processing
+//    container must assume that there is a default budget associated with that
+//    key.
+//
+// 2. Time-based budget: Budget is tracked using minute-granularity time
+//    intervals relative to an anchor time. Each interval records the remaining
+//    budget for that time window. Intervals not explicitly stored are assumed
+//    to have the default budget. Time before the anchor is treated as having
+//    zero budget.
+//
+// During the migration period, both schemes are maintained in parallel and the
+// smaller remaining budget of the two is used for access decisions. New entries
+// are only added to the time-based budget scheme.
 message BudgetState {
   message Bucket {
     // A key for the budget bucket.
@@ -52,5 +63,41 @@ message BudgetState {
     optional fixed64 consumed_range_end = 4;
 
   }
+  // KMS key-based budget buckets (legacy).
   repeated Bucket buckets = 1;
+
+  message TimeBudgetState {
+    // Anchor time of the "0" time bucket (seconds since epoch).
+    fixed64 anchor_time = 1;
+
+    // A single consumed interval of time-based budget.
+    message ConsumedInterval {
+      // The start index computed as number of minutes since the anchor:
+      // (start_event_time - anchor_time) / 60.
+      uint64 start_index = 1;
+
+      // Number of minute-buckets covered by this interval from the start_index,
+      // i.e. end_index = start_index + count.
+      uint64 count = 2;
+
+      // The remaining budget for this interval (e.g., 0 for fully consumed).
+      uint32 remaining_budget = 3;
+    }
+
+    // List of consumed intervals. Any interval not covered by these
+    // intervals is assumed to have the default budget.
+    //
+    // Each interval occupies 9-11 bytes:
+    // start_index and count: 2-3 bytes
+    // remaining_budget: 1 byte
+    // Fields metadata: 3 bytes
+    // Message size: 1 byte
+    //
+    // This would allow storing up to 90-100 non-overlapping intervals while
+    // keeping the total budget size under 1KB.
+    repeated ConsumedInterval intervals = 2;
+  }
+
+  // Time-based budget state using time windows with minute granularity.
+  TimeBudgetState time_budget = 2;
 }
