@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/base/digest.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -294,7 +295,8 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
   NiceMock<MockSigningKeyHandle> mock_signing_key_handle_;
   oak::crypto::v1::Signature signature;
   signature.set_signature("my_signature");
-  EXPECT_CALL(mock_signing_key_handle_, Sign("intermediate_data"))
+  EXPECT_CALL(mock_signing_key_handle_,
+              Sign(fcp::ComputeSHA256("intermediate_data")))
       .WillOnce(testing::Return(signature));
 
   std::string blob_id;

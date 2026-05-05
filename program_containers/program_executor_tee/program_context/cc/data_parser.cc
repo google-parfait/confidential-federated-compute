@@ -21,6 +21,7 @@
 #include "absl/strings/escaping.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
+#include "fcp/base/digest.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
@@ -307,9 +308,14 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
                                                     intermediate_result.data(),
                                                     blob_header.key_id()));
 
+  // Hash the decrypted data before verification to match the signing side
+  // (kms_helper.cc), which pre-hashes data before sending it to the Oak
+  // orchestrator's Sign RPC to avoid exceeding the gRPC message size limit.
+  std::string decrypted_data_digest = fcp::ComputeSHA256(decrypted_data);
   FCP_ASSIGN_OR_RETURN(
       BlobProvenance blob_provenance,
-      VerifyBlobProvenance(decrypted_data, intermediate_result.signature(),
+      VerifyBlobProvenance(decrypted_data_digest,
+                           intermediate_result.signature(),
                            intermediate_result.signing_key_endorsement(),
                            kms_public_key_, invocation_id_));
   if (blob_provenance.transform_index != 0) {
