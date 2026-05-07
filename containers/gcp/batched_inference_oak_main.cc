@@ -130,12 +130,12 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
   return outputs;
 }
 
-class TestBatchedInferenceEngineImpl : public BatchedInferenceEngine {
+class BatchedInferenceEngineImpl : public BatchedInferenceEngine {
  public:
-  explicit TestBatchedInferenceEngineImpl(std::unique_ptr<Client> client)
+  explicit BatchedInferenceEngineImpl(std::unique_ptr<Client> client)
       : client_(std::move(client)) {}
 
-  virtual ~TestBatchedInferenceEngineImpl() {}
+  virtual ~BatchedInferenceEngineImpl() {}
 
   std::vector<absl::StatusOr<std::string>> DoBatchedInference(
       std::vector<std::string> prompts) override {
@@ -153,12 +153,11 @@ class TestBatchedInferenceEngineImpl : public BatchedInferenceEngine {
   std::unique_ptr<Client> client_;
 };
 
-class TestBatchedInferenceEngineProviderImpl
+class BatchedInferenceEngineProviderImpl
     : public BatchedInferenceEngineProvider {
  public:
-  TestBatchedInferenceEngineProviderImpl(AttestationPolicy attestation_policy,
-                                         std::string jwks_payload,
-                                         bool dump_jwt)
+  BatchedInferenceEngineProviderImpl(AttestationPolicy attestation_policy,
+                                     std::string jwks_payload, bool dump_jwt)
       : attestation_policy_(attestation_policy),
         jwks_payload_(jwks_payload),
         dump_jwt_(dump_jwt) {}
@@ -166,6 +165,11 @@ class TestBatchedInferenceEngineProviderImpl
   std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
       const fcp::confidentialcompute::InferenceConfiguration& inference_config)
       override {
+    LOG(INFO)
+        << "BatchedInferenceEngineProviderImpl::GetEngineForInferenceConfig "
+           "called with the following inference config:\n"
+        << inference_config.DebugString();
+
     int port = DEFAULT_HOST_PROXY_PORT_WHEN_UNSPECIFIED;
     if (inference_config.has_proxy_config() &&
         inference_config.proxy_config().host_proxy_port() > 0) {
@@ -191,11 +195,17 @@ class TestBatchedInferenceEngineProviderImpl
 
     absl::StatusOr<std::unique_ptr<Client>> client_or =
         CreateClient(server_target, std::move(*verifier_or));
+
+    LOG(INFO) << "CreateClient returned with status: " << client_or.status();
+
     CHECK_OK(client_or.status())
         << "Failed to create a GCP client: " << client_or.status();
 
-    return std::make_shared<TestBatchedInferenceEngineImpl>(
-        std::move(*client_or));
+    LOG(INFO)
+        << "BatchedInferenceEngineProviderImpl::GetEngineForInferenceConfig "
+           "completed successfully; returning with a new Engine object.";
+
+    return std::make_shared<BatchedInferenceEngineImpl>(std::move(*client_or));
   }
 
  private:
@@ -209,7 +219,7 @@ void RunServer() {
   std::string jwks_payload = ReadJwksPayloadOrDie();
   bool dump_jwt = absl::GetFlag(FLAGS_dump_jwt);
 
-  auto provider = std::make_shared<TestBatchedInferenceEngineProviderImpl>(
+  auto provider = std::make_shared<BatchedInferenceEngineProviderImpl>(
       attestation_policy, jwks_payload, dump_jwt);
 
   absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server_or =
