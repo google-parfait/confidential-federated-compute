@@ -42,21 +42,33 @@ def _gcs_file_impl(ctx):
         # buildifier: disable=print
         print("GCS_MODEL_BUCKET override: downloading from {}".format(gcs_url))
 
+    # Build an environment that propagates GCP credentials (for CI) and
+    # PATH (so ctx.execute can find the gcloud / gsutil binaries).
+    exec_env = {}
+    cred_file = ctx.os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if cred_file:
+        exec_env["GOOGLE_APPLICATION_CREDENTIALS"] = cred_file
+    path = ctx.os.environ.get("PATH", "")
+    if path:
+        exec_env["PATH"] = path
+
     # Try gcloud first (preferred), then fall back to gsutil.
-    result = ctx.execute(
+    gcloud_result = ctx.execute(
         ["gcloud", "storage", "cp", gcs_url, output],
         timeout = 1800,  # 30 min for large model files
+        environment = exec_env,
     )
-    if result.return_code != 0:
-        result = ctx.execute(
+    if gcloud_result.return_code != 0:
+        gsutil_result = ctx.execute(
             ["gsutil", "cp", gcs_url, output],
             timeout = 1800,
+            environment = exec_env,
         )
-        if result.return_code != 0:
+        if gsutil_result.return_code != 0:
             fail("Failed to download {} from GCS.\ngcloud error: {}\ngsutil error: {}".format(
                 gcs_url,
-                result.stderr,
-                result.stderr,
+                gcloud_result.stderr,
+                gsutil_result.stderr,
             ))
 
     ctx.file("BUILD", 'exports_files(["' + output + '"])')
@@ -67,8 +79,8 @@ gcs_file = repository_rule(
         "gcs_url": attr.string(mandatory = True),
         "downloaded_file_path": attr.string(mandatory = True),
     },
-    # Re-fetch if GCS_MODEL_BUCKET changes.
-    environ = ["GCS_MODEL_BUCKET"],
+    # Re-fetch if GCS_MODEL_BUCKET or credentials change.
+    environ = ["GCS_MODEL_BUCKET", "GOOGLE_APPLICATION_CREDENTIALS"],
 )
 
 def _curl_file_impl(ctx):

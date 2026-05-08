@@ -76,6 +76,13 @@
       "digest": "sha256:1f79c146fd79d103781ca5466b45969ede49429c2396ab0140b46fda2cb941c9",
       "tag": "us-docker.pkg.dev/private-inference/offloading/batched_inference:ita_alts_gemma4_e4b_latest",
       "created": "2026-05-07T22:34:28Z"
+    },
+    {
+      "model": "gemma4_e4b",
+      "attestation": "ita_alts",
+      "digest": "sha256:1f79c146fd79d103781ca5466b45969ede49429c2396ab0140b46fda2cb941c9",
+      "tag": "us-docker.pkg.dev/private-inference/offloading/batched_inference:ita_alts_gemma4_e4b_latest",
+      "created": "2026-05-08T18:07:45Z"
     }
   ]
 }
