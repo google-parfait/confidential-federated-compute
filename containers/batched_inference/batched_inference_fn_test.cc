@@ -21,6 +21,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "containers/batched_inference/batched_inference_test_utils.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
@@ -247,22 +248,104 @@ TEST_F(BatchedInferenceFnTest, OneTaskWithMultiRowOutput) {
               IsOk());
 }
 
-TEST_F(BatchedInferenceFnTest, TwoTasksBothMultiRowReturnsError) {
-  // 2-task config, BOTH with PARSER_DELIMITER.
+TEST_F(BatchedInferenceFnTest, OneSingleRowTaskTwoMultiRowTasksSucceeds) {
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "one_row"
+      }
+      prompt {
+        prompt_template: "one_row {transcript}"
+        parser: PARSER_DELIMITER
+      }
+    }
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "three_rows"
+      }
+      prompt {
+        prompt_template: "three_rows {transcript}"
+        parser: PARSER_DELIMITER
+      }
+    }
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "two_rows"
+      }
+      prompt {
+        prompt_template: "two_rows {transcript}"
+        parser: PARSER_DELIMITER
+      }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (p == "one_row bark")
+            results.push_back("1");
+          else if (p == "three_rows bark")
+            results.push_back("a,b,c");
+          else if (p == "two_rows bark")
+            results.push_back("x,y");
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark", "bark", "bark", "bark", "bark", "bark"}},
+       {"one_row", {"1", "1", "1", "1", "1", "1"}},
+       {"three_rows", {"a", "a", "b", "b", "c", "c"}},
+       {"two_rows", {"x", "y", "x", "y", "x", "y"}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+}
+
+TEST_F(BatchedInferenceFnTest, OneTaskProducesZeroValuesForRow) {
   InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
     inference_task {
       column_config {
         input_column_names: "transcript"
         output_column_name: "topic"
       }
-      prompt { prompt_template: "Hello, {transcript}" parser: PARSER_DELIMITER }
+      prompt { prompt_template: "topic {transcript}" parser: PARSER_DELIMITER }
     }
     inference_task {
       column_config {
         input_column_names: "transcript"
         output_column_name: "keywords"
       }
-      prompt { prompt_template: "KW {transcript}" parser: PARSER_DELIMITER }
+      prompt {
+        prompt_template: "keywords {transcript}"
+        parser: PARSER_DELIMITER
+      }
     }
     runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
   )pb");
@@ -285,22 +368,106 @@ TEST_F(BatchedInferenceFnTest, TwoTasksBothMultiRowReturnsError) {
   ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
               IsOk());
 
-  // Both tasks return multiple rows.
+  // One task produces 2 values, the other produces 0 value.
   EXPECT_CALL(*mock_engine, DoBatchedInference(_))
       .WillOnce([](std::vector<std::string> prompts) {
         std::vector<absl::StatusOr<std::string>> results;
         for (const auto& p : prompts) {
-          if (p == "Hello, bark")
+          if (p == "topic bark")
             results.push_back("a,b");
-          else if (p == "KW bark")
-            results.push_back("x,y");
+          else if (p == "keywords bark")
+            results.push_back("");  // 0 values!
         }
         return results;
       });
 
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark", "bark"}},
+       {"topic", {"a", "b"}},
+       {"keywords", {"", ""}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
-              StatusIs(absl::StatusCode::kUnimplemented));
+              IsOk());
+}
+
+TEST_F(BatchedInferenceFnTest, AllTasksProduceZeroValuesForRow) {
+  // 3 inference tasks, each using a different parser.
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "delimiter_col"
+      }
+      prompt {
+        prompt_template: "delimiter {transcript}"
+        parser: PARSER_DELIMITER
+      }
+    }
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "auto_col"
+      }
+      prompt { prompt_template: "auto {transcript}" parser: PARSER_AUTO }
+    }
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "none_col"
+      }
+      prompt { prompt_template: "none {transcript}" }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  // All three tasks produce 0 values:
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (p == "delimiter bark") results.push_back("");
+          // PARSER_AUTO appends system instructions, so use StartsWith.
+          else if (absl::StartsWith(p, "auto bark"))
+            results.push_back("{\"auto_col\": []}");
+          else if (p == "none bark")
+            results.push_back("");
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark"}},
+       {"delimiter_col", {""}},
+       {"auto_col", {""}},
+       {"none_col", {""}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
 }
 
 }  // namespace
