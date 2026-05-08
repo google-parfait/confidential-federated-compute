@@ -106,10 +106,17 @@ if [[ -n "$GCS_BUCKET" ]]; then
   GCS_BUCKET_ARG="--repo_env=GCS_MODEL_BUCKET=${GCS_BUCKET}"
 fi
 
+# Forward GCP credentials to Bazel's repository rules (needed in CI).
+GOOGLE_CREDS_ARG=""
+if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  GOOGLE_CREDS_ARG="--repo_env=GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}"
+fi
+
 if ! bazelisk run \
     --action_env="BUILD_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)" \
     --lockfile_mode=refresh \
     ${GCS_BUCKET_ARG} \
+    ${GOOGLE_CREDS_ARG} \
     "$RUNNER_TARGET" 2>&1 | tee "$BUILD_LOG"; then
   echo "" >&2
   echo "ERROR: Bazel runner failed. See output above." >&2
