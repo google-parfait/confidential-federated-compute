@@ -148,13 +148,15 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   }
 
   // Initialize Session & Connect
-  LOG(INFO) << "Initializing Oak ClientSession via Rust.";
+  LOG(INFO) << "Initializing Oak ClientSession config via Rust.";
 
   // We use FFI here because the Oak ClientSession is implemented in Rust.
   // We pass the C++ verifier object and a callback function so that Rust can
   // delegate the actual JWT verification back to our C++ implementation.
   SessionConfig* client_config = create_client_session_config(
       static_cast<void*>(attestation_token_verifier.get()), &verify_jwt_f);
+
+  LOG(INFO) << "Calling ClientSession::Create(...)";
 
   absl::StatusOr<std::unique_ptr<ClientSession>> client_session_or =
       ClientSession::Create(client_config);
@@ -171,7 +173,12 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   auto stub = OakSessionV1Service::NewStub(channel);
   std::unique_ptr<grpc::ClientContext> client_context =
       std::make_unique<grpc::ClientContext>();
+
+  LOG(INFO) << "Invoking Oak Session's Stream() on the OakSession stub";
+
   auto stream = stub->Stream(client_context.get());
+
+  LOG(INFO) << "Beginning to exchange OakSession's handshake messages";
 
   // Execute Flow: Handshake, send message, receive response.
   // The handshake will trigger the Rust session to call our C++ verification
@@ -179,8 +186,13 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   absl::Status handshake_status =
       ExchangeHandshakeMessages(client_session_or->get(), stream.get());
   if (!handshake_status.ok()) {
+    LOG(ERROR) << "Handshake failed; returning with error: "
+               << handshake_status;
     return handshake_status;
   }
+
+  LOG(INFO)
+      << "Handshake completed successfully; returning a new Client object.";
 
   return std::make_unique<ClientImpl>(
       std::move(attestation_token_verifier), std::move(*client_session_or),

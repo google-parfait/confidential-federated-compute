@@ -122,6 +122,8 @@ void RunServer() {
     LOG(FATAL) << "Failed to create the server: " << server_or.status();
   }
 
+  LOG(INFO) << "Server created, calling Wait()...";
+
   server_or.value()->Wait();
 }
 
