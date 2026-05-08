@@ -242,14 +242,20 @@ class IntervalMap {
     }
 
     // Merge adjacent intervals with equal values within the interval.
+    // Note: absl::btree_map invalidates all iterators on mutation, so we
+    // must re-acquire iterators after any erase.
     it = map_.lower_bound(interval.start());
     while (it != map_.end() && it->first.start() < interval.end()) {
       auto next = std::next(it);
       if (next != map_.end() && next->first.start() < interval.end() &&
           it->first.end() == next->first.start() &&
           it->second == next->second) {
-        it->first.extend_end(next->first.end());
+        T merged_end = next->first.end();
+        T it_start = it->first.start();
         map_.erase(next);
+        // Re-acquire `it` since erase invalidated all iterators.
+        it = map_.lower_bound(it_start);
+        it->first.extend_end(merged_end);
         // Don't advance — check if we can continue merging.
       } else {
         ++it;
