@@ -88,4 +88,14 @@ std::string GetPrivateInferenceOutputCheckpointForTest(
   return std::string(builder->Build().value());
 }
 
+std::string GetCustomInferenceOutputCheckpointForTest(
+    const std::vector<std::pair<std::string, std::vector<std::string>>>&
+        columns) {
+  auto builder = FederatedComputeCheckpointBuilderFactory().Create();
+  for (const auto& [name, values] : columns) {
+    AddVecToBuilderOrDie(builder.get(), name, values);
+  }
+  return std::string(builder->Build().value());
+}
+
 }  // namespace confidential_federated_compute::batched_inference::testing

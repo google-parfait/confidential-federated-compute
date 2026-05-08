@@ -33,6 +33,10 @@ std::string GetPrivateInferenceInputCheckpointForTest(
 std::string GetPrivateInferenceOutputCheckpointForTest(
     std::vector<std::string> prompts, std::vector<std::string> results);
 
+std::string GetCustomInferenceOutputCheckpointForTest(
+    const std::vector<std::pair<std::string, std::vector<std::string>>>&
+        columns);
+
 }  // namespace confidential_federated_compute::batched_inference::testing
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINTERS_BATCHED_INFERENCE_BATCHED_INFERENCE_TEST_UTILS_H_

@@ -184,6 +184,12 @@ absl::StatusOr<size_t> InferenceOutputProcessor::ProcessInferenceOutput(
         }
         num_values_added++;
       }
+      // If the JSON array was empty, emit a single empty string to preserve
+      // the row, consistent with PARSER_DELIMITER and PARSER_NONE behavior.
+      if (num_values_added == 0) {
+        output_string_data->Add(std::string(""));
+        return 1;
+      }
       return num_values_added;
     }
     default: {  // PARSER_NONE or unspecified value
