@@ -81,22 +81,6 @@ TEST(PartitionPrivateStateTest, ParseInvalidProto) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(PartitionPrivateStateTest, GetSerializedKeys) {
-  PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
-    symmetric_keys { id: 1 symmetric_key: "key1" }
-    symmetric_keys { id: 2 symmetric_key: "key2" }
-  )pb");
-  auto private_state = PartitionPrivateState::Parse(proto).value();
-  std::string serialized_keys = private_state.GetSerializedKeys();
-
-  fcp::confidentialcompute::FedSqlContainerPartitionKeys serialized_keys_proto;
-  serialized_keys_proto.ParseFromString(serialized_keys);
-  EXPECT_THAT(serialized_keys_proto, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                keys { partition_index: 1 symmetric_key: "key1" }
-                keys { partition_index: 2 symmetric_key: "key2" }
-              )pb"));
-}
-
 TEST(PartitionPrivateStateTest, AddPartition) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
     keys: "foo"
@@ -134,13 +118,13 @@ TEST(PartitionPrivateStateTest, AddPartition) {
                 values: 0
                 values: 10
               )pb"));
-  const absl::flat_hash_set<std::string>& keys = state.GetKeys();
-  EXPECT_THAT(keys, UnorderedElementsAre("foo", "bar"));
+  EXPECT_THAT(state.GetKeys(), UnorderedElementsAre("foo", "bar"));
   EXPECT_THAT(state.GetRanges(), ElementsAre(Interval<uint64_t>(0, 10)));
-  auto expired_keys = state.GetExpiredKeys();
-  EXPECT_THAT(expired_keys.size(), 2);
-  EXPECT_TRUE(expired_keys.contains("expired_key1"));
-  EXPECT_TRUE(expired_keys.contains("expired_key2"));
+  EXPECT_THAT(state.GetExpiredKeys(),
+              UnorderedElementsAre("expired_key1", "expired_key2"));
+  EXPECT_THAT(state.GetSymmetricKeys(),
+              UnorderedElementsAre(Pair(123, "symmetric_key1"),
+                                   Pair(456, "symmetric_key2")));
 }
 
 TEST(PartitionPrivateStateTest, AddPartitionNoPartitionId) {

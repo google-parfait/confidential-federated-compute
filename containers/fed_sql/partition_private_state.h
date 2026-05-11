@@ -70,8 +70,10 @@ class PartitionPrivateState {
     return expired_keys_;
   }
 
-  // Returns the serialized symmetric keys for all partitions.
-  std::string GetSerializedKeys() const;
+  // Returns the symmetric keys for each partition keyed by the partition index.
+  absl::flat_hash_map<uint64_t, std::string> GetSymmetricKeys() const {
+    return symmetric_keys_;
+  }
 
  private:
   // Symmetric keys used to encrypt each partition, key-ed by the partition id.

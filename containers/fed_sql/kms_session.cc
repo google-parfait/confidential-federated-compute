@@ -74,6 +74,8 @@ using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
+using ::fcp::confidentialcompute::
+    FedSqlContainerPartitionedOutputFinalizedState;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
@@ -622,16 +624,40 @@ KmsFedSqlSession::ReportPartition(Context& context) {
 
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::ReportPrivateState(Context& context) {
+  // Try merging the consumed_tracker with the partition_private_state_.
+  // This will fail if there are overlapping ranges.
+  if (!private_state_->consumed_tracker.Merge(
+          partition_private_state_.GetKeys(),
+          partition_private_state_.GetRanges(),
+          partition_private_state_.GetExpiredKeys())) {
+    return absl::FailedPreconditionError(
+        "Conflicting ranges between autotuning and aggregation.");
+  }
+
   // Update the private state
   FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(
-      partition_private_state_.GetKeys(), partition_private_state_.GetRanges(),
-      partition_private_state_.GetExpiredKeys()));
-  // Get all the symmetric keys for the partitions.
-  std::string serialized_keys = partition_private_state_.GetSerializedKeys();
+      private_state_->consumed_tracker.GetKeys(),
+      private_state_->consumed_tracker.GetRanges(),
+      private_state_->consumed_tracker.GetExpiredKeys()));
+
+  // Produce the finalized private state.
+  FedSqlContainerPartitionedOutputFinalizedState finalized_state;
+  for (const auto& [id, symmetric_key] :
+       partition_private_state_.GetSymmetricKeys()) {
+    auto* entry = finalized_state.add_keys();
+    entry->set_partition_index(id);
+    entry->set_symmetric_key(symmetric_key);
+  }
+  // Release the autotuning data if there is any.
+  if (!private_state_->autotuning_data_to_release.empty()) {
+    finalized_state.set_auto_tuning_data(
+        private_state_->autotuning_data_to_release);
+  }
+
   // Emit the final encrypted result.
   std::string release_token;
   if (!context.EmitReleasable(
-          /* reencryption_key_index*/ 2, serialized_keys,
+          /* reencryption_key_index*/ 2, finalized_state.SerializeAsString(),
           private_state_->initial_state,
           private_state_->budget.SerializeAsString(), release_token)) {
     return absl::InternalError("Failed to emit releasable final result.");

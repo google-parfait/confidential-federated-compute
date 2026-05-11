@@ -76,7 +76,8 @@ using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerPartitionedOutputConfiguration;
-using ::fcp::confidentialcompute::FedSqlContainerPartitionKeys;
+using ::fcp::confidentialcompute::
+    FedSqlContainerPartitionedOutputFinalizedState;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
@@ -295,8 +296,10 @@ class KmsFedSqlSessionWriteTest : public Test {
     CreateSession(decryptor);
   }
 
-  void CreateSession(Decryptor& decryptor,
-                     std::optional<uint32_t> default_budget = 5) {
+  void CreateSession(
+      Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
+      std::optional<RangeTracker> consumed_tracker = std::nullopt,
+      absl::Cord autotuning_data = absl::Cord{}) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -311,7 +314,9 @@ class KmsFedSqlSessionWriteTest : public Test {
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
         std::nullopt,
-        CreatePrivateState(initial_private_state_, default_budget),
+        CreatePrivateState(initial_private_state_, default_budget,
+                           std::move(consumed_tracker),
+                           std::move(autotuning_data)),
         absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor,
         /* max_output_partitions= */ 10);
     ConfigureRequest request;
@@ -1381,7 +1386,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                 }
               )pb"));
 
-  FedSqlContainerPartitionKeys result;
+  FedSqlContainerPartitionedOutputFinalizedState result;
   result.ParseFromString(result_data);
   EXPECT_THAT(result, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 keys { partition_index: 1 symmetric_key: "key1" }
@@ -1389,6 +1394,125 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                 keys { partition_index: 3 symmetric_key: "key3" }
                 keys { partition_index: 4 symmetric_key: "key4" }
               )pb"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       MergeReportPrivateStateWithAutotuningDataSucceeds) {
+  RangeTracker consumed_tracker;
+  consumed_tracker.AddKey("key_foo");
+  consumed_tracker.AddRange(1, 2);
+
+  CreateSession(default_decryptor_, /*default_budget=*/5,
+                std::move(consumed_tracker),
+                /*autotuning_data=*/absl::Cord("autotuning_data"));
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    expired_keys: "key_baz"
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 2
+    values: 4
+    values: 7
+    values: 10
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  std::optional<std::string> src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  EXPECT_EQ(index, 2);
+  EXPECT_EQ(src, initial_private_state_);
+  BudgetState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(dst));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets {
+                  key: "key_foo"
+                  budget: 0
+                  consumed_range_start: 1
+                  consumed_range_end: 10
+                }
+                buckets {
+                  key: "key_bar"
+                  budget: 2
+                  consumed_range_start: 1
+                  consumed_range_end: 10
+                }
+              )pb"));
+
+  FedSqlContainerPartitionedOutputFinalizedState result;
+  result.ParseFromString(result_data);
+  EXPECT_THAT(result, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                keys { partition_index: 1 symmetric_key: "key1" }
+                auto_tuning_data: "autotuning_data"
+              )pb"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       MergeReportPrivateStateWithOverlappingAutotuningRangesFails) {
+  RangeTracker consumed_tracker;
+  consumed_tracker.AddKey("key_foo");
+  consumed_tracker.AddRange(1, 10);
+  CreateSession(default_decryptor_, /*default_budget=*/5,
+                std::move(consumed_tracker));
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    keys: "key_foo"
+    values: 5
+    values: 15
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+
+  BlobMetadata unused;
+  EXPECT_THAT(
+      session_->Finalize(finalize_request, unused, context_),
+      StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr("Conflicting ranges between autotuning and aggregation")));
 }
 
 class KmsFedSqlSessionUnlimitedBudgetTest : public KmsFedSqlSessionWriteTest {

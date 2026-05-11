@@ -19,7 +19,8 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-using ::fcp::confidentialcompute::FedSqlContainerPartitionKeys;
+using ::fcp::confidentialcompute::
+    FedSqlContainerPartitionedOutputFinalizedState;
 
 absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
     const std::string& data) {
@@ -165,16 +166,6 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
   symmetric_keys_.insert(other.symmetric_keys_.begin(),
                          other.symmetric_keys_.end());
   return true;
-}
-
-std::string PartitionPrivateState::GetSerializedKeys() const {
-  FedSqlContainerPartitionKeys proto;
-  for (const auto& [id, symmetric_key] : symmetric_keys_) {
-    auto* entry = proto.add_keys();
-    entry->set_partition_index(id);
-    entry->set_symmetric_key(symmetric_key);
-  }
-  return proto.SerializeAsString();
 }
 
 }  // namespace confidential_federated_compute::fed_sql
