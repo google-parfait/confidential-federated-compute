@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "containers/sql/row_view.h"
@@ -40,6 +41,9 @@ using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
+
+// Suffix appended to enum fields in schema to hold string representation
+constexpr char kEnumAsStringSuffix[] = "_as_str";
 
 absl::Status ValidateMessageRows(
     absl::Span<const std::unique_ptr<google::protobuf::Message>> messages,
@@ -133,6 +137,15 @@ void GetFlattenedSchema(const google::protobuf::Descriptor* descriptor,
     } else {
       column_names.push_back(absl::StrCat(prefix, field->name()));
       field_paths.push_back(current_path);
+      // For enum fields, we create a second column that maps to the same
+      // descriptor to store string representation. This allows consumers to
+      // read enum descriptions instead of codes.
+      if (field->cpp_type() ==
+          google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+        column_names.push_back(
+            absl::StrCat(prefix, field->name(), kEnumAsStringSuffix));
+        field_paths.push_back(current_path);
+      }
     }
     current_path.pop_back();
   }
@@ -295,6 +308,13 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
   // populating it, and then creating the tensor.
   for (size_t i = 0; i < num_message_columns; ++i) {
     auto dtype = row_views[0].GetColumnType(i);
+    const google::protobuf::FieldDescriptor* field = field_paths_[i].back();
+    // We add a string mapping here so that when we parse the string and the
+    // type is enum we use the enum name() instead of mapped integer codes.
+    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM &&
+        absl::EndsWith(column_names[i], kEnumAsStringSuffix)) {
+      dtype = tensorflow_federated::aggregation::DataType::DT_STRING;
+    }
     std::unique_ptr<TensorData> tensor_data;
     switch (dtype) {
       case tensorflow_federated::aggregation::DT_INT32:
