@@ -63,6 +63,11 @@ class RangeTracker {
   // This method returns false if there are any overlapping ranges.
   bool Merge(const RangeTracker& other);
 
+  // A variant of Merge that merges the underlying data directly.
+  bool Merge(const absl::flat_hash_set<std::string>& keys,
+             const IntervalSet<uint64_t>& ranges,
+             const absl::flat_hash_set<std::string>& expired_keys);
+
   // Returns the set of keys that are currently being tracked by this
   // RangeTracker.
   const absl::flat_hash_set<std::string>& GetKeys() const { return keys_; }

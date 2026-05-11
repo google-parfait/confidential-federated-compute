@@ -99,14 +99,6 @@ bool RangeTracker::AddRange(uint64_t start, uint64_t end) {
 }
 
 bool RangeTracker::Merge(const RangeTracker& other) {
-  // Merge keys.
-  keys_.insert(other.keys_.begin(), other.keys_.end());
-
-  // Merge ranges (if there is no overlap)
-  if (!ranges_.Merge(other.ranges_)) {
-    return false;
-  }
-
   // Partition keys must match (if both are set).
   if (!partition_index_.has_value()) {
     partition_index_ = other.partition_index_;
@@ -118,10 +110,24 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     return false;
   }
 
+  return Merge(other.keys_, other.ranges_, other.expired_keys_);
+}
+
+bool RangeTracker::Merge(const absl::flat_hash_set<std::string>& keys,
+                         const IntervalSet<uint64_t>& ranges,
+                         const absl::flat_hash_set<std::string>& expired_keys) {
+  // Merge keys.
+  keys_.insert(keys.begin(), keys.end());
+
+  // Merge ranges (if there is no overlap)
+  if (!ranges_.Merge(ranges)) {
+    return false;
+  }
+
   // Merge expired keys. If a key expires while a pipeline is still running,
   // it's possible that different partitions hold different
   // `expired_keys_` so we merge the sets here.
-  expired_keys_.insert(other.expired_keys_.begin(), other.expired_keys_.end());
+  expired_keys_.insert(expired_keys.begin(), expired_keys.end());
   return true;
 }
 
