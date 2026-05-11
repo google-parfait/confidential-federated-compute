@@ -237,7 +237,19 @@ TEST_F(SqlDataIngressFnTest, InvalidCheckpointDataFails) {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(SqlDataIngressFnTest, EmitEncryptedFailure) {
+TEST_F(SqlDataIngressFnTest, InputMissingBlobIdFails) {
+  auto checkpoint = CreateInputCheckpoint({"example1"});
+  ASSERT_THAT(checkpoint, IsOk());
+  std::string checkpoint_str = std::move(checkpoint).value();
+
+  WriteRequest request;
+  request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
+
+  auto result = fn_->Write(request, checkpoint_str, context_);
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(SqlDataIngressFnTest, EmitEncryptedFails) {
   auto text_tensor = Tensor::Create(
       DataType::DT_STRING, TensorShape({2}),
       CreateTestData<absl::string_view>({"hello", "world"}), "text");
@@ -258,10 +270,10 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedFailure) {
   EXPECT_CALL(context_, EmitEncrypted(Eq(0), _)).WillOnce(Return(false));
 
   auto result = fn_->Write(request, checkpoint, context_);
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(SqlDataIngressFnTest, SuccessEmitsEncryptedCheckpoint) {
+TEST_F(SqlDataIngressFnTest, EmitEncryptedCheckpointSucceeds) {
   auto checkpoint = CreateInputCheckpoint({"example1", "example2", "example3"});
   ASSERT_THAT(checkpoint, IsOk());
   std::string checkpoint_str = std::move(checkpoint).value();
@@ -275,6 +287,7 @@ TEST_F(SqlDataIngressFnTest, SuccessEmitsEncryptedCheckpoint) {
   EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
       .WillOnce([&emitted_data](int, Session::KV kv) {
         emitted_data = std::move(kv.data);
+        EXPECT_EQ(kv.blob_id, "blob_id");
         return true;
       });
 

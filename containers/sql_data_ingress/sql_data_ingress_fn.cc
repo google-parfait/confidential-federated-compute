@@ -134,8 +134,15 @@ absl::Status SqlDataIngressDoFn::Do(Session::KV input, Context& context) {
       builder->Add(kOutputTensorName, std::move(sql_result[0])));
   FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, builder->Build());
 
-  if (!context.EmitEncrypted(0, std::string(checkpoint.Flatten()))) {
-    return absl::InternalError("Failed to emit encrypted result.");
+  if (input.blob_id.empty()) {
+    return absl::InvalidArgumentError("Missing input blob id.");
+  }
+
+  if (!context.EmitEncrypted(
+          /*reencryption_key_index=*/0,
+          Session::KV(std::move(input.key), std::string(std::move(checkpoint)),
+                      std::move(input.blob_id)))) {
+    return absl::InvalidArgumentError("Failed to emit encrypted checkpoint.");
   }
 
   return absl::OkStatus();
