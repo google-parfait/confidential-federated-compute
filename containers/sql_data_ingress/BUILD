@@ -18,43 +18,10 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 package(features = ["layering_check"])
 
 cc_library(
-    name = "sql_utils",
-    srcs = ["sql_utils.cc"],
-    hdrs = ["sql_utils.h"],
-    deps = [
-        "//containers/sql:row_set",
-        "//containers/sql:sqlite_adapter",
-        "@com_google_absl//absl/status:statusor",
-        "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
-    ],
-)
-
-cc_test(
-    name = "sql_utils_test",
-    srcs = ["sql_utils_test.cc"],
-    deps = [
-        ":sql_utils",
-        "//containers/sql:input",
-        "//containers/sql:row_set",
-        "//containers/sql:sqlite_adapter",
-        "//testing:parse_text_proto",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-    ],
-)
-
-cc_library(
     name = "sql_data_ingress_fn",
     srcs = ["sql_data_ingress_fn.cc"],
     hdrs = ["sql_data_ingress_fn.h"],
     deps = [
-        ":sql_utils",
         "//containers:session",
         "//containers/fns",
         "//containers/sql:input",

@@ -22,13 +22,24 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "containers/sql/row_view.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
 namespace confidential_federated_compute::sql {
+
+// Interface for creating new protobuf messages.
+class MessageFactory {
+ public:
+  virtual ~MessageFactory() = default;
+
+  // Creates a new message instance.
+  virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
+};
 
 // Represents the contents of a single SQL table, which may be backed by
 // different underlying storage types (e.g., Tensors, Messages). This class uses
@@ -178,6 +189,11 @@ class Input {
   std::vector<std::string> column_names_;
   std::optional<std::string> privacy_id_;
 };
+
+absl::StatusOr<Input> CreateFromMessageCheckpoint(
+    fcp::confidentialcompute::BlobHeader blob_header,
+    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
+    MessageFactory& message_factory, absl::string_view on_device_query_name);
 
 }  // namespace confidential_federated_compute::sql
 

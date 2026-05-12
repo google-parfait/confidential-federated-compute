@@ -30,6 +30,7 @@
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
+#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
@@ -53,11 +54,13 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
-using ::confidential_federated_compute::fed_sql::
-    CreateInputFromMessageCheckpoint;
+using ::confidential_federated_compute::sql::CreateFromMessageCheckpoint;
+using ::confidential_federated_compute::sql::InMemoryCheckpointParser;
 using ::confidential_federated_compute::sql::Input;
+using ::confidential_federated_compute::sql::MessageFactory;
 using ::confidential_federated_compute::sql::RowLocation;
 using ::confidential_federated_compute::sql::RowSet;
+using ::confidential_federated_compute::sql::SqlConfiguration;
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
@@ -224,7 +227,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   }
   absl::StatusOr<Input> input;
   if (message_factory_ != nullptr) {
-    input = CreateInputFromMessageCheckpoint(
+    input = CreateFromMessageCheckpoint(
         blob_header, parser->get(), *message_factory_, on_device_query_name_);
     // TODO: handle sensitive columns for Message checkpoints.
   } else {
@@ -375,13 +378,9 @@ KmsFedSqlSession::CommitRowsGroupingByInput(
     std::unique_ptr<CheckpointParser> parser;
     // Execute the per-client SQL query if configured on each uncommitted blob.
     if (sql_configuration_.has_value()) {
-      absl::Span<Input> storage = absl::MakeSpan(&uncommitted_input, 1);
-      std::vector<RowLocation> row_locations =
-          CreateRowLocationsForAllRows(uncommitted_input.GetRowCount());
-      FCP_ASSIGN_OR_RETURN(RowSet row_set,
-                           RowSet::Create(row_locations, storage));
+      FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&uncommitted_input));
       absl::StatusOr<std::vector<Tensor>> sql_result =
-          ExecuteClientQuery(*sql_configuration_, row_set);
+          SqliteAdapter::ExecuteQuery(*sql_configuration_, row_set);
       if (!sql_result.ok()) {
         // Ignore this blob, but continue processing other blobs.
         ignored_errors.push_back(sql_result.status());

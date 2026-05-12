@@ -111,9 +111,25 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:constants",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+    ],
+)
+
+cc_library(
+    name = "in_memory_checkpoint_parser",
+    hdrs = ["in_memory_checkpoint_parser.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
     ],
 )
 
@@ -122,6 +138,7 @@ cc_test(
     size = "small",
     srcs = ["input_test.cc"],
     deps = [
+        ":in_memory_checkpoint_parser",
         ":input",
         ":row_view",
         "//testing:matchers",
@@ -131,6 +148,7 @@ cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/confidentialcompute:constants",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -106,6 +107,8 @@ class RowSet {
   static absl::StatusOr<RowSet> Create(absl::Span<const RowLocation> locations,
                                        absl::Span<const Input> storage);
 
+  static absl::StatusOr<RowSet> Create(const Input* input);
+
   Iterator begin() const { return Iterator::Begin(locations_, storage_); }
   Iterator end() const { return Iterator::End(locations_, storage_); }
 
@@ -113,18 +116,22 @@ class RowSet {
 
   RowSet subspan(size_t pos = 0,
                  size_t count = absl::Span<const RowLocation>::npos) const {
-    return RowSet(locations_.subspan(pos, count), storage_);
+    return RowSet(locations_.subspan(pos, count), storage_, owned_locations_);
   }
 
   absl::Span<const std::string> GetColumnNames() const;
 
  private:
-  RowSet(absl::Span<const RowLocation> locations,
-         absl::Span<const Input> storage)
-      : locations_(locations), storage_(storage) {}
+  RowSet(
+      absl::Span<const RowLocation> locations, absl::Span<const Input> storage,
+      std::shared_ptr<const std::vector<RowLocation>> owned_locations = nullptr)
+      : locations_(locations),
+        storage_(storage),
+        owned_locations_(std::move(owned_locations)) {}
 
   absl::Span<const RowLocation> locations_;
   absl::Span<const Input> storage_;
+  std::shared_ptr<const std::vector<RowLocation>> owned_locations_;
 };
 
 }  // namespace confidential_federated_compute::sql

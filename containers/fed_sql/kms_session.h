@@ -55,7 +55,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::optional<DpUnitParameters> dp_unit_parameters,
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
-      std::shared_ptr<MessageFactory> message_factory,
+      std::shared_ptr<sql::MessageFactory> message_factory,
       absl::string_view on_device_query_name,
       confidential_federated_compute::Decryptor& decryptor,
       std::optional<uint64_t> max_output_partitions);
@@ -141,7 +141,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
-  std::optional<const SqlConfiguration> sql_configuration_;
+  std::optional<const sql::SqlConfiguration> sql_configuration_;
   InferenceModel inference_model_;
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
@@ -156,7 +156,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   std::optional<DpUnitParameters> dp_unit_parameters_;
   // Prototype for the logged message. Used to create dynamic messages from
   // serialized message checkpoints.
-  std::shared_ptr<MessageFactory> message_factory_;
+  std::shared_ptr<sql::MessageFactory> message_factory_;
   // The name of the query that executes on the device. This is used to prefix
   // message field-backed column names.
   std::string on_device_query_name_;

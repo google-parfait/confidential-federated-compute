@@ -29,6 +29,14 @@
 
 namespace confidential_federated_compute::sql {
 
+// Configuration of the per-client SQL query step.
+struct SqlConfiguration {
+  std::string query;
+  fcp::confidentialcompute::TableSchema input_schema;
+  google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
+      output_columns;
+};
+
 // Utility for inspecting SQLite result codes and translating them
 // `absl::Status`.
 class SqliteResultHandler final {
@@ -85,6 +93,10 @@ class SqliteAdapter {
       absl::string_view query,
       const google::protobuf::RepeatedPtrField<
           fcp::confidentialcompute::ColumnSchema>& output_columns) const;
+
+  // Executes the given SQL query on a set of rows.
+  static absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+  ExecuteQuery(const SqlConfiguration& configuration, RowSet rows);
 
  private:
   // The `db` must be non-null. This object takes ownership of the databaseß

@@ -29,7 +29,6 @@
 #include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
-#include "containers/sql_data_ingress/sql_utils.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
@@ -45,6 +44,7 @@ namespace {
 
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowSet;
+using ::confidential_federated_compute::sql::SqlConfiguration;
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::
@@ -62,7 +62,7 @@ class SqlDataIngressDoFn : public fns::DoFn {
  public:
   explicit SqlDataIngressDoFn(SqlConfiguration sql_configuration)
       : sql_configuration_(std::move(sql_configuration)) {}
-  absl::Status Do(Session::KV input, Context& context) override;
+  absl::Status Do(KV input, Context& context) override;
 
  private:
   SqlConfiguration sql_configuration_;
@@ -97,25 +97,39 @@ class SqlDataIngressFnFactory : public fns::FnFactory {
 // | example3 |
 // then the output checkpoint will contain one string tensor named "data" with
 // the values ["example1", "example2", "example3"].
-absl::Status SqlDataIngressDoFn::Do(Session::KV input, Context& context) {
+//
+// Note that this function hasn't supported executing SQL queries at DP unit
+// level. If a single incoming input have data for multiple DP units and the SQL
+// query contains GROUP BY aggregation, the result could be incorrect.
+absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
+  if (input.blob_id.empty()) {
+    return absl::InvalidArgumentError("Missing input blob id.");
+  }
+
   FederatedComputeCheckpointParserFactory parser_factory;
   FCP_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
       parser_factory.Create(absl::Cord(std::move(input.data))));
 
-  FCP_ASSIGN_OR_RETURN(
-      std::vector<Tensor> tensors,
-      Deserialize(sql_configuration_.input_schema, parser.get()));
+  FCP_ASSIGN_OR_RETURN(auto tensor_map, parser->LoadAllTensors());
+  std::vector<Tensor> tensors;
+  tensors.reserve(sql_configuration_.input_schema.column_size());
+  for (const auto& col : sql_configuration_.input_schema.column()) {
+    auto it = tensor_map.find(col.name());
+    if (it == tensor_map.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing required column in input: ", col.name()));
+    }
+    tensors.push_back(std::move(it->second));
+  }
 
   FCP_ASSIGN_OR_RETURN(Input sql_input, Input::CreateFromTensors(
                                             std::move(tensors), BlobHeader()));
 
-  auto row_locations = CreateRowLocationsForAllRows(sql_input.GetRowCount());
-  absl::Span<Input> storage = absl::MakeSpan(&sql_input, 1);
-
-  FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(row_locations, storage));
-  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> sql_result,
-                       ExecuteClientQuery(sql_configuration_, row_set));
+  FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&sql_input));
+  FCP_ASSIGN_OR_RETURN(
+      std::vector<Tensor> sql_result,
+      SqliteAdapter::ExecuteQuery(sql_configuration_, row_set));
 
   if (sql_result.size() != 1) {
     return absl::InvalidArgumentError(
@@ -134,14 +148,10 @@ absl::Status SqlDataIngressDoFn::Do(Session::KV input, Context& context) {
       builder->Add(kOutputTensorName, std::move(sql_result[0])));
   FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, builder->Build());
 
-  if (input.blob_id.empty()) {
-    return absl::InvalidArgumentError("Missing input blob id.");
-  }
-
   if (!context.EmitEncrypted(
           /*reencryption_key_index=*/0,
-          Session::KV(std::move(input.key), std::string(std::move(checkpoint)),
-                      std::move(input.blob_id)))) {
+          KV(std::move(input.key), std::string(std::move(checkpoint)),
+             std::move(input.blob_id)))) {
     return absl::InvalidArgumentError("Failed to emit encrypted checkpoint.");
   }
 

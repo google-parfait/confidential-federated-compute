@@ -972,6 +972,32 @@ TEST_F(EvaluateQueryTest, AllSupportedDataTypes) {
   ASSERT_THAT(result_status, IsOk());
 }
 
+TEST_F(EvaluateQueryTest, ExecuteQueryStaticMethodIntegration) {
+  SqlConfiguration config;
+  config.query = "SELECT 100 AS result FROM t;";
+  config.input_schema = CreateInputTableSchema();
+  TableSchema output_schema;
+  SetColumnNameAndType(output_schema.add_column(), "result",
+                       google::internal::federated::plan::INT64);
+  config.output_columns.CopyFrom(output_schema.column());
+
+  absl::StatusOr<std::vector<Tensor>> contents =
+      CreateTableContents({1}, {"a"});
+  ASSERT_THAT(contents, IsOk());
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents.value()), {});
+  ASSERT_THAT(input, IsOk());
+
+  absl::StatusOr<RowSet> row_set = RowSet::Create(&input.value());
+  ASSERT_THAT(row_set, IsOk());
+
+  absl::StatusOr<std::vector<Tensor>> results =
+      SqliteAdapter::ExecuteQuery(config, *std::move(row_set));
+  ASSERT_THAT(results, IsOk());
+  ASSERT_EQ(results->size(), 1);
+  ASSERT_EQ(results->at(0).AsSpan<int64_t>().at(0), 100);
+}
+
 }  // namespace
 
 }  // namespace confidential_federated_compute::sql

@@ -66,6 +66,7 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::
     BuildMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
+using ::confidential_federated_compute::sql::MessageFactory;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -2088,32 +2089,6 @@ TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateCommitReportSucceeds) {
   ASSERT_THAT(parser, IsOk());
   EXPECT_THAT((*parser)->GetTensor("val_out"),
               IsOkAndHolds(IsTensor<int64_t>({1}, {6})));
-}
-
-TEST_F(KmsFedSqlSessionWriteWithMessageTest,
-       AccumulateSucceedsWithBase64Encoding) {
-  // Create checkpoint with serialized messages which are base64 encoded,
-  // since old versions of the client base64 encode entries.
-  std::vector<std::string> serialized_messages;
-  serialized_messages.push_back(absl::Base64Escape(
-      message_helper_.CreateMessage(8, 1)->SerializeAsString()));
-  std::vector<std::string> event_times = {"2023-01-01T00:00:00Z"};
-
-  absl::StatusOr<std::string> data = BuildMessageCheckpoint(
-      std::move(serialized_messages), std::move(event_times), "test_query");
-  ASSERT_THAT(data, IsOk());
-
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-  WriteRequest write_request;
-  write_request.mutable_first_request_configuration()->PackFrom(config);
-  *write_request.mutable_first_request_metadata() =
-      MakeBlobMetadata(*data, 1, "key_foo");
-
-  auto write_result = session_->Write(write_request, *data, context_);
-  ASSERT_THAT(write_result, IsOk());
-  EXPECT_EQ(write_result->status().code(), Code::OK);
 }
 
 TEST_F(KmsFedSqlSessionWriteWithMessageTest, AccumulateInvalidMessageFails) {

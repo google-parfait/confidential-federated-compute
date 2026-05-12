@@ -344,6 +344,16 @@ absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<Tensor>> SqliteAdapter::ExecuteQuery(
+    const SqlConfiguration& configuration, RowSet rows) {
+  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
+                       SqliteAdapter::Create());
+  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
+  FCP_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
+  return sqlite->EvaluateQuery(configuration.query,
+                               configuration.output_columns);
+}
+
 absl::Status SqliteAdapter::InsertRows(const RowSet& rows,
                                        absl::string_view insert_stmt,
                                        absl::Span<const int> column_indices) {

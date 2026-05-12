@@ -25,6 +25,7 @@
 #include "containers/fed_sql/session_utils.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/row_view.h"
+#include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -45,12 +46,13 @@ class DpUnitProcessor {
  public:
   // Creates a DpUnitProcessor.
   static absl::StatusOr<std::unique_ptr<DpUnitProcessor>> Create(
-      const SqlConfiguration& sql_configuration,
+      const sql::SqlConfiguration& sql_configuration,
       const DpUnitParameters& dp_unit_parameters,
       tensorflow_federated::aggregation::CheckpointAggregator* aggregator);
 
   DpUnitProcessor(
-      SqlConfiguration sql_configuration, DpUnitParameters dp_unit_parameters,
+      sql::SqlConfiguration sql_configuration,
+      DpUnitParameters dp_unit_parameters,
       tensorflow_federated::aggregation::CheckpointAggregator* aggregator)
       : sql_configuration_(std::move(sql_configuration)),
         dp_unit_parameters_(std::move(dp_unit_parameters)),
@@ -77,7 +79,7 @@ class DpUnitProcessor {
   absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByDpUnit();
 
  private:
-  SqlConfiguration sql_configuration_;
+  sql::SqlConfiguration sql_configuration_;
   DpUnitParameters dp_unit_parameters_;
   tensorflow_federated::aggregation::CheckpointAggregator* aggregator_;
   std::vector<sql::Input> uncommitted_inputs_;

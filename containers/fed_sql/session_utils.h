@@ -15,19 +15,14 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_SESSION_UTILS_H_
 
-#include <string>
-#include <tuple>
+#include <optional>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "containers/fed_sql/inference_model.h"
-#include "containers/sql/sqlite_adapter.h"
-#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "gemma/gemma.h"
-#include "gmock/gmock.h"
+#include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/protocol/configuration.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -45,65 +40,6 @@ Deserialize(const fcp::confidentialcompute::TableSchema& table_schema,
             tensorflow_federated::aggregation::CheckpointParser* checkpoint,
             std::optional<fcp::confidentialcompute::InferenceConfiguration>
                 inference_configuration = std::nullopt);
-
-// A simple pass-through CheckpointParser.
-class InMemoryCheckpointParser
-    : public tensorflow_federated::aggregation::CheckpointParser {
- public:
-  explicit InMemoryCheckpointParser(
-      std::vector<tensorflow_federated::aggregation::Tensor> columns) {
-    for (auto& column : columns) {
-      tensors_[column.name()] = std::move(column);
-    }
-  }
-
-  absl::StatusOr<tensorflow_federated::aggregation::Tensor> GetTensor(
-      const std::string& name) override {
-    auto it = tensors_.find(name);
-    if (it == tensors_.end()) {
-      return absl::NotFoundError(absl::StrCat("Tensor not found: ", name));
-    }
-    return std::move(it->second);
-  }
-
- private:
-  absl::flat_hash_map<std::string, tensorflow_federated::aggregation::Tensor>
-      tensors_;
-};
-
-// Creates a RowLocation for each row in `columns`. All columns must have the
-// same number of rows.
-// Helper function for creating RowLocations for the contents of a single
-// input. This will be used while custom DP units is still in development,
-// however, eventually all uses will group rows by DP unit.
-std::vector<sql::RowLocation> CreateRowLocationsForAllRows(size_t num_rows);
-
-// Configuration of the per-client SQL query step.
-struct SqlConfiguration {
-  std::string query;
-  fcp::confidentialcompute::TableSchema input_schema;
-  google::protobuf::RepeatedPtrField<fcp::confidentialcompute::ColumnSchema>
-      output_columns;
-};
-
-// Executes the given SQL query on a set of rows.
-absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
-ExecuteClientQuery(const SqlConfiguration& configuration, sql::RowSet rows);
-
-// Interface for creating new protobuf messages.
-class MessageFactory {
- public:
-  virtual ~MessageFactory() = default;
-
-  // Creates a new message instance.
-  virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
-};
-
-absl::StatusOr<confidential_federated_compute::sql::Input>
-CreateInputFromMessageCheckpoint(
-    fcp::confidentialcompute::BlobHeader blob_header,
-    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
-    MessageFactory& message_factory, absl::string_view on_device_query_name);
 
 }  // namespace confidential_federated_compute::fed_sql
 

@@ -57,6 +57,7 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::sql::MessageFactory;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::AccessBudget;
 using ::fcp::confidentialcompute::BlobHeader;

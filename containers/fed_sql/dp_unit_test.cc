@@ -49,6 +49,8 @@ using ::confidential_federated_compute::fed_sql::testing::CreateStringTestData;
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowLocation;
 using ::confidential_federated_compute::sql::RowView;
+using ::confidential_federated_compute::sql::SqlConfiguration;
+using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
@@ -107,7 +109,7 @@ Configuration DefaultConfiguration() {
 class DpUnitCommitTest : public Test {
  protected:
   void SetUp() override {
-    CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+    CHECK_OK(SqliteAdapter::Initialize());
     absl::StatusOr<std::unique_ptr<CheckpointAggregator>> aggregator =
         CheckpointAggregator::Create(DefaultConfiguration());
     CHECK_OK(aggregator.status());
@@ -732,7 +734,7 @@ TEST_F(DpUnitCommitTest, ComputeDpTimeUnitHasNoWindowingSchedule) {
 class DpUnitHashTest : public Test {
  protected:
   void SetUp() override {
-    CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+    CHECK_OK(SqliteAdapter::Initialize());
 
     SqlConfiguration sql_config;  // Empty, not used by ComputeDPUnitHash.
     DpUnitParameters dp_unit_parameters;

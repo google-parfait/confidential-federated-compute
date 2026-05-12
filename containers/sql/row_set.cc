@@ -55,6 +55,21 @@ absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
   return RowSet(locations, storage);
 }
 
+absl::StatusOr<RowSet> RowSet::Create(const Input* input) {
+  if (input == nullptr) {
+    return absl::InvalidArgumentError("Input must not be null.");
+  }
+  uint32_t num_rows = input->GetRowCount();
+  auto owned_locations = std::make_shared<std::vector<RowLocation>>();
+  owned_locations->reserve(num_rows);
+  for (uint32_t i = 0; i < num_rows; ++i) {
+    owned_locations->push_back(
+        {.dp_unit_hash = 0, .input_index = 0, .row_index = i});
+  }
+  return RowSet(absl::MakeConstSpan(*owned_locations),
+                absl::MakeConstSpan(input, 1), std::move(owned_locations));
+}
+
 absl::Span<const std::string> RowSet::GetColumnNames() const {
   if (storage_.empty()) {
     return absl::Span<const std::string>();

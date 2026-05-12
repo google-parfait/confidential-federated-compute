@@ -24,6 +24,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "containers/sql/row_view.h"
+#include "fcp/base/monitoring.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
@@ -31,6 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
 namespace confidential_federated_compute::sql {
 namespace {
@@ -352,6 +355,61 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
   }
 
   return tensors;
+}
+
+absl::StatusOr<Input> CreateFromMessageCheckpoint(
+    fcp::confidentialcompute::BlobHeader blob_header,
+    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
+    MessageFactory& message_factory, absl::string_view on_device_query_name) {
+  std::string column_prefix = absl::StrCat(on_device_query_name, "/");
+  FCP_ASSIGN_OR_RETURN(
+      Tensor entry_tensor,
+      checkpoint->GetTensor(absl::StrCat(
+          column_prefix, fcp::confidential_compute::kPrivateLoggerEntryKey)));
+  if (entry_tensor.dtype() !=
+      tensorflow_federated::aggregation::DataType::DT_STRING) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("`%s` tensor must be a string tensor",
+                        fcp::confidential_compute::kPrivateLoggerEntryKey));
+  }
+  FCP_ASSIGN_OR_RETURN(
+      Tensor time_tensor,
+      checkpoint->GetTensor(absl::StrCat(
+          column_prefix, fcp::confidential_compute::kEventTimeColumnName)));
+  if (time_tensor.dtype() !=
+      tensorflow_federated::aggregation::DataType::DT_STRING) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("`%s` tensor must be a string tensor",
+                        fcp::confidential_compute::kEventTimeColumnName));
+  }
+
+  // Rename the time tensor to remove the column prefix. Pipelines that process
+  // Message-based checkpoints don't use the column name prefix.
+  FCP_RETURN_IF_ERROR(
+      time_tensor.set_name(fcp::confidential_compute::kEventTimeColumnName));
+
+  std::vector<std::unique_ptr<google::protobuf::Message>> messages;
+  messages.reserve(entry_tensor.num_elements());
+  for (const absl::string_view entry :
+       entry_tensor.AsSpan<absl::string_view>()) {
+    std::unique_ptr<google::protobuf::Message> message(
+        message_factory.NewMessage());
+    if (!message->ParseFromString(entry)) {
+      // Note that ParseFrom* methods are documented as calling Clear() on the
+      // message before parsing. Thus it's fine if the failed ParseFromString
+      // above leaves the message in a partial state.
+      if (!message->ParseFromArray(entry.data(), entry.size())) {
+        return absl::InvalidArgumentError("Failed to parse proto");
+      }
+    }
+    messages.push_back(std::move(message));
+  }
+
+  std::vector<Tensor> system_columns;
+  system_columns.reserve(1);
+  system_columns.push_back(std::move(time_tensor));
+  return Input::CreateFromMessages(std::move(messages),
+                                   std::move(system_columns), blob_header);
 }
 
 }  // namespace confidential_federated_compute::sql

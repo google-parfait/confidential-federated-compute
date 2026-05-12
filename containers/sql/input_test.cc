@@ -16,6 +16,7 @@
 #include "containers/sql/input.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,7 +25,9 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/row_view.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/descriptor.h"
@@ -41,6 +44,7 @@ namespace confidential_federated_compute::sql {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::google::protobuf::Descriptor;
 using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
@@ -732,6 +736,106 @@ TEST(IsolatedInputTest, EnumFieldGeneratesDuplicateStringColumn) {
   EXPECT_EQ(tensors->at(1).dtype(), DataType::DT_STRING);
   EXPECT_THAT(tensors->at(1).AsSpan<absl::string_view>(),
               testing::ElementsAre("TEST_VAL", "TEST_VAL2"));
+}
+
+class FakeMessageFactory : public MessageFactory {
+ public:
+  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
+    return std::make_unique<fcp::confidentialcompute::BlobHeader>();
+  }
+};
+
+TEST(CreateFromMessageCheckpointTest, Success) {
+  FakeMessageFactory factory;
+
+  std::string query_name = "my_query";
+  std::string entry_name = absl::StrCat(
+      query_name, "/", fcp::confidential_compute::kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(
+      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+
+  fcp::confidentialcompute::BlobHeader header;
+  std::string serialized_header;
+  header.SerializeToString(&serialized_header);
+
+  absl::StatusOr<Tensor> entry_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({serialized_header}), entry_name);
+  ASSERT_THAT(entry_tensor, IsOk());
+
+  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
+  ASSERT_THAT(time_tensor, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*entry_tensor));
+  tensors.push_back(std::move(*time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+
+  fcp::confidentialcompute::BlobHeader input_header;
+
+  auto input_result =
+      CreateFromMessageCheckpoint(input_header, &parser, factory, query_name);
+
+  EXPECT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 1);
+}
+
+TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {
+  FakeMessageFactory factory;
+  std::string query_name = "my_query";
+  std::string time_name = absl::StrCat(
+      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+
+  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
+  ASSERT_THAT(time_tensor, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  fcp::confidentialcompute::BlobHeader input_header;
+
+  auto input_result =
+      CreateFromMessageCheckpoint(input_header, &parser, factory, query_name);
+
+  EXPECT_THAT(input_result.status(), StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
+  FakeMessageFactory factory;
+  std::string query_name = "my_query";
+  std::string entry_name = absl::StrCat(
+      query_name, "/", fcp::confidential_compute::kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(
+      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+
+  absl::StatusOr<Tensor> entry_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"invalid_proto_data"}), entry_name);
+  ASSERT_THAT(entry_tensor, IsOk());
+
+  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
+  ASSERT_THAT(time_tensor, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*entry_tensor));
+  tensors.push_back(std::move(*time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  fcp::confidentialcompute::BlobHeader input_header;
+
+  auto input_result =
+      CreateFromMessageCheckpoint(input_header, &parser, factory, query_name);
+
+  EXPECT_THAT(input_result.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

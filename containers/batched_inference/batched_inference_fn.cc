@@ -61,11 +61,10 @@ namespace {
 // - ...
 
 using ::confidential_federated_compute::Session;
-using ::confidential_federated_compute::fed_sql::
-    CreateInputFromMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::Deserialize;
 using ::confidential_federated_compute::fed_sql::InferenceOutputProcessor;
 using ::confidential_federated_compute::fed_sql::InferencePromptProcessor;
+using ::confidential_federated_compute::sql::CreateFromMessageCheckpoint;
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::RowLocation;
 using ::confidential_federated_compute::sql::RowSet;

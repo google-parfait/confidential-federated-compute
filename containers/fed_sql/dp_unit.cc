@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "containers/fed_sql/interval_set.h"
 #include "containers/fed_sql/session_utils.h"
+#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
@@ -36,10 +37,12 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
+using confidential_federated_compute::sql::InMemoryCheckpointParser;
 using confidential_federated_compute::sql::Input;
 using confidential_federated_compute::sql::RowLocation;
 using confidential_federated_compute::sql::RowSet;
 using confidential_federated_compute::sql::RowView;
+using confidential_federated_compute::sql::SqlConfiguration;
 using confidential_federated_compute::sql::SqliteAdapter;
 using fcp::confidential_compute::kEventTimeColumnName;
 using tensorflow_federated::aggregation::CheckpointParser;
@@ -210,7 +213,7 @@ DpUnitProcessor::CommitRowsGroupingByDpUnit() {
     FCP_ASSIGN_OR_RETURN(RowSet row_set,
                          RowSet::Create(dp_unit_span, uncommitted_inputs_));
     absl::StatusOr<std::vector<Tensor>> sql_result =
-        ExecuteClientQuery(sql_configuration_, row_set);
+        SqliteAdapter::ExecuteQuery(sql_configuration_, row_set);
     // Errors from the SQL query itself (eg. division by zero, invalid column
     // references, etc.) are ignored.
     if (!sql_result.ok()) {

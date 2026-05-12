@@ -366,5 +366,17 @@ TEST_F(MessageRowSetTest, BasicUsage) {
                           ElementsAre("111", "baz", "fizz")));
 }
 
+TEST_F(TensorRowSetTest, CreateFromSingleInput) {
+  absl::StatusOr<RowSet> set = RowSet::Create(&inputs_[0]);
+  ASSERT_THAT(set, IsOk());
+  EXPECT_THAT(CollectRows(*set),
+              ElementsAre(ElementsAre("1", "foo"), ElementsAre("2", "bar")));
+}
+
+TEST_F(TensorRowSetTest, CreateFromNullInputFails) {
+  absl::StatusOr<RowSet> set = RowSet::Create(nullptr);
+  EXPECT_THAT(set, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::sql

@@ -122,7 +122,7 @@ class FedSqlConfidentialTransform final
   absl::flat_hash_set<std::string> expired_key_ids_;
   // Configuration for the expected logged proto message. Set if the container
   // is configured for serialized Message checkpoints.
-  std::shared_ptr<MessageFactory> message_factory_;
+  std::shared_ptr<sql::MessageFactory> message_factory_;
   // The name of query that was executed on-device.
   std::string on_device_query_name_ = "";
   // The maximum number of output partitions allowed when using partitioned
