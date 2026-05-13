@@ -105,13 +105,13 @@ grpc::Status FakeDataReadWriteService::Read(
   // Look up by uri or blob_id, whichever is set.
   std::string lookup_key =
       request->uri().empty() ? request->blob_id() : request->uri();
-  if (uri_to_read_response_.find(lookup_key) == uri_to_read_response_.end()) {
+  if (id_to_read_response_.find(lookup_key) == id_to_read_response_.end()) {
     return grpc::Status(grpc::StatusCode::NOT_FOUND,
                         "Requested key " + lookup_key + " not found.");
   }
-  response_writer->Write(uri_to_read_response_[lookup_key]);
+  response_writer->Write(id_to_read_response_[lookup_key]);
   // Store the lookup key from the request.
-  read_request_uris_.push_back(lookup_key);
+  read_request_ids_.push_back(lookup_key);
   return grpc::Status::OK;
 }
 
@@ -146,7 +146,7 @@ grpc::Status FakeDataReadWriteService::Write(
         requests[0].first_request_metadata();
     read_response.set_finish_read(true);
 
-    uri_to_read_response_[requests[0].key()] = read_response;
+    id_to_read_response_[requests[0].key()] = read_response;
 
     return grpc::Status::OK;
   }
@@ -187,22 +187,14 @@ grpc::Status FakeDataReadWriteService::Write(
 }
 
 absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
-    absl::string_view uri, absl::string_view message,
-    std::optional<absl::string_view> blob_id) {
-  if (uri_to_read_response_.find(std::string(uri)) !=
-      uri_to_read_response_.end()) {
-    return absl::InvalidArgumentError("Uri already set.");
+    absl::string_view blob_id, absl::string_view message) {
+  if (id_to_read_response_.find(std::string(blob_id)) !=
+      id_to_read_response_.end()) {
+    return absl::InvalidArgumentError("Message already stored for blob id.");
   }
 
   BlobHeader header;
-  if (blob_id.has_value()) {
-    header.set_blob_id(std::string(*blob_id));
-  } else {
-    std::string random_blob_id(kBlobIdSize, '\0');
-    (void)RAND_bytes(reinterpret_cast<unsigned char*>(random_blob_id.data()),
-                     random_blob_id.size());
-    header.set_blob_id(random_blob_id);
-  }
+  header.set_blob_id(std::string(blob_id));
   header.set_key_id(kInputKeyId);
   header.set_access_policy_sha256(kAccessPolicyHash);
   std::string associated_data = header.SerializeAsString();
@@ -230,15 +222,15 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
   *response.mutable_data() = std::move(encrypt_result.ciphertext);
   response.set_finish_read(true);
 
-  uri_to_read_response_[std::string(uri)] = std::move(response);
+  id_to_read_response_[std::string(blob_id)] = std::move(response);
   return absl::OkStatus();
 }
 
 absl::Status FakeDataReadWriteService::StorePlaintextMessage(
-    absl::string_view uri, absl::string_view message) {
-  if (uri_to_read_response_.find(std::string(uri)) !=
-      uri_to_read_response_.end()) {
-    return absl::InvalidArgumentError("Uri already set.");
+    absl::string_view blob_id, absl::string_view message) {
+  if (id_to_read_response_.find(std::string(blob_id)) !=
+      id_to_read_response_.end()) {
+    return absl::InvalidArgumentError("Message already stored for blob id.");
   }
 
   BlobMetadata blob_metadata;
@@ -251,7 +243,7 @@ absl::Status FakeDataReadWriteService::StorePlaintextMessage(
   response.set_finish_read(true);
   response.set_data(std::string(message));
 
-  uri_to_read_response_[std::string(uri)] = std::move(response);
+  id_to_read_response_[std::string(blob_id)] = std::move(response);
   return absl::OkStatus();
 }
 

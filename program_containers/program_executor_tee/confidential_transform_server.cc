@@ -74,19 +74,6 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
                           std::string, std::string, std::string, PrivateState*,
                           std::shared_ptr<oak::crypto::SigningKeyHandle>,
                           std::set<std::string>>())
-      .def("resolve_uri_to_tensor",
-           [](DataParser& self, std::string& uri, std::string& key) {
-             // Release the GIL so that the grpc requests in ResolveUriToTensor
-             // can be made in parallel. This safe because the shared mutable
-             // state within DataParser (the cache) is protected by a mutex.
-             pybind11::gil_scoped_release release;
-             auto tensor = self.ResolveUriToTensor(uri, key);
-             if (!tensor.ok()) {
-               throw std::runtime_error("Failed to fetch Tensor: " +
-                                        std::string(tensor.status().message()));
-             }
-             return *tensor;
-           })
       .def("resolve_blob_id_to_tensor",
            [](DataParser& self, std::string& blob_id, std::string& key) {
              pybind11::gil_scoped_release release;
@@ -167,6 +154,10 @@ ProgramExecutorTeeSession::Finalize(
     for (const auto& hash : authorized_logical_pipeline_policies_hashes_) {
       authorized_hashes_set.insert(absl::Base64Escape(hash));
     }
+    pybind11::list client_ids;
+    for (const auto& blob_id : initialize_config_.blob_ids()) {
+      client_ids.append(pybind11::bytes(blob_id));
+    }
     pybind11::object data_parser_instance =
         pybind11::module::import("data_parser")
             .attr("DataParser")(
@@ -183,31 +174,12 @@ ProgramExecutorTeeSession::Finalize(
             "program_executor_tee.program_context.program_runner")
             .attr("run_program");
 
-    // Use resolve_blob_id_to_tensor when there is no client data directory
-    // (spanner path), otherwise use resolve_uri_to_tensor (blobstore path).
-    auto resolve_fn =
-        initialize_config_.client_data_dir().empty()
-            ? data_parser_instance.attr("resolve_blob_id_to_tensor")
-            : data_parser_instance.attr("resolve_uri_to_tensor");
-
-    // TODO: b/487997314 - Remove the branch involving a non-empty client data
-    // directory once the migration to spanner is complete.
-    pybind11::list client_ids;
-    if (initialize_config_.client_data_dir().empty()) {
-      for (const auto& blob_id : initialize_config_.blob_ids()) {
-        client_ids.append(pybind11::bytes(blob_id));
-      }
-    } else {
-      for (const auto& client_id : initialize_config_.client_ids()) {
-        client_ids.append(client_id);
-      }
-    }
-
     // Run the program.
     run_program(get_program_initialize_fn_(),
                 pybind11::bytes(initialize_config_.program()), client_ids,
-                initialize_config_.client_data_dir(), model_id_to_zip_file_,
-                initialize_config_.outgoing_server_address(), resolve_fn,
+                model_id_to_zip_file_,
+                initialize_config_.outgoing_server_address(),
+                data_parser_instance.attr("resolve_blob_id_to_tensor"),
                 data_parser_instance.attr("release_unencrypted"),
                 data_parser_instance.attr("save_recovery_info"),
                 data_parser_instance.attr("restore_recovery_info"));

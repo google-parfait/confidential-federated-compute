@@ -51,13 +51,6 @@ class DataParser {
           nullptr,
       std::set<std::string> authorized_logical_pipeline_policies_hashes = {});
 
-  // TODO: b/487997314 - Remove this method once we have fully migrated to
-  // spanner.
-  // Retrieves the TensorProto that is described by the provided uri and
-  // FcCheckpoint key.
-  absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
-  ResolveUriToTensor(std::string uri, std::string key);
-
   // Retrieves the TensorProto that is described by the provided blob id and
   // FcCheckpoint key.
   absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
@@ -73,13 +66,6 @@ class DataParser {
   absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key);
 
  private:
-  // Send a ReadRequest to the DataReadWrite service, parse the FC checkpoint,
-  // and return the tensor identified by the given key.
-  absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
-  ResolveReadRequestToTensor(
-      const fcp::confidentialcompute::outgoing::ReadRequest& read_request,
-      const std::string& key);
-
   absl::Status ReleaseUnencryptedInternal(std::string data, std::string key);
 
   Decryptor* blob_decryptor_;
@@ -99,13 +85,6 @@ class DataParser {
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
   // The authorized logical policy hashes for this container.
   std::set<std::string> authorized_logical_pipeline_policies_hashes_;
-
-  // TODO: b/487997314 - Remove this map once we have fully migrated to
-  // spanner.
-  // To prevent orchestrator attacks where the same blob is returned for
-  // multiple filenames, we maintain a blob_id -> filename map and check that a
-  // given blob_id is only seen for one filename.
-  absl::flat_hash_map<std::string, std::string> blob_id_to_filename_map_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

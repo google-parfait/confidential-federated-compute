@@ -91,24 +91,11 @@ DataParser::DataParser(
                                 grpc::InsecureChannelCredentials(), args));
 }
 
-// TODO: b/487997314 - Remove this method once we have fully migrated to
-// spanner.
-absl::StatusOr<TensorProto> DataParser::ResolveUriToTensor(std::string uri,
-                                                           std::string key) {
-  ReadRequest read_request;
-  read_request.set_uri(uri);
-  return ResolveReadRequestToTensor(read_request, key);
-}
-
 absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
     std::string blob_id, std::string key) {
   ReadRequest read_request;
   read_request.set_blob_id(blob_id);
-  return ResolveReadRequestToTensor(read_request, key);
-}
 
-absl::StatusOr<TensorProto> DataParser::ResolveReadRequestToTensor(
-    const ReadRequest& read_request, const std::string& key) {
   ClientContext client_context;
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse combined_read_response;
@@ -158,21 +145,6 @@ absl::StatusOr<TensorProto> DataParser::ResolveReadRequestToTensor(
         "BlobHeader.access_policy_sha256 does not match any "
         "authorized_logical_pipeline_policies_hashes returned by "
         "KMS.");
-  }
-
-  // TODO: b/487997314 - Remove this logic once we have fully migrated to
-  // spanner.
-  // Check that the returned blob has a blob id that has either never
-  // been seen before, or was previously seen for the same identifier. A
-  // malicious orchestrator could return the same blob for multiple identifiers.
-  std::string identifier =
-      read_request.uri().empty() ? read_request.blob_id() : read_request.uri();
-  if (blob_id_to_filename_map_.find(blob_header.blob_id()) ==
-      blob_id_to_filename_map_.end()) {
-    blob_id_to_filename_map_[blob_header.blob_id()] = identifier;
-  } else if (blob_id_to_filename_map_[blob_header.blob_id()] != identifier) {
-    return absl::InvalidArgumentError(
-        "This blob id was previously returned for a different filename.");
   }
 
   FCP_ASSIGN_OR_RETURN(

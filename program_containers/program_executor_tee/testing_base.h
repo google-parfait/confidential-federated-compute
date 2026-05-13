@@ -91,31 +91,22 @@ void ReadTextProtoOrDie(const std::string& path,
   }
 }
 
-// TODO: b/487997314 - Remove the client_data_dir arg when the migration to
-// spanner is complete.
 ProgramExecutorTeeInitializeConfig CreateProgramExecutorTeeInitializeConfig(
-    std::string program, std::vector<std::string> client_ids = {},
-    std::string client_data_dir = "", std::string outgoing_server_address = "",
+    std::string program, std::vector<std::string> blob_ids = {},
+    std::string outgoing_server_address = "",
     std::optional<std::string> worker_reference_values_path = std::nullopt) {
   ProgramExecutorTeeInitializeConfig init_config;
   init_config.set_program(absl::Base64Escape(program));
   init_config.set_outgoing_server_address(outgoing_server_address);
   init_config.set_attester_id("fake_attester");
-  init_config.set_client_data_dir(client_data_dir);
   if (worker_reference_values_path) {
     ReferenceValues worker_reference_values;
     ReadTextProtoOrDie((*worker_reference_values_path),
                        &worker_reference_values);
     *init_config.mutable_reference_values() = worker_reference_values;
   }
-  if (client_data_dir.empty()) {
-    for (const std::string& client_id : client_ids) {
-      init_config.add_blob_ids(client_id);
-    }
-  } else {
-    for (const std::string& client_id : client_ids) {
-      init_config.add_client_ids(client_id);
-    }
+  for (const std::string& blob_id : blob_ids) {
+    init_config.add_blob_ids(blob_id);
   }
   return init_config;
 }
@@ -196,8 +187,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
 
   void CreateSession(
       std::string program, std::string kms_private_state = "",
-      std::vector<std::string> client_ids = {},
-      std::string client_data_dir = "",
+      std::vector<std::string> blob_ids = {},
       std::map<std::string, std::string> file_id_to_filepath = {}) {
     if (this->server_) {
       this->server_->Shutdown();
@@ -235,8 +225,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
 
     ProgramExecutorTeeInitializeConfig config =
         CreateProgramExecutorTeeInitializeConfig(
-            program, client_ids, client_data_dir,
-            this->data_read_write_server_address_);
+            program, blob_ids, this->data_read_write_server_address_);
     StreamInitializeRequest stream_initialize_request;
     InitializeRequest* initialize_request =
         stream_initialize_request.mutable_initialize_request();

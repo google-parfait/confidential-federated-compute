@@ -111,53 +111,54 @@ class DataParserTest : public ::testing::Test {
   std::pair<std::string, std::string> recovery_info_public_private_key_pair_;
 };
 
-TEST_F(DataParserTest, ResolveUriToTensor_PlaintextIntCheckpoint) {
+TEST_F(DataParserTest, ResolveBlobIdToTensor_PlaintextIntCheckpoint) {
   InitDataParser();
   std::string tensor_name = "tensor_name";
-  std::string uri_1 = "test_uri_1";
-  std::string uri_2 = "test_uri_2";
+  std::string blob_id_1 = "test_blob_id_1";
+  std::string blob_id_2 = "test_blob_id_2";
   CHECK_OK(this->fake_data_read_write_service_->StorePlaintextMessage(
-      uri_1, BuildClientCheckpointFromInts({4, 5, 6}, tensor_name)));
+      blob_id_1, BuildClientCheckpointFromInts({4, 5, 6}, tensor_name)));
   CHECK_OK(this->fake_data_read_write_service_->StorePlaintextMessage(
-      uri_2, BuildClientCheckpointFromInts({7, 8, 9}, tensor_name)));
+      blob_id_2, BuildClientCheckpointFromInts({7, 8, 9}, tensor_name)));
 
-  // Resolve uri_1, then uri_2, then uri_1.
-  auto tensor_proto = data_parser_->ResolveUriToTensor(uri_1, tensor_name);
+  // Resolve blob_id_1, then blob_id_2, then blob_id_1.
+  auto tensor_proto =
+      data_parser_->ResolveBlobIdToTensor(blob_id_1, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   auto tensor = Tensor::FromProto(std::move(*tensor_proto));
   ASSERT_TRUE(tensor.ok());
   EXPECT_THAT(tensor->AsAggVector<int>(),
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
-  tensor_proto = data_parser_->ResolveUriToTensor(uri_2, tensor_name);
+  tensor_proto = data_parser_->ResolveBlobIdToTensor(blob_id_2, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   tensor = Tensor::FromProto(std::move(*tensor_proto));
   ASSERT_TRUE(tensor.ok());
   EXPECT_THAT(tensor->AsAggVector<int>(),
               ElementsAre(Pair<int>{0, 7}, Pair<int>{1, 8}, Pair<int>{2, 9}));
-  tensor_proto = data_parser_->ResolveUriToTensor(uri_1, tensor_name);
+  tensor_proto = data_parser_->ResolveBlobIdToTensor(blob_id_1, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   tensor = Tensor::FromProto(std::move(*tensor_proto));
   ASSERT_TRUE(tensor.ok());
   EXPECT_THAT(tensor->AsAggVector<int>(),
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
 
-  std::vector<std::string> requested_uris =
-      fake_data_read_write_service_->GetReadRequestUris();
-  EXPECT_EQ(requested_uris.size(), 3);
-  EXPECT_EQ(requested_uris[0], uri_1);
-  EXPECT_EQ(requested_uris[1], uri_2);
-  EXPECT_EQ(requested_uris[2], uri_1);
+  std::vector<std::string> requested_ids =
+      fake_data_read_write_service_->GetReadRequestIds();
+  EXPECT_EQ(requested_ids.size(), 3);
+  EXPECT_EQ(requested_ids[0], blob_id_1);
+  EXPECT_EQ(requested_ids[1], blob_id_2);
+  EXPECT_EQ(requested_ids[2], blob_id_1);
 }
 
-TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
+TEST_F(DataParserTest, ResolveBlobIdToTensor_EncryptedIntCheckpoint) {
   InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
-  std::string uri = "test_uri";
+  std::string blob_id = "test_blob_id";
   CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      uri, checkpoint));
-  auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
+      blob_id, checkpoint));
+  auto tensor_proto = data_parser_->ResolveBlobIdToTensor(blob_id, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   auto tensor = Tensor::FromProto(std::move(*tensor_proto));
   ASSERT_TRUE(tensor.ok());
@@ -165,15 +166,15 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedIntCheckpoint) {
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
 }
 
-TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
+TEST_F(DataParserTest, ResolveBlobIdToTensor_EncryptedStringCheckpoint) {
   InitDataParser();
   std::string tensor_name = "tensor_name";
   std::string checkpoint = BuildClientCheckpointFromStrings(
       {"serialized_example_1", "serialized_example_2"}, tensor_name);
-  std::string uri = "test_uri";
+  std::string blob_id = "test_blob_id";
   CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      uri, checkpoint));
-  auto tensor_proto = data_parser_->ResolveUriToTensor(uri, tensor_name);
+      blob_id, checkpoint));
+  auto tensor_proto = data_parser_->ResolveBlobIdToTensor(blob_id, tensor_name);
   ASSERT_TRUE(tensor_proto.ok());
   auto tensor = Tensor::FromProto(std::move(*tensor_proto));
   ASSERT_TRUE(tensor.ok());
@@ -182,60 +183,31 @@ TEST_F(DataParserTest, ResolveUriToTensor_EncryptedStringCheckpoint) {
                           Pair<absl::string_view>{1, "serialized_example_2"}));
 }
 
-TEST_F(DataParserTest, ResolveUriToTensor_IncorrectCheckpointFormat) {
+TEST_F(DataParserTest, ResolveBlobIdToTensor_IncorrectCheckpointFormat) {
   InitDataParser();
   std::string message = "not a fc checkpoint";
-  std::string uri = "test_uri";
-  CHECK_OK(
-      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message));
+  std::string blob_id = "test_blob_id";
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(blob_id,
+                                                                      message));
   auto tensor_proto =
-      data_parser_->ResolveUriToTensor(uri, "unused_tensor_name");
+      data_parser_->ResolveBlobIdToTensor(blob_id, "unused_tensor_name");
   EXPECT_EQ(tensor_proto.status().code(), absl::StatusCode::kInvalidArgument);
   ASSERT_THAT(tensor_proto.status().message(),
               HasSubstr("Unsupported checkpoint format"));
 }
 
-TEST_F(DataParserTest, ResolveUriToTensor_IncorrectTensorName) {
+TEST_F(DataParserTest, ResolveBlobIdToTensor_IncorrectTensorName) {
   InitDataParser();
   std::string checkpoint =
       BuildClientCheckpointFromInts({4, 5, 6}, "tensor_name");
-  std::string uri = "test_uri";
+  std::string blob_id = "test_blob_id";
   CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      uri, checkpoint));
+      blob_id, checkpoint));
   auto tensor_proto =
-      data_parser_->ResolveUriToTensor(uri, "different_tensor_name");
+      data_parser_->ResolveBlobIdToTensor(blob_id, "different_tensor_name");
   EXPECT_EQ(tensor_proto.status(),
             absl::NotFoundError(
                 "No aggregation tensor found for name different_tensor_name"));
-}
-
-TEST_F(DataParserTest, ResolveUriToTensor_RepeatedBlobId) {
-  InitDataParser();
-  std::string tensor_name = "tensor_name";
-  std::string checkpoint =
-      BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
-  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      "uri_1", checkpoint, "blob_id_1"));
-  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      "uri_2", checkpoint, "blob_id_2"));
-  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
-      "uri_3", checkpoint, "blob_id_1"));
-
-  // There should be no issue with receiving blob_id_1 for a lookup for uri_1.
-  auto tensor_proto = data_parser_->ResolveUriToTensor("uri_1", tensor_name);
-  ASSERT_TRUE(tensor_proto.ok());
-
-  // There should be no issue with receiving blob_id_2 for a lookup for uri_2.
-  tensor_proto = data_parser_->ResolveUriToTensor("uri_2", tensor_name);
-  ASSERT_TRUE(tensor_proto.ok());
-
-  // Receiving blob_id_1 for a lookup for uri_3 should fail because blob_id_1
-  // was previously seen for uri_1.
-  tensor_proto = data_parser_->ResolveUriToTensor("uri_3", tensor_name);
-  EXPECT_EQ(
-      tensor_proto.status(),
-      absl::InvalidArgumentError(
-          "This blob id was previously returned for a different filename."));
 }
 
 TEST_F(DataParserTest, ReleaseUnencrypted) {
