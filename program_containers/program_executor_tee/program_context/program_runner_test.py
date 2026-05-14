@@ -52,8 +52,7 @@ class ProgramRunnerTest(unittest.TestCase):
         program=base64.b64encode(
             _TRUSTED_PROGRAM_STRING.encode("utf-8")
         ),
-        client_ids=[],
-        client_data_directory="",
+        blob_ids=[],
         model_id_to_zip_file={},
         outgoing_server_address="fake_address",
         resolve_uri_to_tensor_fn=lambda uri, key: tensor_pb2.TensorProto(),
@@ -88,8 +87,7 @@ def incorrectly_named_trusted_program(external_service_handle):
       program_runner.run_program(
           initialize_fn=None,
           program=base64.b64encode(program_string.encode("utf-8")),
-          client_ids=[],
-          client_data_directory="",
+          blob_ids=[],
           model_id_to_zip_file={},
           outgoing_server_address="",
           resolve_uri_to_tensor_fn=lambda uri, key: tensor_pb2.TensorProto(),

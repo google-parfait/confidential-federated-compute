@@ -102,14 +102,14 @@ class FakeDataReadWriteServiceTest : public ::testing::Test {
 
 TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
   // Prepopulate the FakeDataReadWriteService with the encrypted data.
-  std::string uri = "uri";
+  std::string blob_id = "blob_id";
   std::string message = "message";
-  CHECK_OK(
-      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message));
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(blob_id,
+                                                                      message));
 
-  // Make a ReadRequest for the uri.
+  // Make a ReadRequest for the blob_id.
   ReadRequest read_request;
-  read_request.set_uri(uri);
+  read_request.set_blob_id(blob_id);
   ClientContext client_context;
   std::unique_ptr<ClientReader<ReadResponse>> reader(
       stub_->Read(&client_context, read_request));
@@ -129,22 +129,23 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
                   blob_header.key_id()),
               message);
 
-  // Check that the DataReadWrite service logged the uri.
-  std::vector<std::string> requested_uris =
-      fake_data_read_write_service_->GetReadRequestUris();
-  EXPECT_EQ(requested_uris.size(), 1);
-  EXPECT_EQ(requested_uris[0], uri);
+  // Check that the DataReadWrite service logged the blob_id.
+  std::vector<std::string> requested_ids =
+      fake_data_read_write_service_->GetReadRequestIds();
+  EXPECT_EQ(requested_ids.size(), 1);
+  EXPECT_EQ(requested_ids[0], blob_id);
 }
 
 TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
   // Prepopulate the FakeDataReadWriteService with the plaintext data.
-  std::string uri = "uri";
+  std::string blob_id = "blob_id";
   std::string message = "message";
-  CHECK_OK(fake_data_read_write_service_->StorePlaintextMessage(uri, message));
+  CHECK_OK(
+      fake_data_read_write_service_->StorePlaintextMessage(blob_id, message));
 
-  // Make a ReadRequest for the uri.
+  // Make a ReadRequest for the blob_id.
   ReadRequest read_request;
-  read_request.set_uri(std::string(uri));
+  read_request.set_blob_id(std::string(blob_id));
   ClientContext client_context;
   std::unique_ptr<ClientReader<ReadResponse>> reader(
       stub_->Read(&client_context, read_request));
@@ -157,29 +158,31 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
             BlobMetadata::EncryptionMetadataCase::kUnencrypted);
   EXPECT_EQ(read_response.data(), message);
 
-  // Check that the DataReadWrite service logged the uri.
-  std::vector<std::string> requested_uris =
-      fake_data_read_write_service_->GetReadRequestUris();
-  EXPECT_EQ(requested_uris.size(), 1);
-  EXPECT_EQ(requested_uris[0], uri);
+  // Check that the DataReadWrite service logged the blob_id.
+  std::vector<std::string> requested_ids =
+      fake_data_read_write_service_->GetReadRequestIds();
+  EXPECT_EQ(requested_ids.size(), 1);
+  EXPECT_EQ(requested_ids[0], blob_id);
 }
 
 TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
   // Prepopulate the FakeDataReadWriteService with some data.
-  std::vector<std::string> storage_uris = {"uri_1", "uri_2"};
+  std::vector<std::string> storage_blob_ids = {"blob_id_1", "blob_id_2"};
   std::string base_message = "message";
-  for (std::string& uri : storage_uris) {
-    std::string message = absl::StrCat(uri, base_message);
+  for (std::string& blob_id : storage_blob_ids) {
+    std::string message = absl::StrCat(blob_id, base_message);
     CHECK_OK(
-        fake_data_read_write_service_->StorePlaintextMessage(uri, message));
+        fake_data_read_write_service_->StorePlaintextMessage(blob_id, message));
   }
 
-  // Attempt to resolve a sequence of uris that correspond to the stored data.
-  std::vector<std::string> read_uris = {"uri_2", "uri_1", "uri_1"};
-  for (std::string& uri : read_uris) {
-    // Make a ReadRequest for the uri.
+  // Attempt to resolve a sequence of blob_ids that correspond to the stored
+  // data.
+  std::vector<std::string> read_blob_ids = {"blob_id_2", "blob_id_1",
+                                            "blob_id_1"};
+  for (std::string& blob_id : read_blob_ids) {
+    // Make a ReadRequest for the blob_id.
     ReadRequest read_request;
-    read_request.set_uri(std::string(uri));
+    read_request.set_blob_id(std::string(blob_id));
     ClientContext client_context;
     std::unique_ptr<ClientReader<ReadResponse>> reader(
         stub_->Read(&client_context, read_request));
@@ -191,27 +194,28 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
     EXPECT_EQ(
         read_response.first_response_metadata().encryption_metadata_case(),
         BlobMetadata::EncryptionMetadataCase::kUnencrypted);
-    EXPECT_EQ(read_response.data(), absl::StrCat(uri, base_message));
+    EXPECT_EQ(read_response.data(), absl::StrCat(blob_id, base_message));
   }
 
-  // Check that the DataReadWrite service logged the correct sequence of uris.
-  std::vector<std::string> requested_uris =
-      fake_data_read_write_service_->GetReadRequestUris();
-  EXPECT_EQ(requested_uris.size(), 3);
-  EXPECT_EQ(requested_uris[0], read_uris[0]);
-  EXPECT_EQ(requested_uris[1], read_uris[1]);
-  EXPECT_EQ(requested_uris[2], read_uris[2]);
+  // Check that the DataReadWrite service logged the correct sequence of
+  // blob_ids.
+  std::vector<std::string> requested_ids =
+      fake_data_read_write_service_->GetReadRequestIds();
+  EXPECT_EQ(requested_ids.size(), 3);
+  EXPECT_EQ(requested_ids[0], read_blob_ids[0]);
+  EXPECT_EQ(requested_ids[1], read_blob_ids[1]);
+  EXPECT_EQ(requested_ids[2], read_blob_ids[2]);
 }
 
-TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownblob_id) {
   // Prepopulate the FakeDataReadWriteService with the plaintext data.
   std::string message = "message";
   CHECK_OK(
-      fake_data_read_write_service_->StorePlaintextMessage("uri", message));
+      fake_data_read_write_service_->StorePlaintextMessage("blob_id", message));
 
-  // Make a ReadRequest for a different uri.
+  // Make a ReadRequest for a different blob_id.
   ReadRequest read_request;
-  read_request.set_uri("other_uri");
+  read_request.set_blob_id("other_blob_id");
   ClientContext client_context;
   std::unique_ptr<ClientReader<ReadResponse>> reader(
       stub_->Read(&client_context, read_request));
@@ -220,24 +224,27 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForUnknownUri) {
   grpc::Status status = reader->Finish();
   ASSERT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
   ASSERT_THAT(status.error_message(),
-              HasSubstr("Requested key other_uri not found"));
+              HasSubstr("Requested key other_blob_id not found"));
 }
 
-TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetUri) {
+TEST_F(FakeDataReadWriteServiceTest, ReadRequestFailureForAlreadySetblob_id) {
   // Populate the FakeDataReadWriteService with a plaintext message.
-  std::string uri = "uri";
+  std::string blob_id = "blob_id";
   std::string message = "message";
-  CHECK_OK(fake_data_read_write_service_->StorePlaintextMessage(uri, message));
+  CHECK_OK(
+      fake_data_read_write_service_->StorePlaintextMessage(blob_id, message));
 
-  // Check that adding a plaintext message with the same uri fails.
+  // Check that adding a plaintext message with the same blob_id fails.
   auto store_result =
-      fake_data_read_write_service_->StorePlaintextMessage(uri, message);
-  EXPECT_EQ(store_result, absl::InvalidArgumentError("Uri already set."));
+      fake_data_read_write_service_->StorePlaintextMessage(blob_id, message);
+  EXPECT_EQ(store_result,
+            absl::InvalidArgumentError("Message already stored for blob id."));
 
-  // Check that adding an encrypted message with the same uri fails.
-  store_result =
-      fake_data_read_write_service_->StoreEncryptedMessageForKms(uri, message);
-  EXPECT_EQ(store_result, absl::InvalidArgumentError("Uri already set."));
+  // Check that adding an encrypted message with the same blob_id fails.
+  store_result = fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      blob_id, message);
+  EXPECT_EQ(store_result,
+            absl::InvalidArgumentError("Message already stored for blob id."));
 }
 
 TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForReleaseData) {
@@ -315,7 +322,7 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
   ASSERT_TRUE(stream->Finish().ok());
 
   ReadRequest read_request;
-  read_request.set_uri("key_1");
+  read_request.set_blob_id("key_1");
   ClientContext read_client_context;
   std::unique_ptr<ClientReader<ReadResponse>> reader(
       stub_->Read(&read_client_context, read_request));

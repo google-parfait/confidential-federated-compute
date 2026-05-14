@@ -27,8 +27,7 @@ TRUSTED_PROGRAM_KEY = "trusted_program"
 def run_program(
     initialize_fn: Optional[Callable[[], None]],
     program: bytes,
-    client_ids: list[bytes | str],
-    client_data_directory: str,
+    blob_ids: list[bytes],
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
     resolve_uri_to_tensor_fn: Callable[[str, str], tensor_pb2.TensorProto],
@@ -47,8 +46,7 @@ def run_program(
       contains a function named TRUSTED_PROGRAM_KEY that describes the federated
       program to execute. The TRUSTED_PROGRAM_KEY function should expect a
       ReleaseManager arg.
-    client_ids: A list representing the clients from this data source.
-    client_data_directory: The directory containing the client data.
+    blob_ids: A list of blob ids representing the clients from this data source.
     model_id_to_zip_file: A dictionary mapping model ids to the paths of the zip
       files containing the model weights for those models.
     outgoing_server_address: The address at which the untrusted root server can
@@ -89,8 +87,8 @@ def run_program(
   initialized_external_service_handle = (
       external_service_handle.ExternalServiceHandle(
           outgoing_server_address,
-          client_ids,
-          client_data_directory,
+          blob_ids,
+          "",
           model_id_to_zip_file,
           resolve_uri_to_tensor_fn = resolve_uri_to_tensor_fn,
           release_unencrypted_fn = release_unencrypted_fn,

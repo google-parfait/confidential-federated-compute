@@ -56,10 +56,9 @@ class FakeDataReadWriteService
 
   // Encrypts the provided message and stores it within a ReadResponse in an
   // internal map such that the ReadResponse will be returned in response to a
-  // later ReadRequest for the given uri.
-  absl::Status StoreEncryptedMessageForKms(
-      absl::string_view uri, absl::string_view message,
-      std::optional<absl::string_view> blob_id = std::nullopt);
+  // later ReadRequest for the given blob_id.
+  absl::Status StoreEncryptedMessageForKms(absl::string_view blob_id,
+                                           absl::string_view message);
 
   // Stores the provided message within a ReadResponse in an internal map such
   // that the ReadResponse will be returned in response to a later ReadRequest
@@ -87,8 +86,8 @@ class FakeDataReadWriteService
     return signing_key_endorsement_;
   }
 
-  // Returns a list of uris from received ReadRequest args.
-  std::vector<std::string> GetReadRequestUris() { return read_request_uris_; }
+  // Returns a list of ids (blob ids or uris) from received ReadRequest args.
+  std::vector<std::string> GetReadRequestIds() { return read_request_ids_; }
 
   // Returns a map of key to plaintext messages received by the Write endpoint.
   std::map<std::string, std::string> GetReleasedData() {
@@ -122,12 +121,13 @@ class FakeDataReadWriteService
   fcp::confidential_compute::EcdsaP256R1Signer vm_signer_;
 
   // Map that stores the ReadResponse to return for a ReadRequest with a
-  // particular uri.
+  // particular id (a blob id for client data or uri for intermediate encrypted
+  // recovery info).
   std::map<std::string, fcp::confidentialcompute::outgoing::ReadResponse>
-      uri_to_read_response_;
+      id_to_read_response_;
 
-  // List of uris from received ReadRequest args.
-  std::vector<std::string> read_request_uris_;
+  // List of ids (blob ids or uris) from received ReadRequest args.
+  std::vector<std::string> read_request_ids_;
 
   // A decryptor that can be used to retrieve the plaintext message from a
   // WriteRequest.
