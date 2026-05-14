@@ -30,7 +30,7 @@ def run_program(
     blob_ids: list[bytes],
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
-    resolve_uri_to_tensor_fn: Callable[[str, str], tensor_pb2.TensorProto],
+    resolve_blob_id_to_tensor_fn: Callable[[bytes, str], tensor_pb2.TensorProto],
     release_unencrypted_fn: Callable[[bytes, str], None],
     save_recovery_info_fn: Callable[
         [bytes, str, Sequence[tuple[bytes, str]]], None
@@ -52,7 +52,7 @@ def run_program(
     outgoing_server_address: The address at which the untrusted root server can
       be reached for data read/write requests and computation delegation
       requests.
-    resolve_uri_to_tensor_fn: A function that resolves pointers to data.
+    resolve_blob_id_to_tensor_fn: A function that resolves pointers to data.
       Expects two args (the uri and the key) and returns the resolved tensor.
     release_unencrypted_fn: A function that releases unencrypted values to the
       external service. Expects two args (the data and the key).
@@ -88,9 +88,8 @@ def run_program(
       external_service_handle.ExternalServiceHandle(
           outgoing_server_address,
           blob_ids,
-          "",
           model_id_to_zip_file,
-          resolve_uri_to_tensor_fn = resolve_uri_to_tensor_fn,
+          resolve_blob_id_to_tensor_fn = resolve_blob_id_to_tensor_fn,
           release_unencrypted_fn = release_unencrypted_fn,
           save_recovery_info_fn = save_recovery_info_fn,
           restore_recovery_info_fn = restore_recovery_info_fn,
