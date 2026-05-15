@@ -1,0 +1,452 @@
+diff --git a/tensorflow_federated/BUILD b/tensorflow_federated/BUILD
+index 0704e19..7fe6a70 100644
+--- a/tensorflow_federated/BUILD
++++ b/tensorflow_federated/BUILD
+@@ -23,6 +23,20 @@ py_library(
+         "//tensorflow_federated/python/learning",
+         "//tensorflow_federated/python/program",
+         "//tensorflow_federated/python/simulation",
++        "@federated_language//federated_language",
++        "@pypi//absl_py",
++        "@pypi//attrs",
++        "@pypi//cachetools",
++        "@pypi//dm_tree",
++        "@pypi//ml_dtypes",
++        "@pypi//numpy",
++        "@pypi//portpicker",
++        "@pypi//scipy",
++        "@pypi//tensorflow_privacy",
++        "@pypi//tqdm",
++        "@pypi//typing_extensions",
++        "@pypi//tensorflow",
++        "@pypi//googleapis_common_protos",
+     ],
+ )
+ 
+diff --git a/tensorflow_federated/cc/core/impl/aggregation/core/BUILD b/tensorflow_federated/cc/core/impl/aggregation/core/BUILD
+index 1b30773..da942c7 100644
+--- a/tensorflow_federated/cc/core/impl/aggregation/core/BUILD
++++ b/tensorflow_federated/cc/core/impl/aggregation/core/BUILD
+@@ -12,10 +12,9 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library")
++load("@rules_proto//proto:defs.bzl", "proto_library")
++load("@rules_java//java:defs.bzl", "java_proto_library")
+ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+ load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+diff --git a/tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD b/tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
+index 670a8dc..2d72e5d 100644
+--- a/tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
++++ b/tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
+@@ -12,9 +12,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library")
++load("@rules_proto//proto:defs.bzl", "proto_library")
+ load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+diff --git a/tensorflow_federated/cc/core/impl/executors/BUILD b/tensorflow_federated/cc/core/impl/executors/BUILD
+index 008c2f0..9bc2426 100644
+--- a/tensorflow_federated/cc/core/impl/executors/BUILD
++++ b/tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -45,7 +45,7 @@ cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:string_view",
+-        "@eigen",
++        "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
+     ],
+@@ -307,6 +307,7 @@ cc_library(
+     name = "executor_service",
+     srcs = ["executor_service.cc"],
+     hdrs = ["executor_service.h"],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":cardinalities",
+         ":executor",
+@@ -971,7 +972,7 @@ cc_library(
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_absl//absl/types:span",
+         "@com_google_protobuf//:protobuf_lite",
+-        "@eigen",
++        "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:data_type_cc_proto",
+         "@org_tensorflow//tensorflow/core:framework",
+@@ -994,7 +995,7 @@ cc_test(
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings:string_view",
+-        "@eigen",
++        "@eigen_archive//:eigen3",
+         "@federated_language//federated_language/proto:array_cc_proto",
+         "@federated_language//federated_language/proto:computation_cc_proto",
+         "@org_tensorflow//tensorflow/core:framework",
+diff --git a/tensorflow_federated/cc/core/impl/executors/composing_executor.cc b/tensorflow_federated/cc/core/impl/executors/composing_executor.cc
+index 446fe20..a799093 100644
+--- a/tensorflow_federated/cc/core/impl/executors/composing_executor.cc
++++ b/tensorflow_federated/cc/core/impl/executors/composing_executor.cc
+@@ -84,7 +84,7 @@ class UnplacedInner {
+   // Returns the underlying `Proto` value without attempting to create one via
+   // a `Materialize` call.
+   std::optional<absl::StatusOr<std::shared_ptr<v0::Value>>> GetProto() {
+-    absl::ReaderMutexLock lock(mutex_);
++    absl::ReaderMutexLock lock(&mutex_);
+     return proto_;
+   }
+ 
+@@ -93,7 +93,7 @@ class UnplacedInner {
+   absl::StatusOr<std::shared_ptr<v0::Value>> Proto(Executor& server) {
+     {
+       // Try to grab the proto if it already exists.
+-      absl::ReaderMutexLock lock(mutex_);
++      absl::ReaderMutexLock lock(&mutex_);
+       if (proto_.has_value()) {
+         return ExtractProto();
+       }
+@@ -101,7 +101,7 @@ class UnplacedInner {
+     {
+       // Try to grab the proto if it has been created since the last lock was
+       // released.
+-      absl::WriterMutexLock lock(mutex_);
++      absl::WriterMutexLock lock(&mutex_);
+       if (proto_.has_value()) {
+         return ExtractProto();
+       }
+@@ -123,7 +123,7 @@ class UnplacedInner {
+   absl::StatusOr<std::shared_ptr<OwnedValueId>> Embedded(Executor& server) {
+     {
+       // Try to grab the embedded ID if it already exists.
+-      absl::ReaderMutexLock lock(mutex_);
++      absl::ReaderMutexLock lock(&mutex_);
+       if (embedded_.has_value()) {
+         return ExtractEmbedded();
+       }
+@@ -131,7 +131,7 @@ class UnplacedInner {
+     {
+       // Try to grab the embedded ID if it has been created since the last lock
+       // was released.
+-      absl::WriterMutexLock lock(mutex_);
++      absl::WriterMutexLock lock(&mutex_);
+       if (embedded_.has_value()) {
+         return ExtractEmbedded();
+       }
+@@ -691,7 +691,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+             auto child_result_server_id = TFF_TRY(
+                 server_->CreateValue(child_result.federated().value(0)));
+ 
+-            absl::MutexLock lock(mutex);
++            absl::MutexLock lock(&mutex);
+             if (current.has_value()) {
+               auto merge_arg = TFF_TRY(server_->CreateStruct(
+                   {current.value(), child_result_server_id}));
+diff --git a/tensorflow_federated/cc/core/impl/executors/executor.h b/tensorflow_federated/cc/core/impl/executors/executor.h
+index 2d1be92..88738af 100644
+--- a/tensorflow_federated/cc/core/impl/executors/executor.h
++++ b/tensorflow_federated/cc/core/impl/executors/executor.h
+@@ -245,7 +245,7 @@ class ExecutorBase : public Executor,
+ 
+   // Tracks the provided value and returns the ID which refers to it.
+   absl::StatusOr<OwnedValueId> TrackValue(ExecutorValue value) {
+-    absl::WriterMutexLock lock(mutex_);
++    absl::WriterMutexLock lock(&mutex_);
+     ValueId id = next_value_id_++;
+     tracked_values_.emplace(id, std::move(value));
+     return absl::StatusOr<OwnedValueId>(absl::in_place_t(), shared_from_this(),
+@@ -254,7 +254,7 @@ class ExecutorBase : public Executor,
+ 
+   // Returns a copy of the value previously stored with `TrackValue`.
+   absl::StatusOr<ExecutorValue> GetTracked(ValueId value_id) {
+-    absl::ReaderMutexLock lock(mutex_);
++    absl::ReaderMutexLock lock(&mutex_);
+     auto value_iter = tracked_values_.find(value_id);
+     if (value_iter == tracked_values_.end()) {
+       return absl::NotFoundError(
+@@ -283,7 +283,7 @@ class ExecutorBase : public Executor,
+   // that the `ExecutorValue` references held by `tracked_values_` have been
+   // destroyed.
+   void ClearTracked() {
+-    absl::WriterMutexLock lock(mutex_);
++    absl::WriterMutexLock lock(&mutex_);
+     tracked_values_.clear();
+   }
+ 
+@@ -344,7 +344,7 @@ class ExecutorBase : public Executor,
+ 
+   absl::Status Dispose(const ValueId value) final {
+     auto trace = Trace("Dispose");
+-    absl::WriterMutexLock lock(mutex_);
++    absl::WriterMutexLock lock(&mutex_);
+     auto value_iter = tracked_values_.find(value);
+     if (value_iter == tracked_values_.end()) {
+       return absl::NotFoundError(absl::StrCat(
+diff --git a/tensorflow_federated/cc/core/impl/executors/executor_bindings.cc b/tensorflow_federated/cc/core/impl/executors/executor_bindings.cc
+index facf67d..e655ef7 100644
+--- a/tensorflow_federated/cc/core/impl/executors/executor_bindings.cc
++++ b/tensorflow_federated/cc/core/impl/executors/executor_bindings.cc
+@@ -31,7 +31,7 @@ limitations under the License
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+ #include "absl/strings/str_cat.h"
+-#include "include/grpcpp/impl/channel_interface.h"
++#include "grpcpp/impl/codegen/channel_interface.h"
+ #include "include/grpcpp/security/credentials.h"
+ #include "include/grpcpp/support/channel_arguments.h"
+ #include "federated_language/proto/computation.pb.h"
+diff --git a/tensorflow_federated/cc/core/impl/executors/executor_service.cc b/tensorflow_federated/cc/core/impl/executors/executor_service.cc
+index 354f0cf..12fb260 100644
+--- a/tensorflow_federated/cc/core/impl/executors/executor_service.cc
++++ b/tensorflow_federated/cc/core/impl/executors/executor_service.cc
+@@ -86,7 +86,7 @@ ExecutorService::ExecutorResolver::ExecutorIDForRequirements(
+   // this caching essentially 'freezes' the remote machines available at the
+   // time of executor construction as the only ones receiving work, if this
+   // service represents an aggregation service.
+-  absl::MutexLock lock(executors_mutex_);
++  absl::MutexLock lock(&executors_mutex_);
+   std::string cardinalities_string =
+       CardinalitiesToString(requirements.cardinalities);
+   auto it = executors_.find(cardinalities_string);
+@@ -123,7 +123,7 @@ ExecutorService::ExecutorResolver::ExecutorIDForRequirements(
+ 
+ absl::StatusOr<ExecutorService::ExecutorEntry>
+ ExecutorService::ExecutorResolver::ExecutorForId(const ExecutorId& ex_id) {
+-  absl::MutexLock lock(executors_mutex_);
++  absl::MutexLock lock(&executors_mutex_);
+   auto ex_cardinalities_it = keys_to_cardinalities_.find(ex_id);
+   if (ex_cardinalities_it == keys_to_cardinalities_.end()) {
+     // A lack of executor in the expected slot is retryable, but clients must
+@@ -147,7 +147,7 @@ absl::Status ExecutorService::ExecutorResolver::DisposeExecutor(
+     const ExecutorId& ex_id) {
+   bool should_destroy;
+   // We take a writer lock here because we must decrement the refcount.
+-  absl::MutexLock lock(executors_mutex_);
++  absl::MutexLock lock(&executors_mutex_);
+   auto ex_cardinalities_it = keys_to_cardinalities_.find(ex_id);
+   if (ex_cardinalities_it == keys_to_cardinalities_.end()) {
+     // DisposeExecutor can occur on a deleted executor in the case of a worker
+@@ -173,7 +173,7 @@ absl::Status ExecutorService::ExecutorResolver::DisposeExecutor(
+ }
+ 
+ void ExecutorService::ExecutorResolver::DestroyExecutor(const ExecutorId& id) {
+-  absl::MutexLock lock(executors_mutex_);
++  absl::MutexLock lock(&executors_mutex_);
+   DestroyExecutorImpl(id);
+ }
+ 
+diff --git a/tensorflow_federated/cc/core/impl/executors/federating_executor.cc b/tensorflow_federated/cc/core/impl/executors/federating_executor.cc
+index 56d5edf..f27410b 100644
+--- a/tensorflow_federated/cc/core/impl/executors/federating_executor.cc
++++ b/tensorflow_federated/cc/core/impl/executors/federating_executor.cc
+@@ -78,7 +78,7 @@ class UnplacedInner {
+   // Returns the underlying `Proto` value without attempting to create one via
+   // a `Materialize` call.
+   std::optional<absl::StatusOr<std::shared_ptr<v0::Value>>> GetProto() {
+-    absl::ReaderMutexLock lock(mutex_);
++    absl::ReaderMutexLock lock(&mutex_);
+     return proto_;
+   }
+ 
+@@ -87,7 +87,7 @@ class UnplacedInner {
+   absl::StatusOr<std::shared_ptr<v0::Value>> Proto(Executor& server) {
+     {
+       // Try to grab the proto if it already exists.
+-      absl::ReaderMutexLock lock(mutex_);
++      absl::ReaderMutexLock lock(&mutex_);
+       if (proto_.has_value()) {
+         return ExtractProto();
+       }
+@@ -95,7 +95,7 @@ class UnplacedInner {
+     {
+       // Try to grab the proto if it has been created since the last lock was
+       // released.
+-      absl::WriterMutexLock lock(mutex_);
++      absl::WriterMutexLock lock(&mutex_);
+       if (proto_.has_value()) {
+         return ExtractProto();
+       }
+@@ -117,7 +117,7 @@ class UnplacedInner {
+   absl::StatusOr<std::shared_ptr<OwnedValueId>> Embedded(Executor& server) {
+     {
+       // Try to grab the embedded ID if it already exists.
+-      absl::ReaderMutexLock lock(mutex_);
++      absl::ReaderMutexLock lock(&mutex_);
+       if (embedded_.has_value()) {
+         return ExtractEmbedded();
+       }
+@@ -125,7 +125,7 @@ class UnplacedInner {
+     {
+       // Try to grab the embedded ID if it has been created since the last lock
+       // was released.
+-      absl::WriterMutexLock lock(mutex_);
++      absl::WriterMutexLock lock(&mutex_);
+       if (embedded_.has_value()) {
+         return ExtractEmbedded();
+       }
+diff --git a/tensorflow_federated/cc/core/impl/executors/sequence_executor.cc b/tensorflow_federated/cc/core/impl/executors/sequence_executor.cc
+index 766e24b..38ce6a1 100644
+--- a/tensorflow_federated/cc/core/impl/executors/sequence_executor.cc
++++ b/tensorflow_federated/cc/core/impl/executors/sequence_executor.cc
+@@ -215,11 +215,11 @@ class Sequence {
+     }
+     bool embedded = false;
+     {
+-      absl::ReaderMutexLock reader_lock(embedded_mutex_);
++      absl::ReaderMutexLock reader_lock(&embedded_mutex_);
+       embedded = embedded_sequence_.has_value();
+     }
+     if (!embedded) {
+-      absl::WriterMutexLock writer_lock(embedded_mutex_);
++      absl::WriterMutexLock writer_lock(&embedded_mutex_);
+       //  Once we've acquired the lock, check that no other thread has
+       //  embedded the value in the meantime.
+       if (!embedded_sequence_.has_value()) {
+@@ -228,7 +228,7 @@ class Sequence {
+       }
+     }
+ 
+-    absl::ReaderMutexLock reader_lock(embedded_mutex_);
++    absl::ReaderMutexLock reader_lock(&embedded_mutex_);
+     return embedded_sequence_.value();
+   }
+ 
+diff --git a/tensorflow_federated/cc/core/impl/executors/session_provider.cc b/tensorflow_federated/cc/core/impl/executors/session_provider.cc
+index dcf1947..c4f990f 100644
+--- a/tensorflow_federated/cc/core/impl/executors/session_provider.cc
++++ b/tensorflow_federated/cc/core/impl/executors/session_provider.cc
+@@ -53,7 +53,7 @@ namespace tensorflow_federated {
+ // each call.
+ ABSL_CONST_INIT static absl::Mutex function_id_mutex(absl::kConstInit);
+ int32_t GetNextFunctionId() {
+-  absl::MutexLock function_id_lock(function_id_mutex);
++  absl::MutexLock function_id_lock(&function_id_mutex);
+   static int32_t function_id = 0;
+   return function_id++;
+ }
+@@ -288,7 +288,7 @@ absl::StatusOr<SessionProvider::SessionWithResourceContainer>
+ SessionProvider::TakeSession() {
+   int16_t session_id = 0;
+   {
+-    absl::MutexLock lock(mutex_);
++    absl::MutexLock lock(&mutex_);
+     if (!sessions_.empty()) {
+       SessionProvider::SessionWithResourceContainer session(
+           std::move(sessions_.back()));
+@@ -308,7 +308,7 @@ SessionProvider::TakeSession() {
+ void SessionProvider::ReturnSession(
+     SessionProvider::SessionWithResourceContainer&& session) {
+   session.ClearResourceContainers();
+-  absl::MutexLock lock(mutex_);
++  absl::MutexLock lock(&mutex_);
+   sessions_.emplace_back(std::move(session));
+ }
+ 
+diff --git a/tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.cc b/tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.cc
+index 47046f2..29627ee 100644
+--- a/tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.cc
++++ b/tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.cc
+@@ -424,7 +424,7 @@ class ExecutorValue {
+ };
+ 
+ absl::Status StreamingRemoteExecutor::EnsureInitialized() {
+-  absl::MutexLock lock(mutex_);
++  absl::MutexLock lock(&mutex_);
+   if (executor_pb_set_) {
+     return absl::OkStatus();
+   }
+diff --git a/tensorflow_federated/cc/core/impl/executors/tensorflow_executor.cc b/tensorflow_federated/cc/core/impl/executors/tensorflow_executor.cc
+index 8f107a6..81b9676 100644
+--- a/tensorflow_federated/cc/core/impl/executors/tensorflow_executor.cc
++++ b/tensorflow_federated/cc/core/impl/executors/tensorflow_executor.cc
+@@ -866,7 +866,7 @@ class TensorFlowExecutor : public ExecutorBase<ValueFuture> {
+         const uint64_t function_id = comp_pb.tensorflow().cache_key().id();
+         // Try the fast path first, reader locks are much cheaper.
+         {
+-          absl::ReaderMutexLock reader_lock(function_cache_mutex_);
++          absl::ReaderMutexLock reader_lock(&function_cache_mutex_);
+           auto cache_iter = function_cache_.find(function_id);
+           if (cache_iter != function_cache_.end()) {
+             VLOG(2) << "Cache hit for function id: " << function_id;
+@@ -878,7 +878,7 @@ class TensorFlowExecutor : public ExecutorBase<ValueFuture> {
+         std::shared_ptr<Computation> computation =
+             TFF_TRY(Computation::FromProto(comp_pb.tensorflow()));
+         {
+-          absl::WriterMutexLock writer_lock(function_cache_mutex_);
++          absl::WriterMutexLock writer_lock(&function_cache_mutex_);
+           auto result = function_cache_.try_emplace(function_id, computation);
+           if (!result.second) {
+             // Another thread beat us to creating the cache value. We end up
+diff --git a/tensorflow_federated/cc/core/impl/executors/threading.cc b/tensorflow_federated/cc/core/impl/executors/threading.cc
+index 5742566..1b2f631 100644
+--- a/tensorflow_federated/cc/core/impl/executors/threading.cc
++++ b/tensorflow_federated/cc/core/impl/executors/threading.cc
+@@ -33,7 +33,7 @@ ThreadPool::ThreadPool(int32_t num_threads, absl::string_view name)
+   if (num_threads < 1) {
+     LOG(QFATAL) << "num_threads must be positive";
+   }
+-  absl::MutexLock lock(pool_mutex_);
++  absl::MutexLock lock(&pool_mutex_);
+   for (int32_t i = 0; i < num_threads; ++i) {
+     threads_.emplace_back([this]() {
+       while (true) {
+@@ -60,7 +60,7 @@ ThreadPool::~ThreadPool() {
+ }
+ 
+ absl::Status ThreadPool::Schedule(std::function<void()> task) {
+-  absl::MutexLock lock(pool_mutex_);
++  absl::MutexLock lock(&pool_mutex_);
+   if (closed_) {
+     return absl::FailedPreconditionError(
+         "Called Schedule() on a ThreadPool that is closed.");
+@@ -74,7 +74,7 @@ bool ThreadPool::has_work_or_closed() ABSL_SHARED_LOCKS_REQUIRED(pool_mutex_) {
+ }
+ 
+ void ThreadPool::Close() {
+-  absl::MutexLock lock(pool_mutex_);
++  absl::MutexLock lock(&pool_mutex_);
+   closed_ = true;
+ }
+ 
+@@ -84,12 +84,12 @@ bool ParallelTasksInner_::AllDone_() ABSL_SHARED_LOCKS_REQUIRED(mutex_) {
+ 
+ absl::Status ParallelTasks::add_task(std::function<absl::Status()> task) {
+   {
+-    absl::WriterMutexLock lock(shared_inner_->mutex_);
++    absl::WriterMutexLock lock(&shared_inner_->mutex_);
+     shared_inner_->remaining_tasks_ += 1;
+   }
+   auto void_task = [inner = shared_inner_, task = std::move(task)]() {
+     absl::Status result = task();
+-    absl::WriterMutexLock lock(inner->mutex_);
++    absl::WriterMutexLock lock(&inner->mutex_);
+     inner->status_.Update(std::move(result));
+     inner->remaining_tasks_ -= 1;
+   };
+diff --git a/tensorflow_federated/proto/v0/BUILD b/tensorflow_federated/proto/v0/BUILD
+index bf1f6e1..3e0cec1 100644
+--- a/tensorflow_federated/proto/v0/BUILD
++++ b/tensorflow_federated/proto/v0/BUILD
+@@ -1,8 +1,6 @@
+ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+-load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
++load("@rules_proto//proto:defs.bzl", "proto_library")
+ load("@rules_python//python:defs.bzl", "py_library")
+ 
+ package(

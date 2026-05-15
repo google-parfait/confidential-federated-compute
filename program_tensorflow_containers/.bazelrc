@@ -12,9 +12,16 @@ build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
+# Enable XLA support by default.
+build --define=with_xla_support=true
 # Build TensorFlow and XLA with more optimizations to avoid linker OOM
-build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG
-build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
+build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
+build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
+build --compilation_mode=opt
+build --copt=-mfma
+build --copt=-mavx2
+build --host_copt=-mfma
+build --host_copt=-mavx2
 build --define xnn_enable_avx512fp16=false
 build --define xnn_enable_avx512amx=false
 build --define xnn_enable_avxvnni=false
@@ -23,7 +30,8 @@ build --@rules_python//python/config_settings:bootstrap_impl=script  # https://g
 build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
-common --repo_env=TF_PYTHON_VERSION=3.11
+common --repo_env=TF_PYTHON_VERSION=3.12
+common --repo_env=PYTHON_BIN_PATH=/usr/bin/python3.12
 
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
@@ -87,9 +95,9 @@ build:cfc-remote --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:cfc-remote --remote_instance_name=projects/560162532548/instances/default
 build:cfc-remote --noremote_upload_local_results
 build:cfc-remote --google_default_credentials
-build:cfc-remote --extra_execution_platforms=@confidential-federated-compute//:remote_platform
-build:cfc-remote --host_platform=@confidential-federated-compute//:remote_platform
-build:cfc-remote --platforms=@confidential-federated-compute//:remote_platform
+build:cfc-remote --extra_execution_platforms=//:remote_platform
+build:cfc-remote --host_platform=//:remote_platform
+build:cfc-remote --platforms=//:remote_platform
 build:cfc-remote --jobs=50
 
 # Settings for uploading results to BES.

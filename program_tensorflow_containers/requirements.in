@@ -1,31 +1,33 @@
 # The dependency versions in this file are chosen to be as close as possible to
 # those in the corresponding repos.
 
-absl-py~=1.0
+absl-py>=2.0,<3
 googleapis-common-protos==1.70.0
-numpy~=1.25
+numpy>=2.0.0,<2.2.0
 portpicker~=1.6
 
 # Additional dependencies required for org_tensorflow_federated.
 attrs~=23.1
-dm-tree==0.1.8
-ml_dtypes>=0.2.0,==0.2.*
-protobuf~=4.21
-typing-extensions~=4.5
-
-# Additional dependencies required for org_tensorflow_federated.
-dp-accounting==0.4.3
-tensorflow>=2.14.0,==2.14.*
-tensorflow-privacy==0.9.0
-tqdm~=4.64
+cachetools~=5.3
+dm-tree==0.1.9
+dp-accounting==0.6.0
+grpcio~=1.74
+keras~=3.12.0
+ml_dtypes>=0.5.0
+protobuf
+scipy~=1.16
+tensorflow>=2.21.0,==2.21.*
+tensorflow-privacy
+tqdm>=4.64.0,==4.64.*
+typing-extensions>=4.6.0,==4.6.*
+wrapt==1.14.1
 
 # Additional dependencies required for com_google_fcp.
 immutabledict==4.2.0
 
-# 0.4.25 is the latest jax version that supports native serialization version 8,
-# which is the latest version supported by tf 2.14.0.
-jax==0.4.25
-jaxlib==0.4.25
+# JAX version upgraded to be compatible with TF 2.21.0 and NumPy 2.0.
+jax>=0.4.30
+jaxlib>=0.4.30
 
 # Additional dependencies required for jax_privacy.
 optax

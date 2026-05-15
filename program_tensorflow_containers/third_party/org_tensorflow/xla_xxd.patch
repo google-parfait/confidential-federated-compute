@@ -1,0 +1,17 @@
+--- third_party/xla/xla/backends/gpu/target_config/build_defs.bzl	2026-05-20 08:29:27.159229258 -0700
++++ third_party/xla/xla/backends/gpu/target_config/build_defs.bzl	2026-05-20 08:29:46.123149588 -0700
+@@ -75,8 +75,12 @@
+                 # Header: Add function declaration
+                 echo "const std::string& $${{FUNC_NAME}}();" >> "$${{HDR_OUT}}"
+ 
+-                # CC: Embed data using xxd
+-                xxd -i "$${{src}}" | \
++                # CC: Embed data using POSIX-only pipeline (no xxd)
++                (FILE_SIZE=$$(wc -c < "$${{src}}" | tr -d ' '); \
++                 echo "unsigned char $${{VAR_NAME}}[] = {{"; \
++                 od -An -t x1 -v "$${{src}}" | awk 'BEGIN {{ORS=""}} {{for(i=1;i<=NF;i++) {{print "0x" $$i ", "; if(++c%12==0) printf "%c", 10}}}}'; \
++                 echo "}};"; \
++                 echo "unsigned int $${{VAR_NAME}}_len = $${{FILE_SIZE}};") | \
+                 sed -e "s/^unsigned char [^[]*/static const unsigned char $${{VAR_NAME}}/" \
+                     -e "s/^unsigned int .*_len/static const size_t $${{VAR_NAME}}_size/" \
+                     >> "$${{CC_OUT}}"

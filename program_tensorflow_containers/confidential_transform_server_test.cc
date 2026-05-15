@@ -423,10 +423,10 @@ def trusted_program(external_handle):
   ASSERT_THAT(
       result.struct_().element(0).value().array().float32_list().value(),
       ::testing::Pointwise(::testing::FloatNear(0.001f),
-                           {-4.7695f, -3.8157f, 0.3610f}));
+                           {-1.99844682f, 0.358718932f, 6.17356777f}));
   ASSERT_THAT(
       result.struct_().element(1).value().array().float32_list().value(),
-      ::testing::Pointwise(::testing::FloatNear(0.001f), {-7.7562f}));
+      ::testing::Pointwise(::testing::FloatNear(0.001f), {-3.8099432f}));
 
   tensorflow_federated::v0::Value num_clipped_updates;
   num_clipped_updates.ParseFromString(released_data["num_clipped_updates"]);

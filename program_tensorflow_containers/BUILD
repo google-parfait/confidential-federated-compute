@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
 load("@confidential-federated-compute-program//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
 load("@confidential-federated-compute-program//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
@@ -25,6 +26,19 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 package(features = ["layering_check"])
+
+platform(
+    name = "remote_platform",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    exec_properties = create_rbe_exec_properties_dict(
+        container_image = "docker://gcr.io/tensorflow-testing/nosla-cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython@sha256:89aa860228092d78dc336545a5ad32e342d656a8258186327c989bd301bb3eb8",
+        os_family = "Linux",
+    ),
+    parents = ["@local_config_platform//:host"],
+)
 
 # This rule adds a convenient way to update the requirements file.
 compile_pip_requirements(
@@ -59,6 +73,9 @@ cc_binary(
         "@com_google_absl//absl/strings",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:computation_runner",
         "@oak//proto/attestation:reference_value_cc_proto",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "@org_tensorflow//tensorflow/compiler/tf2xla/ops:xla_ops",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
     ],
 )
@@ -107,9 +124,9 @@ trusted_py_runtime(
     py_deps = [
         "@confidential-federated-compute-program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
-        "@federated-compute//fcp/confidentialcompute/python:accounting",
-        "@federated-compute//fcp/confidentialcompute/python:dp_mf_aggregator",
-        "@federated-compute//fcp/confidentialcompute/python:min_sep_data_source",
+        "@federated_compute//fcp/confidentialcompute/python:accounting",
+        "@federated_compute//fcp/confidentialcompute/python:dp_mf_aggregator",
+        "@federated_compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@pypi//jax",
         "@pypi//jaxlib",
         "@pypi//optax",
@@ -117,7 +134,7 @@ trusted_py_runtime(
     source_repo_names = [
         "confidential-federated-compute-program",
         "federated_language",
-        "federated-compute",
+        "federated_compute",
         "jax_privacy",
         "org_tensorflow_federated",
         "oak",
@@ -149,11 +166,14 @@ cc_test(
     name = "confidential_transform_server_test",
     size = "medium",
     srcs = ["confidential_transform_server_test.cc"],
+    additional_linker_inputs = [":hide_symbols.lds"],
     data = [":testdata"],
     env = {
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
     },
+    linkopts = ["-Wl,--version-script=$(location :hide_symbols.lds)"],
+    linkstatic = True,
     tags = ["noasan"],
     toolchains = [":trusted_program_py_runtime"],
     deps = [
@@ -161,9 +181,9 @@ cc_test(
         "@confidential-federated-compute-program//program_executor_tee:testing_base",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_data_read_write_service",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:generate_checkpoint",
-        "@federated-compute//fcp/base:random_token",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
+        "@federated_compute//fcp/base:random_token",
+        "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@googletest//:gtest",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
@@ -172,6 +192,9 @@ cc_test(
 cc_binary(
     name = "main",
     srcs = ["main.cc"],
+    additional_linker_inputs = [":hide_symbols.lds"],
+    linkopts = ["-Wl,--version-script=$(location :hide_symbols.lds)"],
+    linkstatic = True,
     local_defines = [
         "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
     ],
@@ -225,7 +248,7 @@ oci_image(
     name = "oci_image",
     # Use a base image that provides the same version of python we reference
     # in the WORKSPACE file.
-    base = "@python_3_11_slim_bookworm",
+    base = "@python_3_12_slim_bookworm",
     # Set the workdir and entrypoint so that the main binary will be executed
     # from within the runfiles directory. This ensures that the main binary
     # will be able to find its runfiles properly.

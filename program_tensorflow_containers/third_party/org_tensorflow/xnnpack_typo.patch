@@ -1,0 +1,11 @@
+--- ynnpack/build_defs.bzl	2026-05-20 09:30:00.529482737 -0700
++++ ynnpack/build_defs.bzl	2026-05-20 09:30:31.884377169 -0700
+@@ -39,7 +39,7 @@
+         name = name,
+         actual = select({
+             explicit_true: ":" + explicit_true,
+-            explicit_false: ":" + explicit_true,
++            explicit_false: ":" + explicit_false,
+             "//conditions:default": ":" + default,
+         }),
+     )

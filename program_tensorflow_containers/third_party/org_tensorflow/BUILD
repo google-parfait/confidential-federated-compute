@@ -12,6 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+exports_files([
+    "cython.patch",
+    "internal_visibility.patch",
+    "xla_xxd.patch",
+    "xla_copts.patch",
+    "xnnpack_typo.patch",
+    "xnnpack_amx.patch",
+    "xla_asserts.patch",
+])

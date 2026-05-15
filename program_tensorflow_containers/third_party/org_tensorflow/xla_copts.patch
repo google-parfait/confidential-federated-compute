@@ -1,0 +1,10 @@
+--- third_party/xla/xla/codegen/intrinsic/cpp/cc_to_llvm_ir.bzl	2026-05-20 09:05:35.775515828 -0700
++++ third_party/xla/xla/codegen/intrinsic/cpp/cc_to_llvm_ir.bzl	2026-05-20 09:05:59.361444710 -0700
+@@ -106,7 +106,6 @@
+         "-fno-builtin",
+         "-Wno-psabi",
+         "-std=c++17",
+-        "-fno-experimental-sanitize-metadata=all",
+         "-fno-sanitize=all",
+     ] + copts
+ 
