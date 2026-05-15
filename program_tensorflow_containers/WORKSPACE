@@ -56,22 +56,22 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-Cr/fsZlnuvgYTxVTr8v+qBWQtktDpVW48aIZ34mC0BQ=",
-    strip_prefix = "confidential-federated-compute-1925be97662d1b851e66338323e5c7c7b8641048/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/1925be97662d1b851e66338323e5c7c7b8641048.tar.gz",
+    integrity = "sha256-Ta+vXrW/VBKYWLbdVl1HAAZstyBFYQ09fVdIUMiW5wc=",
+    strip_prefix = "confidential-federated-compute-17afec33628a435234f081a7b13e844388e5ebe5/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/17afec33628a435234f081a7b13e844388e5ebe5.tar.gz",
 )
 
 http_archive(
     name = "federated-compute",
-    integrity = "sha256-hCvR+FMGY4cP52cQFoCfVCFTGGxzsAkB/qzSjRy5TJ8=",
+    integrity = "sha256-FJkPuzY5USjy+P8blFTMIryWsThv8eJbzRyi1N/kZrQ=",
     patches = [
         "@confidential-federated-compute-program//third_party/federated_compute:absl.patch",
         "@confidential-federated-compute-program//third_party/federated_compute:protobuf.patch",
         "//third_party/federated_compute:dpmf.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-14bda7f5f30cbc14febc3cfe58be46750faaa2b8",
-    url = "https://github.com/google/federated-compute/archive/14bda7f5f30cbc14febc3cfe58be46750faaa2b8.tar.gz",
+    strip_prefix = "federated-compute-4166b880b9e8467a829f678a17f4122fdb76f4f1",
+    url = "https://github.com/google/federated-compute/archive/4166b880b9e8467a829f678a17f4122fdb76f4f1.tar.gz",
 )
 
 http_archive(

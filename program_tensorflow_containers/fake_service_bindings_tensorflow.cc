@@ -53,8 +53,7 @@ PYBIND11_MODULE(fake_service_bindings_tensorflow, m) {
                                         std::string(result.message()));
              }
            })
-      .def("get_read_request_uris",
-           &FakeDataReadWriteService::GetReadRequestUris)
+      .def("get_read_request_ids", &FakeDataReadWriteService::GetReadRequestIds)
       .def("get_released_data", &FakeDataReadWriteService::GetReleasedData);
 
   py::class_<FakeComputationDelegationService>(

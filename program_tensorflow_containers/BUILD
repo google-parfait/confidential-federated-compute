@@ -161,6 +161,7 @@ cc_test(
         "@confidential-federated-compute-program//program_executor_tee:testing_base",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_data_read_write_service",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@federated-compute//fcp/base:random_token",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
         "@googletest//:gtest",

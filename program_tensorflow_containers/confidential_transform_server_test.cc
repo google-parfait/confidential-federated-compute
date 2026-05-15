@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "confidential_transform_server.h"
 
+#include "fcp/base/random_token.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "gtest/gtest.h"
@@ -45,15 +46,15 @@ TYPED_TEST_SUITE(
     ::testing::Types<TensorflowProgramExecutorTeeConfidentialTransform>);
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDataSource) {
-  std::vector<std::string> client_ids = {"client1", "client2", "client3",
-                                         "client4"};
-  std::string client_data_dir = "data_dir";
+  std::vector<std::string> blob_ids;
   std::string tensor_name = "output_tensor_name";
-  for (int i = 0; i < client_ids.size(); i++) {
+  for (int i = 0; i < 4; i++) {
+    std::string blob_id = fcp::RandomToken::Generate().ToString();
+    blob_ids.push_back(blob_id);
     std::string data = BuildClientCheckpointFromInts(
         {1 + i * 3, 2 + i * 3, 3 + i * 3}, tensor_name);
     CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
-        client_data_dir + "/" + client_ids[i], data));
+        blob_id, data));
   }
 
   this->CreateSession(R"(
@@ -137,7 +138,7 @@ def trusted_program(external_handle):
       client_count_val.SerializeToString(), b"resulting_client_count"
   )
   )",
-                      /*kms_private_state=*/"", client_ids, client_data_dir);
+                      /*kms_private_state=*/"", blob_ids);
 
   SessionRequest session_request;
   SessionResponse session_response;
@@ -212,7 +213,7 @@ def trusted_program(external_handle):
   )
   )",
       /*kms_private_state=*/"",
-      /*client_ids=*/{}, /*client_data_dir=*/"",
+      /*blob_ids=*/{},
       /*file_id_to_filepath=*/
       {{"model1", "testdata/model1.zip"}});
 
