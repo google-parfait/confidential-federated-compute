@@ -29,25 +29,22 @@ namespace confidential_federated_compute::fed_sql {
 
 // An ordered map from non-overlapping intervals to values.
 //
-// Every point in the key space has a value: points not covered by any explicit
-// interval have the default value provided at construction time.
-//
 // Maintains the invariant that adjacent intervals with equal values are always
-// merged into a single interval, and intervals whose value equals the default
-// are never stored. This means the representation is always canonical: there
-// is exactly one way to represent any given mapping.
+// merged into a single interval. This means the representation is always
+// canonical: there is exactly one way to represent any given mapping.
 //
 // The key type T must be arithmetic. The value type V must support:
 //   - operator== (for merge checks)
 //
 // Example usage:
-//   // Default value is 1 for all intervals.
-//   IntervalMap<uint64_t, int> interval_map(/*default_value=*/1);
-//   // Decrement [100, 200) by 1 using ForEachValue.
-//   interval_map.ForEachValue({100, 200}, [](int& v) { v--; return true; });
-//   // Check whether all values in [50, 150) are positive.
-//   bool ok = interval_map.ForEachValue({50, 150},
-//       [](int& v) { return v > 0; });
+//   IntervalMap<uint64_t, int> map;
+//   // Insert intervals with values.
+//   map.Insert({100, 200}, 5);
+//   map.Insert({200, 300}, 3);
+//   // Decrement stored values in [100, 200).
+//   map.ForEachValue({100, 200}, [](int& v) { v--; return true; });
+//   // Check whether all stored values in [50, 250) are positive.
+//   bool ok = map.ForEachValue({50, 250}, [](int& v) { return v > 0; });
 template <typename T, typename V, typename>
 class IntervalMap {
  public:
@@ -55,22 +52,15 @@ class IntervalMap {
   using const_iterator = typename InnerMap::const_iterator;
   using value_type = typename InnerMap::value_type;
 
-  // Creates an empty IntervalMap with a value-initialized default value.
-  explicit IntervalMap(V default_value = V())
-      : default_value_(std::move(default_value)) {}
+  // Creates an empty IntervalMap.
+  IntervalMap() = default;
 
-  // Creates IntervalMap from a list of non-overlapping and ordered
-  // (interval, value) pairs. Adjacent intervals with the same value
-  // will be merged. Empty intervals and intervals with the default value
-  // are ignored.
-  IntervalMap(V default_value,
-              std::initializer_list<std::pair<Interval<T>, V>> il)
-      : default_value_(std::move(default_value)) {
+  // Creates an IntervalMap from a list of non-overlapping and ordered
+  // (interval, value) pairs. Adjacent intervals with the same value will be
+  // merged. Empty intervals are ignored.
+  explicit IntervalMap(std::initializer_list<std::pair<Interval<T>, V>> il) {
     for (const auto& [interval, value] : il) {
       if (interval.empty()) continue;
-      CHECK_LE(value, default_value_)
-          << "Initial values must be less than or equal to default value";
-      if (value == default_value_) continue;
 
       if (!map_.empty()) {
         auto last = std::prev(map_.end());
@@ -86,14 +76,8 @@ class IntervalMap {
     }
   }
 
-  // Returns the default value that the IntervalMap was initialized
-  // with.
-  const V& default_value() const { return default_value_; }
-
   // Equality operators.
-  bool operator==(const IntervalMap& other) const {
-    return default_value_ == other.default_value_ && map_ == other.map_;
-  }
+  bool operator==(const IntervalMap& other) const { return map_ == other.map_; }
   bool operator!=(const IntervalMap& other) const { return !(*this == other); }
 
   // IntervalMap's begin() iterator.
@@ -103,31 +87,33 @@ class IntervalMap {
   const_iterator end() const { return map_.end(); }
 
   // Returns the number of disjoint intervals explicitly stored in this
-  // IntervalMap (excludes the implicit default-valued intervals).
+  // IntervalMap.
   size_t size() const { return map_.size(); }
 
   bool empty() const { return map_.empty(); }
 
   void Clear() { map_.clear(); }
 
-  // Applies `func` to every value within the given interval, including
-  // implicit default-valued gaps (which are materialized before mutation).
+  // Applies `func` to every stored value within the given interval.
   // Intervals that are only partially covered by the given interval are split
   // at the interval boundaries. After mutation, adjacent intervals with equal
-  // values are merged, and intervals equal to the default value are removed.
+  // values are merged.
   //
   // `func` must be callable as `bool(V&)`. It receives a mutable reference
-  // to each value and returns true to continue, or false to abort. If `func`
-  // returns false, the map may be left in a partially-mutated state.
+  // to each stored value and returns true to continue, or false to abort. If
+  // `func` returns false, the map may be left in a partially-mutated state.
   //
-  // Returns true if `func` returned true for every sub-interval, or if the
-  // interval is empty. Returns false as soon as `func` returns false.
+  // Returns true if `func` returned true for every stored sub-interval, or if
+  // no stored intervals overlap the given interval. Returns false as soon as
+  // `func` returns false.
   //
-  // Example — decrement every value by 1:
+  // Note: gaps (sub-intervals not covered by any stored entry) are NOT visited.
+  //
+  // Example — decrement every stored value by 1:
   //   map.ForEachValue(interval, [](V& val) { val--; return true; });
   //
-  // Example — check whether all values are positive:
-  //   bool ok = map.ForEachValue(interval, [](V& val) { return val > V{}; });
+  // Example — check whether all stored values are positive (read-only):
+  //   map.ForEachValue(interval, [](V& val) { return val > 0; });
   template <typename Func>
   bool ForEachValue(Interval<T> interval, Func func) {
     // Empty intervals are a no-op.
@@ -137,29 +123,22 @@ class IntervalMap {
     CutAt(interval.start());
     CutAt(interval.end());
 
-    // Fill gaps within the interval with the default value so that
-    // func applies uniformly.
-    for (const auto& gap : GetGaps(interval)) {
-      map_.emplace(gap, default_value_);
-    }
-
-    // Apply func to all intervals within [start, end).
+    // Apply func to all stored intervals within [start, end).
     auto it = map_.lower_bound(interval.start());
     while (it != map_.end() && it->first.start() < interval.end()) {
       if (!func(it->second)) {
-        // Clean up: remove entries equal to default and merge boundaries.
+        // Merge adjacent intervals with equal values.
         CleanupAfterMutation(interval);
         return false;
       }
       ++it;
     }
 
-    // Clean up: remove entries equal to default and merge boundaries.
+    // Merge adjacent intervals with equal values.
     CleanupAfterMutation(interval);
     return true;
   }
 
- private:
   // Returns the set of gaps (sub-intervals not covered by any stored interval)
   // within the given bounding interval.
   IntervalSet<T> GetGaps(Interval<T> interval) const {
@@ -189,6 +168,34 @@ class IntervalMap {
     return gaps;
   }
 
+  // Inserts `interval` with `value`. Adjacent intervals with equal values are
+  // merged at the boundaries. Empty intervals are a no-op (returns true).
+  //
+  // Returns false without modifying the map if `interval` overlaps any
+  // existing stored interval.
+  bool Insert(Interval<T> interval, V value) {
+    if (interval.empty()) return true;
+
+    // Check for overlap before touching the map.
+    auto it = map_.lower_bound(interval.start());
+
+    // A stored interval that starts before interval.start() might still extend
+    // into the new interval.
+    if (it != map_.begin()) {
+      auto prev = std::prev(it);
+      if (prev->first.end() > interval.start()) return false;
+    }
+
+    // Any stored interval that starts strictly before interval.end() overlaps.
+    if (it != map_.end() && it->first.start() < interval.end()) return false;
+
+    map_.emplace(interval, value);
+    TryMergeAt(interval.start());
+    TryMergeAt(interval.end());
+    return true;
+  }
+
+ private:
   // Splits any interval containing `point` into two intervals at `point`.
   // If `point` is already an interval boundary or is not contained in any
   // interval, this is a no-op.
@@ -228,23 +235,12 @@ class IntervalMap {
     map_.erase(it_right);
   }
 
-  // Removes entries that have been set back to the default value and
-  // merges adjacent intervals with equal values.
+  // Merges adjacent intervals with equal values.
   void CleanupAfterMutation(Interval<T> interval) {
-    // Remove entries equal to the default value.
-    auto it = map_.lower_bound(interval.start());
-    while (it != map_.end() && it->first.start() < interval.end()) {
-      if (it->second == default_value_) {
-        it = map_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-
     // Merge adjacent intervals with equal values within the interval.
     // Note: absl::btree_map invalidates all iterators on mutation, so we
     // must re-acquire iterators after any erase.
-    it = map_.lower_bound(interval.start());
+    auto it = map_.lower_bound(interval.start());
     while (it != map_.end() && it->first.start() < interval.end()) {
       auto next = std::next(it);
       if (next != map_.end() && next->first.start() < interval.end() &&
@@ -267,7 +263,6 @@ class IntervalMap {
     TryMergeAt(interval.start());
   }
 
-  V default_value_;
   InnerMap map_;
 };
 
