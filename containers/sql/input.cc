@@ -39,6 +39,11 @@ namespace confidential_federated_compute::sql {
 namespace {
 
 using ::fcp::confidentialcompute::BlobHeader;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FileDescriptorSet;
+using ::google::protobuf::Message;
 using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -49,14 +54,13 @@ using ::tensorflow_federated::aggregation::TensorShape;
 constexpr char kEnumAsStringSuffix[] = "_as_str";
 
 absl::Status ValidateMessageRows(
-    absl::Span<const std::unique_ptr<google::protobuf::Message>> messages,
+    absl::Span<const std::unique_ptr<Message>> messages,
     absl::Span<const Tensor> system_columns) {
   if (messages.empty()) {
     return absl::InvalidArgumentError("No rows provided.");
   }
   const auto& first_row = messages[0];
-  const google::protobuf::Descriptor* first_descriptor =
-      first_row->GetDescriptor();
+  const Descriptor* first_descriptor = first_row->GetDescriptor();
   for (const auto& message : messages) {
     if (message->GetDescriptor() != first_descriptor) {
       return absl::InvalidArgumentError(
@@ -117,8 +121,8 @@ std::unique_ptr<TensorData> CreateVectorTensorData(
 // field value within messages into `field_paths`. This computation happens
 // once during table initialization, avoiding repeating path calculations per
 // row.
-void GetFlattenedSchema(const google::protobuf::Descriptor* descriptor,
-                        std::string prefix, FieldPath& current_path,
+void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
+                        FieldPath& current_path,
                         std::vector<std::string>& column_names,
                         FieldPathList& field_paths) {
   for (int i = 0; i < descriptor->field_count(); ++i) {
@@ -253,7 +257,7 @@ size_t Input::TensorContents::GetRowCount() const {
 }
 
 absl::StatusOr<Input> Input::CreateFromMessages(
-    std::vector<std::unique_ptr<google::protobuf::Message>> messages,
+    std::vector<std::unique_ptr<Message>> messages,
     std::vector<Tensor> system_columns, BlobHeader blob_header,
     std::optional<Tensor> privacy_id) {
   FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
@@ -388,12 +392,11 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
   FCP_RETURN_IF_ERROR(
       time_tensor.set_name(fcp::confidential_compute::kEventTimeColumnName));
 
-  std::vector<std::unique_ptr<google::protobuf::Message>> messages;
+  std::vector<std::unique_ptr<Message>> messages;
   messages.reserve(entry_tensor.num_elements());
   for (const absl::string_view entry :
        entry_tensor.AsSpan<absl::string_view>()) {
-    std::unique_ptr<google::protobuf::Message> message(
-        message_factory.NewMessage());
+    std::unique_ptr<Message> message(message_factory.NewMessage());
     if (!message->ParseFromString(entry)) {
       // Note that ParseFrom* methods are documented as calling Clear() on the
       // message before parsing. Thus it's fine if the failed ParseFromString
@@ -410,6 +413,41 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
   system_columns.push_back(std::move(time_tensor));
   return Input::CreateFromMessages(std::move(messages),
                                    std::move(system_columns), blob_header);
+}
+
+absl::StatusOr<std::unique_ptr<MessageFactory>>
+FileDescriptorSetMessageFactory::Create(
+    const FileDescriptorSet& file_descriptor_set,
+    absl::string_view message_name) {
+  std::unique_ptr<DescriptorPool> descriptor_pool =
+      std::make_unique<DescriptorPool>();
+  for (const auto& file_descriptor_proto : file_descriptor_set.file()) {
+    if (descriptor_pool->BuildFile(file_descriptor_proto) == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to build file descriptor for ",
+                       file_descriptor_proto.name()));
+    }
+  }
+
+  const Descriptor* message_descriptor =
+      descriptor_pool->FindMessageTypeByName(message_name);
+  if (message_descriptor == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not find message '", message_name,
+                     "' in the provided descriptor set."));
+  }
+  std::unique_ptr<DynamicMessageFactory> dynamic_message_factory =
+      std::make_unique<DynamicMessageFactory>(descriptor_pool.get());
+  const Message* prototype =
+      dynamic_message_factory->GetPrototype(message_descriptor);
+  if (prototype == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not create prototype for message '", message_name,
+                     "' from the provided descriptor set."));
+  }
+  return absl::WrapUnique(new FileDescriptorSetMessageFactory(
+      std::move(descriptor_pool), std::move(dynamic_message_factory),
+      prototype));
 }
 
 }  // namespace confidential_federated_compute::sql

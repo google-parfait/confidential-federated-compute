@@ -31,8 +31,10 @@
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/message_description.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
+#include "google/protobuf/descriptor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
@@ -42,14 +44,18 @@ namespace confidential_federated_compute::sql_data_ingress {
 
 namespace {
 
+using ::confidential_federated_compute::sql::FileDescriptorSetMessageFactory;
 using ::confidential_federated_compute::sql::Input;
+using ::confidential_federated_compute::sql::MessageFactory;
 using ::confidential_federated_compute::sql::RowSet;
 using ::confidential_federated_compute::sql::SqlConfiguration;
 using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::MessageDescription;
 using ::fcp::confidentialcompute::
     SqlDataIngressContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::google::protobuf::FileDescriptorSet;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::
@@ -60,24 +66,38 @@ using ::tensorflow_federated::aggregation::Tensor;
 
 class SqlDataIngressDoFn : public fns::DoFn {
  public:
-  explicit SqlDataIngressDoFn(SqlConfiguration sql_configuration)
-      : sql_configuration_(std::move(sql_configuration)) {}
-  absl::Status Do(KV input, Context& context) override;
+  explicit SqlDataIngressDoFn(SqlConfiguration sql_configuration,
+                              std::shared_ptr<MessageFactory> message_factory,
+                              std::string on_device_query_name)
+      : sql_configuration_(std::move(sql_configuration)),
+        message_factory_(std::move(message_factory)),
+        on_device_query_name_(std::move(on_device_query_name)) {}
+  absl::Status Do(Session::KV input, Context& context) override;
 
  private:
   SqlConfiguration sql_configuration_;
+  std::shared_ptr<MessageFactory> message_factory_;
+  std::string on_device_query_name_;
 };
 
 class SqlDataIngressFnFactory : public fns::FnFactory {
  public:
-  explicit SqlDataIngressFnFactory(SqlConfiguration sql_configuration)
-      : sql_configuration_(std::move(sql_configuration)) {}
+  explicit SqlDataIngressFnFactory(
+      SqlConfiguration sql_configuration,
+      std::shared_ptr<MessageFactory> message_factory,
+      std::string on_device_query_name)
+      : sql_configuration_(std::move(sql_configuration)),
+        message_factory_(std::move(message_factory)),
+        on_device_query_name_(std::move(on_device_query_name)) {}
   absl::StatusOr<std::unique_ptr<fns::Fn>> CreateFn() const override {
-    return std::make_unique<SqlDataIngressDoFn>(std::move(sql_configuration_));
+    return std::make_unique<SqlDataIngressDoFn>(
+        sql_configuration_, message_factory_, on_device_query_name_);
   }
 
  private:
   SqlConfiguration sql_configuration_;
+  std::shared_ptr<MessageFactory> message_factory_;
+  std::string on_device_query_name_;
 };
 
 }  // namespace
@@ -132,12 +152,12 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
       SqliteAdapter::ExecuteQuery(sql_configuration_, row_set));
 
   if (sql_result.size() != 1) {
-    return absl::InvalidArgumentError(
+    return absl::FailedPreconditionError(
         "SQL query result must contain exactly one column.");
   }
   if (sql_result[0].dtype() !=
       tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(
+    return absl::FailedPreconditionError(
         "SQL query result column must be of type STRING.");
   }
 
@@ -185,10 +205,38 @@ absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideSqlDataIngressFnFactory(
       std::move(sql_query.database_schema().table(0)),
       std::move(sql_query.output_columns())};
 
+  std::shared_ptr<MessageFactory> message_factory = nullptr;
+  std::string on_device_query_name;
+
+  if (config.has_private_logger_uploads_config()) {
+    const MessageDescription& message_description =
+        config.private_logger_uploads_config().message_description();
+    if (message_description.message_descriptor_set().empty() ||
+        message_description.message_name().empty()) {
+      return absl::InvalidArgumentError(
+          "If private_logger_uploads_config is set, both "
+          "message_descriptor_set and "
+          "message_name must be set within message_description.");
+    }
+    FileDescriptorSet descriptor_set;
+    if (!descriptor_set.ParseFromString(
+            message_description.message_descriptor_set())) {
+      return absl::InvalidArgumentError(
+          "Failed to parse logged_message_descriptor_set.");
+    }
+    FCP_ASSIGN_OR_RETURN(
+        message_factory,
+        FileDescriptorSetMessageFactory::Create(
+            descriptor_set, message_description.message_name()));
+    on_device_query_name =
+        config.private_logger_uploads_config().on_device_query_name();
+  }
+
   FCP_RETURN_IF_ERROR(SqliteAdapter::Initialize());
 
   return std::make_unique<SqlDataIngressFnFactory>(
-      std::move(sql_configuration));
+      std::move(sql_configuration), std::move(message_factory),
+      std::move(on_device_query_name));
 }
 
 }  // namespace confidential_federated_compute::sql_data_ingress

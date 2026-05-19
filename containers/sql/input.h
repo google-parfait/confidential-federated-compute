@@ -27,6 +27,9 @@
 #include "absl/types/variant.h"
 #include "containers/sql/row_view.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
@@ -39,6 +42,39 @@ class MessageFactory {
 
   // Creates a new message instance.
   virtual std::unique_ptr<google::protobuf::Message> NewMessage() const = 0;
+};
+
+// Implementation of MessageFactory that creates messages from a
+// FileDescriptorSet and message name.
+class FileDescriptorSetMessageFactory : public MessageFactory {
+ public:
+  static absl::StatusOr<std::unique_ptr<MessageFactory>> Create(
+      const google::protobuf::FileDescriptorSet& file_descriptor_set,
+      absl::string_view message_name);
+
+  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
+    return std::unique_ptr<google::protobuf::Message>(prototype_->New());
+  }
+
+ private:
+  explicit FileDescriptorSetMessageFactory(
+      std::unique_ptr<google::protobuf::DescriptorPool> descriptor_pool,
+      std::unique_ptr<google::protobuf::DynamicMessageFactory>
+          dynamic_message_factory,
+      const google::protobuf::Message* prototype)
+      : descriptor_pool_(std::move(descriptor_pool)),
+        dynamic_message_factory_(std::move(dynamic_message_factory)),
+        prototype_(prototype) {}
+  // Holds the descriptor of the logged message. Must outlive the factory and
+  // prototype.
+  std::unique_ptr<google::protobuf::DescriptorPool> descriptor_pool_;
+  // Factory for creating instances of the logged Message, whose type we don't
+  // know at compile time. Must outlive the prototype.
+  std::unique_ptr<google::protobuf::DynamicMessageFactory>
+      dynamic_message_factory_;
+  // Template for creating instances of the logged Message. It is only used by
+  // calling the New() method to get a new, mutable Message*.
+  const google::protobuf::Message* prototype_;
 };
 
 // Represents the contents of a single SQL table, which may be backed by
