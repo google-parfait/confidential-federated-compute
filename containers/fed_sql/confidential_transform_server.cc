@@ -32,6 +32,7 @@
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
+#include "containers/sql/input.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/private_state.h"
@@ -42,7 +43,6 @@
 #include "gemma/gemma.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
-#include "google/protobuf/dynamic_message.h"
 #include "openssl/rand.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_util.h"
@@ -57,6 +57,7 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::sql::FileDescriptorSetMessageFactory;
 using ::confidential_federated_compute::sql::MessageFactory;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::AccessBudget;
@@ -70,10 +71,7 @@ using ::fcp::confidentialcompute::InitializeRequest;
 using ::fcp::confidentialcompute::LlamaCppInitializeConfiguration;
 using ::fcp::confidentialcompute::MessageDescription;
 using ::google::protobuf::Descriptor;
-using ::google::protobuf::DescriptorPool;
-using ::google::protobuf::DynamicMessageFactory;
 using ::google::protobuf::FileDescriptorSet;
-using ::google::protobuf::Message;
 using ::tensorflow_federated::aggregation::CheckpointAggregator;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::DT_DOUBLE;
@@ -139,65 +137,6 @@ absl::Status WriteCordToTempFile(std::string& file_path,
   temp_file.close();
   return absl::OkStatus();
 }
-
-class MessageFactoryImpl : public MessageFactory {
- public:
-  static absl::StatusOr<std::unique_ptr<MessageFactory>> Create(
-      const FileDescriptorSet& file_descriptor_set,
-      absl::string_view message_name) {
-    std::unique_ptr<DescriptorPool> descriptor_pool =
-        std::make_unique<DescriptorPool>();
-    for (const auto& file_descriptor_proto : file_descriptor_set.file()) {
-      if (descriptor_pool->BuildFile(file_descriptor_proto) == nullptr) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Failed to build file descriptor for ",
-                         file_descriptor_proto.name()));
-      }
-    }
-
-    const google::protobuf::Descriptor* message_descriptor =
-        descriptor_pool->FindMessageTypeByName(message_name);
-    if (message_descriptor == nullptr) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Could not find message '", message_name,
-                       "' in the provided descriptor set."));
-    }
-    std::unique_ptr<DynamicMessageFactory> dynamic_message_factory =
-        std::make_unique<DynamicMessageFactory>(descriptor_pool.get());
-    const google::protobuf::Message* prototype =
-        dynamic_message_factory->GetPrototype(message_descriptor);
-    if (prototype == nullptr) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Could not create prototype for message '", message_name,
-                       "' from the provided descriptor set."));
-    }
-    return absl::WrapUnique(
-        new MessageFactoryImpl(std::move(descriptor_pool),
-                               std::move(dynamic_message_factory), prototype));
-  }
-
-  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
-    return std::unique_ptr<google::protobuf::Message>(prototype_->New());
-  }
-
- private:
-  explicit MessageFactoryImpl(
-      std::unique_ptr<DescriptorPool> descriptor_pool,
-      std::unique_ptr<DynamicMessageFactory> dynamic_message_factory,
-      const Message* prototype)
-      : descriptor_pool_(std::move(descriptor_pool)),
-        dynamic_message_factory_(std::move(dynamic_message_factory)),
-        prototype_(prototype) {}
-  // Holds the descriptor of the logged message. Must outlive the factory and
-  // prototype.
-  std::unique_ptr<DescriptorPool> descriptor_pool_;
-  // Factory for creating instances of the logged Message, whose type we don't
-  // know at compile time. Must outlive the prototype.
-  std::unique_ptr<DynamicMessageFactory> dynamic_message_factory_;
-  // Template for creating instances of the logged Message. It is only used by
-  // calling the New() method to get a new, mutable Message*.
-  const Message* prototype_;
-};
 
 }  // namespace
 
@@ -417,8 +356,8 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
     }
     FCP_ASSIGN_OR_RETURN(
         message_factory_,
-        MessageFactoryImpl::Create(descriptor_set,
-                                   message_description.message_name()));
+        FileDescriptorSetMessageFactory::Create(
+            descriptor_set, message_description.message_name()));
   }
   on_device_query_name_ =
       fed_sql_config.private_logger_uploads_config().on_device_query_name();

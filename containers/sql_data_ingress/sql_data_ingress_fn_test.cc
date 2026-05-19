@@ -29,6 +29,7 @@
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
+#include "google/protobuf/descriptor.pb.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
@@ -224,7 +225,7 @@ TEST_F(SqlDataIngressFnTest, ResultColumnNotStringFails) {
 
   StrictMock<MockContext> context;
   auto result = (*fn)->Write(request, checkpoint_str, context);
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(SqlDataIngressFnTest, InvalidCheckpointDataFails) {
@@ -305,6 +306,41 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedCheckpointSucceeds) {
   EXPECT_EQ(result_tensor->num_elements(), 3);
   EXPECT_THAT(result_tensor->AsSpan<absl::string_view>(),
               testing::ElementsAre("example1", "example2", "example3"));
+}
+
+TEST(ProvideSqlDataIngressFnFactoryTest, ParsesPrivateLoggerConfigSucceeds) {
+  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+    raw_sql: "SELECT text AS result FROM input"
+    database_schema {
+      table {
+        name: "input"
+        column { name: "text" type: STRING }
+        create_table_sql: "CREATE TABLE input (text TEXT)"
+      }
+    }
+    output_columns { name: "result" type: STRING }
+  )pb");
+  SqlDataIngressContainerInitializeConfiguration init_config;
+  *init_config.mutable_sql_query() = sql_query;
+
+  auto* pl_config = init_config.mutable_private_logger_uploads_config();
+  pl_config->set_on_device_query_name("test_query");
+
+  google::protobuf::FileDescriptorSet fds;
+  auto* fd = fds.add_file();
+  fd->set_name("dummy.proto");
+  auto* mt = fd->add_message_type();
+  mt->set_name("dummy_name");
+
+  auto* md = pl_config->mutable_message_description();
+  md->set_message_descriptor_set(fds.SerializeAsString());
+  md->set_message_name("dummy_name");
+
+  Any config;
+  config.PackFrom(init_config);
+
+  auto factory = ProvideSqlDataIngressFnFactory(config, Any(), {});
+  EXPECT_THAT(factory, IsOk());
 }
 
 }  // namespace

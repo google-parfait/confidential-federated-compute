@@ -31,6 +31,7 @@ cc_library(
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
         "//containers:session",
+        "//containers/sql:input",
         "//containers/sql:sqlite_adapter",
         "@boringssl//:crypto",
         "@com_github_grpc_grpc//:grpc++",
