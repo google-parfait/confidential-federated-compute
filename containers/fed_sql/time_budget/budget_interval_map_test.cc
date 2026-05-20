@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/budget_interval_map.h"
+#include "containers/fed_sql/time_budget/budget_interval_map.h"
 
 #include <cstdint>
 
@@ -101,6 +101,24 @@ TEST(BudgetIntervalMapTest, SubtractBudgetComplexScenario) {
   EXPECT_FALSE(map.HasBudget({0, 20}));
   EXPECT_TRUE(map.HasBudget({20, 30}));
   EXPECT_TRUE(map.HasBudget({30, 100}));
+}
+
+TEST(BudgetIntervalMapTest, InsertInterval) {
+  BudgetIntervalMap map(5);
+  EXPECT_TRUE(map.Insert({0, 10}, 3));
+  EXPECT_TRUE(map.HasBudget({0, 10}));
+
+  // Inserting overlap fails
+  EXPECT_FALSE(map.Insert({5, 15}, 2));
+  // Inserting value > default_budget is not allowed.
+  EXPECT_FALSE(map.Insert({10, 20}, 10));
+
+  // Inserting empty interval.
+  EXPECT_TRUE(map.Insert({15, 15}, 3));
+  EXPECT_TRUE(map.HasBudget({15, 15}));
+  // Inserting value = default_budget.
+  EXPECT_TRUE(map.Insert({10, 15}, 5));
+  EXPECT_TRUE(map.HasBudget({10, 15}));
 }
 
 }  // namespace
