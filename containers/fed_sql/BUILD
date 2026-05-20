@@ -161,6 +161,35 @@ cc_test(
 )
 
 cc_test(
+    name = "inference_model_bm",
+    size = "small",
+    srcs = ["inference_model_bm.cc"],
+    tags = ["manual"],
+    deps = [
+        ":inference_model",
+        "//containers/sql:input",
+        "//testing:parse_text_proto",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@gemma//:gemma_lib",
+        "@gemma//:threading_context",
+        "@google_benchmark//:benchmark",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+    ],
+)
+
+cc_test(
     name = "confidential_transform_server_test",
     size = "small",
     srcs = ["confidential_transform_server_test.cc"],

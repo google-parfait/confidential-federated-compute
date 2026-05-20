@@ -69,6 +69,8 @@ struct SessionInferenceConfiguration {
 // query step.
 class InferenceModel {
  public:
+  virtual ~InferenceModel() = default;
+
   absl::Status BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
   // Sets a shared Gemma model (pre-built, read-only weights) from
