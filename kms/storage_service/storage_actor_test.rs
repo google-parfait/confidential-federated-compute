@@ -78,7 +78,7 @@ fn create_client_session(
         let message = session.get_outgoing_message();
         assert_that!(message, ok(some(anything())));
 
-        let correlation_id: u64 = rng.gen();
+        let correlation_id: u64 = rng.r#gen();
         let outcome = actor.on_process_command(Some(ActorCommand::with_header(
             correlation_id,
             &SessionRequestWithSessionId {

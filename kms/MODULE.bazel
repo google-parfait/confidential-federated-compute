@@ -24,9 +24,10 @@ bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_python", version = "1.5.4")
-bazel_dep(name = "rules_rust", version = "0.69.0")
-bazel_dep(name = "rules_rust_bindgen", version = "0.69.0")
+bazel_dep(name = "rules_rust", version = "0.70.0")
+bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
+bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.70.0", repo_name = None)
 bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
 
@@ -71,10 +72,10 @@ archive_override(
 
 archive_override(
     module_name = "rules_rust_prost",
-    integrity = "sha256-u8dkwlLQYSgbI1knek1GSA4tz69yr8HObgCtpYzL/Uw=",
+    integrity = "sha256-X/2f8fby8U8gV7fLqpGl5qzZpMve1ayB2tm+s2hZYB4=",
     patches = ["//third_party/rules_rust:prost_deps.patch"],
     strip_prefix = "extensions/prost",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.69.0/rules_rust-0.69.0.tar.gz"],
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz"],
 )
 # go/keep-sorted end
 
@@ -123,7 +124,7 @@ crate.annotation(
 crate.spec(
     artifact = "bin",
     package = "bindgen-cli",
-    version = "0.71.1",
+    version = "0.72.0",
 )
 crate.spec(
     package = "protoc-gen-prost",
@@ -165,7 +166,7 @@ use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
-    edition = "2021",
+    edition = "2024",
     sha256s = {
         "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
         "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",

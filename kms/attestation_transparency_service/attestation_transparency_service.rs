@@ -263,7 +263,7 @@ impl<S> AttestationTransparencyService<S> {
 
     /// Creates and returns a `PayloadSigner` that signs using the most recently
     /// created or loaded signing key (if any).
-    pub fn signer(&self) -> impl PayloadSigner + Clone {
+    pub fn signer(&self) -> impl PayloadSigner + Clone + use<S> {
         AttestationTransparencyServiceSigner { signing_key_pair: self.signing_key_pair.clone() }
     }
 
