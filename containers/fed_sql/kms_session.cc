@@ -454,7 +454,8 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
 
   uncommitted_inputs_.clear();
   uncommitted_blob_ids_.clear();
-  return ToCommitResponse(absl::OkStatus(), num_committed);
+  num_committed -= ignored_errors.size();
+  return ToCommitResponse(absl::OkStatus(), num_committed, ignored_errors);
 }
 
 // Runs the requested finalization operation and write the uncompressed result
