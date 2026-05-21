@@ -89,7 +89,7 @@ echo "════════════════════════�
 echo ""
 
 BAZEL_CMD=(
-  bazelisk build "$CLIENT_TARGET"
+  bazelisk build -c opt "$CLIENT_TARGET"
   "--//:server_attestation=$SERVER_ATTESTATION"
   "--//:server_max_age_days=$MAX_AGE_DAYS"
 )
