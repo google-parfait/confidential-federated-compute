@@ -14,31 +14,68 @@
 
 #include "oak_session_utils.h"
 
+#include <iostream>
+
 namespace confidential_federated_compute::gcp {
 
 absl::Status ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream) {
+  int round = 0;
   while (true) {
+    round++;
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": calling PumpOutgoingMessages" << std::endl;
+
     // 1. Send any pending outgoing handshake messages.
     absl::StatusOr<bool> sent_or = PumpOutgoingMessages(session, stream);
     if (!sent_or.ok()) {
+      std::cerr << "----------> ExchangeHandshake round " << round
+                << ": PumpOutgoingMessages FAILED: "
+                << sent_or.status().ToString() << std::endl;
       return absl::InternalError(absl::StrCat("Error during handshake: ",
                                               sent_or.status().ToString()));
     }
 
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": PumpOutgoingMessages returned sent=" << *sent_or
+              << std::endl;
+
     if (!*sent_or) {
+      std::cerr << "----------> ExchangeHandshake: handshake quiesced after "
+                << round << " rounds, proceeding to application data."
+                << std::endl;
       LOG(INFO) << "Handshake quiesced, proceeding to application data.";
       return absl::OkStatus();
     }
 
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": waiting for server response (stream->Read)" << std::endl;
+
     SessionResponse response;
     if (!stream->Read(&response)) {
+      std::cerr << "----------> ExchangeHandshake round " << round
+                << ": stream->Read returned false, stream closed!" << std::endl;
       return absl::InternalError("Stream was closed during handshake.");
     }
 
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": got server response, size=" << response.ByteSizeLong()
+              << " bytes" << std::endl;
+
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": calling session->PutIncomingMessage" << std::endl;
+
     absl::Status put_status = session->PutIncomingMessage(response);
+
+    std::cerr << "----------> ExchangeHandshake round " << round
+              << ": PutIncomingMessage returned: " << put_status.ToString()
+              << std::endl;
+
     if (!put_status.ok()) {
+      std::cerr << "----------> ExchangeHandshake round " << round
+                << ": ATTESTATION/HANDSHAKE FAILED: " << put_status.ToString()
+                << std::endl;
       return absl::InternalError(absl::StrCat(
           "Attestation verification or handshake protocol failed: ",
           put_status.ToString()));
