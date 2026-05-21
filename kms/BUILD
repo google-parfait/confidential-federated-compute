@@ -14,11 +14,9 @@
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
 load("@confidential-federated-compute//:proto_data.bzl", "proto_data")
-load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
-load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@oak//oak_containers/app_base:defs.bzl", "app_bundle")
 load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
 
 package(features = ["layering_check"])
@@ -40,8 +38,8 @@ platform(
 
 pkg_files(
     name = "release_binaries",
-    srcs = [":oci_runtime_bundle.tar"],
-    renames = {":oci_runtime_bundle.tar": "kms/container.tar"},
+    srcs = [":app_bundle"],
+    renames = {":app_bundle": "kms/container.tar"},
 )
 
 pkg_install(
@@ -103,17 +101,9 @@ rust_binary(
     ],
 )
 
-oci_image(
-    name = "oci_image",
-    base = "@distroless_cc_debian12_base",
-    entrypoint = ["/main"],
-    tars = [":tar"],
-)
-
-oci_runtime_bundle(
-    name = "oci_runtime_bundle",
-    image = ":oci_image",
-    visibility = ["//:__pkg__"],
+app_bundle(
+    name = "app_bundle",
+    binary = ":main",
 )
 
 rust_library(
@@ -127,9 +117,4 @@ rust_library(
         "@oak//oak_proto_rust",
         "@oak_crates_index//:prost",
     ],
-)
-
-pkg_tar(
-    name = "tar",
-    srcs = [":main"],
 )

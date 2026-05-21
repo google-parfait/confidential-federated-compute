@@ -3,7 +3,7 @@
 # with a patch (https://github.com/bazelbuild/rules_rust/issues/3157).
 --- MODULE.bazel
 +++ MODULE.bazel
-@@ -434,2 +434,47 @@
+@@ -514,2 +514,42 @@
  # Crate Specifications and Annotations
  # -------------------------------------
 +crate.spec(
@@ -42,11 +42,6 @@
 +    version = "0.2.19",
 +)
 +crate.spec(
-+    package = "time-macros",
-+    repositories = ALL_STD,
-+    version = "<0.2.26",  # 0.2.26 requires rustc >= 1.88
-+)
-+crate.spec(
 +    package = "tracing-slog",
 +    repositories = ALL_STD,
 +    version = "0.3.0",
@@ -61,7 +56,7 @@
 -    version = "0.9.0",
 +    version = "0.8.5",  # raft_rs doesn't support 0.9.
  )
-@@  -1507,7 +1552,7 @@
+@@  -1618,7 +1658,7 @@
  crate.spec(
      default_features = True,
 -    features = [],
@@ -70,10 +65,3 @@
      repositories = ALL_STD,
      version = "0.7.10",
  )
-
---- bazel/crates/extensions.bzl
-+++ bazel/crates/extensions.bzl
-@@ -113,2 +113,2 @@
-         if m.name == "oak" and not m.is_root:
--            repo_name = "@@oak"
-+            repo_name = "@oak"

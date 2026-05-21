@@ -21,7 +21,6 @@ bazel_dep(name = "oak")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.2.17")
-bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_python", version = "1.5.4")
 bazel_dep(name = "rules_rust", version = "0.70.0")
@@ -60,14 +59,14 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-pixFPDN0SkhA67jY9RmLL1YZODefPmpZfoJJP7kqpyM=",
+    integrity = "sha256-Uw5kZdENFMbrRGKgKENCBUFxLtR7v6z69Ws5ij9Vws4=",
     patches = [
         "//third_party/oak:module.patch",
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
     ],
-    strip_prefix = "oak-7ad6bf3867bc969603f55ba8afff42a200e03745",
-    urls = ["https://github.com/project-oak/oak/archive/7ad6bf3867bc969603f55ba8afff42a200e03745.tar.gz"],
+    strip_prefix = "oak-422986c03a0af002d2cc600e2771357e83775794",
+    urls = ["https://github.com/project-oak/oak/archive/422986c03a0af002d2cc600e2771357e83775794.tar.gz"],
 )
 
 archive_override(
@@ -154,15 +153,6 @@ llvm.sysroot(
     targets = ["linux-x86_64"],
 )
 use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
-
-oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
-oci.pull(
-    name = "distroless_cc_debian12_base",
-    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
-    image = "gcr.io/distroless/cc-debian12",
-    platforms = ["linux/amd64"],
-)
-use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
