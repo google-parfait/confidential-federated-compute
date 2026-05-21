@@ -51,15 +51,6 @@
 +    repositories = ALL_STD,
 +    version = "0.3.0",
 +)
-@@ -757,7 +802,7 @@
- crate.spec(
-     default_features = True,
-     features = [],
-     package = "googletest",
-     repositories = ALL_STD,
--    version = "0.14.2",
-+    version = "0.11.0",  # CFC's test macros aren't compatible with 0.14.
- )
 @@ -1203,7 +1248,7 @@
  crate.spec(
      default_features = True,

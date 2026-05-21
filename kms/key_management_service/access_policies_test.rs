@@ -44,7 +44,7 @@ fn build_test_variant_policy(src: u32) -> PipelineVariantPolicy {
     }
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_success() {
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -71,7 +71,7 @@ fn validate_pipeline_invocation_policies_success() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
     const LOGICAL_PIPELINE_NAME: &str = "test";
 
@@ -150,7 +150,7 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_fails_without_logical_pipeline_policy() {
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -173,7 +173,7 @@ fn validate_pipeline_invocation_policies_fails_without_logical_pipeline_policy()
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_fails_without_variant_policy() {
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [
@@ -202,7 +202,7 @@ fn validate_pipeline_invocation_policies_fails_without_variant_policy() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_fails_without_all_policies_matching() {
     let logical_pipeline_policies1 = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -236,7 +236,7 @@ fn validate_pipeline_invocation_policies_fails_without_all_policies_matching() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn validate_pipeline_invocation_policies_fails_with_malformed_policies() {
     let variant_policy = build_test_variant_policy(1).encode_to_vec();
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
@@ -282,7 +282,7 @@ fn validate_pipeline_invocation_policies_fails_with_malformed_policies() {
     }
 }
 
-#[googletest::test]
+#[gtest]
 fn authorize_transform_success() {
     let policy = PipelineVariantPolicy {
         transforms: vec![
@@ -320,18 +320,18 @@ fn authorize_transform_success() {
             "tagB",
             &Default::default(),
         ),
-        ok(matches_pattern!(AuthorizedTransform {
-            index: eq(1),
-            src_node_ids: elements_are!(eq(5), eq(6)),
-            dst_node_ids: elements_are!(eq(7), eq(8)),
-            config_constraints: some(matches_pattern!(Any { value: eq(b"config2") })),
-            encryption_public_key: not(empty()),
-            signing_public_key: not(empty()),
+        ok(pat!(AuthorizedTransform {
+            index: eq(&1),
+            src_node_ids: elements_are!(eq(&5), eq(&6)),
+            dst_node_ids: elements_are!(eq(&7), eq(&8)),
+            config_constraints: some(pat!(Any { value: &b"config2".to_vec(), .. })),
+            encryption_public_key: not(is_empty()),
+            signing_public_key: not(is_empty()),
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn authorize_transform_without_explicit_reference_values() {
     let policy = PipelineVariantPolicy {
         transforms: vec![Transform {
@@ -353,7 +353,7 @@ fn authorize_transform_without_explicit_reference_values() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn authorize_transform_returns_first_match() {
     let policy = PipelineVariantPolicy {
         transforms: vec![
@@ -393,14 +393,11 @@ fn authorize_transform_returns_first_match() {
             "tag",
             &Default::default(),
         ),
-        ok(matches_pattern!(AuthorizedTransform {
-            index: eq(0),
-            src_node_ids: elements_are!(eq(1)),
-        }))
+        ok(pat!(AuthorizedTransform { index: eq(&0), src_node_ids: elements_are!(eq(&1)), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn authorize_transform_fails_with_invalid_policy() {
     expect_that!(
         authorize_transform(
@@ -414,7 +411,7 @@ fn authorize_transform_fails_with_invalid_policy() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn authorize_transform_fails_without_match() {
     let policy = PipelineVariantPolicy {
         transforms: vec![

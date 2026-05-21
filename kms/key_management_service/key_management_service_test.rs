@@ -114,21 +114,22 @@ fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
     let private_key = CoseKey::from_slice(private_key);
     verify_that!(
         private_key,
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
-            key_id: not(empty()),
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(&Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
+            key_id: not(is_empty()),
             params: contains_each![
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                    eq(&Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::X25519 as u64)),
                 ),
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::D as i64)),
-                    matches_pattern!(Value::Bytes(not(empty()))),
+                    eq(&Label::Int(iana::OkpKeyParameter::D as i64)),
+                    pat!(Value::Bytes(not(is_empty()))),
                 ),
             ],
+            ..
         }))
     )?;
     let raw_private_key = private_key
@@ -143,21 +144,22 @@ fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
     let public_key = CoseKey::from_slice(public_key);
     verify_that!(
         public_key,
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(&Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
             key_id: eq(private_key.as_ref().unwrap().key_id.as_slice()),
             params: contains_each![
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                    eq(&Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::X25519 as u64)),
                 ),
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::X as i64)),
-                    matches_pattern!(Value::Bytes(not(empty()))),
+                    eq(&Label::Int(iana::OkpKeyParameter::X as i64)),
+                    pat!(Value::Bytes(not(is_empty()))),
                 ),
             ],
+            ..
         }))
     )?;
     let raw_public_key = public_key
@@ -170,32 +172,34 @@ fn verify_hpke_keypair(private_key: &[u8], public_key: &[u8]) -> Result<()> {
 
     verify_that!(
         hpke::Kem::X25519HkdfSha256.public_from_private(raw_private_key),
-        some(eq(raw_public_key))
+        some(eq(&raw_public_key))
     )
 }
 
-#[googletest::test]
+#[gtest]
 fn init_request() {
     let init_request = get_init_request();
     assert_that!(
         init_request,
-        matches_pattern!(UpdateRequest {
-            updates: elements_are![matches_pattern!(update_request::Update {
-                key: eq(Vec::<u8>::try_from(StorageKey::ClusterKey).unwrap()),
+        pat!(UpdateRequest {
+            updates: elements_are![pat!(update_request::Update {
+                key: eq(&Vec::<u8>::try_from(StorageKey::ClusterKey).unwrap()),
                 value: some(anything()),
-                preconditions: elements_are![matches_pattern!(update_request::Preconditions {
-                    exists: some(eq(false)),
+                preconditions: elements_are![pat!(update_request::Preconditions {
+                    exists: some(eq(&false)),
+                    ..
                 })],
+                ..
             })],
         })
     );
     assert_that!(
         ClusterKeyValue::decode(init_request.updates[0].value.as_ref().unwrap().as_slice()),
-        ok(matches_pattern!(ClusterKeyValue { key: not(empty()) }))
+        ok(pat!(ClusterKeyValue { key: not(is_empty()) }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn get_cluster_key() {
     let storage_client = FakeStorageClient::default();
@@ -208,30 +212,25 @@ async fn get_cluster_key() {
     let public_key = CoseKey::from_slice(response.unwrap().into_inner().public_key.as_slice());
     expect_that!(
         public_key,
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::EC2)),
-            alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Verify))],
-            key_id: not(empty()),
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::EC2)),
+            alg: some(eq(&Algorithm::Assigned(iana::Algorithm::ES256))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Verify))],
+            key_id: not(is_empty()),
             params: unordered_elements_are![
                 (
-                    eq(Label::Int(iana::Ec2KeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::P_256 as u64)),
+                    eq(&Label::Int(iana::Ec2KeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::P_256 as u64)),
                 ),
-                (
-                    eq(Label::Int(iana::Ec2KeyParameter::X as i64)),
-                    matches_pattern!(Value::Bytes(len(eq(32)))),
-                ),
-                (
-                    eq(Label::Int(iana::Ec2KeyParameter::Y as i64)),
-                    matches_pattern!(Value::Bytes(len(eq(32)))),
-                ),
+                (eq(&Label::Int(iana::Ec2KeyParameter::X as i64)), pat!(Value::Bytes(len(eq(32)))),),
+                (eq(&Label::Int(iana::Ec2KeyParameter::Y as i64)), pat!(Value::Bytes(len(eq(32)))),),
             ],
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn get_keyset_with_empty_keyset() {
     let kms = KeyManagementService::new(
@@ -245,13 +244,13 @@ async fn get_keyset_with_empty_keyset() {
     expect_that!(
         response,
         err(all!(
-            property!(Status.code(), eq(Code::NotFound)),
+            property!(Status.code(), eq(&Code::NotFound)),
             displays_as(contains_substring("no keys found in keyset")),
         ))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn rotate_and_get_keyset() {
     let now = Arc::new(AtomicI64::new(1000));
@@ -268,30 +267,30 @@ async fn rotate_and_get_keyset() {
             ttl: Some(Duration { seconds: 100 * i, nanos: 0 }),
         };
         let response = kms.rotate_keyset(request.into_request()).await.map(Response::into_inner);
-        assert_that!(response, ok(matches_pattern!(RotateKeysetResponse { key_id: not(empty()) })));
+        assert_that!(response, ok(pat!(RotateKeysetResponse { key_id: not(is_empty()) })));
     }
 
     let request = GetKeysetRequest { keyset_id: 1234 };
     let response = kms.get_keyset(request.into_request()).await.map(Response::into_inner);
     assert_that!(
         response,
-        ok(matches_pattern!(Keyset {
-            keyset_id: eq(1234),
+        ok(pat!(Keyset {
+            keyset_id: &1234,
             keys: unordered_elements_are![
-                matches_pattern!(Key {
-                    key_id: not(empty()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(1010) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(1110) })),
+                pat!(Key {
+                    key_id: not(is_empty()),
+                    created: some(pat!(Timestamp { seconds: &1010, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &1110, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: not(empty()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(1020) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(1220) })),
+                pat!(Key {
+                    key_id: not(is_empty()),
+                    created: some(pat!(Timestamp { seconds: &1020, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &1220, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: not(empty()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(1030) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(1330) })),
+                pat!(Key {
+                    key_id: not(is_empty()),
+                    created: some(pat!(Timestamp { seconds: &1030, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &1330, .. })),
                 }),
             ],
         }))
@@ -303,7 +302,7 @@ async fn rotate_and_get_keyset() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn derive_keys_with_empty_keyset() {
     let kms = KeyManagementService::new(
@@ -320,13 +319,13 @@ async fn derive_keys_with_empty_keyset() {
     expect_that!(
         response,
         err(all!(
-            property!(Status.code(), eq(Code::NotFound)),
+            property!(Status.code(), eq(&Code::NotFound)),
             displays_as(contains_substring("no keys found in keyset")),
         ))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn rotate_and_derive_keys() {
     let now = Arc::new(AtomicI64::new(1000));
@@ -366,11 +365,11 @@ async fn rotate_and_derive_keys() {
     let response = kms.derive_keys(request.into_request()).await.map(Response::into_inner);
     assert_that!(
         response,
-        ok(matches_pattern!(DeriveKeysResponse {
-            public_keys: elements_are![not(empty()), not(empty())],
+        ok(pat!(DeriveKeysResponse {
+            public_keys: elements_are![not(is_empty()), not(is_empty())],
             signed_public_keys: elements_are![
-                matches_pattern!(SignedPayload { payload: not(empty()), signatures: not(empty()) }),
-                matches_pattern!(SignedPayload { payload: not(empty()), signatures: not(empty()) }),
+                pat!(SignedPayload { payload: not(is_empty()), signatures: not(is_empty()) }),
+                pat!(SignedPayload { payload: not(is_empty()), signatures: not(is_empty()) }),
             ],
         }))
     );
@@ -383,40 +382,44 @@ async fn rotate_and_derive_keys() {
             .expect("failed to decode signed_public_key");
         assert_that!(
             key,
-            matches_pattern!(FcpKey {
-                algorithm: eq(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32),
-                purpose: some(eq(key::Purpose::Encrypt as i32)),
-                key_id: not(empty()),
-                key_material: not(empty()),
+            pat!(FcpKey {
+                algorithm: &(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32),
+                purpose: some(eq(&(key::Purpose::Encrypt as i32))),
+                key_id: not(is_empty()),
+                key_material: not(is_empty()),
             })
         );
 
         let cwt = CoseSign1::from_slice(public_key);
         expect_that!(
             cwt,
-            ok(matches_pattern!(CoseSign1 {
-                protected: matches_pattern!(ProtectedHeader {
-                    header: matches_pattern!(Header {
-                        alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
+            ok(pat!(CoseSign1 {
+                protected: pat!(ProtectedHeader {
+                    header: pat!(Header {
+                        alg: some(eq(&Algorithm::Assigned(iana::Algorithm::ES256))),
+                        ..
                     }),
+                    ..
                 }),
                 payload: some(anything()),
                 signature: eq(b"signature"),
+                ..
             }))
         );
         let claims = cwt.and_then(|cwt| ClaimsSet::from_slice(&cwt.payload.unwrap()));
         expect_that!(
             claims,
-            ok(matches_pattern!(ClaimsSet {
-                issued_at: some(eq(CwtTimestamp::WholeSeconds(1050))),
+            ok(pat!(ClaimsSet {
+                issued_at: some(eq(&CwtTimestamp::WholeSeconds(1050))),
                 // The most recently created key should be used, even if it
                 // doesn't have the latest expiration.
-                not_before: some(eq(CwtTimestamp::WholeSeconds(1030))),
-                expiration_time: some(eq(CwtTimestamp::WholeSeconds(1130))),
+                not_before: some(eq(&CwtTimestamp::WholeSeconds(1030))),
+                expiration_time: some(eq(&CwtTimestamp::WholeSeconds(1130))),
                 rest: contains((
-                    eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
-                    matches_pattern!(Value::Bytes(anything())),
+                    eq(&ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
+                    pat!(Value::Bytes(anything())),
                 )),
+                ..
             })),
         );
         let cose_key = claims.and_then(|claims| {
@@ -429,21 +432,22 @@ async fn rotate_and_derive_keys() {
         });
         expect_that!(
             cose_key,
-            ok(matches_pattern!(CoseKey {
-                kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-                alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-                key_id: eq(key.key_id.clone()),
-                key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
+            ok(pat!(CoseKey {
+                kty: eq(&KeyType::Assigned(iana::KeyType::OKP)),
+                alg: some(eq(&Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+                key_id: eq(&key.key_id),
+                key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
                 params: unordered_elements_are![
                     (
-                        eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                        eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                        eq(&Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                        eq(&Value::from(iana::EllipticCurve::X25519 as u64)),
                     ),
                     (
-                        eq(Label::Int(iana::OkpKeyParameter::X as i64)),
-                        matches_pattern!(Value::Bytes(not(empty()))),
+                        eq(&Label::Int(iana::OkpKeyParameter::X as i64)),
+                        pat!(Value::Bytes(not(is_empty()))),
                     ),
                 ],
+                ..
             })),
         );
         key_ids.push(key.key_id);
@@ -465,11 +469,11 @@ async fn rotate_and_derive_keys() {
         })
         .map(|key| key.key_id)
         .expect("failed to find key with GetKeyset");
-    expect_that!(key_ids[0], eq([expected_prefix.as_slice(), b"foo"].concat()));
-    expect_that!(key_ids[1], eq([expected_prefix.as_slice(), b"bar"].concat()));
+    expect_that!(key_ids[0], eq(&[expected_prefix.as_slice(), b"foo"].concat()));
+    expect_that!(key_ids[1], eq(&[expected_prefix.as_slice(), b"bar"].concat()));
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn derive_keys_ignores_payload_signer_errors() {
     let mut payload_signer = MockPayloadSigner::new();
@@ -486,14 +490,14 @@ async fn derive_keys_ignores_payload_signer_errors() {
     };
     assert_that!(
         kms.derive_keys(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(DeriveKeysResponse {
-            public_keys: elements_are![not(empty()), not(empty())],
-            signed_public_keys: empty(),
+        ok(pat!(DeriveKeysResponse {
+            public_keys: elements_are![not(is_empty()), not(is_empty())],
+            signed_public_keys: is_empty(),
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn get_logical_pipeline_state_with_empty_state() {
     let kms = KeyManagementService::new(
@@ -507,13 +511,13 @@ async fn get_logical_pipeline_state_with_empty_state() {
     expect_that!(
         response,
         err(all!(
-            property!(Status.code(), eq(Code::NotFound)),
+            property!(Status.code(), eq(&Code::NotFound)),
             displays_as(contains_substring("logical pipeline has no saved state")),
         ))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn register_pipeline_invocation_success() {
     let kms = KeyManagementService::new(
@@ -554,14 +558,15 @@ async fn register_pipeline_invocation_success() {
         kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
     expect_that!(
         response,
-        ok(matches_pattern!(RegisterPipelineInvocationResponse {
-            invocation_id: not(empty()),
+        ok(pat!(RegisterPipelineInvocationResponse {
+            invocation_id: not(is_empty()),
             logical_pipeline_state: none(), // There shouldn't be existing state.
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn register_pipeline_invocation_with_invalid_policies() {
     let kms = KeyManagementService::new(
@@ -610,13 +615,13 @@ async fn register_pipeline_invocation_with_invalid_policies() {
     expect_that!(
         response,
         err(all!(
-            property!(Status.code(), eq(Code::InvalidArgument)),
+            property!(Status.code(), eq(&Code::InvalidArgument)),
             displays_as(contains_substring("invalid pipeline policies")),
         ))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn register_pipeline_invocation_with_keys_in_response() {
     let now = Arc::new(AtomicI64::new(0));
@@ -722,44 +727,45 @@ async fn register_pipeline_invocation_with_keys_in_response() {
         kms.register_pipeline_invocation(request.into_request()).await.map(Response::into_inner);
     expect_that!(
         response,
-        ok(matches_pattern!(RegisterPipelineInvocationResponse {
+        ok(pat!(RegisterPipelineInvocationResponse {
             keys: unordered_elements_are![
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[0].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(2) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[0]),
+                    created: some(pat!(Timestamp { seconds: &2, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &100, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[1].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(2) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[1]),
+                    created: some(pat!(Timestamp { seconds: &2, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &100, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[2].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(3) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[2]),
+                    created: some(pat!(Timestamp { seconds: &3, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &110, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[3].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(3) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[3]),
+                    created: some(pat!(Timestamp { seconds: &3, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &110, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[4].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(4) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[4]),
+                    created: some(pat!(Timestamp { seconds: &4, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &120, .. })),
                 }),
-                matches_pattern!(Key {
-                    key_id: eq(key_ids[5].clone()),
-                    created: some(matches_pattern!(Timestamp { seconds: eq(4) })),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                pat!(Key {
+                    key_id: eq(&key_ids[5]),
+                    created: some(pat!(Timestamp { seconds: &4, .. })),
+                    expiration: some(pat!(Timestamp { seconds: &120, .. })),
                 }),
-            ]
+            ],
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_success() {
     let storage_client = FakeStorageClient::default();
@@ -815,8 +821,9 @@ async fn authorize_confidential_transform_success() {
         .map(Response::into_inner);
     assert_that!(
         response,
-        ok(matches_pattern!(AuthorizeConfidentialTransformResponse {
+        ok(pat!(AuthorizeConfidentialTransformResponse {
             protected_response: some(anything()),
+            ..
         }))
     );
     let response = response.unwrap();
@@ -831,7 +838,7 @@ async fn authorize_confidential_transform_success() {
     // Verify the ProtectedResponse.
     expect_that!(
         ProtectedResponse::decode(plaintext.as_slice()),
-        ok(matches_pattern!(ProtectedResponse {
+        ok(pat!(ProtectedResponse {
             decryption_keys: len(eq(2)),
             result_encryption_keys: len(eq(3)),
         }))
@@ -844,19 +851,20 @@ async fn authorize_confidential_transform_success() {
         .expect("get_cluster_public_key failed");
     expect_that!(
         AssociatedData::decode(associated_data.as_slice()),
-        ok(matches_pattern!(AssociatedData {
-            cluster_public_key: eq(cluster_public_key.into_inner().public_key),
-            config_constraints: some(matches_pattern!(Any { value: eq(b"config") })),
-            authorized_logical_pipeline_policies_hashes: elements_are![eq(Sha256::hash(
+        ok(pat!(AssociatedData {
+            cluster_public_key: eq(&cluster_public_key.into_inner().public_key),
+            config_constraints: some(pat!(Any { value: eq(b"config"), .. })),
+            authorized_logical_pipeline_policies_hashes: elements_are![eq(&Sha256::hash(
                 &logical_pipeline_policies.encode_to_vec()
             ))],
-            omitted_decryption_key_ids: empty(),
-            invocation_id: eq(invocation_id),
+            omitted_decryption_key_ids: is_empty(),
+            invocation_id: eq(&invocation_id),
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_with_keyset_keys() {
     let now = Arc::new(AtomicI64::new(0));
@@ -969,10 +977,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .expect("failed to decode ProtectedResponse");
     assert_that!(
         protected_response,
-        matches_pattern!(ProtectedResponse {
-            decryption_keys: len(eq(4)),
-            result_encryption_keys: len(eq(1)),
-        })
+        pat!(ProtectedResponse { decryption_keys: len(eq(4)), result_encryption_keys: len(eq(1)) })
     );
 
     // For each public key that doesn't expire before the pipeline invocation,
@@ -984,7 +989,7 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .collect::<std::collections::HashMap<_, _>>();
     assert_that!(
         decryption_keys.keys().cloned().collect::<Vec<_>>(),
-        superset_of(encryption_keys.iter().map(|(key_id, _)| key_id.clone()).collect::<Vec<_>>())
+        superset_of(encryption_keys.iter().map(|(key_id, _)| key_id).collect::<Vec<_>>())
     );
     for (key_id, key) in encryption_keys {
         verify_hpke_keypair(decryption_keys.get(&key_id).unwrap(), &key).and_log_failure();
@@ -995,14 +1000,15 @@ async fn authorize_confidential_transform_with_keyset_keys() {
         .expect("failed to decode AssociatedData");
     assert_that!(
         associated_data,
-        matches_pattern!(AssociatedData {
-            omitted_decryption_key_ids: eq(omitted_key_ids),
-            omitted_decryption_key_ids_include_all_keysets: eq(true),
+        pat!(AssociatedData {
+            omitted_decryption_key_ids: eq(&omitted_key_ids),
+            omitted_decryption_key_ids_include_all_keysets: eq(&true),
+            ..
         })
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_with_intermediate_keys() {
     let storage_client = FakeStorageClient::default();
@@ -1068,10 +1074,7 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
         .expect("failed to decode ProtectedResponse");
     assert_that!(
         protected_response,
-        matches_pattern!(ProtectedResponse {
-            decryption_keys: len(eq(2)),
-            result_encryption_keys: len(eq(3)),
-        })
+        pat!(ProtectedResponse { decryption_keys: len(eq(2)), result_encryption_keys: len(eq(3)) })
     );
 
     // Encryption and decryption keys with the same node id should be paired.
@@ -1082,7 +1085,7 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
     .and_log_failure();
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_endorses_transform_signing_key() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(1000)));
@@ -1174,29 +1177,30 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
         .expect("failed to decode signing key endorsement");
     expect_that!(
         ClaimsSet::from_slice(cwt.payload.as_ref().unwrap()),
-        ok(matches_pattern!(ClaimsSet {
-            issued_at: some(eq(CwtTimestamp::WholeSeconds(1000))),
-            not_before: some(eq(CwtTimestamp::WholeSeconds(1000))),
-            expiration_time: some(eq(CwtTimestamp::WholeSeconds(1100))),
+        ok(pat!(ClaimsSet {
+            issued_at: some(eq(&CwtTimestamp::WholeSeconds(1000))),
+            not_before: some(eq(&CwtTimestamp::WholeSeconds(1000))),
+            expiration_time: some(eq(&CwtTimestamp::WholeSeconds(1100))),
             rest: contains_each![
                 (
-                    eq(ClaimName::PrivateUse(LOGICAL_PIPELINE_NAME_CLAIM)),
-                    matches_pattern!(Value::Text(eq("test"))),
+                    eq(&ClaimName::PrivateUse(LOGICAL_PIPELINE_NAME_CLAIM)),
+                    pat!(Value::Text(eq("test"))),
                 ),
                 (
-                    eq(ClaimName::PrivateUse(INVOCATION_ID_CLAIM)),
-                    matches_pattern!(Value::Bytes(eq(invocation_id))),
+                    eq(&ClaimName::PrivateUse(INVOCATION_ID_CLAIM)),
+                    pat!(Value::Bytes(eq(&invocation_id))),
                 ),
-                (eq(ClaimName::PrivateUse(TRANSFORM_INDEX_CLAIM)), eq(Value::from(0)),),
+                (eq(&ClaimName::PrivateUse(TRANSFORM_INDEX_CLAIM)), eq(&Value::from(0)),),
                 (
-                    eq(ClaimName::PrivateUse(DST_NODE_IDS_CLAIM)),
-                    matches_pattern!(Value::Array(elements_are![
-                        eq(Value::from(2)),
-                        eq(Value::from(3)),
-                        eq(Value::from(4)),
+                    eq(&ClaimName::PrivateUse(DST_NODE_IDS_CLAIM)),
+                    pat!(Value::Array(elements_are![
+                        eq(&Value::from(2)),
+                        eq(&Value::from(3)),
+                        eq(&Value::from(4)),
                     ])),
                 ),
             ],
+            ..
         }))
     );
     expect_that!(
@@ -1205,7 +1209,7 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_with_invalid_invocation_id() {
     let storage_client = FakeStorageClient::default();
@@ -1238,7 +1242,7 @@ async fn authorize_confidential_transform_with_invalid_invocation_id() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_without_registered_invocation() {
     let storage_client = FakeStorageClient::default();
@@ -1271,7 +1275,7 @@ async fn authorize_confidential_transform_without_registered_invocation() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn authorize_confidential_transform_without_authorization() {
     let storage_client = FakeStorageClient::default();
@@ -1508,7 +1512,7 @@ fn create_release_token(
         .context("failed to build CoseSign1")
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_success() {
     let storage_client = FakeStorageClient::default();
@@ -1549,11 +1553,12 @@ async fn release_results_success() {
     };
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(ReleaseResultsResponse {
+        ok(pat!(ReleaseResultsResponse {
             decryption_keys: elements_are![eq(b"plaintext")],
-            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+            logical_pipeline_states: elements_are![pat!(LogicalPipelineState {
                 name: eq("test"),
-                value: eq(b"state")
+                value: eq(b"state"),
+                ..
             })],
         }))
     );
@@ -1564,11 +1569,11 @@ async fn release_results_success() {
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     expect_that!(
         kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") }))
+        ok(pat!(LogicalPipelineState { name: eq("test"), value: eq(b"state"), .. }))
     );
     expect_that!(
         register_and_authorize(&kms, "test", &variant_policy).await.map(|t| t.0),
-        ok(some(matches_pattern!(LogicalPipelineState { name: eq("test"), value: eq(b"state") })))
+        ok(some(pat!(LogicalPipelineState { name: eq("test"), value: eq(b"state"), .. })))
     );
 
     // Another ReleaseResults call should update the state again. This verifies
@@ -1585,17 +1590,18 @@ async fn release_results_success() {
     };
     assert_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(ReleaseResultsResponse {
+        ok(pat!(ReleaseResultsResponse {
             decryption_keys: elements_are![eq(b"plaintext2")],
-            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
+            logical_pipeline_states: elements_are![pat!(LogicalPipelineState {
                 name: eq("test"),
-                value: eq(b"state2")
+                value: eq(b"state2"),
+                ..
             })],
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_sets_expiration_from_intermediates_ttl() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
@@ -1638,10 +1644,12 @@ async fn release_results_sets_expiration_from_intermediates_ttl() {
     };
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(ReleaseResultsResponse {
-            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) })),
+        ok(pat!(ReleaseResultsResponse {
+            logical_pipeline_states: elements_are![pat!(LogicalPipelineState {
+                expiration: some(pat!(Timestamp { seconds: &10_500, .. })),
+                ..
             })],
+            ..
         }))
     );
 
@@ -1650,13 +1658,14 @@ async fn release_results_sets_expiration_from_intermediates_ttl() {
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     expect_that!(
         kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(LogicalPipelineState {
-            expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) }))
+        ok(pat!(LogicalPipelineState {
+            expiration: some(pat!(Timestamp { seconds: &10_500, .. })),
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_sets_expiration_from_key_ttl() {
     let now = Arc::new(AtomicI64::new(10_000));
@@ -1727,10 +1736,12 @@ async fn release_results_sets_expiration_from_key_ttl() {
     };
     expect_that!(
         kms.release_results(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(ReleaseResultsResponse {
-            logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_450) })),
+        ok(pat!(ReleaseResultsResponse {
+            logical_pipeline_states: elements_are![pat!(LogicalPipelineState {
+                expiration: some(pat!(Timestamp { seconds: &10_450, .. })),
+                ..
             })],
+            ..
         }))
     );
 
@@ -1739,13 +1750,14 @@ async fn release_results_sets_expiration_from_key_ttl() {
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     expect_that!(
         kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(LogicalPipelineState {
-            expiration: some(matches_pattern!(Timestamp { seconds: eq(10_450) }))
+        ok(pat!(LogicalPipelineState {
+            expiration: some(pat!(Timestamp { seconds: &10_450, .. })),
+            ..
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_sets_expiration_from_existing_logical_pipeline_state() {
     let storage_client = FakeStorageClient::new(Arc::new(AtomicI64::new(10_000)));
@@ -1795,10 +1807,12 @@ async fn release_results_sets_expiration_from_existing_logical_pipeline_state() 
         };
         expect_that!(
             kms.release_results(request.into_request()).await.map(Response::into_inner),
-            ok(matches_pattern!(ReleaseResultsResponse {
-                logical_pipeline_states: elements_are![matches_pattern!(LogicalPipelineState {
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) })),
+            ok(pat!(ReleaseResultsResponse {
+                logical_pipeline_states: elements_are![pat!(LogicalPipelineState {
+                    expiration: some(pat!(Timestamp { seconds: &10_500, .. })),
+                    ..
                 })],
+                ..
             }))
         );
 
@@ -1807,14 +1821,15 @@ async fn release_results_sets_expiration_from_existing_logical_pipeline_state() 
         let request = GetLogicalPipelineStateRequest { name: "test".into() };
         expect_that!(
             kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-            ok(matches_pattern!(LogicalPipelineState {
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(10_500) }))
+            ok(pat!(LogicalPipelineState {
+                expiration: some(pat!(Timestamp { seconds: &10_500, .. })),
+                ..
             }))
         );
     }
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_src_state_not_matching() {
     let storage_client = FakeStorageClient::default();
@@ -1859,11 +1874,11 @@ async fn release_results_fails_with_src_state_not_matching() {
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     expect_that!(
         kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-        err(property!(Status.code(), eq(Code::NotFound)))
+        err(property!(Status.code(), eq(&Code::NotFound)))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_src_state_none_not_matching() {
     let storage_client = FakeStorageClient::default();
@@ -1927,11 +1942,11 @@ async fn release_results_fails_with_src_state_none_not_matching() {
     let request = GetLogicalPipelineStateRequest { name: "test".into() };
     expect_that!(
         kms.get_logical_pipeline_state(request.into_request()).await.map(Response::into_inner),
-        ok(matches_pattern!(LogicalPipelineState { value: eq(b"initial") }))
+        ok(pat!(LogicalPipelineState { value: eq(b"initial"), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_missing_invocation_id() {
     let now = Arc::new(AtomicI64::new(1000));
@@ -1979,7 +1994,7 @@ async fn release_results_fails_with_missing_invocation_id() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_modified_release_token() {
     let storage_client = FakeStorageClient::default();
@@ -2027,7 +2042,7 @@ async fn release_results_fails_with_modified_release_token() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_undecryptable_release_token() {
     let storage_client = FakeStorageClient::default();
@@ -2072,7 +2087,7 @@ async fn release_results_fails_with_undecryptable_release_token() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn release_results_fails_with_modified_signing_key_endorsement() {
     let storage_client = FakeStorageClient::default();
@@ -2119,7 +2134,7 @@ async fn release_results_fails_with_modified_signing_key_endorsement() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn release_results_blocks_reused_policies() {
     let storage_client = FakeStorageClient::default();
@@ -2205,21 +2220,21 @@ async fn release_results_blocks_reused_policies() {
             // In the first invocation, decryption keys should be provided for
             // policies 0 and 1.
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+                pat!(ProtectedResponse { decryption_keys: len(eq(2)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: is_empty(), .. })
             ),
             // Since the second invocation only provides policy 1, it should
             // only receive one decryption key. Policy 0 should be added to the
             // blocklist, though this can't be checked directly.
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(1)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+                pat!(ProtectedResponse { decryption_keys: len(eq(1)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: is_empty(), .. })
             ),
             // The third invocation provides policies 0, 1, and 2, but policy 0
             // should be blocked.
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: len(eq(1)) })
+                pat!(ProtectedResponse { decryption_keys: len(eq(2)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: len(eq(1)), .. })
             ),
         ]
     );
@@ -2231,7 +2246,7 @@ async fn release_results_blocks_reused_policies() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn release_results_blocklist_entries_expire() {
     let now = Arc::new(AtomicI64::new(10_000));
@@ -2321,30 +2336,30 @@ async fn release_results_blocklist_entries_expire() {
         elements_are![
             // The first invocation should get the key for policy 0.
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(1)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+                pat!(ProtectedResponse { decryption_keys: len(eq(1)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: is_empty(), .. })
             ),
             // The second invocation should get the keys for policy 1; note that
             // there are now two keys. Policy 0 should be blocked (expiration
             // time 12000 + 1500 = 13500).
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+                pat!(ProtectedResponse { decryption_keys: len(eq(2)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: is_empty(), .. })
             ),
             // The third invocation should get the keys for policy 2; note that
             // there are now two keys since one expired. Policy 1 should be
             // blocked (expiration time 13000 + 1500 = 14500).
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(2)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: empty() })
+                pat!(ProtectedResponse { decryption_keys: len(eq(2)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: is_empty(), .. })
             ),
             // The fourth invocation attempts to use all policies. Policies 0
             // and 1 were previously blocked, but the block on policy 0 should
             // have expired since the current time is 14000. Note that there are
             // now two keys since two have expired.
             (
-                matches_pattern!(ProtectedResponse { decryption_keys: len(eq(4)) }),
-                matches_pattern!(AssociatedData { omitted_decryption_key_ids: len(eq(2)) })
+                pat!(ProtectedResponse { decryption_keys: len(eq(4)), .. }),
+                pat!(AssociatedData { omitted_decryption_key_ids: len(eq(2)), .. })
             ),
         ]
     );
@@ -2360,46 +2375,46 @@ mod storage_key {
     use googletest::prelude::*;
     use key_management_service::StorageKey;
 
-    #[googletest::test]
+    #[gtest]
     fn round_trip_cluster_key() {
         let storage_key = StorageKey::ClusterKey;
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
-        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(&storage_key)));
     }
 
-    #[googletest::test]
+    #[gtest]
     fn round_trip_keyset_key() {
         let storage_key = StorageKey::KeysetKey { keyset_id: 1234, key_id: *b"abcd" };
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
-        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(&storage_key)));
     }
 
-    #[googletest::test]
+    #[gtest]
     fn round_trip_pipeline_invocation_state() {
         let storage_key = StorageKey::PipelineInvocationState { id: *b"0123456789ab" };
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
-        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(&storage_key)));
     }
 
-    #[googletest::test]
+    #[gtest]
     fn round_trip_logical_pipeline_state() {
         let storage_key = StorageKey::LogicalPipelineState { id: *b"\x80123456789abcdef" };
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         assert_that!(encoded, ok(anything()));
-        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(storage_key)));
+        expect_that!(StorageKey::try_from(encoded.unwrap().as_slice()), ok(eq(&storage_key)));
     }
 
-    #[googletest::test]
+    #[gtest]
     fn encode_invalid_logical_pipeline_state() {
         let storage_key = StorageKey::LogicalPipelineState { id: *b"0123456789abcdef" };
         let encoded: anyhow::Result<Vec<u8>> = storage_key.try_into();
         expect_that!(encoded, err(displays_as(contains_substring("invalid LogicalPipeline id"))));
     }
 
-    #[googletest::test]
+    #[gtest]
     fn decode_invalid_keyset_key() {
         // The encoding must be 16 bytes.
         expect_that!(
@@ -2416,7 +2431,7 @@ mod storage_key {
         );
     }
 
-    #[googletest::test]
+    #[gtest]
     fn decode_reserved_keyset_key_encoding() {
         // If the first 4 bytes are 0, the last 12 must also be 0.
         expect_that!(

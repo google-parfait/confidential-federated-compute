@@ -58,33 +58,34 @@ fn extract_raw_key(cose_key: &[u8], public: bool) -> Vec<u8> {
         .expect("failed to extract key")
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_private_keys_produces_cose_key() {
     let keys =
         derive_private_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"info-hash"]);
-    assert_that!(keys, ok(elements_are!(not(empty()))));
+    assert_that!(keys, ok(elements_are!(not(is_empty()))));
     expect_that!(
         CoseKey::from_slice(&keys.unwrap()[0]),
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(&Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Decrypt))],
             key_id: eq(b"key-idinfo"),
             params: unordered_elements_are![
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                    eq(&Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::X25519 as u64)),
                 ),
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::D as i64)),
-                    matches_pattern!(Value::Bytes(not(empty()))),
+                    eq(&Label::Int(iana::OkpKeyParameter::D as i64)),
+                    pat!(Value::Bytes(not(is_empty()))),
                 ),
             ],
+            ..
         })),
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_private_keys_varies_by_input() {
     let extract_private_key = |cose_key| extract_raw_key(cose_key, /* public= */ false);
 
@@ -94,18 +95,18 @@ fn derive_private_keys_varies_by_input() {
         &[0; 32],
         [b"foo", b"bar", b"foo"],
     );
-    assert_that!(keys, ok(elements_are!(not(empty()), not(empty()), not(empty()))));
+    assert_that!(keys, ok(elements_are!(not(is_empty()), not(is_empty()), not(is_empty()))));
     let keys = keys.unwrap();
     // Different info values should result in different keys.
-    expect_that!(extract_private_key(&keys[0]), not(eq(extract_private_key(&keys[1]))));
-    expect_that!(extract_private_key(&keys[0]), eq(extract_private_key(&keys[2])));
+    expect_that!(extract_private_key(&keys[0]), not(eq(&extract_private_key(&keys[1]))));
+    expect_that!(extract_private_key(&keys[0]), eq(&extract_private_key(&keys[2])));
 
     // Different ikm should result in different keys.
     let keys2 = derive_private_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"id", &[1; 32], [b"foo"]);
     assert_that!(keys2, ok(len(eq(1))));
     expect_that!(
         extract_private_key(&keys2.as_ref().unwrap()[0]),
-        not(eq(extract_private_key(&keys[0]))),
+        not(eq(&extract_private_key(&keys[0]))),
     );
 
     // The key id should not affect the key material.
@@ -114,15 +115,15 @@ fn derive_private_keys_varies_by_input() {
     assert_that!(keys3, ok(len(eq(1))));
     expect_that!(
         extract_private_key(&keys3.as_ref().unwrap()[0]),
-        eq(extract_private_key(&keys[0])),
+        eq(&extract_private_key(&keys[0])),
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_private_keys_is_deterministic() {
     let keys =
         derive_private_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"info-hash"]);
-    assert_that!(keys, ok(elements_are!(not(empty()))));
+    assert_that!(keys, ok(elements_are!(not(is_empty()))));
     expect_that!(
         extract_raw_key(&keys.unwrap()[0], /* public= */ false),
         eq(&[
@@ -132,7 +133,7 @@ fn derive_private_keys_is_deterministic() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_private_keys_fails_with_invalid_algorithm() {
     expect_that!(
         derive_private_keys(0, b"key-id", &[0; 32], [b"foo"]),
@@ -140,34 +141,35 @@ fn derive_private_keys_fails_with_invalid_algorithm() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_public_keys_produces_cose_key() {
     let public_keys =
         derive_public_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
-    assert_that!(public_keys, ok(elements_are!(not(empty()))));
+    assert_that!(public_keys, ok(elements_are!(not(is_empty()))));
 
     expect_that!(
         CoseKey::from_slice(&public_keys.unwrap()[0]),
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::OKP)),
-            alg: some(eq(Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::OKP)),
+            alg: some(eq(&Algorithm::PrivateUse(HPKE_BASE_X25519_SHA256_AES128GCM))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Encrypt))],
             key_id: eq(b"key-idfoo"),
             params: unordered_elements_are![
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::X25519 as u64)),
+                    eq(&Label::Int(iana::OkpKeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::X25519 as u64)),
                 ),
                 (
-                    eq(Label::Int(iana::OkpKeyParameter::X as i64)),
-                    matches_pattern!(Value::Bytes(not(empty()))),
+                    eq(&Label::Int(iana::OkpKeyParameter::X as i64)),
+                    pat!(Value::Bytes(not(is_empty()))),
                 ),
             ],
+            ..
         })),
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_public_keys_fails_with_invalid_algorithm() {
     expect_that!(
         derive_public_keys(0, b"key-id", &[0; 32], [b"foo"]),
@@ -175,7 +177,7 @@ fn derive_public_keys_fails_with_invalid_algorithm() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn derive_public_cwts_produces_cwt() {
     let cwts = derive_public_cwts(
@@ -187,18 +189,21 @@ async fn derive_public_cwts_produces_cwt() {
         &FakeSigner {},
     )
     .await;
-    assert_that!(cwts, ok(elements_are!(not(empty()))));
+    assert_that!(cwts, ok(elements_are!(not(is_empty()))));
 
     let cwt = CoseSign1::from_slice(&cwts.unwrap()[0]);
     assert_that!(
         cwt,
-        ok(matches_pattern!(CoseSign1 {
-            protected: matches_pattern!(ProtectedHeader {
-                header: matches_pattern!(Header {
-                    alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
+        ok(pat!(CoseSign1 {
+            protected: pat!(ProtectedHeader {
+                header: pat!(Header {
+                    alg: some(eq(&Algorithm::Assigned(iana::Algorithm::ES256))),
+                    ..
                 }),
+                ..
             }),
             payload: some(anything()),
+            ..
         }))
     );
     expect_that!(
@@ -217,23 +222,24 @@ async fn derive_public_cwts_produces_cwt() {
         derive_public_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
     assert_that!(
         claims,
-        ok(matches_pattern!(ClaimsSet {
+        ok(pat!(ClaimsSet {
             issuer: some(eq("test")),
             rest: all![
                 contains((
-                    eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
-                    matches_pattern!(Value::Bytes(eq(public_keys.unwrap()[0].as_slice()))),
+                    eq(&ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
+                    pat!(Value::Bytes(eq(public_keys.unwrap()[0].as_slice()))),
                 )),
                 contains((
-                    eq(ClaimName::PrivateUse(ACCESS_POLICY_SHA256_CLAIM)),
-                    matches_pattern!(Value::Bytes(eq(b"foo"))),
+                    eq(&ClaimName::PrivateUse(ACCESS_POLICY_SHA256_CLAIM)),
+                    pat!(Value::Bytes(eq(b"foo"))),
                 )),
             ],
+            ..
         })),
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn derive_public_cwts_fails_with_invalid_algorithm() {
     expect_that!(
@@ -250,7 +256,7 @@ async fn derive_public_cwts_fails_with_invalid_algorithm() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_signed_public_keys_produces_signed_payload() {
     let mut signer = MockPayloadSigner::new();
     signer.expect_sign().returning(|headers, data| {
@@ -273,30 +279,32 @@ fn derive_signed_public_keys_produces_signed_payload() {
     let signed_key = &signed_keys.unwrap()[0];
     expect_that!(
         *signed_key,
-        matches_pattern!(SignedPayload {
-            payload: when_deserialized(matches_pattern!(Key {
-                algorithm: eq(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32),
-                purpose: some(eq(key::Purpose::Encrypt as i32)),
+        pat!(SignedPayload {
+            payload: when_deserialized(pat!(Key {
+                algorithm: eq(&(key::Algorithm::HpkeX25519Sha256Aes128Gcm as i32)),
+                purpose: some(eq(&(key::Purpose::Encrypt as i32))),
                 key_id: eq(b"key-idfoo"),
-                key_material: not(empty()),
+                key_material: not(is_empty()),
             })),
-            signatures: elements_are![matches_pattern!(signed_payload::Signature {
-                headers: when_deserialized(matches_pattern!(Headers {
-                    claims: elements_are![eq("claim")],
+            signatures: elements_are![pat!(signed_payload::Signature {
+                headers: when_deserialized(pat!(Headers {
+                    claims: &vec!["claim".to_string()],
                     access_policy_sha256: eq(b"foo"),
+                    ..
                 })),
-                signature: some(matches_pattern!(RawSignature(eq([
+                signature: some(pat!(RawSignature(eq(&[
                     b"<",
                     signed_key.payload.as_slice(),
                     b">"
                 ]
                 .concat())))),
+                ..
             })],
         })
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn derive_signed_public_keys_fails_with_invalid_algorithm() {
     expect_that!(
         derive_signed_public_keys(
@@ -311,7 +319,7 @@ fn derive_signed_public_keys_fails_with_invalid_algorithm() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn public_and_private_keys_are_paired() {
     let private_keys =
         derive_private_keys(HPKE_BASE_X25519_SHA256_AES128GCM, b"key-id", &[0; 32], [b"foo"]);
@@ -339,7 +347,7 @@ fn public_and_private_keys_are_paired() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn get_derived_key_id_concats_prefix_and_info() {
     // Up to the first 4 bytes of the info field should be used.
     expect_that!(get_derived_key_id(b"prefix", b""), eq(b"prefix"));

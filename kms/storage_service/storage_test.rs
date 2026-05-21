@@ -35,17 +35,17 @@ fn full_read_request() -> ReadRequest {
     }
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn default_is_empty() {
     let storage = Storage::default();
     expect_that!(
         storage.read(&full_read_request()),
-        ok(eq(ReadResponse { now: Some(Timestamp::default()), ..Default::default() }))
+        ok(eq(&ReadResponse { now: Some(Timestamp::default()), ..Default::default() }))
     );
     expect_that!(storage.clock().get_time(), eq(UNIX_EPOCH));
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn read_single_entry() {
     let mut storage = Storage::default();
     assert_that!(
@@ -78,18 +78,19 @@ fn read_single_entry() {
         storage.read(&ReadRequest {
             ranges: vec![read_request::Range { start: 6u128.to_be_bytes().to_vec(), end: None }],
         }),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100), nanos: eq(123_000_000) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(6u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, nanos: &123_000_000 })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&6u128.to_be_bytes()),
                 value: eq(b"value 6"),
+                ..
             })],
         }))
     );
     expect_that!(storage.clock().get_time(), eq(Instant::from_unix_millis(100_123)));
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn read_range() {
     let mut storage = Storage::default();
     assert_that!(
@@ -130,23 +131,25 @@ fn read_range() {
                 end: Some(8u128.to_be_bytes().to_vec()),
             }],
         }),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
             entries: elements_are![
-                matches_pattern!(read_response::Entry {
-                    key: eq(6u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&6u128.to_be_bytes()),
                     value: eq(b"value 6"),
+                    ..
                 }),
-                matches_pattern!(read_response::Entry {
-                    key: eq(8u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&8u128.to_be_bytes()),
                     value: eq(b"value 8"),
+                    ..
                 }),
             ],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn read_multiple_values() {
     let mut storage = Storage::default();
     assert_that!(
@@ -182,23 +185,25 @@ fn read_multiple_values() {
                 read_request::Range { start: 8u128.to_be_bytes().to_vec(), end: None },
             ],
         }),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
             entries: elements_are![
-                matches_pattern!(read_response::Entry {
-                    key: eq(4u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&4u128.to_be_bytes()),
                     value: eq(b"value 4"),
+                    ..
                 }),
-                matches_pattern!(read_response::Entry {
-                    key: eq(8u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&8u128.to_be_bytes()),
                     value: eq(b"value 8"),
+                    ..
                 }),
             ],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn read_entry_multiple_times() {
     let mut storage = Storage::default();
     assert_that!(
@@ -242,31 +247,35 @@ fn read_entry_multiple_times() {
                 },
             ],
         }),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
             entries: all!(
-                contains(matches_pattern!(read_response::Entry {
-                    key: eq(4u128.to_be_bytes()),
+                contains(pat!(read_response::Entry {
+                    key: eq(&4u128.to_be_bytes()),
                     value: eq(b"value 4"),
+                    ..
                 }))
                 .times(eq(1)),
-                contains(matches_pattern!(read_response::Entry {
-                    key: eq(6u128.to_be_bytes()),
+                contains(pat!(read_response::Entry {
+                    key: eq(&6u128.to_be_bytes()),
                     value: eq(b"value 6"),
+                    ..
                 }))
                 .times(any!(eq(1), eq(3))),
-                contains(matches_pattern!(read_response::Entry {
-                    key: eq(8u128.to_be_bytes()),
+                contains(pat!(read_response::Entry {
+                    key: eq(&8u128.to_be_bytes()),
                     value: eq(b"value 8"),
+                    ..
                 }))
                 .times(eq(1)),
                 // The response should not contain any other entries.
-                contains(matches_pattern!(read_response::Entry {
+                contains(pat!(read_response::Entry {
                     key: not(any!(
-                        eq(4u128.to_be_bytes()),
-                        eq(6u128.to_be_bytes()),
-                        eq(8u128.to_be_bytes())
+                        eq(&4u128.to_be_bytes()),
+                        eq(&6u128.to_be_bytes()),
+                        eq(&8u128.to_be_bytes())
                     )),
+                    ..
                 }))
                 .times(eq(0)),
             ),
@@ -274,7 +283,7 @@ fn read_entry_multiple_times() {
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn empty_read() {
     let mut storage = Storage::default();
     assert_that!(
@@ -293,14 +302,14 @@ fn empty_read() {
 
     expect_that!(
         storage.read(&ReadRequest::default()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn read_invalid_range() {
     let storage = Storage::default();
     expect_that!(
@@ -329,7 +338,7 @@ fn read_invalid_range() {
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn multiple_writes_to_same_key() {
     let mut storage = Storage::default();
     assert_that!(
@@ -356,17 +365,18 @@ fn multiple_writes_to_same_key() {
     // One of the two writes should be applied, but it's unspecified which.
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(4u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&4u128.to_be_bytes()),
                 value: any!(eq(b"value 4a"), eq(b"value 4b")),
+                ..
             }),],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn empty_write() {
     let mut storage = Storage::default();
     assert_that!(
@@ -376,14 +386,14 @@ fn empty_write() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn write_invalid_entry() {
     let mut storage = Storage::default();
     expect_that!(
@@ -403,11 +413,11 @@ fn write_invalid_entry() {
     // Since all updates failed, the storage should not be modified.
     expect_that!(
         storage.read(&full_read_request()),
-        ok(eq(ReadResponse { now: Some(Timestamp::default()), entries: vec![] }))
+        ok(eq(&ReadResponse { now: Some(Timestamp::default()), entries: vec![] }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn clock_is_monotonic() {
     let mut storage = Storage::default();
     expect_that!(
@@ -423,14 +433,12 @@ fn clock_is_monotonic() {
     );
     expect_that!(
         storage.read(&ReadRequest::default()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
-        }))
+        ok(pat!(ReadResponse { now: some(pat!(Timestamp { seconds: &200, .. })), .. }))
     );
     expect_that!(storage.clock().get_time(), eq(Instant::from_unix_seconds(200)));
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn delete_entry() {
     let mut storage = Storage::default();
     assert_that!(
@@ -471,17 +479,18 @@ fn delete_entry() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(6u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&6u128.to_be_bytes()),
                 value: eq(b"value 6"),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn delete_missing_entry() {
     let mut storage = Storage::default();
     assert_that!(
@@ -523,23 +532,25 @@ fn delete_missing_entry() {
     // The state should be unchanged (except for the current time).
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
             entries: elements_are![
-                matches_pattern!(read_response::Entry {
-                    key: eq(4u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&4u128.to_be_bytes()),
                     value: eq(b"value 4"),
+                    ..
                 }),
-                matches_pattern!(read_response::Entry {
-                    key: eq(6u128.to_be_bytes()),
+                pat!(read_response::Entry {
+                    key: eq(&6u128.to_be_bytes()),
                     value: eq(b"value 6"),
+                    ..
                 }),
             ],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn expired_entry_is_removed() {
     let mut storage = Storage::default();
     assert_that!(
@@ -579,25 +590,27 @@ fn expired_entry_is_removed() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &110, .. })),
             entries: elements_are![
-                matches_pattern!(read_response::Entry {
-                    key: eq(4u128.to_be_bytes()),
-                    value: eq(b"value 4"),
+                pat!(read_response::Entry {
+                    key: eq(&4u128.to_be_bytes()),
+                    value: eq(&b"value 4"),
                     expiration: none(),
+                    ..
                 }),
-                matches_pattern!(read_response::Entry {
-                    key: eq(8u128.to_be_bytes()),
-                    value: eq(b"value 8"),
-                    expiration: some(matches_pattern!(Timestamp { seconds: eq(120) })),
+                pat!(read_response::Entry {
+                    key: eq(&8u128.to_be_bytes()),
+                    value: eq(&b"value 8"),
+                    expiration: some(pat!(Timestamp { seconds: &120, .. })),
+                    ..
                 }),
             ],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn expiration_uses_latest_time() {
     let mut storage = Storage::default();
     assert_that!(
@@ -624,18 +637,19 @@ fn expiration_uses_latest_time() {
 
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value"),
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+                expiration: some(pat!(Timestamp { seconds: &210, .. })),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn ttl_can_be_shortened() {
     let mut storage = Storage::default();
     assert_that!(
@@ -670,12 +684,13 @@ fn ttl_can_be_shortened() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &110, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(160) })),
+                expiration: some(pat!(Timestamp { seconds: &160, .. })),
+                ..
             })],
         }))
     );
@@ -687,8 +702,8 @@ fn ttl_can_be_shortened() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(170) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &170, .. })),
             entries: elements_are![],
         }))
     );
@@ -700,14 +715,14 @@ fn ttl_can_be_shortened() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn ttl_can_be_extended() {
     let mut storage = Storage::default();
     assert_that!(
@@ -742,12 +757,13 @@ fn ttl_can_be_extended() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &110, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+                expiration: some(pat!(Timestamp { seconds: &210, .. })),
+                ..
             })],
         }))
     );
@@ -760,12 +776,13 @@ fn ttl_can_be_extended() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(120) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &120, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
-                expiration: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+                expiration: some(pat!(Timestamp { seconds: &210, .. })),
+                ..
             })],
         }))
     );
@@ -778,14 +795,14 @@ fn ttl_can_be_extended() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(210) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &210, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn ttl_can_be_removed() {
     let mut storage = Storage::default();
     assert_that!(
@@ -820,12 +837,13 @@ fn ttl_can_be_removed() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(110) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &110, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
                 expiration: none(),
+                ..
             })],
         }))
     );
@@ -838,18 +856,19 @@ fn ttl_can_be_removed() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(120) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &120, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
                 expiration: none(),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn exists_precondition_is_met() {
     let mut storage = Storage::default();
 
@@ -873,11 +892,12 @@ fn exists_precondition_is_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value A"),
+                ..
             })],
         }))
     );
@@ -902,17 +922,18 @@ fn exists_precondition_is_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn exists_precondition_is_not_met() {
     let mut storage = Storage::default();
     assert_that!(
@@ -949,11 +970,12 @@ fn exists_precondition_is_not_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value A"),
+                ..
             })],
         }))
     );
@@ -978,17 +1000,18 @@ fn exists_precondition_is_not_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value A"),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn value_precondition_is_met() {
     let mut storage = Storage::default();
     assert_that!(
@@ -1025,17 +1048,18 @@ fn value_precondition_is_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(200) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &200, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value B"),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn value_precondition_is_not_met() {
     let mut storage = Storage::default();
     assert_that!(
@@ -1072,11 +1096,12 @@ fn value_precondition_is_not_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value A"),
+                ..
             })],
         }))
     );
@@ -1105,17 +1130,18 @@ fn value_precondition_is_not_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-            entries: elements_are![matches_pattern!(read_response::Entry {
-                key: eq(5u128.to_be_bytes()),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &100, .. })),
+            entries: elements_are![pat!(read_response::Entry {
+                key: eq(&5u128.to_be_bytes()),
                 value: eq(b"value A"),
+                ..
             })],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn all_preconditions_for_entry_must_be_met() {
     let mut storage = Storage::default();
     expect_that!(
@@ -1137,14 +1163,14 @@ fn all_preconditions_for_entry_must_be_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(0) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &0, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn preconditions_for_all_entries_must_be_met() {
     let mut storage = Storage::default();
     expect_that!(
@@ -1177,14 +1203,14 @@ fn preconditions_for_all_entries_must_be_met() {
     );
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(0) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &0, .. })),
             entries: elements_are![],
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn clear_removes_all_entries() {
     let mut storage = Storage::default();
     assert_that!(
@@ -1206,8 +1232,8 @@ fn clear_removes_all_entries() {
     storage.clear();
     expect_that!(
         storage.read(&full_read_request()),
-        ok(matches_pattern!(ReadResponse {
-            now: some(matches_pattern!(Timestamp { seconds: eq(0) })),
+        ok(pat!(ReadResponse {
+            now: some(pat!(Timestamp { seconds: &0, .. })),
             entries: elements_are![],
         }))
     );
