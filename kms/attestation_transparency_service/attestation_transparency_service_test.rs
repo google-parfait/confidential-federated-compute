@@ -187,7 +187,7 @@ async fn create_signing_key(
     Ok(verifying_key)
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn sign_fails_without_key() {
     let (_, signer, _server_handle) = start_server().await;
@@ -197,7 +197,7 @@ async fn sign_fails_without_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn sign_succeeds_with_key() {
     let (mut client, signer, _server_handle) = start_server().await;
@@ -209,13 +209,13 @@ async fn sign_succeeds_with_key() {
     let signature = signer.sign(&headers.encode_to_vec(), b"payload").expect("signing failed");
     assert_that!(
         signature,
-        matches_pattern!(Signature {
-            headers: when_deserialized::<Headers>(eq(Headers {
+        pat!(Signature {
+            headers: when_deserialized::<Headers, _>(eq(&Headers {
                 algorithm: ats_key.algorithm,
                 ..headers
             })),
-            signature: some(matches_pattern!(signature::Signature::RawSignature(not(empty())))),
-            verifier: some(eq(signature::Verifier::VerifyingKey(verifying_key))),
+            signature: some(pat!(signature::Signature::RawSignature(not(is_empty())))),
+            verifier: some(eq(&signature::Verifier::VerifyingKey(verifying_key))),
         })
     );
 
@@ -236,7 +236,7 @@ async fn sign_succeeds_with_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn create_signing_key_succeeds() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -244,16 +244,16 @@ async fn create_signing_key_succeeds() {
     let verifying_key = create_signing_key(&mut client).await.unwrap();
     expect_that!(
         verifying_key.payload,
-        when_deserialized(matches_pattern!(Key {
-            algorithm: eq(key::Algorithm::EcdsaP256 as i32),
-            purpose: some(eq(key::Purpose::Verify as i32)),
-            key_id: not(empty()),
-            key_material: not(empty()),
+        when_deserialized(pat!(Key {
+            algorithm: eq(&(key::Algorithm::EcdsaP256 as i32)),
+            purpose: some(eq(&(key::Purpose::Verify as i32))),
+            key_id: not(is_empty()),
+            key_material: not(is_empty()),
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn create_signing_key_fails_with_wrong_first_message() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -278,11 +278,11 @@ async fn create_signing_key_fails_with_wrong_first_message() {
     // A key should not have been created.
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: none() }))
+        ok(pat!(GetStatusResponse { verifying_key: none(), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn create_signing_key_fails_with_modified_key() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -325,11 +325,11 @@ async fn create_signing_key_fails_with_modified_key() {
     // A key should not have been created.
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: none() }))
+        ok(pat!(GetStatusResponse { verifying_key: none(), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn create_signing_key_aborted() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -356,11 +356,11 @@ async fn create_signing_key_aborted() {
     // A key should not have been created.
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: none() }))
+        ok(pat!(GetStatusResponse { verifying_key: none(), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn create_signing_key_replaces_existing_key() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -368,18 +368,18 @@ async fn create_signing_key_replaces_existing_key() {
     let verifying_key1 = create_signing_key(&mut client).await.unwrap();
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: some(eq(verifying_key1.clone())) }))
+        ok(pat!(GetStatusResponse { verifying_key: some(eq(&verifying_key1)), .. }))
     );
 
     let verifying_key2 = create_signing_key(&mut client).await.unwrap();
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: some(eq(verifying_key2.clone())) }))
+        ok(pat!(GetStatusResponse { verifying_key: some(eq(&verifying_key2)), .. }))
     );
-    expect_that!(verifying_key1, not(eq(verifying_key2)));
+    expect_that!(verifying_key1, not(eq(&verifying_key2)));
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn share_and_load_signing_key_succeeds() {
     let (mut client1, _, _server1_handle) = start_server().await;
@@ -417,7 +417,7 @@ async fn share_and_load_signing_key_succeeds() {
     // The second server should now have the key.
     expect_that!(
         client2.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: some(eq(verifying_key.clone())) }))
+        ok(pat!(GetStatusResponse { verifying_key: some(eq(&verifying_key)), .. }))
     );
 
     // The second server's signer should now work.
@@ -425,13 +425,13 @@ async fn share_and_load_signing_key_succeeds() {
     let signature = signer.sign(&headers.encode_to_vec(), b"payload").expect("signing failed");
     expect_that!(
         signature,
-        matches_pattern!(Signature {
-            headers: when_deserialized::<Headers>(eq(Headers {
+        pat!(Signature {
+            headers: when_deserialized::<Headers, _>(eq(&Headers {
                 algorithm: ats_key.algorithm,
                 ..headers
             })),
-            signature: some(matches_pattern!(signature::Signature::RawSignature(not(empty())))),
-            verifier: some(eq(signature::Verifier::VerifyingKey(verifying_key))),
+            signature: some(pat!(signature::Signature::RawSignature(not(is_empty())))),
+            verifier: some(eq(&signature::Verifier::VerifyingKey(verifying_key))),
         })
     );
 
@@ -452,7 +452,7 @@ async fn share_and_load_signing_key_succeeds() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn share_signing_key_fails_without_key() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -464,7 +464,7 @@ async fn share_signing_key_fails_without_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn share_and_load_signing_key_fails_with_different_evidence() {
     let standalone1 = Standalone::builder()
@@ -529,25 +529,22 @@ async fn share_and_load_signing_key_fails_with_different_evidence() {
     // The second server should not have loaded a key.
     expect_that!(
         client2.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { verifying_key: none() }))
+        ok(pat!(GetStatusResponse { verifying_key: none(), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn get_status_without_key() {
     let (mut client, _, _server_handle) = start_server().await;
 
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse {
-            verifying_key: none(),
-            version_fprint: not(empty())
-        }))
+        ok(pat!(GetStatusResponse { verifying_key: none(), version_fprint: not(is_empty()) }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn get_status_with_key() {
     let (mut client, _, _server_handle) = start_server().await;
@@ -555,14 +552,14 @@ async fn get_status_with_key() {
 
     expect_that!(
         client.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse {
-            verifying_key: some(eq(verifying_key)),
-            version_fprint: not(empty()),
+        ok(pat!(GetStatusResponse {
+            verifying_key: some(eq(&verifying_key)),
+            version_fprint: not(is_empty()),
         }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[tokio::test]
 async fn version_fprint_depends_on_endorsed_evidence() {
     let (mut client1, _, _server_handle1) = start_server_with_standalone(
@@ -575,7 +572,7 @@ async fn version_fprint_depends_on_endorsed_evidence() {
     // The fprint should be consistent for the same server.
     expect_that!(
         client1.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { version_fprint: eq(fprint.clone()) }))
+        ok(pat!(GetStatusResponse { version_fprint: eq(&fprint), .. }))
     );
 
     // The fprint should match a different server with the same evidence.
@@ -585,7 +582,7 @@ async fn version_fprint_depends_on_endorsed_evidence() {
     .await;
     expect_that!(
         client2.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { version_fprint: eq(fprint.clone()) }))
+        ok(pat!(GetStatusResponse { version_fprint: eq(&fprint), .. }))
     );
 
     // The fprint should not match a server with different evidence.
@@ -595,11 +592,11 @@ async fn version_fprint_depends_on_endorsed_evidence() {
     .await;
     expect_that!(
         client3.get_status(GetStatusRequest::default()).await.map(Response::into_inner),
-        ok(matches_pattern!(GetStatusResponse { version_fprint: not(eq(fprint)) }))
+        ok(pat!(GetStatusResponse { version_fprint: not(eq(&fprint)), .. }))
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn build_signed_payload_sig_structure_succeeds() {
     expect_that!(
         build_signed_payload_sig_structure(b"hdrs", b"payload"),

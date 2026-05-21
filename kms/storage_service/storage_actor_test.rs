@@ -88,17 +88,15 @@ fn create_client_session(
         )));
         assert_that!(
             outcome,
-            ok(matches_pattern!(CommandOutcome {
-                commands: elements_are![matches_pattern!(ActorCommand {
-                    correlation_id: eq(correlation_id),
-                })],
+            ok(pat!(CommandOutcome {
+                commands: elements_are![pat!(ActorCommand { correlation_id: &correlation_id, .. })],
                 event: none(),
             }))
         );
 
         let response =
             SessionResponseWithStatus::decode(outcome.unwrap().commands.pop().unwrap().header);
-        assert_that!(response, ok(matches_pattern!(SessionResponseWithStatus { status: none() })));
+        assert_that!(response, ok(pat!(SessionResponseWithStatus { status: none(), .. })));
         if let Some(response) = response.unwrap().response {
             assert_that!(
                 session.put_incoming_message(
@@ -143,10 +141,7 @@ fn decode_response(
     if status.code != 0 {
         return Err(status);
     }
-    assert_that!(
-        response,
-        ok(matches_pattern!(SessionResponseWithStatus { response: some(anything()) }))
-    );
+    assert_that!(response, ok(pat!(SessionResponseWithStatus { response: some(anything()), .. })));
     assert_that!(
         session.put_incoming_message(
             SessionResponse::decode(response.unwrap().response.unwrap().encode_to_vec().as_slice())
@@ -165,7 +160,7 @@ fn get_test_reference_values() -> ReferenceValues {
     session_test_utils::get_test_reference_values().convert().unwrap()
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn get_reference_values_succeeds() {
     let reference_values = get_test_reference_values();
     let actor = StorageActor::new(
@@ -176,10 +171,10 @@ fn get_reference_values_succeeds() {
         Arc::new(FixedClock::at_instant(UNIX_EPOCH)),
     );
 
-    expect_that!(actor.get_reference_values(), eq(reference_values));
+    expect_that!(actor.get_reference_values(), eq(&reference_values));
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn empty_command_ignored_on_follower() {
     let mut actor = StorageActor::new(
         get_test_attester(),
@@ -190,10 +185,10 @@ fn empty_command_ignored_on_follower() {
     );
     assert_that!(actor.on_init(create_actor_context(/* leader= */ false)), ok(anything()));
 
-    expect_that!(actor.on_process_command(None), ok(eq(CommandOutcome::with_none())));
+    expect_that!(actor.on_process_command(None), ok(eq(&CommandOutcome::with_none())));
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn empty_command_causes_periodic_clock_update() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -238,13 +233,15 @@ fn empty_command_causes_periodic_clock_update() {
             },
         ),
     )));
-    assert_that!(outcome, ok(matches_pattern!(CommandOutcome { commands: len(eq(1)) })));
+    assert_that!(outcome, ok(pat!(CommandOutcome { commands: len(eq(1)), .. })));
     assert_that!(
         decode_response(&mut session, &outcome.unwrap().commands[0]),
-        ok(matches_pattern!(StorageResponse {
-            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
-                ReadResponse { now: some(matches_pattern!(Timestamp { seconds: eq(0) })) }
-            )))),
+        ok(pat!(StorageResponse {
+            kind: some(pat!(storage_response::Kind::Read(pat!(ReadResponse {
+                now: some(pat!(Timestamp { seconds: &0, .. })),
+                ..
+            })))),
+            ..
         }))
     );
 
@@ -257,7 +254,7 @@ fn empty_command_causes_periodic_clock_update() {
     let outcome = actor.on_process_command(None);
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
+        ok(pat!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
     );
     // When the event is applied, no response should be generated but the time
     // should be updated.
@@ -282,29 +279,31 @@ fn empty_command_causes_periodic_clock_update() {
             },
         ),
     )));
-    assert_that!(outcome, ok(matches_pattern!(CommandOutcome { commands: len(eq(1)) })));
+    assert_that!(outcome, ok(pat!(CommandOutcome { commands: len(eq(1)), .. })));
     expect_that!(
         decode_response(&mut session, &outcome.unwrap().commands[0]),
-        ok(matches_pattern!(StorageResponse {
-            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
-                ReadResponse { now: some(matches_pattern!(Timestamp { seconds: eq(12345) })) }
-            )))),
+        ok(pat!(StorageResponse {
+            kind: some(pat!(storage_response::Kind::Read(pat!(ReadResponse {
+                now: some(pat!(Timestamp { seconds: &12345, .. })),
+                ..
+            })))),
+            ..
         }))
     );
 
     // On the next call, time will have advanced 50 seconds. A new event should
     // not be generated.
-    expect_that!(actor.on_process_command(None), ok(eq(CommandOutcome::with_none())));
+    expect_that!(actor.on_process_command(None), ok(eq(&CommandOutcome::with_none())));
 
     // On the third call, time will have advanced 10 seconds. Since 60 seconds
     // have elapsed since the last event, a new one should be generated.
     expect_that!(
         actor.on_process_command(None),
-        ok(matches_pattern!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
+        ok(pat!(CommandOutcome { commands: elements_are![], event: some(anything()) }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn invalid_request_fails() {
     let mut actor = StorageActor::new(
         get_test_attester(),
@@ -322,23 +321,25 @@ fn invalid_request_fails() {
     }));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &1, .. })],
             event: none(),
         }))
     );
     expect_that!(
         SessionResponseWithStatus::decode(outcome.unwrap().commands[0].header.clone()),
-        ok(matches_pattern!(SessionResponseWithStatus {
-            status: some(matches_pattern!(Status {
-                code: eq(Code::InvalidArgument as i32),
+        ok(pat!(SessionResponseWithStatus {
+            status: some(pat!(Status {
+                code: &(Code::InvalidArgument as i32),
                 message: contains_substring("failed to decode SessionRequest"),
-            }))
+                ..
+            })),
+            ..
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn request_to_follower_fails() {
     let mut actor = StorageActor::new(
         get_test_attester(),
@@ -356,23 +357,25 @@ fn request_to_follower_fails() {
     }));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &1, .. })],
             event: none(),
         }))
     );
     expect_that!(
         SessionResponseWithStatus::decode(outcome.unwrap().commands[0].header.clone()),
-        ok(matches_pattern!(SessionResponseWithStatus {
-            status: some(matches_pattern!(Status {
-                code: eq(Code::Aborted as i32),
+        ok(pat!(SessionResponseWithStatus {
+            status: some(pat!(Status {
+                code: &(Code::Aborted as i32),
                 message: contains_substring("not a leader"),
-            }))
+                ..
+            })),
+            ..
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn empty_storage_request_fails() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -406,21 +409,22 @@ fn empty_storage_request_fails() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &1, .. })],
             event: none(),
         }))
     );
     assert_that!(
         decode_response(&mut session, &outcome.unwrap().commands[0]),
-        err(matches_pattern!(Status {
-            code: eq(Code::InvalidArgument as i32),
+        err(pat!(Status {
+            code: &(Code::InvalidArgument as i32),
             message: contains_substring("unsupported StorageRequest.kind"),
+            ..
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn write_and_read_succeeds() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -467,9 +471,9 @@ fn write_and_read_succeeds() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
+        ok(pat!(CommandOutcome {
             commands: elements_are![],
-            event: some(matches_pattern!(ActorEvent { correlation_id: eq(1) })),
+            event: some(pat!(ActorEvent { correlation_id: &1, .. })),
         }))
     );
     let outcome = actor
@@ -478,17 +482,12 @@ fn write_and_read_succeeds() {
             outcome.unwrap().event.unwrap(),
         )
         .expect("on_apply_event failed");
-    assert_that!(
-        outcome.commands,
-        elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })]
-    );
+    assert_that!(outcome.commands, elements_are![pat!(ActorCommand { correlation_id: &1, .. })]);
     assert_that!(
         decode_response(&mut session, &outcome.commands[0]),
-        ok(matches_pattern!(StorageResponse {
-            correlation_id: eq(123),
-            kind: some(matches_pattern!(storage_response::Kind::Update(eq(
-                UpdateResponse::default()
-            )))),
+        ok(pat!(StorageResponse {
+            correlation_id: &123,
+            kind: some(pat!(storage_response::Kind::Update(eq(&UpdateResponse::default())))),
         }))
     );
     expect_that!(
@@ -515,29 +514,28 @@ fn write_and_read_succeeds() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(2) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &2, .. })],
             event: none(),
         }))
     );
     assert_that!(
         decode_response(&mut session, &outcome.unwrap().commands[0]),
-        ok(matches_pattern!(StorageResponse {
-            correlation_id: eq(456),
-            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
-                ReadResponse {
-                    now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-                    entries: elements_are![matches_pattern!(read_response::Entry {
-                        key: eq(5u128.to_be_bytes()),
-                        value: eq(b"value"),
-                    })]
-                }
-            )))),
+        ok(pat!(StorageResponse {
+            correlation_id: &456,
+            kind: some(pat!(storage_response::Kind::Read(pat!(ReadResponse {
+                now: some(pat!(Timestamp { seconds: &100, .. })),
+                entries: elements_are![pat!(read_response::Entry {
+                    key: eq(&5u128.to_be_bytes()),
+                    value: eq(b"value"),
+                    ..
+                })]
+            })))),
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn save_and_load_snapshot_succeeds() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -586,9 +584,9 @@ fn save_and_load_snapshot_succeeds() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
+        ok(pat!(CommandOutcome {
             commands: elements_are![],
-            event: some(matches_pattern!(ActorEvent { correlation_id: eq(1) })),
+            event: some(pat!(ActorEvent { correlation_id: &1, .. })),
         }))
     );
     let outcome = actor
@@ -597,13 +595,10 @@ fn save_and_load_snapshot_succeeds() {
             outcome.unwrap().event.unwrap(),
         )
         .expect("on_apply_event failed");
-    assert_that!(
-        outcome.commands,
-        elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })]
-    );
+    assert_that!(outcome.commands, elements_are![pat!(ActorCommand { correlation_id: &1, .. })]);
     assert_that!(
         decode_response(&mut session, &outcome.commands[0]),
-        ok(matches_pattern!(StorageResponse { correlation_id: eq(123) }))
+        ok(pat!(StorageResponse { correlation_id: &123, .. }))
     );
 
     // Save a snapshot.
@@ -651,30 +646,28 @@ fn save_and_load_snapshot_succeeds() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(2) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &2, .. })],
             event: none(),
         }))
     );
     assert_that!(
         decode_response(&mut session, &outcome.unwrap().commands[0]),
-        ok(matches_pattern!(StorageResponse {
-            correlation_id: eq(456),
-            kind: some(matches_pattern!(storage_response::Kind::Read(matches_pattern!(
-                ReadResponse {
-                    now: some(matches_pattern!(Timestamp { seconds: eq(100) })),
-                    entries: elements_are![matches_pattern!(read_response::Entry {
-                        key: eq(5u128.to_be_bytes()),
-                        value: eq(b"value"),
-                        expiration: some(matches_pattern!(Timestamp { seconds: eq(1100) })),
-                    })]
-                }
-            )))),
+        ok(pat!(StorageResponse {
+            correlation_id: &456,
+            kind: some(pat!(storage_response::Kind::Read(pat!(ReadResponse {
+                now: some(pat!(Timestamp { seconds: &100, .. })),
+                entries: elements_are![pat!(read_response::Entry {
+                    key: eq(&5u128.to_be_bytes()),
+                    value: eq(b"value"),
+                    expiration: some(pat!(Timestamp { seconds: &1100, .. })),
+                })]
+            })))),
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn session_reuse_fails() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -723,23 +716,25 @@ fn session_reuse_fails() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &1, .. })],
             event: none(),
         }))
     );
     assert_that!(
         SessionResponseWithStatus::decode(outcome.unwrap().commands[0].header.clone()),
-        ok(matches_pattern!(SessionResponseWithStatus {
-            status: some(matches_pattern!(Status {
-                code: eq(Code::InvalidArgument as i32),
+        ok(pat!(SessionResponseWithStatus {
+            status: some(pat!(Status {
+                code: &(Code::InvalidArgument as i32),
                 message: contains_substring("SessionRequest is invalid"),
-            }))
+                ..
+            })),
+            ..
         }))
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn session_reuse_after_close_succeeds() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();
@@ -773,14 +768,14 @@ fn session_reuse_after_close_succeeds() {
     )));
     assert_that!(
         outcome,
-        ok(matches_pattern!(CommandOutcome {
-            commands: elements_are![matches_pattern!(ActorCommand { correlation_id: eq(1) })],
+        ok(pat!(CommandOutcome {
+            commands: elements_are![pat!(ActorCommand { correlation_id: &1, .. })],
             event: none(),
         }))
     );
     assert_that!(
         SessionResponseWithStatus::decode(outcome.unwrap().commands[0].header.clone()),
-        ok(matches_pattern!(SessionResponseWithStatus { status: none() }))
+        ok(pat!(SessionResponseWithStatus { status: none(), .. }))
     );
 
     // Once the session is closed, a new session with the same ID should succeed.
@@ -795,7 +790,7 @@ fn session_reuse_after_close_succeeds() {
     );
 }
 
-#[test_log::test(googletest::test)]
+#[test_log::test(gtest)]
 fn multiple_sessions_succeeds() {
     let attester = get_test_attester();
     let endorser = get_test_endorser();

@@ -61,7 +61,7 @@ fn derive_hpke_sender_context(ikm: &[u8], node_id: u32) -> (hpke::SenderContext,
     .expect("failed to create SenderContext")
 }
 
-#[googletest::test]
+#[gtest]
 fn endorse_transform_signing_key_succeeds() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -75,13 +75,16 @@ fn endorse_transform_signing_key_succeeds() {
     let cwt = CoseSign1::from_slice(&endorsement);
     assert_that!(
         cwt,
-        ok(matches_pattern!(CoseSign1 {
-            protected: matches_pattern!(ProtectedHeader {
-                header: matches_pattern!(Header {
-                    alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
+        ok(pat!(CoseSign1 {
+            protected: pat!(ProtectedHeader {
+                header: pat!(Header {
+                    alg: some(eq(&Algorithm::Assigned(iana::Algorithm::ES256))),
+                    ..
                 }),
+                ..
             }),
             payload: some(anything()),
+            ..
         }))
     );
     expect_that!(
@@ -94,12 +97,13 @@ fn endorse_transform_signing_key_succeeds() {
     let claims = ClaimsSet::from_slice(&cwt.unwrap().payload.unwrap());
     assert_that!(
         claims,
-        ok(matches_pattern!(ClaimsSet {
+        ok(pat!(ClaimsSet {
             issuer: some(eq("test")),
             rest: contains((
-                eq(ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
-                matches_pattern!(Value::Bytes(anything()))
+                eq(&ClaimName::PrivateUse(PUBLIC_KEY_CLAIM)),
+                pat!(Value::Bytes(anything()))
             )),
+            ..
         }))
     );
     let cose_key = claims
@@ -111,24 +115,19 @@ fn endorse_transform_signing_key_succeeds() {
         .unwrap();
     assert_that!(
         cose_key,
-        ok(matches_pattern!(CoseKey {
-            kty: eq(KeyType::Assigned(iana::KeyType::EC2)),
-            alg: some(eq(Algorithm::Assigned(iana::Algorithm::ES256))),
-            key_ops: elements_are![eq(KeyOperation::Assigned(iana::KeyOperation::Verify))],
+        ok(pat!(CoseKey {
+            kty: eq(&KeyType::Assigned(iana::KeyType::EC2)),
+            alg: some(eq(&Algorithm::Assigned(iana::Algorithm::ES256))),
+            key_ops: elements_are![eq(&KeyOperation::Assigned(iana::KeyOperation::Verify))],
             params: unordered_elements_are![
                 (
-                    eq(Label::Int(iana::Ec2KeyParameter::Crv as i64)),
-                    eq(Value::from(iana::EllipticCurve::P_256 as u64)),
+                    eq(&Label::Int(iana::Ec2KeyParameter::Crv as i64)),
+                    eq(&Value::from(iana::EllipticCurve::P_256 as u64)),
                 ),
-                (
-                    eq(Label::Int(iana::Ec2KeyParameter::X as i64)),
-                    matches_pattern!(Value::Bytes(len(eq(32)))),
-                ),
-                (
-                    eq(Label::Int(iana::Ec2KeyParameter::Y as i64)),
-                    matches_pattern!(Value::Bytes(len(eq(32)))),
-                ),
+                (eq(&Label::Int(iana::Ec2KeyParameter::X as i64)), pat!(Value::Bytes(len(eq(32)))),),
+                (eq(&Label::Int(iana::Ec2KeyParameter::Y as i64)), pat!(Value::Bytes(len(eq(32)))),),
             ],
+            ..
         }))
     );
     let cose_key_params: std::collections::BTreeMap<_, _> =
@@ -156,7 +155,7 @@ fn endorse_transform_signing_key_succeeds() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_succeeds() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -178,15 +177,15 @@ fn verify_release_token_succeeds() {
 
     let (token_payload, claims, verify_signature_fn) =
         verify_release_token(&token, &endorsement).expect("verify_release_token failed");
-    expect_that!(token_payload, eq(CoseEncrypt0::from_slice(&payload).unwrap()));
-    expect_that!(claims, matches_pattern!(ClaimsSet { issuer: some(eq("test")) }));
+    expect_that!(token_payload, eq(&CoseEncrypt0::from_slice(&payload).unwrap()));
+    expect_that!(claims, pat!(ClaimsSet { issuer: some(eq("test")), .. }));
     // The signature verification function should succeed with the right key
     // and fail with the wrong one.
     expect_that!(verify_signature_fn(&cluster_key.to_public_key()), ok(anything()));
     expect_that!(verify_signature_fn(&transform_signing_key.to_public_key()), err(anything()));
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_fails_with_invalid_endorsement() {
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let token = CoseSign1Builder::new()
@@ -203,7 +202,7 @@ fn verify_release_token_fails_with_invalid_endorsement() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_fails_with_endorsement_disallowing_verify_op() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -244,7 +243,7 @@ fn verify_release_token_fails_with_endorsement_disallowing_verify_op() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_fails_with_invalid_token() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -261,7 +260,7 @@ fn verify_release_token_fails_with_invalid_token() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_fails_with_invalid_token_signature() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -286,7 +285,7 @@ fn verify_release_token_fails_with_invalid_token_signature() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn verify_release_token_fails_with_invalid_token_payload() {
     let cluster_key = ecdsa::PrivateKey::<ec::P256>::generate();
     let transform_signing_key = ecdsa::PrivateKey::<ec::P256>::generate();
@@ -310,7 +309,7 @@ fn verify_release_token_fails_with_invalid_token_payload() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_succeeds() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -351,7 +350,7 @@ fn decrypt_release_token_succeeds() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_with_invalid_key_id() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -416,7 +415,7 @@ fn decrypt_release_token_fails_with_invalid_key_id() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_with_unauthorized_key_id() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -457,7 +456,7 @@ fn decrypt_release_token_fails_with_unauthorized_key_id() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_without_intermediates_key() {
     let invocation_state =
         PipelineInvocationStateValue { intermediates_key: None, ..Default::default() };
@@ -488,7 +487,7 @@ fn decrypt_release_token_fails_without_intermediates_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_with_wrong_algorithm() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -526,7 +525,7 @@ fn decrypt_release_token_fails_with_wrong_algorithm() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_without_encapsulated_key() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -567,7 +566,7 @@ fn decrypt_release_token_fails_without_encapsulated_key() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_without_ciphertext() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -607,7 +606,7 @@ fn decrypt_release_token_fails_without_ciphertext() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn decrypt_release_token_fails_with_decryption_error() {
     let invocation_state = PipelineInvocationStateValue {
         intermediates_key: Some(KeysetKeyValue {
@@ -649,7 +648,7 @@ fn decrypt_release_token_fails_with_decryption_error() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_succeeds() {
     expect_that!(
         compute_logical_pipeline_updates([
@@ -699,13 +698,13 @@ fn compute_logical_pipeline_updates_succeeds() {
             ),
         ]),
         ok(unordered_elements_are![
-            matches_pattern!(LogicalPipelineUpdate {
-                logical_pipeline_name: eq("pipeline1"),
+            pat!(LogicalPipelineUpdate {
+                logical_pipeline_name: eq(&"pipeline1"),
                 src_state: none(),
                 dst_state: eq(b"1-C"),
             }),
-            matches_pattern!(LogicalPipelineUpdate {
-                logical_pipeline_name: eq("pipeline2"),
+            pat!(LogicalPipelineUpdate {
+                logical_pipeline_name: eq(&"pipeline2"),
                 src_state: some(eq(b"2-A")),
                 dst_state: eq(b"2-B"),
             }),
@@ -713,12 +712,12 @@ fn compute_logical_pipeline_updates_succeeds() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_succeeds_with_empty_list() {
-    expect_that!(compute_logical_pipeline_updates([]), ok(empty()));
+    expect_that!(compute_logical_pipeline_updates([]), ok(is_empty()));
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_fails_with_conflicting_updates() {
     expect_that!(
         compute_logical_pipeline_updates([
@@ -777,7 +776,7 @@ fn compute_logical_pipeline_updates_fails_with_conflicting_updates() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_fails_with_cycle() {
     expect_that!(
         compute_logical_pipeline_updates([
@@ -819,7 +818,7 @@ fn compute_logical_pipeline_updates_fails_with_cycle() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_succeeds_with_unambiguous_cycle() {
     // While the path contains a cycle, there are unambiguous start and end
     // states, so `compute_logical_pipeline_updates` should succeed.
@@ -871,9 +870,10 @@ fn compute_logical_pipeline_updates_succeeds_with_unambiguous_cycle() {
                     .build()
             ),
         ]),
-        ok(elements_are![matches_pattern!(LogicalPipelineUpdate {
+        ok(elements_are![pat!(LogicalPipelineUpdate {
             src_state: some(eq(b"A")),
             dst_state: eq(b"B"),
+            ..
         })])
     );
 
@@ -924,14 +924,15 @@ fn compute_logical_pipeline_updates_succeeds_with_unambiguous_cycle() {
                     .build()
             ),
         ]),
-        ok(elements_are![matches_pattern!(LogicalPipelineUpdate {
+        ok(elements_are![pat!(LogicalPipelineUpdate {
             src_state: some(eq(b"A")),
             dst_state: eq(b"D"),
+            ..
         })])
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_fails_if_not_connected() {
     // Despite only one node have a degree difference of 1 and one node having
     // a degree difference of -1, the state changes don't form a trail because
@@ -987,7 +988,7 @@ fn compute_logical_pipeline_updates_fails_if_not_connected() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_fails_with_missing_src_state() {
     expect_that!(
         compute_logical_pipeline_updates([(
@@ -1004,7 +1005,7 @@ fn compute_logical_pipeline_updates_fails_with_missing_src_state() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 fn compute_logical_pipeline_updates_fails_with_missing_dst_state() {
     expect_that!(
         compute_logical_pipeline_updates([(

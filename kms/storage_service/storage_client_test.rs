@@ -198,7 +198,7 @@ async fn start_server<F: Fn() -> UpdateRequest + Send + 'static>(
     (client, AbortOnDropHandle::new(handle))
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn init_succeeds() {
     let mut storage = MockStorage::new();
@@ -227,7 +227,7 @@ async fn init_succeeds() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn init_ignores_failed_precondition() {
     let mut storage = MockStorage::new();
@@ -246,7 +246,7 @@ async fn init_ignores_failed_precondition() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn init_retries_other_errors() {
     let mut storage = MockStorage::new();
@@ -283,7 +283,7 @@ async fn init_retries_other_errors() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn read_succeeds() {
     let mut storage = MockStorage::new();
@@ -306,11 +306,11 @@ async fn read_succeeds() {
     let (client, _server_handle) = start_server(storage, UpdateRequest::default).await;
     expect_that!(
         timeout(Duration::from_secs(2), client.read(read_request)).await,
-        ok(ok(eq(read_response)))
+        ok(ok(eq(&read_response)))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn read_with_error_fails() {
     let mut storage = MockStorage::new();
@@ -331,7 +331,7 @@ async fn read_with_error_fails() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn read_with_wrong_response_kind_fails() {
     let mut storage = MockStorage::new();
@@ -351,7 +351,7 @@ async fn read_with_wrong_response_kind_fails() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn update_succeeds() {
     let mut storage = MockStorage::new();
@@ -371,11 +371,11 @@ async fn update_succeeds() {
     let (client, _server_handle) = start_server(storage, UpdateRequest::default).await;
     expect_that!(
         timeout(Duration::from_secs(1), client.update(update_request)).await,
-        ok(ok(eq(update_response)))
+        ok(ok(eq(&update_response)))
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn update_with_error_fails() {
     let mut storage = MockStorage::new();
@@ -396,7 +396,7 @@ async fn update_with_error_fails() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn update_with_wrong_response_kind_fails() {
     let mut storage = MockStorage::new();
@@ -414,7 +414,7 @@ async fn update_with_wrong_response_kind_fails() {
     );
 }
 
-#[googletest::test]
+#[gtest]
 #[test_log::test(tokio::test)]
 async fn retry_on_connection_failure() {
     let mut storage = MockStorage::new();
@@ -475,6 +475,6 @@ async fn retry_on_connection_failure() {
         timeout(Duration::from_secs(2), client.read(read_request)),
         timeout(Duration::from_secs(2), client.update(update_request)),
     );
-    expect_that!(read_response, ok(ok(eq(ReadResponse::default()))));
-    expect_that!(update_response, ok(ok(eq(UpdateResponse::default()))));
+    expect_that!(read_response, ok(ok(eq(&ReadResponse::default()))));
+    expect_that!(update_response, ok(ok(eq(&UpdateResponse::default()))));
 }
