@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_BUDGET_INTERVAL_MAP_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_BUDGET_INTERVAL_MAP_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
 
 #include <cstdint>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "containers/fed_sql/interval.h"
 #include "containers/fed_sql/interval_map.h"
 
@@ -64,6 +65,9 @@ class BudgetIntervalMap {
   const_iterator begin() const { return map_.begin(); }
   const_iterator end() const { return map_.end(); }
 
+  // Returns true if the map has no stored intervals.
+  bool empty() const { return map_.empty(); }
+
   // Creates an empty BudgetIntervalMap. `default_budget` must be > 0.
   explicit BudgetIntervalMap(uint64_t default_budget)
       : default_budget_(default_budget) {
@@ -97,6 +101,22 @@ class BudgetIntervalMap {
     return true;
   }
 
+  // Insert an interval in the map.
+  //
+  // Returns false if the value is greater than the `default_budget_`.
+  // Returns false if the interval overlaps with an existing stored interval.
+  bool Insert(Interval<uint64_t> interval, uint64_t value) {
+    // Nothing to insert in the map.
+    if (interval.empty() || value == default_budget_) return true;
+
+    if (value > default_budget_) {
+      LOG(ERROR)
+          << "Inserting value greater than default budget is not allowed.";
+      return false;
+    }
+    return map_.Insert(interval, value);
+  }
+
  private:
   InnerMap map_;
   uint64_t default_budget_;
@@ -104,4 +124,4 @@ class BudgetIntervalMap {
 
 }  // namespace confidential_federated_compute::fed_sql
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_BUDGET_INTERVAL_MAP_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_

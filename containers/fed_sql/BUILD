@@ -395,6 +395,7 @@ cc_test(
 cc_library(
     name = "interval",
     hdrs = ["interval.h"],
+    visibility = ["//containers/fed_sql:__subpackages__"],
     deps = [
         "@com_google_absl//absl/log:check",
     ],
@@ -424,6 +425,7 @@ cc_test(
 cc_library(
     name = "interval_map",
     hdrs = ["interval_map.h"],
+    visibility = ["//containers/fed_sql:__subpackages__"],
     deps = [
         ":interval",
         ":interval_set",
@@ -439,28 +441,6 @@ cc_test(
     deps = [
         ":interval",
         ":interval_map",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "budget_interval_map",
-    hdrs = ["budget_interval_map.h"],
-    deps = [
-        ":interval",
-        ":interval_map",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_test(
-    name = "budget_interval_map_test",
-    size = "small",
-    srcs = ["budget_interval_map_test.cc"],
-    deps = [
-        ":budget_interval_map",
-        ":interval",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
@@ -536,6 +516,7 @@ proto_library(
 
 cc_proto_library(
     name = "budget_cc_proto",
+    visibility = ["//containers/fed_sql:__subpackages__"],
     deps = [":budget_proto"],
 )
 
