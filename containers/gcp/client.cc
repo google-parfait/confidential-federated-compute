@@ -148,6 +148,9 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   }
 
   // Initialize Session & Connect
+  std::cerr << "----------> CreateClient: Initializing Oak ClientSession "
+               "config via Rust."
+            << std::endl;
   LOG(INFO) << "Initializing Oak ClientSession config via Rust.";
 
   // We use FFI here because the Oak ClientSession is implemented in Rust.
@@ -156,28 +159,56 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   SessionConfig* client_config = create_client_session_config(
       static_cast<void*>(attestation_token_verifier.get()), &verify_jwt_f);
 
+  std::cerr
+      << "----------> CreateClient: create_client_session_config returned, "
+      << "client_config=" << (client_config ? "non-null" : "NULL") << std::endl;
+
+  std::cerr << "----------> CreateClient: Calling ClientSession::Create(...)"
+            << std::endl;
   LOG(INFO) << "Calling ClientSession::Create(...)";
 
   absl::StatusOr<std::unique_ptr<ClientSession>> client_session_or =
       ClientSession::Create(client_config);
   if (!client_session_or.ok()) {
+    std::cerr << "----------> CreateClient: ClientSession::Create FAILED: "
+              << client_session_or.status().ToString() << std::endl;
     return absl::InternalError(
         absl::StrCat("Failed to create ClientSession: ",
                      client_session_or.status().ToString()));
   }
 
+  std::cerr << "----------> CreateClient: ClientSession::Create succeeded"
+            << std::endl;
+
+  std::cerr << "----------> CreateClient: Connecting to server at: "
+            << server_address << std::endl;
   LOG(INFO) << "Connecting to server at: " << server_address;
 
   std::shared_ptr<grpc::Channel> channel =
       grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+
+  std::cerr << "----------> CreateClient: grpc::CreateChannel done"
+            << std::endl;
+
   auto stub = OakSessionV1Service::NewStub(channel);
+
+  std::cerr << "----------> CreateClient: NewStub done" << std::endl;
+
   std::unique_ptr<grpc::ClientContext> client_context =
       std::make_unique<grpc::ClientContext>();
 
+  std::cerr << "----------> CreateClient: Invoking Oak Session's Stream()"
+            << std::endl;
   LOG(INFO) << "Invoking Oak Session's Stream() on the OakSession stub";
 
   auto stream = stub->Stream(client_context.get());
 
+  std::cerr << "----------> CreateClient: Stream() returned, stream="
+            << (stream ? "non-null" : "NULL") << std::endl;
+
+  std::cerr << "----------> CreateClient: Beginning handshake "
+               "(ExchangeHandshakeMessages)"
+            << std::endl;
   LOG(INFO) << "Beginning to exchange OakSession's handshake messages";
 
   // Execute Flow: Handshake, send message, receive response.
@@ -185,12 +216,20 @@ absl::StatusOr<std::unique_ptr<Client>> CreateClient(
   // callback.
   absl::Status handshake_status =
       ExchangeHandshakeMessages(client_session_or->get(), stream.get());
+
+  std::cerr << "----------> CreateClient: ExchangeHandshakeMessages returned: "
+            << handshake_status.ToString() << std::endl;
+
   if (!handshake_status.ok()) {
+    std::cerr << "----------> CreateClient: HANDSHAKE FAILED: "
+              << handshake_status.ToString() << std::endl;
     LOG(ERROR) << "Handshake failed; returning with error: "
                << handshake_status;
     return handshake_status;
   }
 
+  std::cerr << "----------> CreateClient: Handshake completed successfully, "
+            << "returning new Client object." << std::endl;
   LOG(INFO)
       << "Handshake completed successfully; returning a new Client object.";
 

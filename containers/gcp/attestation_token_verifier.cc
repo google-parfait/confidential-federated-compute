@@ -713,26 +713,44 @@ CreateAttestationTokenVerifier(const AttestationPolicy& attestation_policy,
 extern "C" {
 bool verify_jwt_f(void* context, const uint8_t* jwt_bytes, size_t jwt_len,
                   uint8_t* out_public_key, size_t* out_public_key_len) {
+  std::cerr << "----------> FFI verify_jwt_f: entered, context=" << context
+            << ", jwt_len=" << jwt_len << std::endl;
   if (context == nullptr || jwt_bytes == nullptr || out_public_key == nullptr ||
       out_public_key_len == nullptr) {
+    std::cerr << "----------> FFI verify_jwt_f: FAILED due to null pointer"
+              << std::endl;
     LOG(ERROR) << "FFI verify_jwt_f called with null pointer.";
     return false;
   }
   AttestationTokenVerifier* verifier =
       static_cast<AttestationTokenVerifier*>(context);
+  std::cerr << "----------> FFI verify_jwt_f: calling verifier->VerifyJwt"
+            << std::endl;
   absl::StatusOr<std::string> public_key_or = verifier->VerifyJwt(
       absl::string_view(reinterpret_cast<const char*>(jwt_bytes), jwt_len));
+  std::cerr << "----------> FFI verify_jwt_f: VerifyJwt returned, status="
+            << public_key_or.status().ToString() << std::endl;
   if (!public_key_or.ok()) {
     LOG(ERROR) << "C++ JWT verification failed: " << public_key_or.status();
     return false;
   }
+  std::cerr << "----------> FFI verify_jwt_f: verification successful, public "
+               "key size="
+            << public_key_or->size()
+            << " bytes, max output buffer size=" << *out_public_key_len
+            << " bytes" << std::endl;
   if (public_key_or->size() > *out_public_key_len) {
+    std::cerr << "----------> FFI verify_jwt_f: output buffer too small!"
+              << std::endl;
     LOG(ERROR) << "Public key output buffer is too small.";
     *out_public_key_len = public_key_or->size();
     return false;
   }
   memcpy(out_public_key, public_key_or->data(), public_key_or->size());
   *out_public_key_len = public_key_or->size();
+  std::cerr << "----------> FFI verify_jwt_f: successfully copied public key, "
+               "returning true"
+            << std::endl;
   return true;
 }
 }  // extern "C"
