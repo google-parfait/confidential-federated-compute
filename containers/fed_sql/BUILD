@@ -449,6 +449,7 @@ cc_test(
 proto_library(
     name = "range_tracker_proto",
     srcs = ["range_tracker.proto"],
+    deps = ["@com_google_protobuf//:timestamp_proto"],
 )
 
 cc_proto_library(
@@ -560,6 +561,7 @@ cc_library(
 proto_library(
     name = "partition_private_state_proto",
     srcs = ["partition_private_state.proto"],
+    deps = ["@com_google_protobuf//:timestamp_proto"],
 )
 
 cc_proto_library(

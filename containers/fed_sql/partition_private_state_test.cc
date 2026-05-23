@@ -47,6 +47,22 @@ TEST(PartitionPrivateStateTest, ParseAndSerialize) {
   EXPECT_THAT(state->Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(proto));
 }
 
+TEST(PartitionPrivateStateTest, ParseAndSerializeWithAggWindow) {
+  PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    expired_keys: "expired_key1"
+    keys: "foo"
+    values: 0
+    values: 10
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  auto state = PartitionPrivateState::Parse(proto);
+  EXPECT_THAT(state, IsOk());
+  EXPECT_THAT(state->GetAggregationWindow(), Eq(Interval<uint64_t>(100, 200)));
+  EXPECT_THAT(state->Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(proto));
+}
+
 TEST(PartitionPrivateStateTest, ParseAndSerializeAsString) {
   PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
@@ -125,6 +141,66 @@ TEST(PartitionPrivateStateTest, AddPartition) {
   EXPECT_THAT(state.GetSymmetricKeys(),
               UnorderedElementsAre(Pair(123, "symmetric_key1"),
                                    Pair(456, "symmetric_key2")));
+}
+
+TEST(PartitionPrivateStateTest, AddPartitionWithAggWindow) {
+  RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 10
+    partition_index: 123
+    expired_keys: "expired_key1"
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  RangeTracker range_tracker_1 =
+      RangeTracker::Parse(range_tracker_state_1).value();
+  RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 10
+    partition_index: 456
+    expired_keys: "expired_key1"
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  RangeTracker range_tracker_2 =
+      RangeTracker::Parse(range_tracker_state_2).value();
+
+  PartitionPrivateState state;
+  EXPECT_TRUE(state.AddPartition(range_tracker_1, "symmetric_key1"));
+  EXPECT_THAT(state.GetAggregationWindow(), Eq(Interval<uint64_t>(100, 200)));
+  EXPECT_TRUE(state.AddPartition(range_tracker_2, "symmetric_key2"));
+  EXPECT_THAT(state.GetAggregationWindow(), Eq(Interval<uint64_t>(100, 200)));
+}
+
+TEST(PartitionPrivateStateTest, AddPartitionMismatchAggWindow) {
+  RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 10
+    partition_index: 123
+    expired_keys: "expired_key1"
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  RangeTracker range_tracker_1 =
+      RangeTracker::Parse(range_tracker_state_1).value();
+  RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 10
+    partition_index: 456
+    expired_keys: "expired_key1"
+    start_time { seconds: 300 }
+    end_time { seconds: 400 }
+  )pb");
+  RangeTracker range_tracker_2 =
+      RangeTracker::Parse(range_tracker_state_2).value();
+
+  PartitionPrivateState state;
+  EXPECT_TRUE(state.AddPartition(range_tracker_1, "symmetric_key1"));
+  EXPECT_FALSE(state.AddPartition(range_tracker_2, "symmetric_key2"));
 }
 
 TEST(PartitionPrivateStateTest, AddPartitionNoPartitionId) {
@@ -353,6 +429,58 @@ TEST(PartitionPrivateState, MergeMismatchExpiredKeys) {
     keys: "foo"
     values: 0
     values: 10
+  )pb");
+
+  PartitionPrivateState state;
+  EXPECT_TRUE(state.Merge(PartitionPrivateState::Parse(proto_1).value()));
+  EXPECT_FALSE(state.Merge(PartitionPrivateState::Parse(proto_2).value()));
+}
+
+TEST(PartitionPrivateState, MergeWithAggWindow) {
+  PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    expired_keys: "expired_key1"
+    keys: "foo"
+    values: 0
+    values: 10
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "expired_key1"
+    keys: "foo"
+    values: 0
+    values: 10
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+
+  PartitionPrivateState state;
+  EXPECT_TRUE(state.Merge(PartitionPrivateState::Parse(proto_1).value()));
+  EXPECT_THAT(state.GetAggregationWindow(), Eq(Interval<uint64_t>(100, 200)));
+  EXPECT_TRUE(state.Merge(PartitionPrivateState::Parse(proto_2).value()));
+  EXPECT_THAT(state.GetAggregationWindow(), Eq(Interval<uint64_t>(100, 200)));
+}
+
+TEST(PartitionPrivateState, MergeMismatchAggWindow) {
+  PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    expired_keys: "expired_key1"
+    keys: "foo"
+    values: 0
+    values: 10
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "expired_key1"
+    keys: "foo"
+    values: 0
+    values: 10
+    start_time { seconds: 300 }
+    end_time { seconds: 400 }
   )pb");
 
   PartitionPrivateState state;

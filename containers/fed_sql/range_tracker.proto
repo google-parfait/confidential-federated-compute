@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package confidential_federated_compute.fed_sql;
 
+import "google/protobuf/timestamp.proto";
+
 // Used to serialize the state of RangeTracker and pass it between containers.
 // This state is never persisted.
 message RangeTrackerState {
@@ -31,6 +33,10 @@ message RangeTrackerState {
 
   // Keys that have expired and should be removed from the budget.
   repeated bytes expired_keys = 3;
+
+  // The start and end time of the aggregation window.
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp end_time = 7;
 
   reserved 1;
 }
