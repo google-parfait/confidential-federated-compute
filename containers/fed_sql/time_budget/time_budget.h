@@ -35,7 +35,7 @@ class TimeBudget {
   // be infinite/unlimited.
   explicit TimeBudget(std::optional<uint32_t> default_budget)
       : default_budget_(default_budget) {
-    if (default_budget_.has_value()) {
+    if (default_budget_.has_value() && default_budget_.value() > 0) {
       budget_map_.emplace(default_budget_.value());
     }
   }

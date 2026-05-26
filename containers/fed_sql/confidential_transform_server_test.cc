@@ -1815,6 +1815,7 @@ TEST_F(FedSqlServerTest, RemoveExpiredKeysFromBudget) {
                   consumed_range_end: 3
                 }
                 buckets { key: "foo" budget: 3 }
+                time_budget {}
               )pb"));
 }
 

@@ -87,6 +87,7 @@ TEST(BudgetTest, Serialize) {
           consumed_range_start: 10
           consumed_range_end: 20
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -103,6 +104,7 @@ TEST(BudgetTest, StringParseAndSerialize) {
           consumed_range_start: 10
           consumed_range_end: 20
         }
+        time_budget {}
       )pb");
   std::string serialized_state = state.SerializeAsString();
 
@@ -173,6 +175,8 @@ TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
   // Should have budget in any bucket unless it is explicitly exhausted.
   EXPECT_TRUE(budget.HasRemainingBudget("foo", 100));
   EXPECT_FALSE(budget.HasRemainingBudget("bar", 100));
+  // Should have remaining time budget.
+  EXPECT_TRUE(budget.HasRemainingBudget(Interval<uint64_t>(100, 200)));
 }
 
 TEST(BudgetTest, UpdateDefaultBudget) {
@@ -195,12 +199,15 @@ TEST(BudgetTest, UpdateDefaultBudget) {
                   consumed_range_start: 1
                   consumed_range_end: 4
                 }
+                time_budget {}
               )pb"));
 
-  // Use the other UpdateBudget overload.
-  IntervalSet<uint64_t> ranges;
-  ranges.Add({5, 8});
-  EXPECT_THAT(budget.UpdateBudget({"baz"}, ranges, {"bar"}), IsOk());
+  // Use a RangeTracker to update with different keys and expired keys.
+  RangeTracker range_tracker_2;
+  range_tracker_2.AddKey("baz");
+  range_tracker_2.SetExpiredKeys({"bar"});
+  EXPECT_TRUE(range_tracker_2.AddRange(5, 8));
+  EXPECT_THAT(budget.UpdateBudget(range_tracker_2), IsOk());
   EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
                 buckets {
                   key: "foo"
@@ -214,6 +221,7 @@ TEST(BudgetTest, UpdateDefaultBudget) {
                   consumed_range_start: 5
                   consumed_range_end: 8
                 }
+                time_budget {}
               )pb"));
 }
 
@@ -262,6 +270,7 @@ TEST(BudgetTest, UpdateParsedBudget) {
                   consumed_range_start: 1
                   consumed_range_end: 5
                 }
+                time_budget {}
               )pb"));
 }
 
@@ -288,6 +297,7 @@ TEST(BudgetTest, UpdateBudgetNewRanges) {
           consumed_range_start: 1
           consumed_range_end: 14
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -320,6 +330,7 @@ TEST(BudgetTest, UpdateParsedBudgetExistingKeysNoOverlap) {
           consumed_range_start: 1
           consumed_range_end: 14
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -353,6 +364,7 @@ TEST(BudgetTest, UpdateParsedBudgetExistingKeysOverlap) {
           consumed_range_start: 5
           consumed_range_end: 10
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -386,6 +398,7 @@ TEST(BudgetTest, UpdateParsedBudgetOldRangeNotContained) {
           consumed_range_start: 1
           consumed_range_end: 10
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -418,6 +431,7 @@ TEST(BudgetTest, UpdateBudgetDecrementToZero) {
           consumed_range_start: 3
           consumed_range_end: 9
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -445,6 +459,7 @@ TEST(BudgetTest, UpdateBudgetZeroConsumed) {
   BudgetState expected_state = PARSE_TEXT_PROTO(
       R"pb(
         buckets { key: "foo" budget: 0 }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -473,6 +488,7 @@ TEST(BudgetTest, UpdateParsedBudgetUnionBecomesFullRange) {
   BudgetState expected_state = PARSE_TEXT_PROTO(
       R"pb(
         buckets { key: "foo" budget: 3 }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -489,6 +505,7 @@ TEST(BudgetTest, UpdateBudgetFullRange) {
   BudgetState expected_state = PARSE_TEXT_PROTO(
       R"pb(
         buckets { key: "foo" budget: 1 }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -521,6 +538,7 @@ TEST(BudgetTest, UpdateParsedBudgetFullRangeOnPartial) {
           consumed_range_start: 5
           consumed_range_end: 10
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -560,6 +578,7 @@ TEST(BudgetTest, UpdateExhaustedBudgetNonOveralappingRange) {
           consumed_range_start: 2
           consumed_range_end: 3
         }
+        time_budget {}
       )pb");
   EXPECT_THAT(budget.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(expected_state));
@@ -610,6 +629,72 @@ TEST(BudgetTest, UpdateInfiniteBudget) {
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
   // The budget should remain empty - no "bar" bucket.
   EXPECT_EQ(budget.begin(), budget.end());
+}
+
+TEST(BudgetTest, UpdateBudgetWithTimeWindow) {
+  Budget budget(/*default_budget=*/1);
+  RangeTracker range_tracker;
+  EXPECT_TRUE(
+      range_tracker.SetAggregationWindow(Interval<uint64_t>(1200, 2400)));
+
+  EXPECT_TRUE(budget.HasRemainingBudget(Interval<uint64_t>(1200, 2400)));
+  // Update with time_window should update TimeBudget, not per-key budgets.
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Per-key budgets should be empty (no per-key update happened).
+  EXPECT_EQ(budget.begin(), budget.end());
+
+  // Time budget should be consumed.
+  EXPECT_FALSE(budget.HasRemainingBudget(Interval<uint64_t>(1200, 2400)));
+  // A window that was never consumed still has remaining budget.
+  EXPECT_TRUE(budget.HasRemainingBudget(Interval<uint64_t>(3000, 3600)));
+}
+
+TEST(BudgetTest, UpdateBudgetWithTimeWindowCleansExpiredKeys) {
+  BudgetState state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "foo" budget: 0 }
+    buckets { key: "expired_key" budget: 0 }
+  )pb");
+  Budget budget(/*default_budget=*/1);
+  EXPECT_THAT(budget.Parse(state), IsOk());
+
+  RangeTracker range_tracker;
+  range_tracker.SetExpiredKeys({"expired_key"});
+  Interval<uint64_t> time_window(1200, 2400);
+  EXPECT_TRUE(range_tracker.SetAggregationWindow(time_window));
+
+  // Update with time_window: should update time budget and clean expired keys.
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // expired_key should be gone, foo should remain unchanged.
+  EXPECT_THAT(budget.Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "foo" budget: 0 }
+                time_budget {
+                  anchor_time: 1200
+                  intervals { count: 20 remaining_budget: 0 }
+                }
+              )pb"));
+}
+
+TEST(BudgetTest, SerializeAndParseTimeBudget) {
+  Budget budget(/*default_budget=*/3);
+  RangeTracker range_tracker;
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(1, 4));
+  Interval<uint64_t> time_window(1200, 2400);
+  EXPECT_TRUE(range_tracker.SetAggregationWindow(time_window));
+
+  EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());
+
+  // Serialize and parse back.
+  BudgetState serialized = budget.Serialize();
+  Budget budget2(/*default_budget=*/3);
+  EXPECT_THAT(budget2.Parse(serialized), IsOk());
+
+  // Time budget state should survive the round-trip.
+  EXPECT_TRUE(budget2.HasRemainingBudget(time_window));
+  EXPECT_THAT(budget2.Serialize(),
+              EqualsProtoIgnoringRepeatedFieldOrder(serialized));
 }
 
 }  // namespace
