@@ -63,6 +63,17 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(
   range_tracker.expired_keys_ = absl::flat_hash_set<std::string>(
       state.expired_keys().begin(), state.expired_keys().end());
   range_tracker.partition_index_ = state.partition_index();
+
+  if (state.has_start_time() != state.has_end_time()) {
+    return absl::InternalError(
+        "RangeTracker state must have either both start_time and end_time or "
+        "neither.");
+  }
+  if (state.has_start_time()) {
+    range_tracker.agg_window_ = Interval<uint64_t>(state.start_time().seconds(),
+                                                   state.end_time().seconds());
+  }
+
   return range_tracker;
 }
 
@@ -84,6 +95,10 @@ RangeTrackerState RangeTracker::Serialize() const {
   }
   if (partition_index_.has_value()) {
     state.set_partition_index(partition_index_.value());
+  }
+  if (agg_window_.has_value()) {
+    state.mutable_start_time()->set_seconds(agg_window_->start());
+    state.mutable_end_time()->set_seconds(agg_window_->end());
   }
   return state;
 }
@@ -107,6 +122,20 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     LOG(ERROR) << "Attempting to merge RangeTrackers with different partition "
                   "indices: "
                << *partition_index_ << " and " << *other.partition_index_;
+    return false;
+  }
+
+  // Aggregation windows must match (if both are set).
+  if (!agg_window_.has_value()) {
+    agg_window_ = other.agg_window_;
+  } else if (other.agg_window_.has_value() &&
+             agg_window_.value() != other.agg_window_.value()) {
+    LOG(ERROR)
+        << "Attempting to merge RangeTrackers with different aggregation "
+           "windows: ["
+        << agg_window_->start() << ", " << agg_window_->end() << ") and ["
+        << other.agg_window_->start() << ", " << other.agg_window_->end()
+        << ")";
     return false;
   }
 
@@ -146,6 +175,18 @@ absl::StatusOr<RangeTracker> UnbundleRangeTracker(std::string& blob) {
 
   blob = std::string(std::move(data));
   return RangeTracker::Parse(state);
+}
+
+bool RangeTracker::SetAggregationWindow(Interval<uint64_t> agg_window) {
+  if (agg_window_.has_value() && agg_window_.value() != agg_window) {
+    LOG(ERROR) << "Attempting to set aggregation window to a different value: ["
+               << agg_window_->start() << ", " << agg_window_->end()
+               << ") vs new [" << agg_window.start() << ", " << agg_window.end()
+               << ")";
+    return false;
+  }
+  agg_window_ = agg_window;
+  return true;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

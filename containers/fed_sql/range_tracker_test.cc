@@ -359,5 +359,126 @@ TEST(RangeTrackerTest, ExpiredKeys) {
   EXPECT_TRUE(expired_keys.contains("expired_key2"));
 }
 
+TEST(RangeTrackerTest, SetAggregationWindowSuccess) {
+  RangeTracker range_tracker;
+  EXPECT_FALSE(range_tracker.GetAggregationWindow().has_value());
+
+  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
+  ASSERT_TRUE(range_tracker.GetAggregationWindow().has_value());
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
+
+  // Setting the same window again should succeed.
+  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
+}
+
+TEST(RangeTrackerTest, SetAggregationWindowMismatchFails) {
+  RangeTracker range_tracker;
+  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
+  EXPECT_FALSE(
+      range_tracker.SetAggregationWindow(Interval<uint64_t>(300, 400)));
+}
+
+TEST(RangeTrackerTest, SerializeAndParseAggWindow) {
+  RangeTracker range_tracker;
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(1, 5));
+  EXPECT_TRUE(
+      range_tracker.SetAggregationWindow(Interval<uint64_t>(1000, 2000)));
+
+  RangeTrackerState serialized_state = range_tracker.Serialize();
+  EXPECT_EQ(serialized_state.start_time().seconds(), 1000);
+  EXPECT_EQ(serialized_state.end_time().seconds(), 2000);
+
+  auto parsed = RangeTracker::Parse(serialized_state);
+  EXPECT_THAT(parsed, IsOk());
+  ASSERT_TRUE(parsed->GetAggregationWindow().has_value());
+  EXPECT_EQ(parsed->GetAggregationWindow()->start(), 1000);
+  EXPECT_EQ(parsed->GetAggregationWindow()->end(), 2000);
+}
+
+TEST(RangeTrackerTest, SerializeWithoutAggWindow) {
+  RangeTracker range_tracker;
+  range_tracker.AddKey("foo");
+  EXPECT_TRUE(range_tracker.AddRange(1, 5));
+
+  RangeTrackerState serialized_state = range_tracker.Serialize();
+  EXPECT_FALSE(serialized_state.has_start_time());
+  EXPECT_FALSE(serialized_state.has_end_time());
+
+  auto parsed = RangeTracker::Parse(serialized_state);
+  EXPECT_THAT(parsed, IsOk());
+  EXPECT_FALSE(parsed->GetAggregationWindow().has_value());
+}
+
+TEST(RangeTrackerTest, MergeSameAggWindow) {
+  RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 5
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "bar"
+    values: 7
+    values: 9
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  auto range_tracker1 = RangeTracker::Parse(state1);
+  auto range_tracker2 = RangeTracker::Parse(state2);
+  EXPECT_THAT(range_tracker1, IsOk());
+  EXPECT_THAT(range_tracker2, IsOk());
+
+  EXPECT_TRUE(range_tracker1->Merge(*range_tracker2));
+  ASSERT_TRUE(range_tracker1->GetAggregationWindow().has_value());
+  EXPECT_EQ(range_tracker1->GetAggregationWindow()->start(), 100);
+  EXPECT_EQ(range_tracker1->GetAggregationWindow()->end(), 200);
+}
+
+TEST(RangeTrackerTest, MergeDifferentAggWindowFails) {
+  RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "foo"
+    values: 0
+    values: 5
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "bar"
+    values: 7
+    values: 9
+    start_time { seconds: 300 }
+    end_time { seconds: 400 }
+  )pb");
+  auto range_tracker1 = RangeTracker::Parse(state1);
+  auto range_tracker2 = RangeTracker::Parse(state2);
+  EXPECT_THAT(range_tracker1, IsOk());
+  EXPECT_THAT(range_tracker2, IsOk());
+
+  EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+}
+
+TEST(RangeTrackerTest, MergeEmptyAggWindow) {
+  RangeTracker range_tracker;
+  RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
+    keys: "bar"
+    values: 7
+    values: 9
+    start_time { seconds: 100 }
+    end_time { seconds: 200 }
+  )pb");
+  auto other = RangeTracker::Parse(state);
+  EXPECT_THAT(other, IsOk());
+
+  EXPECT_TRUE(range_tracker.Merge(*other));
+  ASSERT_TRUE(range_tracker.GetAggregationWindow().has_value());
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
+  EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

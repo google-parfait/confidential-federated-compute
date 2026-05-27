@@ -58,6 +58,16 @@ absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
         "Unexpected order of intervals in serialized PartitionPrivateState.");
   }
 
+  if (proto.has_start_time() != proto.has_end_time()) {
+    return absl::InternalError(
+        "PartitionPrivateState proto must have either both start_time and "
+        "end_time or neither.");
+  }
+  if (proto.has_start_time()) {
+    state.agg_window_ = Interval<uint64_t>(proto.start_time().seconds(),
+                                           proto.end_time().seconds());
+  }
+
   return state;
 }
 
@@ -81,6 +91,10 @@ PartitionPrivateStateProto PartitionPrivateState::Serialize() const {
   for (const auto& interval : ranges_) {
     proto.add_values(interval.start());
     proto.add_values(interval.end());
+  }
+  if (agg_window_.has_value()) {
+    proto.mutable_start_time()->set_seconds(agg_window_->start());
+    proto.mutable_end_time()->set_seconds(agg_window_->end());
   }
   return proto;
 }
@@ -115,6 +129,14 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
     return false;
   }
 
+  // Validate agg_window matches, if non-empty.
+  auto incoming_agg_window = range_tracker.GetAggregationWindow();
+  if (agg_window_.has_value() && incoming_agg_window.has_value() &&
+      agg_window_.value() != incoming_agg_window.value()) {
+    LOG(ERROR) << "Mismatched aggregation windows between partitions.";
+    return false;
+  }
+
   // All checks passed, update the state.
   if (ranges_.empty()) {
     ranges_ = range_tracker.GetRanges();
@@ -124,6 +146,9 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
   }
   if (expired_keys_.empty()) {
     expired_keys_ = range_tracker.GetExpiredKeys();
+  }
+  if (!agg_window_.has_value() && incoming_agg_window.has_value()) {
+    agg_window_ = incoming_agg_window;
   }
   symmetric_keys_[*partition_index] = std::string(symmetric_key);
   return true;
@@ -152,6 +177,12 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
     LOG(ERROR) << "Mismatched expired_keys between private states.";
     return false;
   }
+  // Validate agg_window matches, if non-empty.
+  if (agg_window_.has_value() && other.agg_window_.has_value() &&
+      agg_window_.value() != other.agg_window_.value()) {
+    LOG(ERROR) << "Mismatched aggregation windows between private states.";
+    return false;
+  }
 
   // All checks passed, update the state.
   if (ranges_.empty()) {
@@ -162,6 +193,9 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
   }
   if (expired_keys_.empty()) {
     expired_keys_ = other.expired_keys_;
+  }
+  if (!agg_window_.has_value() && other.agg_window_.has_value()) {
+    agg_window_ = other.agg_window_;
   }
   symmetric_keys_.insert(other.symmetric_keys_.begin(),
                          other.symmetric_keys_.end());

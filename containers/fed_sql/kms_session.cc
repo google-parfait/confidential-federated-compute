@@ -452,6 +452,16 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
         "Failed to commit due to conflicting ranges");
   }
 
+  // TODO: Check that all blobs are within the aggregation window.
+  if (commit_config.has_start_time() && commit_config.has_end_time()) {
+    Interval<uint64_t> agg_window(commit_config.start_time().seconds(),
+                                  commit_config.end_time().seconds());
+    if (!range_tracker_.SetAggregationWindow(agg_window)) {
+      return absl::FailedPreconditionError(
+          "Failed to commit due to aggregation window mismatch.");
+    }
+  }
+
   uncommitted_inputs_.clear();
   uncommitted_blob_ids_.clear();
   num_committed -= ignored_errors.size();

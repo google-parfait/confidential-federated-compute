@@ -16,12 +16,14 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_RANGE_TRACKER_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/fed_sql/interval.h"
 #include "containers/fed_sql/interval_set.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 
@@ -90,6 +92,16 @@ class RangeTracker {
     expired_keys_ = expired_keys;
   }
 
+  // Sets the aggregation time window specified as an Interval of seconds
+  // since epoch.
+  // Returns false if the window is already set to a different value.
+  bool SetAggregationWindow(Interval<uint64_t> agg_window);
+
+  // Returns the aggregation time window, if set.
+  std::optional<Interval<uint64_t>> GetAggregationWindow() const {
+    return agg_window_;
+  }
+
  private:
   // Set of keys that are currently being tracked by this RangeTracker.
   absl::flat_hash_set<std::string> keys_;
@@ -102,6 +114,9 @@ class RangeTracker {
 
   // Keys that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_keys_;
+
+  // The aggregation time window.
+  std::optional<Interval<uint64_t>> agg_window_;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined

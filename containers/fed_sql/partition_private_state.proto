@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package confidential_federated_compute.fed_sql;
 
+import "google/protobuf/timestamp.proto";
+
 // Used to serialize the state of PartitionPrivateState and pass it
 // between containers.
 message PartitionPrivateStateProto {
@@ -35,6 +37,10 @@ message PartitionPrivateStateProto {
     bytes symmetric_key = 2;
   }
   repeated SymmetricKeys symmetric_keys = 3;
+
+  // The start and end time of the aggregation window.
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp end_time = 7;
 
   reserved 1;
 }

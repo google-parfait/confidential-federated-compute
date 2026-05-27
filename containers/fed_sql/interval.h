@@ -56,6 +56,10 @@ class Interval {
     return a.start_ == b.start_ && a.end_ == b.end_;
   }
 
+  friend bool operator!=(const Interval& a, const Interval& b) {
+    return !(a == b);
+  }
+
   // Returns true if the interval contains the specified value.
   bool Contains(T value) const {
     // There is a special case for interval end being at the max

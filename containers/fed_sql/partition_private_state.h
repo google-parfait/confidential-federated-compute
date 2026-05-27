@@ -15,9 +15,12 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_PARTITION_PRIVATE_STATE_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_PARTITION_PRIVATE_STATE_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "containers/fed_sql/interval.h"
 #include "containers/fed_sql/partition_private_state.pb.h"
 #include "containers/fed_sql/range_tracker.h"
 
@@ -75,6 +78,11 @@ class PartitionPrivateState {
     return symmetric_keys_;
   }
 
+  // Returns the aggregation time window, if set.
+  std::optional<Interval<uint64_t>> GetAggregationWindow() const {
+    return agg_window_;
+  }
+
  private:
   // Symmetric keys used to encrypt each partition, key-ed by the partition id.
   absl::flat_hash_map<uint64_t, std::string> symmetric_keys_;
@@ -84,6 +92,8 @@ class PartitionPrivateState {
   absl::flat_hash_set<std::string> keys_;
   // Stores visited ranges of blobs. These are tracked across all keys.
   IntervalSet<uint64_t> ranges_;
+  // The aggregation time window.
+  std::optional<Interval<uint64_t>> agg_window_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql
