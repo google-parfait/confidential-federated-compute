@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <unistd.h>
+
 #include <chrono>
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -238,6 +244,45 @@ void RunServer() {
 }  // namespace confidential_federated_compute::gcp
 
 int main(int argc, char** argv) {
+  // Register custom C++ terminate handler to log unhandled exceptions.
+  std::set_terminate([]() {
+    const char* msg = "----------> C++ TERMINATE HANDLER FIRED!\n";
+    write(STDERR_FILENO, msg, 41);
+
+    try {
+      if (std::current_exception()) {
+        std::rethrow_exception(std::current_exception());
+      }
+    } catch (const std::exception& e) {
+      const char* exc_prefix = "----------> Exception: ";
+      write(STDERR_FILENO, exc_prefix, 23);
+      write(STDERR_FILENO, e.what(), strlen(e.what()));
+      write(STDERR_FILENO, "\n", 1);
+    } catch (...) {
+      const char* exc_prefix = "----------> Unknown C++ exception type!\n";
+      write(STDERR_FILENO, exc_prefix, 40);
+    }
+
+    fsync(STDERR_FILENO);
+    _exit(1);
+  });
+
+  // Diagnostic signal handler: log the fatal signal before dying.
+  struct sigaction sa = {};
+  sa.sa_handler = [](int sig) {
+    const char* prefix = "----------> FATAL SIGNAL: sig=";
+    write(STDERR_FILENO, prefix, 30);
+    char buf[8];
+    int len = snprintf(buf, sizeof(buf), "%d\n", sig);
+    write(STDERR_FILENO, buf, len);
+    _exit(128 + sig);
+  };
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESETHAND;  // one-shot: restore default after firing
+  sigaction(SIGSEGV, &sa, nullptr);
+  sigaction(SIGABRT, &sa, nullptr);
+  sigaction(SIGBUS, &sa, nullptr);
+
   absl::ParseCommandLine(argc, argv);
   confidential_federated_compute::gcp::RunServer();
   absl::SleepFor(absl::Seconds(1));

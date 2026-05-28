@@ -14,6 +14,7 @@
 
 #include "oak_session_utils.h"
 
+#include <fstream>
 #include <iostream>
 
 namespace confidential_federated_compute::gcp {
@@ -51,6 +52,19 @@ absl::Status ExchangeHandshakeMessages(
 
     std::cerr << "----------> ExchangeHandshake round " << round
               << ": waiting for server response (stream->Read)" << std::endl;
+
+    // Diagnostic: snapshot memory before Read in case of OOM kill.
+    {
+      std::ifstream proc_status("/proc/self/status");
+      std::string line;
+      while (std::getline(proc_status, line)) {
+        if (line.find("VmRSS") != std::string::npos ||
+            line.find("VmSize") != std::string::npos ||
+            line.find("VmPeak") != std::string::npos) {
+          std::cerr << "----------> PRE-READ " << line << std::endl;
+        }
+      }
+    }
 
     SessionResponse response;
     if (!stream->Read(&response)) {
