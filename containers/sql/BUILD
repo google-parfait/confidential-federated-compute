@@ -120,25 +120,11 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "in_memory_checkpoint_parser",
-    hdrs = ["in_memory_checkpoint_parser.h"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
-    ],
-)
-
 cc_test(
     name = "input_test",
     size = "small",
     srcs = ["input_test.cc"],
     deps = [
-        ":in_memory_checkpoint_parser",
         ":input",
         ":row_view",
         "//testing:matchers",
@@ -153,6 +139,7 @@ cc_test(
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:in_memory_checkpoint_parser",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )

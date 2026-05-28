@@ -30,7 +30,6 @@
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
-#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/input.h"
 #include "containers/sql/row_set.h"
 #include "containers/sql/sqlite_adapter.h"
@@ -50,12 +49,12 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/config_converter.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/in_memory_checkpoint_parser.h"
 
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
 using ::confidential_federated_compute::sql::CreateFromMessageCheckpoint;
-using ::confidential_federated_compute::sql::InMemoryCheckpointParser;
 using ::confidential_federated_compute::sql::Input;
 using ::confidential_federated_compute::sql::MessageFactory;
 using ::confidential_federated_compute::sql::RowLocation;
@@ -103,6 +102,7 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::InMemoryCheckpointParser;
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
 

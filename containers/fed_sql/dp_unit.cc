@@ -26,18 +26,17 @@
 #include "absl/types/span.h"
 #include "containers/fed_sql/interval_set.h"
 #include "containers/fed_sql/session_utils.h"
-#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/in_memory_checkpoint_parser.h"
 
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
-using confidential_federated_compute::sql::InMemoryCheckpointParser;
 using confidential_federated_compute::sql::Input;
 using confidential_federated_compute::sql::RowLocation;
 using confidential_federated_compute::sql::RowSet;
@@ -46,6 +45,7 @@ using confidential_federated_compute::sql::SqlConfiguration;
 using confidential_federated_compute::sql::SqliteAdapter;
 using fcp::confidential_compute::kEventTimeColumnName;
 using tensorflow_federated::aggregation::CheckpointParser;
+using tensorflow_federated::aggregation::InMemoryCheckpointParser;
 using tensorflow_federated::aggregation::Tensor;
 }  // namespace
 
