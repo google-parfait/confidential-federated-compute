@@ -45,6 +45,7 @@ use_repo(fcp_deps, "bazel_toolchains", "libcppbor", "org_tensorflow_federated")
 # go/keep-sorted start
 bazel_dep(name = "confidential-federated-compute-sysroot", dev_dependency = True)
 bazel_dep(name = "gemma", dev_dependency = True)
+bazel_dep(name = "google_benchmark", version = "1.9.5", dev_dependency = True)
 bazel_dep(name = "googleapis-cc", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_rust_prost", version = "0.69.0", dev_dependency = True)
 bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
