@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/range_tracker.h"
+#include "containers/fed_sql/time_budget/time_budget.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -84,16 +85,21 @@ struct BudgetInfo {
   }
 };
 
-// Budget class is used to track and update serialized budget for FedSql
-// workloads. The budget is represented as a collection of buckets associated
-// with encryption keys, with each bucket having its own remaining budget.
-// Each customer uploaded blob can be associated with at most one bucket,
-// based on which encryption key that blob was encrypted with at upload.
-// When processing blobs in a container an assumption is made that all blobs
-// associated with a bucket (i.e. the corresponding encryption key) have been
-//  processed, therefore the budget for that bucket is reduced by 1.
-
-// TODO: Add ability to remove expired buckets from the budget
+// Budget class serves as a migration layer between the legacy per-key budget
+// tracking and the new time-based budget tracking (TimeBudget). It maintains
+// both budget schemes in parallel:
+//
+// - Legacy per-key budgets: Tracked via per_key_budgets_, using KMS key
+//   IDs as bucket identifiers.
+// - Time-based budget: Tracked via time_budget_, using time windows.
+//
+// During the migration, when a time_window is provided to UpdateBudget, only
+// the TimeBudget is updated (per_key_budgets_ are not modified). When no
+// time_window is provided, only the legacy per_key_budgets_ are updated.
+// Expired keys are always cleaned up from per_key_budgets_ regardless.
+//
+// Once all callers have fully switched to time-based budgets, this class will
+// become redundant and can be deleted in favor of using TimeBudget directly.
 class Budget {
  public:
   using InnerMap = absl::flat_hash_map<std::string, BudgetInfo>;
@@ -107,7 +113,7 @@ class Budget {
   // If the default budget isn't specified (std::nullopt), it is considered to
   // be infinite.
   explicit Budget(std::optional<uint32_t> default_budget)
-      : default_budget_(default_budget) {}
+      : default_budget_(default_budget), time_budget_(default_budget) {}
 
   // This class is move-only.
   Budget(const Budget&) = delete;
@@ -132,15 +138,17 @@ class Budget {
   // range_key.
   bool HasRemainingBudget(const std::string& key, uint64_t range_key);
 
+  // Checks whether any time-based budget remains for the specified time window.
+  bool HasRemainingBudget(Interval<uint64_t> time_window);
+
   // Checks whether the default budget is unlimited.
   bool HasUnlimitedBudget() const { return !default_budget_.has_value(); }
 
   // Update the budget by applying the data collected in the RangeTracker.
+  // If the RangeTracker has an aggregation window set, only the time-based
+  // budget is updated (per_key_budgets_ are not modified). Expired keys are
+  // always cleaned up.
   absl::Status UpdateBudget(const RangeTracker& range_tracker);
-  absl::Status UpdateBudget(
-      const absl::flat_hash_set<std::string>& keys,
-      const IntervalSet<uint64_t>& ranges,
-      const absl::flat_hash_set<std::string>& expired_keys);
 
   // Gets all the keys in the budget.
   absl::flat_hash_set<std::string> GetKeys() const;
@@ -150,10 +158,16 @@ class Budget {
   const_iterator end() const { return per_key_budgets_.end(); }
 
  private:
+  // Updates the legacy per-key budgets based on the provided keys and ranges.
+  absl::Status UpdatePerKeyBudget(const absl::flat_hash_set<std::string>& keys,
+                                  const IntervalSet<uint64_t>& ranges);
+
   std::optional<uint32_t> default_budget_;
   // Stores budgets for individual buckets organized by key_id of encryption
   // key used to encrypt a blob (the same key_id that is found in BlobHeader).
   InnerMap per_key_budgets_;
+  // Time-based budget tracking.
+  TimeBudget time_budget_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

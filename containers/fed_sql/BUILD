@@ -528,9 +528,11 @@ cc_library(
     deps = [
         ":budget_cc_proto",
         ":range_tracker",
+        "//containers/fed_sql/time_budget",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@federated-compute//fcp/base",
     ],
 )
 

@@ -425,6 +425,20 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
         "Failed to parse FedSqlContainerCommitConfiguration.");
   }
 
+  // TODO: Check that all blobs are within the aggregation window.
+  if (commit_config.has_start_time() && commit_config.has_end_time()) {
+    Interval<uint64_t> agg_window(commit_config.start_time().seconds(),
+                                  commit_config.end_time().seconds());
+    if (!private_state_->budget.HasRemainingBudget(agg_window)) {
+      return absl::FailedPreconditionError(
+          "No time-based budget remaining for the aggregation window.");
+    }
+    if (!range_tracker_.SetAggregationWindow(agg_window)) {
+      return absl::FailedPreconditionError(
+          "Failed to commit due to aggregation window mismatch.");
+    }
+  }
+
   Interval<uint64_t> range(commit_config.range().start(),
                            commit_config.range().end());
   absl::flat_hash_set<std::string> unique_key_ids;
@@ -450,16 +464,6 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
                                commit_config.range().end())) {
     return absl::FailedPreconditionError(
         "Failed to commit due to conflicting ranges");
-  }
-
-  // TODO: Check that all blobs are within the aggregation window.
-  if (commit_config.has_start_time() && commit_config.has_end_time()) {
-    Interval<uint64_t> agg_window(commit_config.start_time().seconds(),
-                                  commit_config.end_time().seconds());
-    if (!range_tracker_.SetAggregationWindow(agg_window)) {
-      return absl::FailedPreconditionError(
-          "Failed to commit due to aggregation window mismatch.");
-    }
   }
 
   uncommitted_inputs_.clear();
@@ -639,16 +643,15 @@ KmsFedSqlSession::ReportPrivateState(Context& context) {
   if (!private_state_->consumed_tracker.Merge(
           partition_private_state_.GetKeys(),
           partition_private_state_.GetRanges(),
-          partition_private_state_.GetExpiredKeys())) {
+          partition_private_state_.GetExpiredKeys(),
+          partition_private_state_.GetAggregationWindow())) {
     return absl::FailedPreconditionError(
         "Conflicting ranges between autotuning and aggregation.");
   }
 
   // Update the private state
-  FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(
-      private_state_->consumed_tracker.GetKeys(),
-      private_state_->consumed_tracker.GetRanges(),
-      private_state_->consumed_tracker.GetExpiredKeys()));
+  FCP_RETURN_IF_ERROR(
+      private_state_->budget.UpdateBudget(private_state_->consumed_tracker));
 
   // Produce the finalized private state.
   FedSqlContainerPartitionedOutputFinalizedState finalized_state;

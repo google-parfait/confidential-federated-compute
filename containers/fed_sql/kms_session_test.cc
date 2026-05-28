@@ -630,6 +630,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
                 }
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
+                time_budget {}
               )pb"));
 
   FederatedComputeCheckpointParserFactory parser_factory;
@@ -639,6 +640,147 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   // input column
   EXPECT_THAT((*parser)->GetTensor("val_out"),
               IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateCommitReportWithTimeWindowSucceeds) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 2, "key_foo");
+
+  auto write_result1 = session_->Write(write_request1, data, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+  auto write_result2 = session_->Write(write_request2, data, context_);
+  ASSERT_THAT(write_result2, IsOk());
+  EXPECT_EQ(write_result2->status().code(), Code::OK)
+      << write_result2->status().message();
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  auto commit_response = session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->status().code(), Code::OK)
+      << commit_response->status().message();
+  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 2);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  std::optional<std::string> src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  EXPECT_EQ(index, 1);
+  EXPECT_EQ(src, initial_private_state_);
+  BudgetState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(dst));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "key_foo" budget: 1 }
+                buckets { key: "key_bar" budget: 3 }
+                buckets { key: "key_baz" budget: 0 }
+                time_budget {
+                  anchor_time: 1200
+                  intervals { start_index: 0 count: 20 remaining_budget: 4 }
+                }
+              )pb"));
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
+  ASSERT_THAT(parser, IsOk());
+  EXPECT_THAT((*parser)->GetTensor("val_out"),
+              IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, CommitWithNoRemainingTimeBudgetFails) {
+  // Construct a budget state that already has zero remaining budget for the
+  // target time window.
+  BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "key_foo" budget: 1 }
+    buckets { key: "key_bar" budget: 3 }
+    buckets { key: "key_baz" budget: 0 }
+    time_budget {
+      anchor_time: 1200
+      intervals { start_index: 0 count: 20 remaining_budget: 0 }
+    }
+  )pb");
+  initial_private_state_ = budget_state.SerializeAsString();
+
+  // Re-create the session with this initial private state.
+  session_ = std::make_unique<KmsFedSqlSession>(
+      CheckpointAggregator::Create(DefaultConfiguration()).value(), intrinsics_,
+      std::nullopt, std::nullopt,
+      CreatePrivateState(initial_private_state_, /*default_budget=*/5),
+      absl::flat_hash_set<std::string>(), nullptr, "test_query",
+      default_decryptor_, /*max_output_partitions=*/10);
+
+  ConfigureRequest request;
+  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+    raw_sql: "SELECT key, val * 2 AS val FROM input"
+    database_schema {
+      table {
+        name: "input"
+        column { name: "key" type: INT64 }
+        column { name: "val" type: INT64 }
+        create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
+      }
+    }
+    output_columns { name: "key" type: INT64 }
+    output_columns { name: "val" type: INT64 }
+  )pb");
+  request.mutable_configuration()->PackFrom(sql_query);
+  ASSERT_THAT(session_->Configure(request, context_), IsOk());
+
+  // Write some input.
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+
+  // Try to commit with the exhausted time window.
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+
+  EXPECT_THAT(
+      session_->Commit(commit_request, context_),
+      StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr(
+              "No time-based budget remaining for the aggregation window.")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
@@ -1221,6 +1363,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
                 }
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
+                time_budget {}
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
@@ -1385,6 +1528,96 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                   consumed_range_start: 1
                   consumed_range_end: 10
                 }
+                time_budget {}
+              )pb"));
+
+  FedSqlContainerPartitionedOutputFinalizedState result;
+  result.ParseFromString(result_data);
+  EXPECT_THAT(result, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                keys { partition_index: 1 symmetric_key: "key1" }
+                keys { partition_index: 2 symmetric_key: "key2" }
+                keys { partition_index: 3 symmetric_key: "key3" }
+                keys { partition_index: 4 symmetric_key: "key4" }
+              )pb"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       MergeReportPrivateStateWithTimeWindowSucceeds) {
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "key_baz"
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 3 symmetric_key: "key3" }
+    symmetric_keys { id: 4 symmetric_key: "key4" }
+    expired_keys: "key_baz"
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  *write_request.mutable_first_request_metadata() = metadata;
+  write_result = session_->Write(write_request,
+                                 private_state.SerializeAsString(), context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  std::string result_data;
+  std::optional<std::string> src;
+  std::string dst;
+  int index;
+  ExpectEmitReleasable(index, src, dst, result_data);
+
+  BlobMetadata unused;
+  auto finalize_response =
+      session_->Finalize(finalize_request, unused, context_);
+  ASSERT_THAT(finalize_response, IsOk());
+
+  EXPECT_EQ(index, 2);
+  EXPECT_EQ(src, initial_private_state_);
+  BudgetState new_state;
+  EXPECT_TRUE(new_state.ParseFromString(dst));
+  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "key_foo" budget: 1 }
+                buckets { key: "key_bar" budget: 3 }
+                time_budget {
+                  anchor_time: 1200
+                  intervals { start_index: 0 count: 20 remaining_budget: 4 }
+                }
               )pb"));
 
   FedSqlContainerPartitionedOutputFinalizedState result;
@@ -1464,6 +1697,7 @@ TEST_F(KmsFedSqlSessionWriteTest,
                   consumed_range_start: 1
                   consumed_range_end: 10
                 }
+                time_budget {}
               )pb"));
 
   FedSqlContainerPartitionedOutputFinalizedState result;

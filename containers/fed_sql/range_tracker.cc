@@ -125,26 +125,26 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     return false;
   }
 
-  // Aggregation windows must match (if both are set).
-  if (!agg_window_.has_value()) {
-    agg_window_ = other.agg_window_;
-  } else if (other.agg_window_.has_value() &&
-             agg_window_.value() != other.agg_window_.value()) {
-    LOG(ERROR)
-        << "Attempting to merge RangeTrackers with different aggregation "
-           "windows: ["
-        << agg_window_->start() << ", " << agg_window_->end() << ") and ["
-        << other.agg_window_->start() << ", " << other.agg_window_->end()
-        << ")";
-    return false;
-  }
-
-  return Merge(other.keys_, other.ranges_, other.expired_keys_);
+  return Merge(other.keys_, other.ranges_, other.expired_keys_,
+               other.agg_window_);
 }
 
 bool RangeTracker::Merge(const absl::flat_hash_set<std::string>& keys,
                          const IntervalSet<uint64_t>& ranges,
-                         const absl::flat_hash_set<std::string>& expired_keys) {
+                         const absl::flat_hash_set<std::string>& expired_keys,
+                         std::optional<Interval<uint64_t>> agg_window) {
+  // Aggregation windows must match (if both are set).
+  if (!agg_window_.has_value()) {
+    agg_window_ = agg_window;
+  } else if (agg_window.has_value() &&
+             agg_window_.value() != agg_window.value()) {
+    LOG(ERROR) << "Attempting to merge aggregation windows that do not match: ["
+               << agg_window_->start() << ", " << agg_window_->end() << ") vs ["
+               << agg_window.value().start() << ", " << agg_window.value().end()
+               << ")";
+    return false;
+  }
+
   // Merge keys.
   keys_.insert(keys.begin(), keys.end());
 

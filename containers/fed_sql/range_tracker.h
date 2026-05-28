@@ -68,7 +68,8 @@ class RangeTracker {
   // A variant of Merge that merges the underlying data directly.
   bool Merge(const absl::flat_hash_set<std::string>& keys,
              const IntervalSet<uint64_t>& ranges,
-             const absl::flat_hash_set<std::string>& expired_keys);
+             const absl::flat_hash_set<std::string>& expired_keys,
+             std::optional<Interval<uint64_t>> agg_window = std::nullopt);
 
   // Returns the set of keys that are currently being tracked by this
   // RangeTracker.

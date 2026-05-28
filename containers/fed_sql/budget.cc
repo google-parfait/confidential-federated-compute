@@ -19,6 +19,7 @@
 #include <string>
 
 #include "containers/fed_sql/budget.pb.h"
+#include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -51,6 +52,11 @@ absl::Status Budget::Parse(const BudgetState& state) {
     map[bucket.key()] = info;
   }
   std::swap(per_key_budgets_, map);
+
+  if (state.has_time_budget()) {
+    FCP_RETURN_IF_ERROR(time_budget_.Parse(state.time_budget()));
+  }
+
   return absl::OkStatus();
 }
 
@@ -69,6 +75,7 @@ BudgetState Budget::Serialize() const {
       bucket->set_consumed_range_end(info.consumed_range->end());
     }
   }
+  *state.mutable_time_budget() = time_budget_.Serialize();
   return state;
 }
 
@@ -114,15 +121,13 @@ bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
   return false;
 }
 
-absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
-  return UpdateBudget(range_tracker.GetKeys(), range_tracker.GetRanges(),
-                      range_tracker.GetExpiredKeys());
+bool Budget::HasRemainingBudget(Interval<uint64_t> time_window) {
+  return time_budget_.HasRemainingBudget(time_window);
 }
 
-absl::Status Budget::UpdateBudget(
+absl::Status Budget::UpdatePerKeyBudget(
     const absl::flat_hash_set<std::string>& keys,
-    const IntervalSet<uint64_t>& ranges,
-    const absl::flat_hash_set<std::string>& expired_keys) {
+    const IntervalSet<uint64_t>& ranges) {
   if (ranges.empty()) {
     return absl::FailedPreconditionError(
         "The interval set is empty when updating the budget.");
@@ -195,8 +200,23 @@ absl::Status Budget::UpdateBudget(
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
+  std::optional<Interval<uint64_t>> time_window =
+      range_tracker.GetAggregationWindow();
+  if (time_window.has_value()) {
+    // When a time_window is provided, update only the time-based budget.
+    FCP_RETURN_IF_ERROR(time_budget_.UpdateBudget(time_window.value()));
+  } else {
+    // Otherwise, update the legacy per-key budgets.
+    FCP_RETURN_IF_ERROR(
+        UpdatePerKeyBudget(range_tracker.GetKeys(), range_tracker.GetRanges()));
+  }
+
   // Remove any expired keys from the budget.
-  for (const auto& expired_key : expired_keys) {
+  for (const auto& expired_key : range_tracker.GetExpiredKeys()) {
     per_key_budgets_.erase(expired_key);
   }
 
