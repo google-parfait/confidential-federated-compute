@@ -282,7 +282,6 @@ cc_library(
     deps = [
         ":interval_set",
         ":session_utils",
-        "//containers/sql:in_memory_checkpoint_parser",
         "//containers/sql:row_set",
         "//containers/sql:sqlite_adapter",
         "@com_google_absl//absl/status",
@@ -296,6 +295,7 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:in_memory_checkpoint_parser",
     ],
 )
 
@@ -341,7 +341,6 @@ cc_library(
         ":session_utils",
         "//containers:big_endian",
         "//containers:session",
-        "//containers/sql:in_memory_checkpoint_parser",
         "//containers/sql:input",
         "//containers/sql:row_set",
         "//containers/sql:sqlite_adapter",
@@ -373,6 +372,7 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:in_memory_checkpoint_parser",
     ],
 )
 

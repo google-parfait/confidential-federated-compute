@@ -25,7 +25,6 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "containers/sql/in_memory_checkpoint_parser.h"
 #include "containers/sql/row_view.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -36,6 +35,7 @@
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/in_memory_checkpoint_parser.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
@@ -55,6 +55,7 @@ using ::google::protobuf::Message;
 using ::google::protobuf::Reflection;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::InMemoryCheckpointParser;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::HasSubstr;
