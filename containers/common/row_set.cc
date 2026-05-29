@@ -64,7 +64,7 @@ absl::StatusOr<RowSet> RowSet::Create(const Input* input) {
   owned_locations->reserve(num_rows);
   for (uint32_t i = 0; i < num_rows; ++i) {
     owned_locations->push_back(
-        {.dp_unit_hash = 0, .input_index = 0, .row_index = i});
+        {.group_key = 0, .input_index = 0, .row_index = i});
   }
   return RowSet(absl::MakeConstSpan(*owned_locations),
                 absl::MakeConstSpan(input, 1), std::move(owned_locations));

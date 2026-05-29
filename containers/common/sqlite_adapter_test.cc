@@ -225,7 +225,7 @@ class AddTableContentsTest : public SqliteAdapterTest {
     locations.reserve(num_rows);
     for (int i = 0; i < num_rows; ++i) {
       locations.push_back(
-          {.dp_unit_hash = 0, .input_index = 0, .row_index = (uint32_t)i});
+          {.group_key = 0, .input_index = 0, .row_index = (uint32_t)i});
     }
     return locations;
   }

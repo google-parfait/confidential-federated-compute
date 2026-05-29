@@ -30,19 +30,19 @@
 
 namespace confidential_federated_compute {
 struct RowLocation {
-  uint64_t dp_unit_hash;  // Hash of the DP unit identifiers.
-  uint32_t input_index;   // Index into the primary Input storage
-                          // vector.
-  uint32_t row_index;     // Index of the row within the tensors of the
-                          // Input.
+  uint64_t group_key;    // Generic grouping key (e.g., hash of DP unit
+                         // identifiers or hash of Privacy ID)
+  uint32_t input_index;  // Index into the primary Input storage
+                         // vector.
+  uint32_t row_index;    // Index of the row within the tensors of the
+                         // Input.
 
-  // Sort by DP unit hash, then input index, then row index. First sorting by DP
-  // unit hash lets us group rows by DP unit so we can process them together.
+  // Sort by group key, then input index, then row index.
   // Secondarily grouping by input index and row index helps with memory
   // locality as we iterate over rows.
   bool operator<(const RowLocation& other) const {
-    return std::tie(dp_unit_hash, input_index, row_index) <
-           std::tie(other.dp_unit_hash, other.input_index, other.row_index);
+    return std::tie(group_key, input_index, row_index) <
+           std::tie(other.group_key, other.input_index, other.row_index);
   }
 };
 

@@ -175,7 +175,7 @@ absl::Status DpUnitProcessor::StageInputForCommit(Input&& input) {
         uint64_t dp_unit_hash,
         ComputeDPUnitHash(privacy_id, dp_time_unit, row, dp_indices));
     uint32_t row_index = i;
-    uncommitted_row_locations_.push_back({.dp_unit_hash = dp_unit_hash,
+    uncommitted_row_locations_.push_back({.group_key = dp_unit_hash,
                                           .input_index = input_index,
                                           .row_index = row_index});
   }
@@ -194,13 +194,12 @@ DpUnitProcessor::CommitRowsGroupingByDpUnit() {
             uncommitted_row_locations_.end());
   for (auto it = uncommitted_row_locations_.begin();
        it != uncommitted_row_locations_.end();) {
-    const auto& dp_unit_hash = it->dp_unit_hash;
+    const auto& dp_unit_hash = it->group_key;
     // Get a span of rows that belong to the same DP unit.
-    auto end_of_range =
-        std::find_if(it, uncommitted_row_locations_.end(),
-                     [&dp_unit_hash](const auto& other) {
-                       return dp_unit_hash != other.dp_unit_hash;
-                     });
+    auto end_of_range = std::find_if(it, uncommitted_row_locations_.end(),
+                                     [&dp_unit_hash](const auto& other) {
+                                       return dp_unit_hash != other.group_key;
+                                     });
     absl::Span<const RowLocation> dp_unit_span(&*it,
                                                std::distance(it, end_of_range));
     it = end_of_range;  // Move to the next DP unit.
