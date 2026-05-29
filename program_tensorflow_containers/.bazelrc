@@ -1,4 +1,5 @@
 # Bazel configuration.
+common --announce_rc
 
 # Enable logging error output.
 test --test_output=errors
@@ -13,25 +14,37 @@ build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
 # Enable XLA support by default.
-build --define=with_xla_support=true
+common --define=with_xla_support=true
 # Build TensorFlow and XLA with more optimizations to avoid linker OOM
-build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
-build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
-build --compilation_mode=opt
-build --copt=-mfma
-build --copt=-mavx2
-build --host_copt=-mfma
-build --host_copt=-mavx2
-build --define xnn_enable_avx512fp16=false
-build --define xnn_enable_avx512amx=false
-build --define xnn_enable_avxvnni=false
-build --define xnn_enable_avxvnniint8=false
-build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
-build --incompatible_default_to_explicit_init_py
+common --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
+common --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG,-mfma,-mavx2
+common --compilation_mode=opt
+common --strip=always
+common --copt=-mfma
+common --copt=-mavx2
+common --host_copt=-mfma
+common --host_copt=-mavx2
+common --define=xnn_enable_avx512fp16=false
+common --define=xnn_enable_avx512amx=false
+common --define=xnn_enable_avxvnni=false
+common --define=xnn_enable_avxvnniint8=false
+common --define=ynn_enable_x86_amxfp16=false
+common --define=tflite_with_xnnpack=false
+common --define=tensorflow_mkldnn_contraction_kernel=0
+common --define=no_aws_support=true
+common --define=no_gcp_support=true
+common --define=no_hdfs_support=true
+common --@rules_python//python/config_settings:precompile=force_disabled
+common --@rules_python//python/config_settings:bootstrap_impl=script
+common --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
+common --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
+common --incompatible_enable_cc_toolchain_resolution
 common --repo_env=TF_PYTHON_VERSION=3.12
 common --repo_env=PYTHON_BIN_PATH=/usr/bin/python3.12
+common --repo_env=USE_HERMETIC_CC_TOOLCHAIN=1
+common --repo_env=SYSROOT_DIST=linux_glibc_2_27
 
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect

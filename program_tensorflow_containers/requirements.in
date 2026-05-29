@@ -17,10 +17,9 @@ ml_dtypes>=0.5.0
 protobuf
 scipy~=1.16
 tensorflow>=2.21.0,==2.21.*
-tensorflow-privacy
 tqdm>=4.64.0,==4.64.*
 typing-extensions>=4.6.0,==4.6.*
-wrapt==1.14.1
+wrapt>=1.14.2,<1.15
 
 # Additional dependencies required for com_google_fcp.
 immutabledict==4.2.0

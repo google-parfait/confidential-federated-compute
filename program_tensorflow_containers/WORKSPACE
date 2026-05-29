@@ -21,20 +21,6 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive
 http_archive(
-    name = "XNNPACK",
-    patches = [
-        "//third_party/org_tensorflow:xnnpack_typo.patch",
-        "//third_party/org_tensorflow:xnnpack_amx.patch",
-    ],
-    sha256 = "44bf8a258cfd0d7b500b6058a2bb5c7387c8cebba295cfca985a68d16513f7c8",
-    strip_prefix = "XNNPACK-25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb",
-    urls = [
-        "https://github.com/google/XNNPACK/archive/25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb.zip",
-        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb.zip",
-    ],
-)
-
-http_archive(
     name = "boringssl",
     integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
     strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
@@ -227,9 +213,9 @@ http_archive(
 
 http_archive(
     name = "rules_python",
-    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
-    strip_prefix = "rules_python-0.40.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+    sha256 = "f2e80f97f9c0b82e2489e61e725df1e6bdaf16c4dacf5e26b95668787164baff",
+    strip_prefix = "rules_python-1.6.1",
+    url = "https://github.com/bazel-contrib/rules_python/releases/download/1.6.1/rules_python-1.6.1.tar.gz",
 )
 
 http_archive(
@@ -362,11 +348,9 @@ py_repositories()
 
 python_register_toolchains(
     name = "python",
-    ignore_root_user_error = True,
     python_version = "3.12",  # Keep in sync with repo env set in .bazelrc
 )
 
-load("@python//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
@@ -374,8 +358,9 @@ pip_parse(
     extra_pip_args = [
         "--index-url",
         "https://pypi.org/simple",
+        "--only-binary=:all:",  # Forces PyPI to download pre-compiled static wheels only
     ],
-    python_interpreter_target = interpreter,
+    python_interpreter_target = "@python_host//:python",
     requirements_lock = "//:requirements_lock.txt",
 )
 
