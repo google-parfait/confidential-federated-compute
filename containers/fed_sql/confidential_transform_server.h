@@ -130,6 +130,8 @@ class FedSqlConfidentialTransform final
   // be used i.e. all aggregates are merged together in a single worker before
   // release.
   std::optional<uint64_t> max_output_partitions_;
+  // The aggregation time window.
+  std::optional<Interval<uint64_t>> agg_window_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

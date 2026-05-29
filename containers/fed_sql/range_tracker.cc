@@ -133,16 +133,13 @@ bool RangeTracker::Merge(const absl::flat_hash_set<std::string>& keys,
                          const IntervalSet<uint64_t>& ranges,
                          const absl::flat_hash_set<std::string>& expired_keys,
                          std::optional<Interval<uint64_t>> agg_window) {
-  // Aggregation windows must match (if both are set).
   if (!agg_window_.has_value()) {
     agg_window_ = agg_window;
-  } else if (agg_window.has_value() &&
-             agg_window_.value() != agg_window.value()) {
-    LOG(ERROR) << "Attempting to merge aggregation windows that do not match: ["
-               << agg_window_->start() << ", " << agg_window_->end() << ") vs ["
-               << agg_window.value().start() << ", " << agg_window.value().end()
-               << ")";
-    return false;
+  } else if (agg_window.has_value()) {
+    // Create a bounding aggregation window (smallest start, largest end).
+    agg_window_ = Interval<uint64_t>(
+        std::min(agg_window_->start(), agg_window.value().start()),
+        std::max(agg_window_->end(), agg_window.value().end()));
   }
 
   // Merge keys.
@@ -175,18 +172,6 @@ absl::StatusOr<RangeTracker> UnbundleRangeTracker(std::string& blob) {
 
   blob = std::string(std::move(data));
   return RangeTracker::Parse(state);
-}
-
-bool RangeTracker::SetAggregationWindow(Interval<uint64_t> agg_window) {
-  if (agg_window_.has_value() && agg_window_.value() != agg_window) {
-    LOG(ERROR) << "Attempting to set aggregation window to a different value: ["
-               << agg_window_->start() << ", " << agg_window_->end()
-               << ") vs new [" << agg_window.start() << ", " << agg_window.end()
-               << ")";
-    return false;
-  }
-  agg_window_ = agg_window;
-  return true;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

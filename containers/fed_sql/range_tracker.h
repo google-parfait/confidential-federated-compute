@@ -33,7 +33,9 @@ namespace confidential_federated_compute::fed_sql {
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
  public:
-  RangeTracker() = default;
+  explicit RangeTracker(
+      std::optional<Interval<uint64_t>> agg_window = std::nullopt)
+      : agg_window_(agg_window) {}
 
   // This class is move-only.
   RangeTracker(const RangeTracker&) = delete;
@@ -92,11 +94,6 @@ class RangeTracker {
   void SetExpiredKeys(const absl::flat_hash_set<std::string>& expired_keys) {
     expired_keys_ = expired_keys;
   }
-
-  // Sets the aggregation time window specified as an Interval of seconds
-  // since epoch.
-  // Returns false if the window is already set to a different value.
-  bool SetAggregationWindow(Interval<uint64_t> agg_window);
 
   // Returns the aggregation time window, if set.
   std::optional<Interval<uint64_t>> GetAggregationWindow() const {

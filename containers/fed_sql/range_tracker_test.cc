@@ -360,33 +360,16 @@ TEST(RangeTrackerTest, ExpiredKeys) {
 }
 
 TEST(RangeTrackerTest, SetAggregationWindowSuccess) {
-  RangeTracker range_tracker;
-  EXPECT_FALSE(range_tracker.GetAggregationWindow().has_value());
-
-  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
+  RangeTracker range_tracker(Interval<uint64_t>(100, 200));
   ASSERT_TRUE(range_tracker.GetAggregationWindow().has_value());
   EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
   EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
-
-  // Setting the same window again should succeed.
-  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
-  EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
-  EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
-}
-
-TEST(RangeTrackerTest, SetAggregationWindowMismatchFails) {
-  RangeTracker range_tracker;
-  EXPECT_TRUE(range_tracker.SetAggregationWindow(Interval<uint64_t>(100, 200)));
-  EXPECT_FALSE(
-      range_tracker.SetAggregationWindow(Interval<uint64_t>(300, 400)));
 }
 
 TEST(RangeTrackerTest, SerializeAndParseAggWindow) {
-  RangeTracker range_tracker;
+  RangeTracker range_tracker(Interval<uint64_t>(1000, 2000));
   range_tracker.AddKey("foo");
   EXPECT_TRUE(range_tracker.AddRange(1, 5));
-  EXPECT_TRUE(
-      range_tracker.SetAggregationWindow(Interval<uint64_t>(1000, 2000)));
 
   RangeTrackerState serialized_state = range_tracker.Serialize();
   EXPECT_EQ(serialized_state.start_time().seconds(), 1000);
@@ -439,7 +422,7 @@ TEST(RangeTrackerTest, MergeSameAggWindow) {
   EXPECT_EQ(range_tracker1->GetAggregationWindow()->end(), 200);
 }
 
-TEST(RangeTrackerTest, MergeDifferentAggWindowFails) {
+TEST(RangeTrackerTest, MergeDifferentAggWindow) {
   RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
     keys: "foo"
     values: 0
@@ -459,7 +442,11 @@ TEST(RangeTrackerTest, MergeDifferentAggWindowFails) {
   EXPECT_THAT(range_tracker1, IsOk());
   EXPECT_THAT(range_tracker2, IsOk());
 
-  EXPECT_FALSE(range_tracker1->Merge(*range_tracker2));
+  EXPECT_TRUE(range_tracker1->Merge(*range_tracker2));
+  ASSERT_TRUE(range_tracker1->GetAggregationWindow().has_value());
+  // Check the bounding window.
+  EXPECT_EQ(range_tracker1->GetAggregationWindow()->start(), 100);
+  EXPECT_EQ(range_tracker1->GetAggregationWindow()->end(), 400);
 }
 
 TEST(RangeTrackerTest, MergeEmptyAggWindow) {

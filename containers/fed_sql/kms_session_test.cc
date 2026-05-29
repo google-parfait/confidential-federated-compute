@@ -175,7 +175,8 @@ KmsFedSqlSession CreateDefaultSession() {
                           std::nullopt, std::nullopt, CreatePrivateState("", 1),
                           {},
                           /*prototype=*/nullptr, "test_query", decryptor,
-                          /*max_output_partitions=*/10);
+                          /*max_output_partitions=*/10,
+                          /*agg_window=*/std::nullopt);
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -300,7 +301,8 @@ class KmsFedSqlSessionWriteTest : public Test {
   void CreateSession(
       Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
       std::optional<RangeTracker> consumed_tracker = std::nullopt,
-      absl::Cord autotuning_data = absl::Cord{}) {
+      absl::Cord autotuning_data = absl::Cord{},
+      std::optional<Interval<uint64_t>> agg_window = std::nullopt) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -319,7 +321,7 @@ class KmsFedSqlSessionWriteTest : public Test {
                            std::move(consumed_tracker),
                            std::move(autotuning_data)),
         absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor,
-        /* max_output_partitions= */ 10);
+        /* max_output_partitions= */ 10, agg_window);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -644,6 +646,11 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
 
 TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateCommitReportWithTimeWindowSucceeds) {
+  CreateSession(default_decryptor_, /*default_budget=*/5,
+                /*consumed_tracker=*/std::nullopt,
+                /*autotuning_data=*/absl::Cord{},
+                /*agg_window=*/Interval<uint64_t>(1200, 2400));
+
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
@@ -669,8 +676,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
     range { start: 1 end: 3 }
-    start_time { seconds: 1200 }
-    end_time { seconds: 2400 }
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   auto commit_response = session_->Commit(commit_request, context_);
@@ -715,7 +720,7 @@ TEST_F(KmsFedSqlSessionWriteTest,
               IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
 }
 
-TEST_F(KmsFedSqlSessionWriteTest, CommitWithNoRemainingTimeBudgetFails) {
+TEST_F(KmsFedSqlSessionWriteTest, FinalizeWithNoRemainingTimeBudgetFails) {
   // Construct a budget state that already has zero remaining budget for the
   // target time window.
   BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
@@ -735,7 +740,8 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitWithNoRemainingTimeBudgetFails) {
       std::nullopt, std::nullopt,
       CreatePrivateState(initial_private_state_, /*default_budget=*/5),
       absl::flat_hash_set<std::string>(), nullptr, "test_query",
-      default_decryptor_, /*max_output_partitions=*/10);
+      default_decryptor_, /*max_output_partitions=*/10,
+      /*agg_window=*/Interval<uint64_t>(1200, 2400));
 
   ConfigureRequest request;
   SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
@@ -766,21 +772,22 @@ TEST_F(KmsFedSqlSessionWriteTest, CommitWithNoRemainingTimeBudgetFails) {
   auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());
 
-  // Try to commit with the exhausted time window.
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
     range { start: 1 end: 3 }
-    start_time { seconds: 1200 }
-    end_time { seconds: 2400 }
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
+  ASSERT_THAT(session_->Commit(commit_request, context_), IsOk());
 
-  EXPECT_THAT(
-      session_->Commit(commit_request, context_),
-      StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr(
-              "No time-based budget remaining for the aggregation window.")));
+  // Finalize should fail because the time budget is exhausted.
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
@@ -1977,7 +1984,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query", decryptor_,
-        /*max_output_partitions=*/10);
+        /*max_output_partitions=*/10, /*agg_window=*/std::nullopt);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -2150,7 +2157,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
         "test_query", decryptor_,
-        /*max_output_partitions=*/10);
+        /*max_output_partitions=*/10, /*agg_window=*/std::nullopt);
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects

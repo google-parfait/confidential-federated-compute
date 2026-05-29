@@ -119,9 +119,11 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<MessageFactory> message_factory,
     absl::string_view on_device_query_name,
     confidential_federated_compute::Decryptor& decryptor,
-    std::optional<uint64_t> max_output_partitions)
+    std::optional<uint64_t> max_output_partitions,
+    std::optional<Interval<uint64_t>> agg_window)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
+      range_tracker_(agg_window),
       private_state_(std::move(private_state)),
       dp_unit_parameters_(dp_unit_parameters),
       message_factory_(std::move(message_factory)),
@@ -216,6 +218,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     return ToWriteFinishedResponse(
         absl::FailedPreconditionError("No budget remaining."));
   }
+
+  // TODO: Check that all blobs are within the aggregation window.
 
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
@@ -423,20 +427,6 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   if (!commit_request.configuration().UnpackTo(&commit_config)) {
     return absl::InvalidArgumentError(
         "Failed to parse FedSqlContainerCommitConfiguration.");
-  }
-
-  // TODO: Check that all blobs are within the aggregation window.
-  if (commit_config.has_start_time() && commit_config.has_end_time()) {
-    Interval<uint64_t> agg_window(commit_config.start_time().seconds(),
-                                  commit_config.end_time().seconds());
-    if (!private_state_->budget.HasRemainingBudget(agg_window)) {
-      return absl::FailedPreconditionError(
-          "No time-based budget remaining for the aggregation window.");
-    }
-    if (!range_tracker_.SetAggregationWindow(agg_window)) {
-      return absl::FailedPreconditionError(
-          "Failed to commit due to aggregation window mismatch.");
-    }
   }
 
   Interval<uint64_t> range(commit_config.range().start(),
