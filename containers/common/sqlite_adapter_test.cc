@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/sql/sqlite_adapter.h"
+#include "containers/common/sqlite_adapter.h"
 
 #include <thread>
 
@@ -20,7 +20,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
@@ -33,7 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 namespace {
 
@@ -1000,4 +1000,4 @@ TEST_F(EvaluateQueryTest, ExecuteQueryStaticMethodIntegration) {
 
 }  // namespace
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

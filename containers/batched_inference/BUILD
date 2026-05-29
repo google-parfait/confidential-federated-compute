@@ -33,11 +33,11 @@ cc_library(
     hdrs = ["batched_inference_fn.h"],
     deps = [
         ":batched_inference_engine",
+        "//containers/common:input",
+        "//containers/common:row_set",
         "//containers/fed_sql:inference_model_helper",
         "//containers/fed_sql:session_utils",
         "//containers/fns",
-        "//containers/sql:input",
-        "//containers/sql:row_set",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

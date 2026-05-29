@@ -23,7 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/protobuf/util/json_util.h"
@@ -36,7 +36,6 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::Prompt;
 using ::google::protobuf::Struct;
 using ::google::protobuf::Value;

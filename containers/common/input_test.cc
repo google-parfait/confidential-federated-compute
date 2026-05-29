@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 
 #include <cstdint>
 #include <memory>
@@ -25,7 +25,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "containers/sql/row_view.h"
+#include "containers/common/row_view.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "gmock/gmock.h"
@@ -40,7 +40,7 @@
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::absl_testing::IsOk;
@@ -840,4 +840,4 @@ TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

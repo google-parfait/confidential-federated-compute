@@ -29,11 +29,11 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "containers/common/input.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/kms_session.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/session.h"
-#include "containers/sql/input.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -57,8 +57,6 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::confidential_federated_compute::sql::FileDescriptorSetMessageFactory;
-using ::confidential_federated_compute::sql::MessageFactory;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::AccessBudget;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -145,7 +143,7 @@ FedSqlConfidentialTransform::FedSqlConfidentialTransform(
     std::unique_ptr<oak::crypto::EncryptionKeyHandle> encryption_key_handle)
     : ConfidentialTransformBase(std::move(signing_key_handle),
                                 std::move(encryption_key_handle)) {
-  CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+  CHECK_OK(SqliteAdapter::Initialize());
 };
 
 absl::Status FedSqlConfidentialTransform::SetAndValidateIntrinsics(

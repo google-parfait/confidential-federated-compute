@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "containers/common/row_set.h"
 #include "containers/fed_sql/dp_unit.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/partition_private_state.h"
@@ -31,7 +32,6 @@
 #include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
-#include "containers/sql/row_set.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "google/protobuf/message.h"
@@ -55,7 +55,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::optional<DpUnitParameters> dp_unit_parameters,
       std::shared_ptr<PrivateState> private_state,
       const absl::flat_hash_set<std::string>& expired_key_ids,
-      std::shared_ptr<sql::MessageFactory> message_factory,
+      std::shared_ptr<MessageFactory> message_factory,
       absl::string_view on_device_query_name,
       confidential_federated_compute::Decryptor& decryptor,
       std::optional<uint64_t> max_output_partitions);
@@ -131,21 +131,20 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
 
   // Produces the final aggregated report and returns the serialized checkpoint.
   absl::StatusOr<absl::Cord> BuildReport();
-  // Commits rows, grouping by uncommitted sql::Input. Returns any ignored
+  // Commits rows, grouping by uncommitted Input. Returns any ignored
   // errors.
   absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByInput(
-      std::vector<sql::Input>&& uncommitted_inputs,
-      const Interval<uint64_t>& range);
+      std::vector<Input>&& uncommitted_inputs, const Interval<uint64_t>& range);
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
-  std::optional<const sql::SqlConfiguration> sql_configuration_;
+  std::optional<const SqlConfiguration> sql_configuration_;
   InferenceModel inference_model_;
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
-  std::vector<sql::Input> uncommitted_inputs_;
+  std::vector<Input> uncommitted_inputs_;
   // The blob IDs of the uncommitted inputs.
   absl::flat_hash_set<absl::uint128> uncommitted_blob_ids_;
   // Tracks committed ranges of blobs for this session.
@@ -156,7 +155,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   std::optional<DpUnitParameters> dp_unit_parameters_;
   // Prototype for the logged message. Used to create dynamic messages from
   // serialized message checkpoints.
-  std::shared_ptr<sql::MessageFactory> message_factory_;
+  std::shared_ptr<MessageFactory> message_factory_;
   // The name of the query that executes on the device. This is used to prefix
   // message field-backed column names.
   std::string on_device_query_name_;

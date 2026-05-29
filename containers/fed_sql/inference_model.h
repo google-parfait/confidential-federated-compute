@@ -22,8 +22,8 @@
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "containers/common/input.h"
 #include "containers/fed_sql/inference_model_helper.h"
-#include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "include/llama.h"
@@ -81,7 +81,7 @@ class InferenceModel {
   // Runs inference on the given input. The input is expected to contain the
   // columns required by the inference task. The output column produced by
   // the inference model will be added to the input.
-  absl::Status RunInference(sql::Input& input);
+  absl::Status RunInference(Input& input);
   bool HasModel() const;
   const std::optional<SessionInferenceConfiguration>&
   GetInferenceConfiguration() const;
@@ -135,7 +135,7 @@ class InferenceModel {
   // and returns an InferenceOutput containing the results representing the
   // output column.
   virtual absl::StatusOr<InferenceOutput> RunGemmaCppInference(
-      const fcp::confidentialcompute::Prompt& prompt, const sql::Input& input,
+      const fcp::confidentialcompute::Prompt& prompt, const Input& input,
       absl::Span<const size_t> input_column_indices,
       const std::string& output_column_name);
 
@@ -143,7 +143,7 @@ class InferenceModel {
   // and returns an InferenceOutput containing the results representing the
   // output column.
   virtual absl::StatusOr<InferenceOutput> RunLlamaCppInference(
-      const fcp::confidentialcompute::Prompt& prompt, const sql::Input& input,
+      const fcp::confidentialcompute::Prompt& prompt, const Input& input,
       absl::Span<const size_t> input_column_indices,
       const std::string& output_column_name);
 
@@ -153,7 +153,7 @@ class InferenceModel {
   // column in the per_row_output_counts_map). Once this is extended to multiple
   // output columns, this will handle the cartesian product of multiple outputs.
   absl::Status DuplicateColumnsForMultipleRows(
-      sql::Input& input,
+      Input& input,
       std::map<std::string, ::tensorflow_federated::aggregation::Tensor>&
           output_columns,
       const std::map<std::string, std::vector<size_t>>&

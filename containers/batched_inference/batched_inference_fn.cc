@@ -22,12 +22,12 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "containers/batched_inference/batched_inference_engine.h"
+#include "containers/common/input.h"
+#include "containers/common/row_set.h"
 #include "containers/fed_sql/inference_model_helper.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/fns/do_fn.h"
 #include "containers/fns/fn.h"
-#include "containers/sql/input.h"
-#include "containers/sql/row_set.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -60,15 +60,9 @@ namespace {
 //
 // - ...
 
-using ::confidential_federated_compute::Session;
 using ::confidential_federated_compute::fed_sql::Deserialize;
 using ::confidential_federated_compute::fed_sql::InferenceOutputProcessor;
 using ::confidential_federated_compute::fed_sql::InferencePromptProcessor;
-using ::confidential_federated_compute::sql::CreateFromMessageCheckpoint;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::RowLocation;
-using ::confidential_federated_compute::sql::RowSet;
-using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;

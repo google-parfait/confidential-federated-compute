@@ -16,8 +16,8 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
+#include "containers/common/input.h"
 #include "containers/fed_sql/testing/mocks.h"
-#include "containers/sql/input.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -32,9 +32,8 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
+
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::Prompt;

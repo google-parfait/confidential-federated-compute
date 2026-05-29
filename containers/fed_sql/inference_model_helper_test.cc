@@ -20,7 +20,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -32,8 +32,7 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::RowView;
+
 using ::fcp::confidentialcompute::Prompt;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;

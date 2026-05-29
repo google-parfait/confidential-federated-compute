@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/sql/row_set.h"
+#include "containers/common/row_set.h"
 
 #include <cstdint>
 #include <string>
@@ -22,7 +22,7 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
@@ -33,7 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::absl_testing::IsOk;
@@ -379,4 +379,4 @@ TEST_F(TensorRowSetTest, CreateFromNullInputFails) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

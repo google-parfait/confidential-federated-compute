@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INPUT_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INPUT_H_
 
 #include <cstdint>
 #include <optional>
@@ -25,7 +25,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "containers/sql/row_view.h"
+#include "containers/common/row_view.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
@@ -33,7 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 // Interface for creating new protobuf messages.
 class MessageFactory {
@@ -77,7 +77,7 @@ class FileDescriptorSetMessageFactory : public MessageFactory {
   const google::protobuf::Message* prototype_;
 };
 
-// Represents the contents of a single SQL table, which may be backed by
+// Represents the contents of a single table, which may be backed by
 // different underlying storage types (e.g., Tensors, Messages). This class uses
 // absl::variant to abstract the specific storage mechanism.
 class Input {
@@ -96,7 +96,7 @@ class Input {
   //
   // Each row is composed of a single Message at index i in `messages` and the
   // element held at index i in each system column Tensor. Each field in the
-  // Message corresponds to a column in the SQL table.
+  // Message corresponds to a column in the input table.
   //
   // Each system column Tensor must be a 1-dimensional Tensor with the same
   // number of elements (rows) as the number of messages.
@@ -231,6 +231,6 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name);
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_INPUT_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INPUT_H_

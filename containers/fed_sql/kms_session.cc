@@ -26,13 +26,13 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
+#include "containers/common/input.h"
+#include "containers/common/row_set.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
-#include "containers/sql/input.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
@@ -54,13 +54,6 @@
 namespace confidential_federated_compute::fed_sql {
 
 namespace {
-using ::confidential_federated_compute::sql::CreateFromMessageCheckpoint;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::MessageFactory;
-using ::confidential_federated_compute::sql::RowLocation;
-using ::confidential_federated_compute::sql::RowSet;
-using ::confidential_federated_compute::sql::SqlConfiguration;
-using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
@@ -128,7 +121,7 @@ KmsFedSqlSession::KmsFedSqlSession(
       on_device_query_name_(on_device_query_name),
       decryptor_(decryptor),
       max_output_partitions_(max_output_partitions) {
-  CHECK_OK(confidential_federated_compute::sql::SqliteAdapter::Initialize());
+  CHECK_OK(SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(expired_key_ids);
   if (inference_configuration.has_value()) {
     if (inference_configuration->shared_gemma_model &&

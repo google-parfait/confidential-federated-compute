@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 
 #include <optional>
 #include <string>
@@ -23,7 +23,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
-#include "containers/sql/row_view.h"
+#include "containers/common/row_view.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -35,7 +35,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::fcp::confidentialcompute::BlobHeader;
@@ -450,4 +450,4 @@ FileDescriptorSetMessageFactory::Create(
       prototype));
 }
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

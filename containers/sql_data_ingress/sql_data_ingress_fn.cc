@@ -22,13 +22,13 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "containers/common/input.h"
+#include "containers/common/row_set.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fns/do_fn.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "containers/sql/input.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/message_description.pb.h"
@@ -44,12 +44,6 @@ namespace confidential_federated_compute::sql_data_ingress {
 
 namespace {
 
-using ::confidential_federated_compute::sql::FileDescriptorSetMessageFactory;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::MessageFactory;
-using ::confidential_federated_compute::sql::RowSet;
-using ::confidential_federated_compute::sql::SqlConfiguration;
-using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::MessageDescription;
 using ::fcp::confidentialcompute::

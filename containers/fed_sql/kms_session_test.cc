@@ -66,7 +66,6 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::
     BuildMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
-using ::confidential_federated_compute::sql::MessageFactory;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::MessageEncryptor;

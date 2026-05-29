@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/sql/row_view.h"
+#include "containers/common/row_view.h"
 
 #include "absl/status/status.h"
 #include "fcp/base/monitoring.h"
@@ -20,7 +20,7 @@
 #include "google/protobuf/message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 absl::StatusOr<RowView> RowView::CreateFromTensors(
     absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
@@ -99,4 +99,4 @@ RowView::MessageRowView::GetColumnType(int column_index) const {
 size_t RowView::MessageRowView::GetColumnCount() const {
   return field_paths_->size() + system_columns_.size();
 }
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
