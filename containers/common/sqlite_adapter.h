@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_SQLITE_ADAPTER_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_SQLITE_ADAPTER_H_
 
 #include <memory>
 
@@ -20,14 +20,14 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "containers/sql/row_set.h"
+#include "containers/common/row_set.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "sqlite3.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 // Configuration of the per-client SQL query step.
 struct SqlConfiguration {
@@ -116,6 +116,6 @@ class SqliteAdapter {
   std::optional<fcp::confidentialcompute::TableSchema> table_schema_;
 };
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_SQLITE_ADAPTER_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_SQLITE_ADAPTER_H_

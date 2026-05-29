@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_SET_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_SET_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -24,11 +24,11 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "containers/sql/input.h"
-#include "containers/sql/row_view.h"
+#include "containers/common/input.h"
+#include "containers/common/row_view.h"
 #include "fcp/base/monitoring.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 struct RowLocation {
   uint64_t dp_unit_hash;  // Hash of the DP unit identifiers.
   uint32_t input_index;   // Index into the primary Input storage
@@ -134,6 +134,6 @@ class RowSet {
   std::shared_ptr<const std::vector<RowLocation>> owned_locations_;
 };
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_SET_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_SET_H_

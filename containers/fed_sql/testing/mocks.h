@@ -18,8 +18,8 @@
 
 #include <string>
 
+#include "containers/common/input.h"
 #include "containers/fed_sql/inference_model.h"
-#include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gmock/gmock.h"
 
@@ -34,14 +34,14 @@ class MockInferenceModel : public InferenceModel {
   MOCK_METHOD(absl::StatusOr<InferenceModel::InferenceOutput>,
               RunGemmaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,
-               const sql::Input& input,
+               const Input& input,
                absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));
   MOCK_METHOD(absl::StatusOr<InferenceModel::InferenceOutput>,
               RunLlamaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,
-               const sql::Input& input,
+               const Input& input,
                absl::Span<const size_t> input_column_indices,
                const std::string& output_column_name),
               (override));

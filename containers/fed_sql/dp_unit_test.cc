@@ -21,10 +21,10 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/optional.h"
+#include "containers/common/input.h"
+#include "containers/common/row_set.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/testing/test_utils.h"
-#include "containers/sql/input.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -46,11 +46,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fed_sql::testing::CreateStringTestData;
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::RowLocation;
-using ::confidential_federated_compute::sql::RowView;
-using ::confidential_federated_compute::sql::SqlConfiguration;
-using ::confidential_federated_compute::sql::SqliteAdapter;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;

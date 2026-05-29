@@ -403,9 +403,8 @@ class FedSqlServerTest : public Test {
     ON_CALL(*mock_inference_model_, BuildGemmaCppModel)
         .WillByDefault(Return(absl::OkStatus()));
     ON_CALL(*mock_inference_model_, RunGemmaCppInference)
-        .WillByDefault([](const fcp::confidentialcompute::Prompt&,
-                          const sql::Input&, absl::Span<const size_t>,
-                          const std::string&)
+        .WillByDefault([](const fcp::confidentialcompute::Prompt&, const Input&,
+                          absl::Span<const size_t>, const std::string&)
                            -> absl::StatusOr<InferenceModel::InferenceOutput> {
           std::initializer_list<absl::string_view> topic_values = {
               "topic_value"};

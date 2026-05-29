@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/sql/row_set.h"
+#include "containers/common/row_set.h"
 
 #include <cstddef>
 #include <string>
@@ -22,9 +22,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "containers/sql/input.h"
+#include "containers/common/input.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 absl::StatusOr<RowSet> RowSet::Create(absl::Span<const RowLocation> locations,
                                       absl::Span<const Input> storage) {
@@ -77,4 +77,4 @@ absl::Span<const std::string> RowSet::GetColumnNames() const {
   return storage_[0].GetColumnNames();
 }
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

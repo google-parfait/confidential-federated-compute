@@ -21,11 +21,11 @@
 #include "absl/status/statusor.h"
 #include "absl/time/civil_time.h"
 #include "absl/types/span.h"
+#include "containers/common/row_set.h"
+#include "containers/common/row_view.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/interval_set.h"
 #include "containers/fed_sql/session_utils.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/row_view.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -46,13 +46,12 @@ class DpUnitProcessor {
  public:
   // Creates a DpUnitProcessor.
   static absl::StatusOr<std::unique_ptr<DpUnitProcessor>> Create(
-      const sql::SqlConfiguration& sql_configuration,
+      const SqlConfiguration& sql_configuration,
       const DpUnitParameters& dp_unit_parameters,
       tensorflow_federated::aggregation::CheckpointAggregator* aggregator);
 
   DpUnitProcessor(
-      sql::SqlConfiguration sql_configuration,
-      DpUnitParameters dp_unit_parameters,
+      SqlConfiguration sql_configuration, DpUnitParameters dp_unit_parameters,
       tensorflow_federated::aggregation::CheckpointAggregator* aggregator)
       : sql_configuration_(std::move(sql_configuration)),
         dp_unit_parameters_(std::move(dp_unit_parameters)),
@@ -66,24 +65,23 @@ class DpUnitProcessor {
   // group rows by DP unit.
   absl::StatusOr<uint64_t> ComputeDPUnitHash(
       absl::string_view privacy_id, absl::CivilSecond dp_time_unit,
-      confidential_federated_compute::sql::RowView row_view,
-      absl::Span<const int64_t> dp_indices);
+      RowView row_view, absl::Span<const int64_t> dp_indices);
 
   // Creates a DP unit index entry for each input row, and queues the input for
   // processing in `CommitRowsGroupingByDpUnit`.
   // This function consumes the input, so that it cannot be accidentally reused.
-  absl::Status StageInputForCommit(sql::Input&& input);
+  absl::Status StageInputForCommit(Input&& input);
 
   // Executes the SQL query on each DP unit and accumulates the results using
   // the provided aggregator. Returns any ignored errors. Not thread safe.
   absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByDpUnit();
 
  private:
-  sql::SqlConfiguration sql_configuration_;
+  SqlConfiguration sql_configuration_;
   DpUnitParameters dp_unit_parameters_;
   tensorflow_federated::aggregation::CheckpointAggregator* aggregator_;
-  std::vector<sql::Input> uncommitted_inputs_;
-  std::vector<sql::RowLocation> uncommitted_row_locations_;
+  std::vector<Input> uncommitted_inputs_;
+  std::vector<RowLocation> uncommitted_row_locations_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

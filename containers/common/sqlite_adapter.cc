@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/sql/sqlite_adapter.h"
+#include "containers/common/sqlite_adapter.h"
 
 #include <memory>
 #include <string>
@@ -25,8 +25,8 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/row_view.h"
+#include "containers/common/row_set.h"
+#include "containers/common/row_view.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -38,7 +38,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::SqlQuery;
@@ -505,4 +505,4 @@ absl::StatusOr<std::vector<Tensor>> SqliteAdapter::EvaluateQuery(
   return result;
 }
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute

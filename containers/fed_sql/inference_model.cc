@@ -22,8 +22,8 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "common/common.h"  // From @llama_cpp.
+#include "containers/common/input.h"
 #include "containers/fed_sql/inference_model_helper.h"
-#include "containers/sql/input.h"
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
 #include "include/llama-cpp.h"
@@ -36,8 +36,6 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
-using ::confidential_federated_compute::sql::Input;
-using ::confidential_federated_compute::sql::RowView;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::GEMMA2_2B;
@@ -561,7 +559,7 @@ InferenceModel::RunLlamaCppInference(
 }
 
 absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
-    sql::Input& input, std::map<std::string, Tensor>& output_columns,
+    Input& input, std::map<std::string, Tensor>& output_columns,
     const std::map<std::string, std::vector<size_t>>&
         per_row_output_counts_map) {
   if (output_columns.size() != 1) {
@@ -597,9 +595,9 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
     privacy_id_tensor = Tensor(*original_privacy_id, "privacy_id");
   }
   FCP_ASSIGN_OR_RETURN(
-      sql::Input new_input,
-      sql::Input::CreateFromTensors(std::move(final_columns), blob_header,
-                                    std::move(privacy_id_tensor)));
+      Input new_input,
+      Input::CreateFromTensors(std::move(final_columns), blob_header,
+                               std::move(privacy_id_tensor)));
   input = std::move(new_input);
   return absl::OkStatus();
 }

@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_VIEW_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_VIEW_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +29,7 @@
 #include "google/protobuf/message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 // Represents a direct mapping from a root message level to a leaf field.
 // Each `FieldDescriptor` in the path describes navigation through a single
@@ -288,6 +288,6 @@ T RowView::MessageRowView::GetValue(int column_index) const {
       row_index_);
 }
 
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_SQL_ROW_VIEW_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_VIEW_H_

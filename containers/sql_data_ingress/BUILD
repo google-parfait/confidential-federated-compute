@@ -23,10 +23,10 @@ cc_library(
     hdrs = ["sql_data_ingress_fn.h"],
     deps = [
         "//containers:session",
+        "//containers/common:input",
+        "//containers/common:row_set",
+        "//containers/common:sqlite_adapter",
         "//containers/fns",
-        "//containers/sql:input",
-        "//containers/sql:row_set",
-        "//containers/sql:sqlite_adapter",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:cord",

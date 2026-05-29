@@ -23,9 +23,9 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "benchmark/benchmark.h"
+#include "containers/common/row_set.h"
+#include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/session_utils.h"
-#include "containers/sql/row_set.h"
-#include "containers/sql/sqlite_adapter.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -40,7 +40,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 
 namespace {
 
@@ -299,6 +299,6 @@ BENCHMARK_REGISTER_F(SqliteAdapterBenchmark, BM_MessageAddTableContents)
     ->Range(50, 1000000);
 
 }  // namespace
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
 
 BENCHMARK_MAIN();

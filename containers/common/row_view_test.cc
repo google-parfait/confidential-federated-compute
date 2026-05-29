@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/sql/row_view.h"
+#include "containers/common/row_view.h"
 
 #include <cstdint>
 #include <string>
@@ -32,7 +32,7 @@
 #include "testing/matchers.h"
 #include "testing/parse_text_proto.h"
 
-namespace confidential_federated_compute::sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::absl_testing::IsOk;
@@ -322,4 +322,4 @@ TEST_F(MessageRowViewTest, CordCtype) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::sql
+}  // namespace confidential_federated_compute
