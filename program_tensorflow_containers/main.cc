@@ -71,7 +71,14 @@ void RunServer() {
 }  // namespace confidential_federated_compute::tensorflow::program_executor_tee
 
 int main(int argc, char** argv) {
+  LOG(INFO) << "CPP_PYTHON_PATH=" << CPP_PYTHON_PATH;
   setenv("PYTHONPATH", CPP_PYTHON_PATH, true);
+  LOG(INFO) << "PYTHONPATH=" << getenv("PYTHONPATH");
+
+  LOG(INFO) << "CPP_PYTHON_HOME=" << CPP_PYTHON_HOME;
+  setenv("PYTHONHOME", CPP_PYTHON_HOME, true);
+  LOG(INFO) << "PYTHONHOME=" << getenv("PYTHONHOME");
+
   PythonManager::GetInstance().Start();
   confidential_federated_compute::tensorflow::program_executor_tee::RunServer();
   PythonManager::GetInstance().Stop();

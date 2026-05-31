@@ -190,13 +190,36 @@ cc_test(
 )
 
 cc_binary(
+    name = "libz.so.1",
+    linkshared = 1,
+    deps = ["@zlib"],
+)
+
+cc_binary(
     name = "main",
     srcs = ["main.cc"],
     additional_linker_inputs = [":hide_symbols.lds"],
-    linkopts = ["-Wl,--version-script=$(location :hide_symbols.lds)"],
+    data = [
+        ":libz.so.1",
+    ],
+    linkopts = [
+        "-Wl,--version-script=$(location :hide_symbols.lds)",
+        # Bazel symlinks won't make it into the container tarball, so we need
+        # to include the path of libpython since the Bazel _solib symlink will
+        # be missing. Note: $(PYTHONHOME) ends in a slash, and the linker does
+        # not collapse double slashes.
+        "-Wl,-rpath,/main.runfiles/__main__/$(PYTHONHOME)lib",
+        # Additionally we need the search path for `libz`, required by `numpy`,
+        # which is at the toplevel due to the `data` dep above.
+        "-Wl,-rpath,/main.runfiles/__main__",
+        # Enable transitive lookups (e.g. libz required by numpy) to search the
+        # rpath.
+        "-Wl,--disable-new-dtags",
+    ],
     linkstatic = True,
     local_defines = [
         "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
+        "CPP_PYTHON_HOME=\\\"$(PYTHONHOME)\\\"",
     ],
     tags = ["noasan"],
     toolchains = [":trusted_program_py_runtime"],
@@ -229,6 +252,7 @@ cc_binary(
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:oak_session_bindings",
         "@oak//proto/session:session_cc_proto",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
     ],
 )
