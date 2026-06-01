@@ -1,0 +1,16 @@
+{
+	"name": "Bazel (Community)",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": {
+			"BAZELISK_VERSION": "v1.26.0",
+			"BAZELISK_DOWNLOAD_SHA": "6539c12842ad76966f3d493e8f80d67caa84ec4a000e220d5459833c967c12bc"
+		}
+	},
+
+	"customizations": {
+	},
+
+	"mounts": [ "source=/tmp,target=/tmp,type=bind,consistency=cached" ],
+	"remoteUser": "vscode"
+}

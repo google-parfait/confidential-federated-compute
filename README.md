@@ -68,6 +68,7 @@ policy. Transforms are implemented using
     concatenates its inputs.
 *   [**`containers/fed_sql`**] Transform that aggregates aggregate using both
     SQLite and Aggregation Cores.
+*   [**`containers/willow`**] Container implementing secure aggregation using the Willow protocol.
 
 See each transform's README for more details.
 
@@ -109,6 +110,10 @@ on how one can verify that a particular version of the source code produces a
 particular binary.
 
 ### Prerequisites
+
+#### Dev Container (for `willow` sub-project)
+
+For developing in the `willow` sub-project, a pre-configured Dev Container is available under `containers/willow/.devcontainer`. To use it, first change directory to `containers/willow` and then follow the usage instructions in the [containers/willow README](containers/willow/README.md) and [containers/willow/GEMINI.md](containers/willow/GEMINI.md).
 
 #### Bazelisk
 
