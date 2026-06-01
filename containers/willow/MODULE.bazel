@@ -30,6 +30,8 @@ bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "oak")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "pybind11_abseil", version = "0.0.0")
+bazel_dep(name = "pybind11_bazel", version = "3.0.1")
 bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_distroless", version = "0.6.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -104,6 +106,15 @@ archive_override(
 )
 
 archive_override(
+    module_name = "pybind11_abseil",
+    integrity = "sha256-stbnMI5Cie1ObYbUQdc1ZQ9E9pfnQPQcvZAB/HIp7fI=",
+    strip_prefix = "pybind11_abseil-ba91614c11c42c7aa6e2e4f96c08721748af5b18",
+    urls = [
+        "https://github.com/pybind/pybind11_abseil/archive/ba91614c11c42c7aa6e2e4f96c08721748af5b18.zip",
+    ],
+)
+
+archive_override(
     module_name = "rules_rust_prost",
     integrity = "sha256-u8dkwlLQYSgbI1knek1GSA4tz69yr8HObgCtpYzL/Uw=",
     patches = ["//third_party/rules_rust:prost_deps.patch"],
@@ -113,17 +124,18 @@ archive_override(
 
 archive_override(
     module_name = "secure_aggregation",
-    integrity = "sha256-SXk5sRDHWUCqivOvs01YrqZ2sF3s7PBUiP79je58mH4=",
-    strip_prefix = "secure-aggregation-4fedb7521362987956d34a69da6e9408d85685ec",
-    urls = ["https://github.com/google/secure-aggregation/archive/4fedb7521362987956d34a69da6e9408d85685ec.zip"],
+    integrity = "sha256-b6szgD8dPbFA4LzoXCyrn8tvdtXf0o3YPhb3eRqysko=",
+    patches = ["//third_party/secure_aggregation:visibility.patch"],
+    strip_prefix = "secure-aggregation-d988dfc4670f1ca4e6258ffed9d9ab7d42ff22db",
+    urls = ["https://github.com/google/secure-aggregation/archive/d988dfc4670f1ca4e6258ffed9d9ab7d42ff22db.zip"],
 )
 
 archive_override(
     module_name = "shell-encryption",
-    integrity = "sha256-fR28P87WkRNGlF38tO/cMz9mrt6g/+LF8jhK4eeAows=",
-    strip_prefix = "shell-encryption-8607279e72f79efc51077f2b4f982a6a6296774e",
+    integrity = "sha256-2rPwT9YWCS8IgN+bFDAU6Pc7QJ/iiP0nXV98JqlYBeE=",
+    strip_prefix = "shell-encryption-6b521659f4bb37d88ccb981f30319c29c373c06f",
     urls = [
-        "https://github.com/google/shell-encryption/archive/8607279e72f79efc51077f2b4f982a6a6296774e.zip",
+        "https://github.com/google/shell-encryption/archive/6b521659f4bb37d88ccb981f30319c29c373c06f.zip",
     ],
 )
 # go/keep-sorted end

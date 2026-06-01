@@ -8,6 +8,8 @@ build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/baz
 build --incompatible_default_to_explicit_init_py
 build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
+build --force_pic
+
 
 # Bazel relies on its configured C++ toolchain (e.g., toolchains_llvm in this
 # project) to provide the linker and manage linking flags. This ensures that all
