@@ -5,36 +5,36 @@ document.
 
 As described in the *Enhanced External Verifiability* section of the
 [Confidential Federated Computations white paper](https://arxiv.org/abs/2404.10764),
-client devices can verify the KMS or ledger attestation evidence and data access
-policies by means of endorsements: cryptographic signatures over the binary
-attestation evidence and the access policy, which in turn are published to a
-transparency log ([Rekor](https://docs.sigstore.dev/logging/overview/)).
+client devices can verify the KMS attestation evidence and data access policies
+by means of endorsements: cryptographic signatures over the binary attestation
+evidence and the access policy, which in turn are published to a transparency
+log ([Rekor](https://docs.sigstore.dev/logging/overview/)).
 
-Client devices validate that the KMS or ledger attestation evidence has been
-endorsed by the appropriate binary endorsement keys, and they validate that
-there is a valid corresponding transparency log inclusion proof, before
-accepting a KMS or ledger public key. Client devices also validate that the
-access policy has been endorsed by an appropriate endorsement key, and that this
-endorsement is also covered by a transparency log inclusion proof.
+Client devices validate that the KMS attestation evidence has been endorsed by
+the appropriate binary endorsement keys, and they validate that there is a valid
+corresponding transparency log inclusion proof, before accepting a KMS public
+key. Client devices also validate that the access policy has been endorsed by an
+appropriate endorsement key, and that this endorsement is also covered by a
+transparency log inclusion proof.
 
 By verifying these endorsements, the client can confirm that all data access
-policies as well as the server-side KMS or ledger and data processing binaries
-are correctly implemented and externally inspectable via their transparency log
+policies as well as the server-side KMS and data processing binaries are
+correctly implemented and externally inspectable via their transparency log
 entries. The following sections describe how those transparency log entries can
-be discovered and mapped to the actual source code for the corresponding KMS or
-ledger application and data processing steps described by the access policy.
+be discovered and mapped to the actual source code for the corresponding KMS
+application and data processing steps described by the access policy.
 
-The first part of this document describes how the complete set of KMS or ledger
+The first part of this document describes how the complete set of KMS
 applications that client devices may accept can be determined by monitoring the
 Rekor transparency log. The second part of this document describes how the
 complete set of active data access policies which clients may accept can be
 determined in a similar fashion.
 
-Note: there is an alternate approach to inspecting the KMS or ledger attestation
-evidence and data access policies that a given client device accepts, which
-involves instrumenting the device. See
-[inspecting_attestation_records.md](inspecting_attestation_records.md)
-for more details on this approach.
+Note: there is an alternate approach to inspecting the KMS attestation evidence
+and data access policies that a given client device accepts, which involves
+instrumenting the device. See
+[inspecting_attestation_records.md](inspecting_attestation_records.md) for more
+details on this approach.
 
 ## Inspecting binary transparency log entries
 
@@ -49,13 +49,13 @@ documented in the next sections.
 To find transparency log entries for these endorsement keys you can use the
 [rekor-monitor](https://github.com/sigstore/rekor-monitor) tool. For example,
 the following configuration lists the endorsement key fingerprints of each of
-the ledger TEE binary layers, and will find a recent endorsement log entry for
-the application layer TEE binary.
+the KMS TEE binary layers, and will find a recent endorsement log entry for
+the container layer TEE binary.
 
 ```console
 $ cat << EOF
-startIndex: 175178225
-endIndex: 175178226
+startIndex: 1634041291
+endIndex: 1634041292
 monitoredValues:
   fingerprints:
     - 98fc8ad40908f6c079c5d1677b85f261acdf08262c73f448f04bd4e9a090c8bb # stage0
@@ -67,7 +67,7 @@ EOF > config.yml
 $ go run github.com/sigstore/rekor-monitor/cmd/rekor_monitor@6248cd70ec4f0c18e4d23901041caea126da36bc \
     --config-file config.yml
 ...
-Found ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f 175178226 108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a
+Found ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f 1634041292 108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86
 ```
 
 Note that the above configuration limits the tool's search to a log index range,
@@ -119,7 +119,7 @@ entry as found with the `rekor-tool` above.
 
 |index|EntryUUID|LogIndex|LogID|IntegratedTime|Kind|APIVersion|Size|EntrySha256|KeyDigest|
 |---|---|---|---|---|---|---|---|---|---|
-|...|108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a|175178226|c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d|2025-02-27 19:50:39+00:00|rekord|0\.0\.1|2912|sha256:cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7|ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f|
+|...|108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86|1634041292|c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d|2026-05-26T16:54:44+00:00|rekord|0\.0\.1|2990|sha256:62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87|ea0d1f8ffed9512019a2ec968790263d88ea3324c6a6a782114e5ea1be4fd38f|
 
 ### Inspecting transparency log entries in detail
 
@@ -127,8 +127,8 @@ For each of the entries matching the keys we're interested in, the full Rekor
 log entry can then be accessed via the URL pattern
 `https://search.sigstore.dev/?uuid={UUID}`, where `{UUID}` is the 3rd
 alphanumeric column value. For example,
-https://search.sigstore.dev/?uuid=108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a
-shows the Rekor log entry payload for the application layer, copied below:
+https://search.sigstore.dev/?uuid=108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86
+shows the Rekor log entry payload for the container layer, copied below:
 
 ```yaml
 apiVersion: 0.0.1
@@ -137,10 +137,10 @@ spec:
   data:
     hash:
       algorithm: sha256
-      value: cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7
+      value: 62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87
   signature:
     content: >-
-      MEUCIBu+kSOo9HwxGnhBudwxsGp1b0nNsrJDjD64BeFtW+WMAiEAqVKvRcfFxgerNI8U+mZaSIibg93gqKhdeBTB3QEnDRI=
+      MEUCIQDjUMsYYSBFf5aHTWbCfp4ypXpdxgbix8efLMTOENcihwIgRS9wFZuyXt1iw3mKguUDt7kdVCCTyal2KFzhSEc+gmE=
     format: x509
     publicKey:
       content: |
@@ -157,14 +157,14 @@ index, and log ID, which is the SHA2-256 hash (fingerprint) of the DER-encoded
 public key for the log at the time the entry was included in the log:
 
 ```console
-$ curl -sL "https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a" \
+$ curl -sL "https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86" \
     | jq
 {
-  "108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a": {
+  "108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86": {
     "body": "eyJhcGlWZXJz...",
-    "integratedTime": 1740685839,
+    "integratedTime": 1779814484,
     "logID": "c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d",
-    "logIndex": 175178226,
+    "logIndex": 1634041292,
     ...
   }
 }
@@ -188,17 +188,17 @@ programmatically. For example, we can conveniently find the endorsed SHA2-256
 digest as follows:
 
 ```console
-$ curl -sL "https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677a5d4bc53a7212664ffa2e4d86e5365059962ddad993148a08d7ecf4e667b7d30a" \
+$ curl -sL "https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677a4e8e68884126228c18dbe566ab43eb0be79b077401149bd340bc295d78e9cd86" \
     | jq -r '.[] | .body' | base64 -d | jq '.spec.data.hash.value'
 
-"cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7"
+"62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87"
 ```
 
 ### From transparency log entry to Oak endorsement
 
 The SHA2-256 hash in the transparency log above
-`cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7` is the hash of
-an Oak endorsement (see
+`62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87` is the hash
+of an Oak endorsement (see
 [schema](https://github.com/project-oak/oak/blob/main/docs/tr/endorsement_v1.md)),
 which in turn specifies a subject digest which is a hash of the actual payload
 being endorsed, along with an endorsement validity time range which the client
@@ -208,7 +208,7 @@ These Oak endorsements can be looked up using the following URI pattern:
 https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:{HASH_ON_REKOR}
 where `{HASH_ON_REKOR}` is the hash listed in the Rekor log entry. For the
 example above we can find the Oak endorsement statement at
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7,
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87,
 copied below:
 
 ```json
@@ -217,17 +217,17 @@ copied below:
   "predicateType": "https://project-oak.github.io/oak/tr/endorsement/v1",
   "subject": [
     {
-      "name": "replicated_ledger",
+      "name": "kms",
       "digest": {
-        "sha256": "0714299084b669bf57ac8831068ba0b719f25f0a8d4aab83d8de3c09cd513c02"
+        "sha256": "d14a1852f08b528f9975245f300d44e2500aaff9c8a9c5572e0114b7203e3e47"
       }
     }
   ],
   "predicate": {
-    "issuedOn": "2025-02-27T19:50:35.017000Z",
+    "issuedOn": "2026-05-26T16:54:11.355000Z",
     "validity": {
-      "notBefore": "2025-02-27T19:50:35.017000Z",
-      "notAfter": "2025-05-28T19:50:35.017000Z"
+      "notBefore": "2026-05-26T16:54:11.355000Z",
+      "notAfter": "2026-07-10T16:54:11.355000Z"
     }
   }
 }
@@ -237,8 +237,8 @@ You can check for yourself that this endorsement matches the hash in the
 transparency log entry, by calculating its hash:
 
 ```console
-$ curl -sL "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7" | openssl dgst -sha256
-SHA2-256(stdin)= cf687788b351802ef390c1bad0e0b7ff29b88055424305c0d714b96007f315b7
+$ curl -sL "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87" | openssl dgst -sha256
+SHA2-256(stdin)= 62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87
 ```
 
 The meaning of the endorsement subject digest differs per TEE layer being
@@ -251,15 +251,15 @@ https://search.sigstore.dev/?hash={BINARY_HASH} where `{BINARY_HASH}` is the
 SHA2-256 hash of the endorsed binary payload. We'll illustrate this in more
 detail in the following sections.
 
-### Ledger stage0 firmware layer
+### KMS stage0 firmware layer
 
 At the time of writing,
-[`108e9186e8c5677a3c58f26a32fb956dea56de36a7714046dcc5dffbb4efddb16fb6081849062525`](https://search.sigstore.dev/?uuid=108e9186e8c5677a3c58f26a32fb956dea56de36a7714046dcc5dffbb4efddb16fb6081849062525)
+[`108e9186e8c5677abf8065e40dc89b6742de2f811c1dc4a39f2a0d812482305d4ecde0552f34449a`](https://search.sigstore.dev/?uuid=108e9186e8c5677abf8065e40dc89b6742de2f811c1dc4a39f2a0d812482305d4ecde0552f34449a)
 is the Rekor UUID of a recent stage0 firmware endorsement, which covers an Oak
 endorsement with hash
-`46ef697e2c79abc9b59822e4b809a8567eee5124b65bb48033cd99874f501662`, which can be
+`d977e83f7759cf975bc4bd2aa03b1a1e94729ca39240b624ad7d356f2eb98d61`, which can be
 fetched from
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:46ef697e2c79abc9b59822e4b809a8567eee5124b65bb48033cd99874f501662:
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:d977e83f7759cf975bc4bd2aa03b1a1e94729ca39240b624ad7d356f2eb98d61:
 
 ```json
 {
@@ -269,22 +269,28 @@ https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:46ef697e2c
     {
       "name": "stage0_bin",
       "digest": {
-        "sha256": "f96f934c66a6ea35c08015a74d43db748856fa0c1d1684beadb83f9b578c7bbd"
+        "sha256": "55f3d6e965bf4035bbd507d11eed7fde7cd58571e02120e628299010feb31dec"
       }
     }
   ],
   "predicate": {
-    "issuedOn": "2025-02-21T17:12:11.273000Z",
+    "issuedOn": "2026-04-03T02:38:45.775000Z",
     "validity": {
-      "notBefore": "2025-02-21T17:12:11.273000Z",
-      "notAfter": "2025-05-22T17:12:11.273000Z"
+      "notBefore": "2026-04-03T02:38:45.775000Z",
+      "notAfter": "2026-07-02T02:38:45.775000Z"
     },
     "claims": [
       {
         "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/10271.md"
       },
       {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/52637.md"
+      },
+      {
         "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/66738.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md"
       }
     ]
   }
@@ -303,31 +309,34 @@ for illustration purposes below). It will print out one or more hashes, per Oak
 Restricted Kernel vCPU configuration:
 
 ```text
-$ curl -sL https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:f96f934c66a6ea35c08015a74d43db748856fa0c1d1684beadb83f9b578c7bbd \
+$ curl -sL https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:55f3d6e965bf4035bbd507d11eed7fde7cd58571e02120e628299010feb31dec \
     | protoc --decode_raw
 1 {
   1: 1   # <-- configuration for 1 vCPU
   2 {    # v-- SHA2-384 hash of stage0 binary for this configuration
-    32: "b9cbfccb673c78503e1deca179623519c9c78809793d568df8ada85a75e3d80716a4fa9af55695f19763cb098378359f"
+    32: "43762815304e31c0f6f459cb1c441642ce1f2a29e1e809a722b413097d149ce87101569b86dc913558e6b14e202c3654"
   }
 }
 1 {
   1: 4
   2 {
-    32: "ef5da6d0ba25a5c155bea7dbc217e6d605e8e2161143fa9f6d8e7e7916807c3b64a4de8f5e4b9722df80d3f34a43901d"
+    32: "5d86bf09d9ff52e317ca296ee68440cba12cf9e2f73621e1d60c54053ea0a1195ee528828f07dc237d98f69ef78eda9c"
   }
 }
 1 {
   1: 16
   2 {
-    32: "ad74b552c29ee357ecda144ea9174743ccd9976a726bddee4b03f6fed123e3ace6b387452549403dad8a475ce8a53943"
+    32: "3d320336520aad9f87c9c82f365a221e99f40d728f5d3b69b0ed01012c25f2806ba6f39abd5d47cc3782f8526ce92ef1"
   }
 }
 1 {
   1: 64
   2 {
-    32: "5c2c94de1453c26ff85f016d28c6b9516f1a03fc4e4a01a922de9e998b9d674e3101f0b783b29bb83840336e03e1672f"
+    32: "9c443976486e4d6579bf36d40e9b4f104ec0891041c87f1f7b4987f70f93dd27d0618f6b4fac0e787b8f01a03785f79b"
   }
+}
+2 {
+  18: "a8eec309b3d0bb84ef2d632278877c964a820f9e422cb29c81696062e932bf12"
 }
 ```
 
@@ -342,46 +351,46 @@ by decoding the hex-formatted SHA2-384 hash and then calculating the SHA2-256
 hash. We can do this for the first firmware configuration's hash as follows:
 
 ```console
-$ echo -n "b9cbfccb673c78503e1deca179623519c9c78809793d568df8ada85a75e3d80716a4fa9af55695f19763cb098378359f" \
+$ echo -n "43762815304e31c0f6f459cb1c441642ce1f2a29e1e809a722b413097d149ce87101569b86dc913558e6b14e202c3654" \
     | xxd -r -p \
     | openssl dgst -sha256
-SHA2-256(stdin)= 0b52f9eedf77d524d09ef401a54693e39426f32167420e8274abe889bfaa6acf
+SHA2-256(stdin)= 419a4c366156f951aba454422a7e56a8e19d115f68fce70ecbfe8962b47ce39b
 ```
 
 It is this SHA2-256 hash for which provenance is actually available on Rekor. At
-https://search.sigstore.dev/?hash=0b52f9eedf77d524d09ef401a54693e39426f32167420e8274abe889bfaa6acf
+https://search.sigstore.dev/?hash=419a4c366156f951aba454422a7e56a8e19d115f68fce70ecbfe8962b47ce39b
 we can find the following excerpt:
 
 ```text
 Source Repository URI: https://github.com/project-oak/oak
-Source Repository Digest: 5122264bccf471dacb15f092f4e8f5f32df97bb1
+Source Repository Digest: d2aaa34bf4ce2d14cd4a5d38aece851864fdbad0
 ...
-Run Invocation URI: https://github.com/project-oak/oak/actions/runs/13455834315/attempts/1
+Run Invocation URI: https://github.com/project-oak/oak/actions/runs/23568371228/attempts/1
 ```
 
 This tells us that this stage0 binary was built from commit
-`5122264bccf471dacb15f092f4e8f5f32df97bb1` in
+`d2aaa34bf4ce2d14cd4a5d38aece851864fdbad0` in
 https://github.com/project-oak/oak. And in the
 `build_attest_all(buildconfigs/stage0_bin.sh)` section of the "Run Invocation"
 logs we can see:
 
 ```text
-Attestation created for sha2_384_measurement_of_initial_memory_with_stage0_and_01_vcpu@sha256:0b52f9eedf77d524d09ef401a54693e39426f32167420e8274abe889bfaa6acf
+Attestation created for sha2_384_measurement_of_initial_memory_with_stage0_and_01_vcpu@sha256:419a4c366156f951aba454422a7e56a8e19d115f68fce70ecbfe8962b47ce39b
 ```
 
 indicating that this was the firmware configuration targeting a single vCPU.
 
 
-### Ledger kernel layer
+### KMS kernel layer
 
 At the time of writing,
-[`108e9186e8c5677a6a3c05eab59b258c20bc813a6f2c6118bbb34cdba272afecfac7578cb727ba67`](https://search.sigstore.dev/?uuid=108e9186e8c5677a6a3c05eab59b258c20bc813a6f2c6118bbb34cdba272afecfac7578cb727ba67)
+[`108e9186e8c5677a1429d8c2471fb0acdf9733a6da6260352a1c78a42c8b45c1795185c04e7dfa3f`](https://search.sigstore.dev/?uuid=108e9186e8c5677a1429d8c2471fb0acdf9733a6da6260352a1c78a42c8b45c1795185c04e7dfa3f)
 is the Rekor UUID of a recent kernel layer endorsement, which covers an Oak
 endorsement with hash
 covers an Oak endorsement with hash
-`169d7dc7dfaaff4769af20aef4642787d1aeb86ba8d5a7dd9d52b6fcd0c6427d`
+`f4082858f7a42c8e789f9f975e1f467491c8e0102c8f643882be9b043368cb6c`
 which can be fetched from
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:169d7dc7dfaaff4769af20aef4642787d1aeb86ba8d5a7dd9d52b6fcd0c6427d:
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:f4082858f7a42c8e789f9f975e1f467491c8e0102c8f643882be9b043368cb6c:
 
 ```json
 {
@@ -389,21 +398,27 @@ https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:169d7dc7df
   "predicateType": "https://project-oak.github.io/oak/tr/endorsement/v1",
   "subject": [
     {
-      "name": "oak_restricted_kernel_simple_io_init_rd_wrapper_bin",
+      "name": "oak_containers_kernel",
       "digest": {
-        "sha256": "e07ad7496484e4ec22ed1bb2fa5b4cdbc58703a64307d0e38f1c0d1facf540bd"
+        "sha256": "7bd05af7a304dca51e0db3a88ab2b2cfdde46c2aaf4701b9b5e77b2c9e236b1e"
       }
     }
   ],
   "predicate": {
-    "issuedOn": "2025-02-21T17:12:10.883000Z",
+    "issuedOn": "2026-04-03T02:38:44.288000Z",
     "validity": {
-      "notBefore": "2025-02-21T17:12:10.883000Z",
-      "notAfter": "2025-05-22T17:12:10.883000Z"
+      "notBefore": "2026-04-03T02:38:44.288000Z",
+      "notAfter": "2026-07-02T02:38:44.288000Z"
     },
     "claims": [
       {
-        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/36746.md"
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/22790.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/52637.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md"
       },
       {
         "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/98982.md"
@@ -413,7 +428,7 @@ https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:169d7dc7df
 }
 ```
 
-The subject digest of Oak Restricted Kernel layer endorsements is the SHA2-256
+The subject digest of Oak Containers Kernel layer endorsements is the SHA2-256
 hash of another intermediate payload, which is an
 `oak.attestation.v1.KernelAttachment`-typed protobuf (see
 https://github.com/project-oak/oak/blob/main/docs/tr/claim/98982.md for more
@@ -421,81 +436,92 @@ info).
 
 We can fetch this protobuf using the same '/data/transparency' URL pattern at
 URL
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:e07ad7496484e4ec22ed1bb2fa5b4cdbc58703a64307d0e38f1c0d1facf540bd,
-and it generally will contain one or more hashes, one per Oak Restricted Kernel
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:7bd05af7a304dca51e0db3a88ab2b2cfdde46c2aaf4701b9b5e77b2c9e236b1e,
+and it generally will contain one or more hashes, one per Oak Containers
 vCPU configuration. In this case it looks as follows:
 
 ```console
-$ curl -sL "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:e07ad7496484e4ec22ed1bb2fa5b4cdbc58703a64307d0e38f1c0d1facf540bd" \
+$ curl -sL "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:7bd05af7a304dca51e0db3a88ab2b2cfdde46c2aaf4701b9b5e77b2c9e236b1e" \
     | protoc --decode_raw
 1 { # <--- kernel image
-  16: "0200006163004daef634350537af029a208e0bf9ffebcb494639bcc8882b4f6a8b5de7a8d3b1"
-  17: "ead4c09277f74ae48cf1c04bb3811266bd099910"
-  18: "a25a7e2ab3bae81fdef8b31974596167ef31af59128ba7b6e05b5ee473222b02" # <--- SHA2-256 hash
-  19: "c0c5c492b72931b64a45975f09bcaff14ef8e2a5e04f3ed6b0156ce07ea29fdac173ca09c0b2be8f7da1afcb907a39e61a096cc014efcf96aa4194245e721771"
-  20: "0abcdb8bdea145b841050a773510f5c0bc114851c81cf16122e0f50f199f46ae70a9c8c9fa4802a098d1df59d5c8647349cc877867b31e55d65420926a58efab"
-  21: "055586ef72f153d1662778d263ceea8481e46af762bb9f7144f1e135ffa460c1990511228e69d5ffc2ceb3a90d309725"
-  22: "d4c2cc977c765b5ba40f4ac15c9c3c947c72eb0588da3ab23245ef426c31bb17"
-  23: "00e0b7e3afca1594b30fb3f656dc1ce2d688991cb958c6e2fe3f5d62"
-  32: "496303095a9e203090732d7ef5959860e2288c150d0d00597a1278bffb9dc40726d540d239d892ed0186a674b8d5eabf"
+  16: "02000059c00052673152810c5aef4b9253ec4e7e91e5323c5486b93f423d351b6ed1ecd9c8c5"
+  17: "d58c3c6c8b15583665c757feb4892d4f54857546"
+  18: "3993b37bcb0b5312f21bd9d41ca63a66ac632e8f19e9df6d044fd4db1e95ca1b" # <--- SHA2-256 hash
+  19: "a838857265e98e6c24c0bb632ba5794698e91391a6b588affd7016826604294f85ea25e3e12772662acc28b627460af9115fb5265960a4efa3c90f5780e969d6"
+  20: "569b7d7d556d18631a88961f5d5e18b3e6aea182014359f7d3bee84851fee537a1aef89b5a1977b726ddc100857ab3a346e0e916b2e3ebba215d44e87406b141"
+  21: "39eacbaf9e9eb590bd69f440c434d1a941317d45a4ace9f707451376da4094814dda848d2e223408e69e64a4adaa0957"
+  22: "a17b304a16fda8cd667563a25a9b00eb68a65a12f757034e6c6930d38c4bcce6"
+  23: "ce86e1814a3b6b60b4652be8e1f95abcf52a547ae01f428b8660ed04"
+  32: "0b1f666261129821e5f795854f6fe517eb3e7657702ebad63c30a3d5c1b51e37cb5c575e343b70acc75c9878106ccf07"
 }
 2 { # <--- kernel setup data
-  16: "01001000f787ecb996c0158085698f8a71f75cd023bebb4549c315c4bb27388da4020171"
-  17: "d0787af619375feb58490bd08ee85d25266466d3"
-  18: "4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1" # <--- SHA2-256 hash
-  19: "a6a0e968a93fa544e8cba746455cb4d6b6e005ac1ea3d62bdd531e2fb38d1a9e6fd3d82240ebef54aca6b196ff7b52b0ed95a885b82bb3e7acd5920ba0a0d194"
-  20: "e68d9fde05550f9404ec03b21c469ce5f28e2afb471718f87e8a39262ac4abeebaf052296cca15c3a530bb6c1367d9bfc0be847f6a3d3278f199591fda3ac5c3"
-  21: "68a52675263b95c44f2cda0ff46cac7b6b4900dbba648332ba0bff32b42800dc7cb59457a8d232e73016d2cf10812cb9"
-  22: "8afd043b8a0b124988965a8774a60b72675aedca94fc9f6c210f75bb56808c9c"
-  23 {
-    12: "1c92b1a571213d971aee789a7c04509e45648d52467f0c217e3207"
-  }
-  32: "dd79803b4e303d6f5355d15f009ea6d7d75e2db2f4813e2a95fab171aa89a916ec68149c0560e8b664be34ff22e864ec"
+  16: "010040006b5e4a8cbcf237bb1b7883143859d0b80bea9f9baa044aab16d6d95d8c278c28"
+  17: "d4cf317b2da68622682e0954b7f74b8d477b0c7a"
+  18: "17c499c1515057824d0a1bc5ac9306c19d3cfbc928da2945d518a7addde4bd93" # <--- SHA2-256 hash
+  19: "6d891bef776e9a2d966741fcc1e398f1b21bd4b44d1cc58d73a211e8a4349774bd050c3093096b60e1c7d52bcaebb923de063ea2f1c81e67ff1ba7db7a15ddc5"
+  20: "73bcd53b80940d3747e39c60c9f4a83c5e54e773287db1683fc523567e13cd47ce20e26177d99e3bffe05ff934b33df379a6ba0b891132605052d4ec50484108"
+  21: "4044e2ae34ca7d043bfc3b8e13b5cf3cfd32c1368de45f1c20fea47ce2f8579ad28752d353bf21232efa76163a981948"
+  22: "24873e8540eb344b4a184e7daa6c2f33e34c3dbb9ba2ac57440b0bbccabf5897"
+  23: "afd1828926069181cb314fdeb785d6e48311428e37610207a4203517"
+  32: "946f62006dd6f56a4062c5742ae02148df2d0248940726f25182169ed72935b154b42e5749174dafcbbfee8fa9dd2e9d"
+}
+3 {
+  18: "27be52c964e3c36ce438a74e58b11e3cb08fe38480243160d46819968d8f4446"
 }
 ```
 
 In this wall of text,
-`a25a7e2ab3bae81fdef8b31974596167ef31af59128ba7b6e05b5ee473222b02` represents
+`3993b37bcb0b5312f21bd9d41ca63a66ac632e8f19e9df6d044fd4db1e95ca1b` represents
 the SHA2-256 hash of the actual kernel image, and
-`4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1` is the
+`17c499c1515057824d0a1bc5ac9306c19d3cfbc928da2945d518a7addde4bd93` is the
 SHA2-256 hash of the kernel's setup data (they correspond to field 18 of the
 [HexDigest](https://github.com/project-oak/oak/blob/25fdba08d2fc1c25c6d4b0a185ed7f3d86d770ba/proto/digest.proto#L51)
 protobuf).
 
 It is these SHA2-256 hashes for which provenance is actually available on Rekor.
 At
-https://search.sigstore.dev/?hash=a25a7e2ab3bae81fdef8b31974596167ef31af59128ba7b6e05b5ee473222b02
+https://search.sigstore.dev/?hash=3993b37bcb0b5312f21bd9d41ca63a66ac632e8f19e9df6d044fd4db1e95ca1b
 we can find the following excerpt:
 
 ```text
 Source Repository URI: https://github.com/project-oak/oak
-Source Repository Digest: c1826e3801bb098b56d4d3e6df79989b0b354b9b
+Source Repository Digest: 9da0a2f445c1d07ceaed33e1bd24be4bbf28f641
 ...
-Run Invocation URI: https://github.com/project-oak/oak/actions/runs/12916191013/attempts/1
+Run Invocation URI: https://github.com/project-oak/oak/actions/runs/25106261180/attempts/1
 ```
 
 This tells us that this kernel binary was built from commit
-`c1826e3801bb098b56d4d3e6df79989b0b354b9b` in
+`9da0a2f445c1d07ceaed33e1bd24be4bbf28f641` in
 https://github.com/project-oak/oak. And in the
-`build_attest_all(buildconfigs/oak_restricted_kernel_simple_io_init_rd_wrapper_bin.sh)`
+`build_attest_all(buildconfigs/oak_containers_kernel.sh)`
 section of the "Run Invocation" logs we can see the corresponding build outputs
 being attested:
 
 ```text
-Attestation created for oak_restricted_kernel_wrapper_simple_io_channel_measurement_image@sha256:a25a7e2ab3bae81fdef8b31974596167ef31af59128ba7b6e05b5ee473222b02
-Attestation created for oak_restricted_kernel_wrapper_simple_io_channel_measurement_setup_data@sha256:4cd020820da663063f4185ca14a7e803cd7c9ca1483c64e836db840604b6fac1
+Attestation created for 3 subjects
+...
+Attestation uploaded to repository
+https://github.com/project-oak/oak/attestations/25943859
 ```
 
-### Ledger init RAM FS layer
+The subjects are listed at
+https://github.com/project-oak/oak/attestations/25943859:
+
+|Subject|Subject digest|
+|---|---|
+|oak_containers_kernel_setup_data|sha256:17c499c1515057824d0a1bc5ac9306c19d3cfbc928da2945d518a7addde4bd93|
+|oak_containers_kernel|sha256:27be52c964e3c36ce438a74e58b11e3cb08fe38480243160d46819968d8f4446|
+|oak_containers_kernel_image|sha256:3993b37bcb0b5312f21bd9d41ca63a66ac632e8f19e9df6d044fd4db1e95ca1b|
+
+### KMS init RAM FS layer
 
 At the time of writing,
-[`108e9186e8c5677aac48856a4b42c1a0ca3fe504e08521daded9c7069206920cf0492891a98e0afd`](https://search.sigstore.dev/?uuid=108e9186e8c5677aac48856a4b42c1a0ca3fe504e08521daded9c7069206920cf0492891a98e0afd)
-is the Rekor UUID of a recent kernel layer endorsement, which covers an Oak
+[`108e9186e8c5677a449460fdc77adf1dc2eead6b42cb895426053aeb5201ffa936318ea0285a5740`](https://search.sigstore.dev/?uuid=108e9186e8c5677a449460fdc77adf1dc2eead6b42cb895426053aeb5201ffa936318ea0285a5740)
+is the Rekor UUID of a recent init ram FS layer endorsement, which covers an Oak
 endorsement with hash
-covers an Oak endorsement with hash
-`31345ae627374a555f54752dbb6ee717b11d7aeb9b24fdddda2b941771938b18`
+`a5717475aedbd0d8e9bb9ac66398343a64e0373dcae4e52efe3d59b22be3e5c8`
 which can be fetched from
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:31345ae627374a555f54752dbb6ee717b11d7aeb9b24fdddda2b941771938b18:
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:a5717475aedbd0d8e9bb9ac66398343a64e0373dcae4e52efe3d59b22be3e5c8:
 
 ```json
 {
@@ -503,78 +529,150 @@ https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:31345ae627
   "predicateType": "https://project-oak.github.io/oak/tr/endorsement/v1",
   "subject": [
     {
-      "name": "oak_orchestrator",
+      "name": "oak_containers_stage1",
       "digest": {
-        "sha256": "fe2584c47dbcd4b35dd47138bf6a8a17b68001fdd5848d5a27964a60cc8b4407"
+        "sha256": "15b89e8182af987bd3d1dc590440b6d3943ce5bcc42233226b541502138df53d"
       }
     }
   ],
   "predicate": {
-    "issuedOn": "2025-02-21T17:12:10.867000Z",
+    "issuedOn": "2026-04-03T02:38:45.323000Z",
     "validity": {
-      "notBefore": "2025-02-21T17:12:10.867000Z",
-      "notAfter": "2025-05-22T17:12:10.867000Z"
+      "notBefore": "2026-04-03T02:38:45.323000Z",
+      "notAfter": "2026-07-02T02:38:45.323000Z"
     },
     "claims": [
       {
-        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/87425.md"
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/52637.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/85483.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md"
       }
     ]
   }
 }
 ```
 
-The subject digest of init ram FS layer endorsements is simply the SHA2-256 hash
-of reproducibly buildable Oak Orchestrator binary being endorsed. Hence, its
-provenance can be found directly on Rekor. In this case at
-https://search.sigstore.dev/?hash=fe2584c47dbcd4b35dd47138bf6a8a17b68001fdd5848d5a27964a60cc8b4407,
+The subject digest of an init ram FS layer endorsements is simply the SHA2-256
+hash of the reproducibly buildable Oak Containers Stage 1 binary being endorsed.
+Hence, its provenance can be found directly on Rekor. In this case at
+https://search.sigstore.dev/?hash=15b89e8182af987bd3d1dc590440b6d3943ce5bcc42233226b541502138df53d,
 with the following excerpt:
 
 ```text
 Source Repository URI: https://github.com/project-oak/oak
-Source Repository Digest: 230ceea48f1d4f1fdc77aa40087a79c4977e5ad9
+Source Repository Digest: 782fb92b980f9c6d2016eb89d1ac87930e420466
 ...
-Run Invocation URI: https://github.com/project-oak/oak/actions/runs/13402171427/attempts/1
+Run Invocation URI: https://github.com/project-oak/oak/actions/runs/23791749077/attempts/1
 ```
 
 This tells us that this kernel binary was built from commit
-`230ceea48f1d4f1fdc77aa40087a79c4977e5ad9` in
+`782fb92b980f9c6d2016eb89d1ac87930e420466` in
 https://github.com/project-oak/oak. And in the `build_attest_all
-(buildconfigs/oak_orchestrator.sh)` section of the "Run Invocation" logs we can
+(buildconfigs/oak_containers_stage1.sh)` section of the "Run Invocation" logs we
+can see the corresponding build outputs being attested:
+
+```text
+Attestation created for stage1.cpio@sha256:15b89e8182af987bd3d1dc590440b6d3943ce5bcc42233226b541502138df53d
+```
+
+### KMS system image layer
+
+At the time of writing,
+[`108e9186e8c5677ae4f09eb1efa8be9c05165a47dc5656d043d7a291711c8cff391c8f3eecaf27b4`](https://search.sigstore.dev/?uuid=108e9186e8c5677ae4f09eb1efa8be9c05165a47dc5656d043d7a291711c8cff391c8f3eecaf27b4)
+is the Rekor UUID of a recent system image layer endorsement, which covers an Oak
+endorsement with hash
+`30a403e0232b7ed9d141d3b553bfa3ac3ab422e46451d103882ed87c45ee9e7e`
+which can be fetched from
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:30a403e0232b7ed9d141d3b553bfa3ac3ab422e46451d103882ed87c45ee9e7e:
+
+```json
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "predicateType": "https://project-oak.github.io/oak/tr/endorsement/v1",
+  "subject": [
+    {
+      "name": "oak_containers_system_image",
+      "digest": {
+        "sha256": "36040ec0c4470e7f409097cd43c1904894124d58f47dba59a2b9ff167705d018"
+      }
+    }
+  ],
+  "predicate": {
+    "issuedOn": "2026-04-03T02:38:45.337000Z",
+    "validity": {
+      "notBefore": "2026-04-03T02:38:45.337000Z",
+      "notAfter": "2026-07-02T02:38:45.337000Z"
+    },
+    "claims": [
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/52637.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/58963.md"
+      },
+      {
+        "type": "https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md"
+      }
+    ]
+  }
+}
+```
+
+The subject digest of a system image layer endorsements is simply the SHA2-256
+hash of the reproducibly buildable filesystem image being endorsed. Hence, its
+provenance can be found directly on Rekor. In this case at
+https://search.sigstore.dev/?hash=36040ec0c4470e7f409097cd43c1904894124d58f47dba59a2b9ff167705d018,
+with the following excerpt:
+
+```text
+Source Repository URI: https://github.com/project-oak/oak
+Source Repository Digest: 1cec7c5f0d0e78ee2f5d624438c7835cf34604e7
+...
+Run Invocation URI: https://github.com/project-oak/oak/actions/runs/23840724104/attempts/1
+```
+
+This tells us that this kernel binary was built from commit
+`1cec7c5f0d0e78ee2f5d624438c7835cf34604e7` in
+https://github.com/project-oak/oak. And in the `build_attest_all
+(buildconfigs/oak_containers_system_image.sh)` section of the "Run Invocation" logs we can
 see the corresponding build outputs being attested:
 
 ```text
-Attestation created for oak_orchestrator@sha256:fe2584c47dbcd4b35dd47138bf6a8a17b68001fdd5848d5a27964a60cc8b4407
+Attestation created for oak_containers_system_image.tar.xz@sha256:36040ec0c4470e7f409097cd43c1904894124d58f47dba59a2b9ff167705d018
 ```
 
-### Ledger application layer
+### KMS container layer
 
-The subject digest of application layer endorsements is simply the SHA2-256 hash of
-reproducibly buildable ledger application binary being endorsed.
+The subject digest of container layer endorsements is simply the SHA2-256 hash
+of the reproducibly buildable KMS application binary being endorsed.
 
 While all previous binaries we looked at so far are produced from code in the
-Oak GitHub project, the ledger application binary is maintained in this
+Oak GitHub project, the KMS application binary is maintained in this
 repository. It is this binary that implements the business logic of protecting
 data decryption keys in accordance with the data access policies associated with
 uploaded encrypted data.
 
 As we showed in the [earlier
-section](#from-transparency-log-entry-to-oak-endorsement), the application layer
+section](#from-transparency-log-entry-to-oak-endorsement), the container layer
 endorsement covers subject digest
-0714299084b669bf57ac8831068ba0b719f25f0a8d4aab83d8de3c09cd513c02, for which we
+d14a1852f08b528f9975245f300d44e2500aaff9c8a9c5572e0114b7203e3e47, for which we
 can hence find provenance at
-https://search.sigstore.dev/?hash=0714299084b669bf57ac8831068ba0b719f25f0a8d4aab83d8de3c09cd513c02,
+https://search.sigstore.dev/?hash=d14a1852f08b528f9975245f300d44e2500aaff9c8a9c5572e0114b7203e3e47,
 with the following excerpt:
 
 ```
 Source Repository URI: https://github.com/google-parfait/confidential-federated-compute
-Source Repository Digest: 54636c42aab5c7a72a5b1533af7d49e48b4b5d30
+Source Repository Digest: fe439180bb24e65ad46e869eddee88f9c9b34875
 ...
-Run Invocation URI: https://github.com/google-parfait/confidential-federated-compute/actions/runs/13576761178/attempts/1
+Run Invocation URI: https://github.com/google-parfait/confidential-federated-compute/actions/runs/26261649715/attempts/1
 ```
 
-It shows that the `replicated_ledger` application binary was produced at commit
-`54636c42aab5c7a72a5b1533af7d49e48b4b5d30` in the
+It shows that the `kms` application binary was produced at commit
+`fe439180bb24e65ad46e869eddee88f9c9b34875` in the
 https://github.com/google-parfait/confidential-federated-compute repository. The
 "Run Invocation" logs have more information about the action that produced the
 binary, which you can use to reproduce the build steps and arrive at the same
@@ -589,14 +687,13 @@ directory. For each data access policy endorsement key there is an associated
 set of privacy properties that the corresponding app will ensure are upheld by
 every endorsed data access policy.
 
-Just as with the KMS or ledger binary endorsements, you can use the
-`rekor-monitor` tool or the Rekor public BigQuery dataset to find transparency
-log entries for this endorsement key. For example, using the SQL query provided
-earlier with
+Just as with the KMS binary endorsements, you can use the `rekor-monitor` tool
+or the Rekor public BigQuery dataset to find transparency log entries for this
+endorsement key. For example, using the SQL query provided earlier with
 [Gboard](https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin)'s
 endorsement key of
-`3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560` would
-produce the following row:
+`3ebd2cd4ec2a56655c9022e734d7469c0a8612f7f676b001d090897f36bae560` would produce
+the following row:
 
 |index|EntryUUID|LogIndex|LogID|IntegratedTime|Kind|APIVersion|Size|EntrySha256|KeyDigest|
 |---|---|---|---|---|---|---|---|---|---|
@@ -670,7 +767,7 @@ Accepted Binary Artifacts:
 
 From this output, we can see that the access policy allows a two-stage
 processing pipeline, for both stages using a TEE-hosted data processing
-application for which the Oak Containers application layer binary provenance is
+application for which the Oak Containers container layer binary provenance is
 available at
 https://search.sigstore.dev/?hash=898c9654f7b7ad51967c292b6731a4c08b65e5d7196ada28359c6fe49a7f3f96.
 Also included in the tools' output, but not displayed in excerpt above, are
@@ -704,13 +801,13 @@ The source code for this particular application binary is available in the
 ### Restrictions on endorsement log integration times
 
 To make it easier to discover all relevant active endorsements, we have added
-functionality to limit the endorsements that will be accepted by the KMS or
-ledger during peer-to-peer attestation, as well as by client devices, to those
-published to the transparency log only after a certain absolute date and within
-a certain number of days from the current time at the time of verification.
+functionality to limit the endorsements that will be accepted by the KMS during
+peer-to-peer attestation, as well as by client devices, to those published to
+the transparency log only after a certain absolute date and within a certain
+number of days from the current time at the time of verification.
 
-This is reflected in the KMS, ledger, and data access policies' reference values
-use of the `signed_timestamp` field:
+This is reflected in the KMS and data access policies' reference values use of
+the `signed_timestamp` field:
 
 ```
 rekor {
@@ -748,6 +845,6 @@ reflected here.
 Following the instructions above, you can determine all possible code paths
 through which uploaded client data might be processed. By inspecting the
 provenance (open-source code and build instructions) for all relevant TEE-hosted
-binaries (KMS, ledger, and data processing steps) and access policies, anyone
-can follow along and validate or falsify the privacy properties of data
-processed using confidential federated computations.
+binaries (KMS and data processing steps) and access policies, anyone can follow
+along and validate or falsify the privacy properties of data processed using
+confidential federated computations.
