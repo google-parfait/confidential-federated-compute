@@ -35,7 +35,7 @@ use prost::Message as _;
 
 mod testdata;
 
-/// Runs the explain tool over a record file that only contains valid ledger
+/// Runs the explain tool over a record file that only contains valid KMS
 /// attestation evidence and an empty access policy (which is not particularly
 /// useful in practice, since it prevents any form of further data processing).
 #[test]
@@ -87,7 +87,7 @@ fn test_explain_record_with_empty_data_access_policy_from_stdin() -> anyhow::Res
     Ok(())
 }
 
-/// Runs the explain tool over a record that contains valid ledger attestation
+/// Runs the explain tool over a record that contains valid KMS attestation
 /// evidence and an access policy that is populated with a few transforms and
 /// access budgets.
 #[test]
@@ -108,22 +108,22 @@ fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Runs the explain tool over a record file that only contains valid KMS
+/// Runs the explain tool over a record file that only contains valid ledger
 /// attestation evidence and an empty access policy.
 #[test]
-fn test_explain_record_with_kms_evidence() -> anyhow::Result<()> {
+fn test_explain_record_with_ledger_evidence() -> anyhow::Result<()> {
     // Note: we don't actually invoke the binary, and instead call the
     // explain_fcp_attestation_record library upon which the binary is built. This
     // makes it a bit easier to pass in records which we constructed/modified
     // within the test code, without having to write to temporary files etc.
     let mut buf = String::new();
-    explain_fcp_attestation_record::explain_record(
-        &mut buf,
-        &testdata::record_with_kms_evidence(),
-    )?;
 
-    // Check that the expected output in the snapshot matches the actual output in
-    // the buffer.
-    assert_snapshot!(buf);
+    let result = explain_fcp_attestation_record::explain_record(
+        &mut buf,
+        &testdata::record_with_ledger_evidence(),
+    );
+
+    assert!(result.is_err());
+    assert!(format!("{result:?}").contains("Oak Restricted Kernel evidence is no longer supported"));
     Ok(())
 }

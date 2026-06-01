@@ -22,19 +22,20 @@ use verification_record_proto::{
     access_policy_proto::reference_value_proto::oak::attestation::v1::{
         binary_reference_value, kernel_binary_reference_value, reference_values,
         tcb_version_reference_value, text_reference_value, AmdSevReferenceValues,
-        ApplicationLayerReferenceValues, BinaryReferenceValue, KernelBinaryReferenceValue,
-        KernelLayerReferenceValues, OakRestrictedKernelReferenceValues, ReferenceValues,
-        RootLayerReferenceValues, SkipVerification, TcbVersionReferenceValue, TextReferenceValue,
+        BinaryReferenceValue, ContainerLayerReferenceValues, KernelBinaryReferenceValue,
+        KernelLayerReferenceValues, OakContainersReferenceValues, ReferenceValues,
+        RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
+        TcbVersionReferenceValue, TextReferenceValue,
     },
     access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion,
     evidence_proto::oak::attestation::v1::Evidence,
     fcp::confidentialcompute::AttestationVerificationRecord,
 };
 
-/// Returns an [`AttestationVerificationRecord`] with valid ledger attestation
+/// Returns an [`AttestationVerificationRecord`] with valid KMS attestation
 /// evidence but with an empty data access policy.
 pub fn record_with_empty_access_policy() -> AttestationVerificationRecord {
-    let evidence = Evidence::decode(&include_bytes!("ledger_evidence.pb")[..])
+    let evidence = Evidence::decode(&include_bytes!("kms_evidence.pb")[..])
         .expect("must be a valid evidence proto");
     AttestationVerificationRecord {
         attestation_evidence: Some(evidence),
@@ -44,7 +45,7 @@ pub fn record_with_empty_access_policy() -> AttestationVerificationRecord {
     }
 }
 
-/// Returns an [`AttestationVerificationRecord`] with the same ledger
+/// Returns an [`AttestationVerificationRecord`] with the same KMS
 /// attestation evidence as [`record_with_empty_access_policy`] but with a data
 /// access policy that contains a few transforms and access budgets. Most of the
 /// transforms use Oak [`ReferenceValues`] which skip most checks, while one of
@@ -141,10 +142,10 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
     record
 }
 
-/// Returns an [`AttestationVerificationRecord`] with valid KMS attestation
+/// Returns an [`AttestationVerificationRecord`] with valid ledger attestation
 /// evidence but with an empty data access policy.
-pub fn record_with_kms_evidence() -> AttestationVerificationRecord {
-    let evidence = Evidence::decode(&include_bytes!("kms_evidence.pb")[..])
+pub fn record_with_ledger_evidence() -> AttestationVerificationRecord {
+    let evidence = Evidence::decode(&include_bytes!("ledger_evidence.pb")[..])
         .expect("must be a valid evidence proto");
     AttestationVerificationRecord {
         attestation_evidence: Some(evidence),
@@ -154,7 +155,7 @@ pub fn record_with_kms_evidence() -> AttestationVerificationRecord {
     }
 }
 
-/// Creates a [`ReferenceValues`] instance that expects an Oak Restricted Kernel
+/// Creates a [`ReferenceValues`] instance that expects an Oak Containers
 /// application, skips all binary checks, but requires the attestation evidence
 /// to be rooted in AMD SEV-SNP.
 fn create_skip_all_amd_sev_reference_values() -> ReferenceValues {
@@ -164,44 +165,44 @@ fn create_skip_all_amd_sev_reference_values() -> ReferenceValues {
     };
 
     ReferenceValues {
-        r#type: Some(reference_values::Type::OakRestrictedKernel(
-            OakRestrictedKernelReferenceValues {
-                root_layer: Some(RootLayerReferenceValues {
-                    amd_sev: Some(AmdSevReferenceValues {
-                        milan: Some(TcbVersionReferenceValue {
-                            r#type: Some(tcb_version_reference_value::Type::Minimum(TcbVersion {
-                                boot_loader: 1,
-                                tee: 2,
-                                snp: 3,
-                                microcode: 4,
-                                fmc: 0,
-                            })),
-                        }),
-                        allow_debug: false,
-                        stage0: Some(binary_ref_value_skip.clone()),
-                        ..Default::default()
+        r#type: Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer: Some(RootLayerReferenceValues {
+                amd_sev: Some(AmdSevReferenceValues {
+                    milan: Some(TcbVersionReferenceValue {
+                        r#type: Some(tcb_version_reference_value::Type::Minimum(TcbVersion {
+                            boot_loader: 1,
+                            tee: 2,
+                            snp: 3,
+                            microcode: 4,
+                            fmc: 0,
+                        })),
                     }),
+                    allow_debug: false,
+                    stage0: Some(binary_ref_value_skip.clone()),
                     ..Default::default()
                 }),
-                kernel_layer: Some(KernelLayerReferenceValues {
-                    kernel: Some(KernelBinaryReferenceValue {
-                        r#type: Some(kernel_binary_reference_value::Type::Skip(
-                            SkipVerification {},
-                        )),
-                    }),
-                    kernel_cmd_line_text: Some(TextReferenceValue {
-                        r#type: Some(text_reference_value::Type::Skip(SkipVerification {})),
-                    }),
-                    init_ram_fs: Some(binary_ref_value_skip.clone()),
-                    memory_map: Some(binary_ref_value_skip.clone()),
-                    acpi: Some(binary_ref_value_skip.clone()),
-                    ..Default::default()
+                ..Default::default()
+            }),
+            kernel_layer: Some(KernelLayerReferenceValues {
+                kernel: Some(KernelBinaryReferenceValue {
+                    r#type: Some(kernel_binary_reference_value::Type::Skip(SkipVerification {})),
                 }),
-                application_layer: Some(ApplicationLayerReferenceValues {
-                    binary: Some(binary_ref_value_skip.clone()),
-                    configuration: Some(binary_ref_value_skip.clone()),
+                kernel_cmd_line_text: Some(TextReferenceValue {
+                    r#type: Some(text_reference_value::Type::Skip(SkipVerification {})),
                 }),
-            },
-        )),
+                init_ram_fs: Some(binary_ref_value_skip.clone()),
+                memory_map: Some(binary_ref_value_skip.clone()),
+                acpi: Some(binary_ref_value_skip.clone()),
+                ..Default::default()
+            }),
+            system_layer: Some(SystemLayerReferenceValues {
+                system_image: Some(binary_ref_value_skip.clone()),
+                ..Default::default()
+            }),
+            container_layer: Some(ContainerLayerReferenceValues {
+                binary: Some(binary_ref_value_skip.clone()),
+                configuration: Some(binary_ref_value_skip.clone()),
+            }),
+        })),
     }
 }
