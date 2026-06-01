@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context};
+use anyhow::{bail, ensure, Context};
 use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
+use futures_util::TryFutureExt as _;
+use integer_encoding::VarIntReader;
+use messages_proto::oak::session::v1::EndorsedEvidence;
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
     extracted_evidence::EvidenceValues, Evidence, OakContainersData, OakRestrictedKernelData,
@@ -21,41 +24,58 @@ use oak_proto_rust::oak::attestation::v1::{
 };
 use prost::Message;
 use prost_types::Any;
+use sha2::{Digest, Sha256};
+use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
 use verification_record_proto::{
     access_policy_proto::fcp::confidentialcompute::{
         access_budget::Kind, data_access_policy, pipeline_variant_policy, AccessBudget,
         DataAccessPolicy, PipelineVariantPolicy,
     },
     fcp::confidentialcompute::AttestationVerificationRecord,
+    payload_transparency_proto::fcp::confidentialcompute::{signed_payload, SignedPayload},
 };
 
 /// Writes a human readable explanation for the given FCP
 /// [`AttestationVerificationRecord`] into the given buffer.
-pub fn explain_record(
+pub async fn explain_record(
     buf: &mut dyn std::fmt::Write,
     record: &AttestationVerificationRecord,
+    client: &reqwest::Client,
 ) -> anyhow::Result<()> {
     writeln!(buf, "========================================")?;
     writeln!(buf, "======= KMS ATTESTATION EVIDENCE =======")?;
     writeln!(buf, "========================================")?;
     writeln!(buf)?;
-    explain_attestation_evidence(
-        buf,
-        record.attestation_evidence.as_ref().context("record is missing attestation evidence")?,
-    )
-    .context("failed to explain attestation evidence")?;
+    // Both `encryption_key` and `attestation_evidence` provide equivalent
+    // information about the KMS, but only one will be set.
+    if let Some(encryption_key) = &record.encryption_key {
+        explain_encryption_key(buf, encryption_key, client)
+            .await
+            .context("failed to explain encryption key")?;
+    } else if let Some(attestation_evidence) = &record.attestation_evidence {
+        explain_attestation_evidence(buf, attestation_evidence)
+            .context("failed to explain attestation evidence")?;
+    } else {
+        bail!("record is missing attestation evidence");
+    }
 
     writeln!(buf)?;
     writeln!(buf, "========================================")?;
     writeln!(buf, "========== DATA ACCESS POLICY ==========")?;
     writeln!(buf, "========================================")?;
     writeln!(buf)?;
-
-    explain_data_access_policy(
-        buf,
-        record.data_access_policy.as_ref().context("record is missing data access policy")?,
-    )
-    .context("failed to explain data access policy")?;
+    // Both `pipeline_configuration` and `data_access_policy` provide equivalent
+    // information about the pipeline, but only one will be set.
+    if let Some(pipeline_configuration) = &record.pipeline_configuration {
+        explain_pipeline_configuration(buf, pipeline_configuration, client)
+            .await
+            .context("failed to explain pipeline configuration")?;
+    } else if let Some(data_access_policy) = &record.data_access_policy {
+        explain_data_access_policy(buf, data_access_policy)
+            .context("failed to explain data access policy")?;
+    } else {
+        bail!("record is missing data access policy");
+    }
     Ok(())
 }
 
@@ -148,6 +168,58 @@ fn explain_attestation_evidence(
         }
     }
     Ok(())
+}
+
+/// Writes a human readable explanation for the attestation evidence of the KMS
+/// that generated the given encryption key to the given buffer.
+async fn explain_encryption_key(
+    buf: &mut dyn std::fmt::Write,
+    encryption_key: &SignedPayload,
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
+    // Find the evidence digest from the SignedPayload signature headers.
+    let mut endorsed_evidence_sha256 = None;
+    let mut signed_payloads = vec![&encryption_key];
+    while let Some(payload) = signed_payloads.pop() {
+        for signature in &payload.signatures {
+            let headers = signed_payload::signature::Headers::decode(&signature.headers[..])?;
+            if let Some(oak_signature) = headers.oak_application_signature {
+                let headers =
+                    signed_payload::signature::Headers::decode(&oak_signature.headers[..])?;
+                ensure!(
+                    endorsed_evidence_sha256.is_none_or(|v| v == headers.endorsed_evidence_sha256),
+                    "found conflicting endorsed evidence digests"
+                );
+                endorsed_evidence_sha256 = Some(headers.endorsed_evidence_sha256);
+            }
+        }
+    }
+    let endorsed_evidence_sha256 =
+        endorsed_evidence_sha256.context("no endorsed evidence digest found")?;
+
+    // Fetch the endorsed evidence.
+    let url = format!(
+        "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:{}",
+        hex::encode(&endorsed_evidence_sha256)
+    );
+    writeln!(buf, "Downloading attestation evidence from {url}.")?;
+    writeln!(buf)?;
+    let response = client
+        .get(url)
+        .send()
+        .and_then(|r| r.bytes())
+        .await
+        .context("failed to fetch attestation evidence from content-addressable storage")?;
+    ensure!(
+        &Sha256::digest(&response)[..] == &endorsed_evidence_sha256,
+        "endorsed evidence digest does not match"
+    );
+
+    let endorsed_evidence = EndorsedEvidence::decode(&*response)?;
+    explain_attestation_evidence(
+        buf,
+        &endorsed_evidence.evidence.context("endorsed evidence missing evidence")?,
+    )
 }
 
 /// Writes a human readable explanation for the given data access policy to the
@@ -406,6 +478,37 @@ fn explain_legacy_transform_access_budgets(
     Ok(())
 }
 
+/// Writes a human readable explanation for the given PipelineConfiguration
+/// message to the given budget.
+async fn explain_pipeline_configuration(
+    buf: &mut dyn std::fmt::Write,
+    pipeline_configuration: &SignedPayload,
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
+    // The PipelineConfiguration contains a digest of the data access policy,
+    // which can be used to download the full policy.
+    let config = PipelineConfiguration::decode(pipeline_configuration.payload.as_slice())?;
+    let url = format!(
+        "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:{}",
+        hex::encode(&config.access_policy_sha256)
+    );
+    writeln!(buf, "Downloading data access policy from {url}.")?;
+    writeln!(buf)?;
+    let response = client
+        .get(url)
+        .send()
+        .and_then(|r| r.bytes())
+        .await
+        .context("failed to fetch data access policy from content-addressable storage")?;
+    ensure!(
+        &Sha256::digest(&response)[..] == &config.access_policy_sha256,
+        "data access policy digest does not match"
+    );
+
+    let access_policy = DataAccessPolicy::decode(&response[..])?;
+    explain_data_access_policy(buf, &access_policy)
+}
+
 /// Convenience function that calls the callback `f` with number of times the
 /// [`AccessBudget`] allows a piece of data to be accessed by a given
 /// application, if and only if the budget actually restricts the number of
@@ -425,5 +528,50 @@ where
         // Note: an access budget that allows unlimited access doesn't really restrict access, so we
         // don't need to report such access policies.
         None => Ok(false),
+    }
+}
+
+/// Writes a human readable explanation for a SignedPayload signature structure
+/// to the given buffer. The payload type of the signed payload is inferred from
+/// context.
+pub async fn explain_signed_payload(
+    buf: &mut dyn std::fmt::Write,
+    mut sig_structure: &[u8],
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
+    // Parse the SignedPayload signature structure.
+    let len = sig_structure.read_varint()?;
+    let (context, mut sig_structure) =
+        sig_structure.split_at_checked(len).context("unexpected end of input1")?;
+    ensure!(context == b"SignedPayload", "unexpected SignedPayload context string");
+    let len = sig_structure.read_varint()?;
+    let (headers, mut sig_structure) =
+        sig_structure.split_at_checked(len).context("unexpected end of input2")?;
+    let len = sig_structure.read_varint()?;
+    let (payload, sig_structure) =
+        sig_structure.split_at_checked(len).context("unexpected end of input3")?;
+    ensure!(sig_structure.len() == 0, "unexpected trailing bytes");
+
+    // Construct a SignedPayload message with the parsed fields and delegate
+    // to the appropriate explain_* function. We assume that the payload is for
+    // a KMS encryption key if the headers contain the Oak "Built from open
+    // source" claim; this isn't a perfect heuristic, but it should be correct
+    // for SignedPayload signature structures that are uploaded to transparency
+    // logs.
+    let signed_payload = SignedPayload {
+        payload: payload.to_vec(),
+        signatures: vec![signed_payload::Signature {
+            headers: headers.to_vec(),
+            ..Default::default()
+        }],
+    };
+    if signed_payload::signature::Headers::decode(headers)?
+        .claims
+        .iter()
+        .any(|c| c == "https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md")
+    {
+        explain_encryption_key(buf, &signed_payload, client).await
+    } else {
+        explain_pipeline_configuration(buf, &signed_payload, client).await
     }
 }

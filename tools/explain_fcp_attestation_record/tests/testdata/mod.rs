@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use prost::Message as _;
+use rustls::pki_types::pem::PemObject as _;
 use verification_record_proto::{
     access_policy_proto::fcp::confidentialcompute::{
         access_budget, data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
@@ -153,6 +154,25 @@ pub fn record_with_ledger_evidence() -> AttestationVerificationRecord {
         data_access_policy: Some(DataAccessPolicy { ..Default::default() }),
         ..Default::default()
     }
+}
+
+/// Returns a self-signed test root CA certificate and a rustls ServerConfig for
+/// googleapis.com.
+pub fn test_certs() -> (reqwest::Certificate, rustls::server::ServerConfig) {
+    let ca_cert = reqwest::Certificate::from_pem(include_bytes!("test_root.pem"))
+        .expect("must be a valid certificate");
+    let server_config = rustls::server::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![rustls::pki_types::CertificateDer::from_pem_slice(include_bytes!(
+                "test_cert.pem"
+            ))
+            .expect("must be a valid certificate")],
+            rustls::pki_types::PrivateKeyDer::from_pem_slice(include_bytes!("test_cert.key.pem"))
+                .expect("must be a valid private key"),
+        )
+        .expect("must be matching cert and private key");
+    (ca_cert, server_config)
 }
 
 /// Creates a [`ReferenceValues`] instance that expects an Oak Containers

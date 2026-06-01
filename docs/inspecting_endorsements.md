@@ -194,20 +194,24 @@ $ curl -sL "https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677a4e8e68
 "62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87"
 ```
 
-### From transparency log entry to Oak endorsement
+### From transparency log entry hash to published artifact
+
+The SHA2-256 hash in the transparency log entries can point to one of two types
+of artifacts, either an
+[Oak endorsement](https://github.com/project-oak/oak/blob/main/docs/tr/endorsement_v1.md),
+or a
+[`SignedPayload` signature structure](https://github.com/google-parfait/federated-compute/blob/main/fcp/protos/confidentialcompute/payload_transparency.proto).
+In either case, the artifact specifies the digest of the actual payload being
+endorsed, along with an endorsement validity time range which the client will
+respect. The payload can be looked up using the following URI pattern:
+https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:{HASH_ON_REKOR}
+where `{HASH_ON_REKOR}` is the hash listed in the Rekor log entry.
+
+#### Oak endorsements
 
 The SHA2-256 hash in the transparency log above
 `62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87` is the hash
-of an Oak endorsement (see
-[schema](https://github.com/project-oak/oak/blob/main/docs/tr/endorsement_v1.md)),
-which in turn specifies a subject digest which is a hash of the actual payload
-being endorsed, along with an endorsement validity time range which the client
-will respect.
-
-These Oak endorsements can be looked up using the following URI pattern:
-https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:{HASH_ON_REKOR}
-where `{HASH_ON_REKOR}` is the hash listed in the Rekor log entry. For the
-example above we can find the Oak endorsement statement at
+of an Oak endorsement statement that can be found at
 https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:62e818ac02a0427b9811d08468e286aca2f5c68ca44191a9ab1f86075afe5a87,
 copied below:
 
@@ -250,6 +254,27 @@ entries can be found using the URL pattern:
 https://search.sigstore.dev/?hash={BINARY_HASH} where `{BINARY_HASH}` is the
 SHA2-256 hash of the endorsed binary payload. We'll illustrate this in more
 detail in the following sections.
+
+#### SignedPayload structures
+
+As an alternative to an Oak endorsement, the SHA2-256 hash in a transparency log
+may be the hash of a `SignedPayload` signature structure. Since `SignedPayload`
+signature structures are binary, it is most useful to summarize them using the
+`tools/explain_fcp_attestation_record` tool:
+
+```console
+$ curl -sL "https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:090100dac890e96926b9b25e2bb28b04bcfda934596118a9226f696dbebfb346" \
+  | bazelisk run //tools/explain_fcp_attestation_record:main -- --signed-payload -
+... <snip> ...
+Inspecting SignedPayload signature structure provided via stdin.
+
+Downloading attestation evidence from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:5cdf572b364e7e95bf6b5ebeb7f86e20e034fcce8b8495122c13a4dbec1f006f.
+
+Oak Containers Stack in a AMD SEV-SNP TEE
+
+_____ Root Layer _____
+... <snip> ...
+```
 
 ### KMS stage0 firmware layer
 
@@ -656,9 +681,9 @@ repository. It is this binary that implements the business logic of protecting
 data decryption keys in accordance with the data access policies associated with
 uploaded encrypted data.
 
-As we showed in the [earlier
-section](#from-transparency-log-entry-to-oak-endorsement), the container layer
-endorsement covers subject digest
+As we showed in the
+[earlier section](#from-transparency-log-entry-hash-to-published-artifact), the
+container layer endorsement covers subject digest
 d14a1852f08b528f9975245f300d44e2500aaff9c8a9c5572e0114b7203e3e47, for which we
 can hence find provenance at
 https://search.sigstore.dev/?hash=d14a1852f08b528f9975245f300d44e2500aaff9c8a9c5572e0114b7203e3e47,

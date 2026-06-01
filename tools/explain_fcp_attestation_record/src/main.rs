@@ -35,7 +35,7 @@ struct Params {
     /// E.g. this can be one of the files output by a previous invocation of the
     /// "extract_attestation_records" tool from the FCP repository (see
     /// https://github.com/google-parfait/federated-compute/tree/main/fcp/client/attestation).
-    #[arg(long, value_parser = parse_path_or_stdin, conflicts_with = "access_policy")]
+    #[arg(long, value_parser = parse_path_or_stdin, conflicts_with = "access_policy", conflicts_with = "signed_payload")]
     pub record: Option<PathOrStdin>,
 
     /// Path to the serialized DataAccessPolicy proto to inspect, or '-' to
@@ -46,6 +46,15 @@ struct Params {
     /// https://github.com/google-parfait/confidential-federated-compute/inspecting_endorsements).
     #[arg(long, value_parser = parse_path_or_stdin)]
     pub access_policy: Option<PathOrStdin>,
+
+    /// Path to the SignedPayload signature structure to inspect, or '-' to read
+    /// from stdin.
+    ///
+    /// E.g. this can be the payload of SignedPayload-based endorsement.
+    /// (see
+    /// https://github.com/google-parfait/confidential-federated-compute/inspecting_endorsements).
+    #[arg(long, value_parser = parse_path_or_stdin)]
+    pub signed_payload: Option<PathOrStdin>,
 }
 
 #[derive(Clone, Debug)]
@@ -54,7 +63,8 @@ enum PathOrStdin {
     Stdin,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let params = Params::parse();
     match params {
         Params { record: Some(record_param), .. } => {
@@ -81,8 +91,13 @@ fn main() -> anyhow::Result<()> {
                 .context("failed to parse record")?;
 
             let mut explanation = String::new();
-            explain_fcp_attestation_record::explain_record(&mut explanation, &record)
-                .context("failed to explain record")?;
+            explain_fcp_attestation_record::explain_record(
+                &mut explanation,
+                &record,
+                &reqwest::Client::new(),
+            )
+            .await
+            .context("failed to explain record")?;
             println!("{}", explanation);
         }
         Params { access_policy: Some(access_policy_param), .. } => {
@@ -108,6 +123,35 @@ fn main() -> anyhow::Result<()> {
             let mut explanation = String::new();
             explain_fcp_attestation_record::explain_data_access_policy(&mut explanation, &policy)
                 .context("failed to explain policy")?;
+            println!("{}", explanation);
+        }
+        Params { signed_payload: Some(signed_payload_param), .. } => {
+            let mut signed_payload_sig_structure: Vec<u8>;
+            match signed_payload_param {
+                PathOrStdin::Path(payload_path) => {
+                    println!(
+                        "Inspecting SignedPayload signature structure at {}.",
+                        payload_path.display()
+                    );
+                    signed_payload_sig_structure = fs::read(&payload_path)
+                        .with_context(|| format!("failed to read {}", payload_path.display()))?;
+                }
+                PathOrStdin::Stdin => {
+                    println!("Inspecting SignedPayload signature structure provided via stdin.");
+                    signed_payload_sig_structure = Vec::new();
+                    io::stdin().read_to_end(&mut signed_payload_sig_structure)?;
+                }
+            }
+            println!();
+
+            let mut explanation = String::new();
+            explain_fcp_attestation_record::explain_signed_payload(
+                &mut explanation,
+                &signed_payload_sig_structure,
+                &reqwest::Client::new(),
+            )
+            .await
+            .context("failed to explain signed payload")?;
             println!("{}", explanation);
         }
         _ => unreachable!(),

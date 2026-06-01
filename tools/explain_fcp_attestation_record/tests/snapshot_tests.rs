@@ -27,11 +27,27 @@
 //! move those files into the original snapshot files, without the use of the
 //! 'cargo insta' tool.
 
+use std::collections::HashMap;
 use std::io::Write;
+use std::sync::Arc;
 
 use assert_cmd::Command;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse as _,
+    Router,
+};
 use insta::assert_snapshot;
+use messages_proto::oak::session::v1::EndorsedEvidence;
 use prost::Message as _;
+use sha2::{Digest as _, Sha256};
+use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
+use tokio::task::JoinSet;
+use verification_record_proto::{
+    fcp::confidentialcompute::AttestationVerificationRecord,
+    payload_transparency_proto::fcp::confidentialcompute::{signed_payload, SignedPayload},
+};
 
 mod testdata;
 
@@ -90,8 +106,8 @@ fn test_explain_record_with_empty_data_access_policy_from_stdin() -> anyhow::Res
 /// Runs the explain tool over a record that contains valid KMS attestation
 /// evidence and an access policy that is populated with a few transforms and
 /// access budgets.
-#[test]
-fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> {
     // Note: we don't actually invoke the binary, and instead call the
     // explain_fcp_attestation_record library upon which the binary is built. This
     // makes it a bit easier to pass in records which we constructed/modified
@@ -100,7 +116,78 @@ fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> 
     explain_fcp_attestation_record::explain_record(
         &mut buf,
         &testdata::record_with_nonempty_access_policy(),
-    )?;
+        &reqwest::Client::new(),
+    )
+    .await?;
+
+    // Check that the expected output in the snapshot matches the actual output in
+    // the buffer.
+    assert_snapshot!(buf);
+    Ok(())
+}
+
+/// Runs the explain tool over a SignedPayload-based record that contains valid
+/// KMS attestation evidence and an access policy that is populated with a few
+/// transforms and access budgets.
+#[tokio::test]
+async fn test_explain_record_with_signed_payloads() -> anyhow::Result<()> {
+    // Note: we don't actually invoke the binary, and instead call the
+    // explain_fcp_attestation_record library upon which the binary is built. This
+    // makes it a bit easier to pass in records which we constructed/modified
+    // within the test code, without having to write to temporary files etc.
+    let record = testdata::record_with_nonempty_access_policy();
+    let access_policy = record.data_access_policy.unwrap().encode_to_vec();
+    let endorsed_evidence = EndorsedEvidence {
+        evidence: record.attestation_evidence,
+        endorsements: record.attestation_endorsements,
+    }
+    .encode_to_vec();
+
+    // Construct an equivalent record that uses SignedPayloads.
+    let record = AttestationVerificationRecord {
+        encryption_key: Some(SignedPayload {
+            signatures: vec![signed_payload::Signature {
+                headers: signed_payload::signature::Headers {
+                    oak_application_signature: Some(signed_payload::Signature {
+                        headers: signed_payload::signature::Headers {
+                            endorsed_evidence_sha256: Sha256::digest(&endorsed_evidence).to_vec(),
+                            ..Default::default()
+                        }
+                        .encode_to_vec(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        pipeline_configuration: Some(SignedPayload {
+            payload: PipelineConfiguration {
+                access_policy_sha256: Sha256::digest(&access_policy).to_vec(),
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    // Start a server to serve the access policy and endorsed evidence.
+    let tmpdir = tempfile::tempdir()?;
+    let socket = tmpdir.path().join("socket");
+    let _handle = start_http_server(&socket, vec![access_policy, endorsed_evidence])?;
+
+    let mut buf = String::new();
+    explain_fcp_attestation_record::explain_record(
+        &mut buf,
+        &record,
+        &reqwest::Client::builder()
+            .unix_socket(socket)
+            .add_root_certificate(testdata::test_certs().0)
+            .build()?,
+    )
+    .await?;
 
     // Check that the expected output in the snapshot matches the actual output in
     // the buffer.
@@ -110,8 +197,8 @@ fn test_explain_record_with_nonempty_data_access_policy() -> anyhow::Result<()> 
 
 /// Runs the explain tool over a record file that only contains valid ledger
 /// attestation evidence and an empty access policy.
-#[test]
-fn test_explain_record_with_ledger_evidence() -> anyhow::Result<()> {
+#[tokio::test]
+async fn test_explain_record_with_ledger_evidence() -> anyhow::Result<()> {
     // Note: we don't actually invoke the binary, and instead call the
     // explain_fcp_attestation_record library upon which the binary is built. This
     // makes it a bit easier to pass in records which we constructed/modified
@@ -121,9 +208,148 @@ fn test_explain_record_with_ledger_evidence() -> anyhow::Result<()> {
     let result = explain_fcp_attestation_record::explain_record(
         &mut buf,
         &testdata::record_with_ledger_evidence(),
-    );
+        &reqwest::Client::new(),
+    )
+    .await;
 
     assert!(result.is_err());
     assert!(format!("{result:?}").contains("Oak Restricted Kernel evidence is no longer supported"));
     Ok(())
+}
+
+/// Runs the explain tool over a SignedPayload signature structure for a valid
+/// encryption key with KMS attestation evidence.
+#[tokio::test]
+async fn test_explain_signed_payload_with_encryption_key() -> anyhow::Result<()> {
+    // Note: we don't actually invoke the binary, and instead call the
+    // explain_fcp_attestation_record library upon which the binary is built. This
+    // makes it a bit easier to pass in records which we constructed/modified
+    // within the test code, without having to write to temporary files etc.
+    let record = testdata::record_with_empty_access_policy();
+    let endorsed_evidence = EndorsedEvidence {
+        evidence: record.attestation_evidence,
+        endorsements: record.attestation_endorsements,
+    }
+    .encode_to_vec();
+
+    let headers = signed_payload::signature::Headers {
+        claims: vec!["https://github.com/project-oak/oak/blob/main/docs/tr/claim/92939.md".into()],
+        oak_application_signature: Some(signed_payload::Signature {
+            headers: signed_payload::signature::Headers {
+                endorsed_evidence_sha256: Sha256::digest(&endorsed_evidence).to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+    .encode_to_vec();
+    assert!(headers.len() < 128);
+    let signature_structure =
+        [b"\x0dSignedPayload".as_slice(), &[headers.len() as u8], &headers, b"\x00"].concat();
+
+    // Start a server to serve the endorsed evidence.
+    let tmpdir = tempfile::tempdir()?;
+    let socket = tmpdir.path().join("socket");
+    let _handle = start_http_server(&socket, vec![endorsed_evidence])?;
+
+    let mut buf = String::new();
+    explain_fcp_attestation_record::explain_signed_payload(
+        &mut buf,
+        &signature_structure,
+        &reqwest::Client::builder()
+            .unix_socket(socket)
+            .add_root_certificate(testdata::test_certs().0)
+            .build()?,
+    )
+    .await?;
+
+    // Check that the expected output in the snapshot matches the actual output in
+    // the buffer.
+    assert_snapshot!(buf);
+    Ok(())
+}
+
+/// Runs the explain tool over a SignedPayload signature structure for a valid
+/// PipelineConfiguration for a pipeline with an empty access policy.
+#[tokio::test]
+async fn test_explain_signed_payload_with_pipeline_configuration() -> anyhow::Result<()> {
+    // Note: we don't actually invoke the binary, and instead call the
+    // explain_fcp_attestation_record library upon which the binary is built. This
+    // makes it a bit easier to pass in records which we constructed/modified
+    // within the test code, without having to write to temporary files etc.
+    let record = testdata::record_with_empty_access_policy();
+    let access_policy = record.data_access_policy.unwrap().encode_to_vec();
+
+    let pipeline_configuration =
+        PipelineConfiguration { access_policy_sha256: Sha256::digest(&access_policy).to_vec() }
+            .encode_to_vec();
+    assert!(pipeline_configuration.len() < 128);
+    let signature_structure = [
+        b"\x0dSignedPayload".as_slice(),
+        b"\x00",
+        &[pipeline_configuration.len() as u8],
+        &pipeline_configuration,
+    ]
+    .concat();
+
+    // Start a server to serve the access policy.
+    let tmpdir = tempfile::tempdir()?;
+    let socket = tmpdir.path().join("socket");
+    let _handle = start_http_server(&socket, vec![access_policy])?;
+
+    let mut buf = String::new();
+    explain_fcp_attestation_record::explain_signed_payload(
+        &mut buf,
+        &signature_structure,
+        &reqwest::Client::builder()
+            .unix_socket(socket)
+            .add_root_certificate(testdata::test_certs().0)
+            .build()?,
+    )
+    .await?;
+
+    // Check that the expected output in the snapshot matches the actual output in
+    // the buffer.
+    assert_snapshot!(buf);
+    Ok(())
+}
+
+/// Starts an HTTPS server that will serve the given files in response to GET
+/// requests. Returns a handle to the running server.
+fn start_http_server(
+    path: &std::path::Path,
+    files: Vec<Vec<u8>>,
+) -> anyhow::Result<tokio::task::JoinSet<()>> {
+    // Define a handler to serve the files.
+    async fn handler(
+        Path(sha256): Path<String>,
+        State(files_by_sha256): State<Arc<HashMap<String, Vec<u8>>>>,
+    ) -> axum::response::Response {
+        match files_by_sha256.get(&sha256) {
+            Some(data) => data.clone().into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+    let files_by_sha256 =
+        files.into_iter().map(|file| (hex::encode(Sha256::digest(&file)), file)).collect();
+    let app = Router::new()
+        .route("/data/transparency/sha2-256:{sha256}", axum::routing::get(handler))
+        .with_state(Arc::new(files_by_sha256));
+
+    // Load the TLS config.
+    let rustls_config =
+        axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(testdata::test_certs().1));
+
+    // Bind to the Unix domain socket and start the server.
+    let listener = std::os::unix::net::UnixListener::bind(path)?;
+    listener.set_nonblocking(true).expect("couldn't set non-blocking");
+    let serve = axum_server::tls_rustls::from_unix_rustls(listener, rustls_config)?
+        .serve(app.into_make_service());
+    let mut join_set = JoinSet::new();
+    join_set.spawn(async move {
+        serve.await.expect("server failed");
+    });
+    Ok(join_set)
 }

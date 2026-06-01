@@ -24,6 +24,8 @@ rust_binary(
         ":explain_fcp_attestation_record",
         ":verification_record_prost_proto",
         "@crates//:clap",
+        "@crates//:reqwest",
+        "@crates//:tokio",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:prost",
     ],
@@ -38,21 +40,32 @@ rust_library(
     tags = ["no-clippy"],
     deps = [
         ":fed_sql_container_config_prost_proto",
+        ":messages_prost_proto",
+        ":signed_endorsements_prost_proto",
         ":verification_record_prost_proto",
         "@crates//:clap",
+        "@crates//:futures-util",
+        "@crates//:integer-encoding",
+        "@crates//:reqwest",
+        "@crates//:tokio",
         "@oak//oak_attestation_explain",
         "@oak//oak_attestation_verification",
         "@oak//oak_proto_rust",
         "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:hex",
         "@oak_crates_index//:prost",
         "@oak_crates_index//:prost-types",
+        "@oak_crates_index//:sha2",
     ],
 )
 
 rust_test(
     name = "snapshot_tests",
     srcs = glob(["tests/**/*.rs"]),
-    compile_data = glob(["tests/**/*.pb"]),
+    compile_data = glob([
+        "tests/**/*.pb",
+        "tests/**/*.pem",
+    ]),
     crate_root = "tests/snapshot_tests.rs",
     data = glob(["tests/**/*.snap"]) + [":main"],
     env = {
@@ -62,12 +75,22 @@ rust_test(
     tags = ["no-clippy"],
     deps = [
         ":explain_fcp_attestation_record",
+        ":messages_prost_proto",
+        ":signed_endorsements_prost_proto",
         ":verification_record_prost_proto",
         "@crates//:assert_cmd",
+        "@crates//:axum",
+        "@crates//:axum-server",
         "@crates//:insta",
+        "@crates//:reqwest",
+        "@crates//:rustls",
         "@crates//:tempfile",
+        "@crates//:tokio",
         "@oak_crates_index//:anyhow",
+        "@oak_crates_index//:hex",
+        "@oak_crates_index//:mockall",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:sha2",
     ],
 )
 
@@ -79,4 +102,14 @@ rust_prost_library(
 rust_prost_library(
     name = "fed_sql_container_config_prost_proto",
     proto = "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_proto",
+)
+
+rust_prost_library(
+    name = "messages_prost_proto",
+    proto = "@oak//proto/session:messages_proto",
+)
+
+rust_prost_library(
+    name = "signed_endorsements_prost_proto",
+    proto = "@federated-compute//fcp/protos/confidentialcompute:signed_endorsements_proto",
 )
