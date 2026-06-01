@@ -107,17 +107,53 @@ crate.spec(
     version = "2.0.14",
 )
 crate.spec(
+    package = "axum",
+    version = "0.8.9",
+)
+crate.spec(
+    features = ["tls-rustls-no-provider"],
+    package = "axum-server",
+    version = "0.8.0",
+)
+crate.spec(
     features = ["derive"],
     package = "clap",
     version = "4.5.9",
+)
+crate.spec(
+    package = "futures-util",
+    version = "0.3.32",
 )
 crate.spec(
     package = "insta",
     version = "1.38.0",
 )
 crate.spec(
+    package = "integer-encoding",
+    version = "4.0.2",
+)
+crate.spec(
     package = "protoc-gen-prost",
     version = "0.4.0",
+)
+crate.spec(
+    default_features = False,
+    features = [
+        "gzip",
+        "rustls-tls",
+    ],
+    package = "reqwest",
+    version = "0.12.10",
+)
+crate.spec(
+    default_features = False,
+    package = "rustls",
+    version = "0.23.40",
+)
+crate.spec(
+    features = ["rt-multi-thread"],
+    package = "tokio",
+    version = "1.52.3",
 )
 crate.spec(
     package = "tempfile",

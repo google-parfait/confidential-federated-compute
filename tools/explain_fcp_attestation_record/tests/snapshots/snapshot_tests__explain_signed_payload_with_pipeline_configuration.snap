@@ -1,0 +1,7 @@
+---
+source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
+expression: buf
+---
+Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
+
+The data access policy allows 0 data transformations and defines 0 shared access budgets.
