@@ -1,0 +1,88 @@
+# Add additional crates used by CFC and its dependencies. Since crate_universe
+# doesn't share crates between modules, we instead add them to Oak's module
+# with a patch (https://github.com/bazelbuild/rules_rust/issues/3157).
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -434,2 +434,47 @@
+ # Crate Specifications and Annotations
+ # -------------------------------------
++crate.spec(
++    package = "ahash",
++    repositories = ALL_STD,
++    version = "0.8.11",
++)
++crate.spec(
++    package = "getset",
++    repositories = ALL_STD,
++    version = "0.1.6",
++)
++crate.spec(
++    package = "integer-encoding",
++    repositories = ALL_STD,
++    version = "4.0.2",
++)
++crate.spec(
++    package = "slog",
++    repositories = ALL_STD,
++    version = "2.8.2",
++)
++crate.spec(
++    package = "slog-term",
++    repositories = ALL_STD,
++    version = "2.9.2",
++)
++crate.spec(
++    package = "spin",
++    repositories = ALL_STD,
++    version = "0.9.8",
++)
++crate.spec(
++    package = "test-log",
++    repositories = ALL_STD,
++    version = "0.2.19",
++)
++crate.spec(
++    package = "time-macros",
++    repositories = ALL_STD,
++    version = "<0.2.26",  # 0.2.26 requires rustc >= 1.88
++)
++crate.spec(
++    package = "tracing-slog",
++    repositories = ALL_STD,
++    version = "0.3.0",
++)
+@@ -757,7 +802,7 @@
+ crate.spec(
+     default_features = True,
+     features = [],
+     package = "googletest",
+     repositories = ALL_STD,
+-    version = "0.14.2",
++    version = "0.11.0",  # CFC's test macros aren't compatible with 0.14.
+ )
+@@ -1203,7 +1248,7 @@
+ crate.spec(
+     default_features = True,
+-    features = [],
++    features = ["small_rng"],  # Required by raft_rs.
+     package = "rand",
+     repositories = ALL_STD,
+-    version = "0.9.0",
++    version = "0.8.5",  # raft_rs doesn't support 0.9.
+ )
+@@  -1507,7 +1552,7 @@
+ crate.spec(
+     default_features = True,
+-    features = [],
++    features = ["rt"],  # For AbortOnDropHandle.
+     package = "tokio-util",
+     repositories = ALL_STD,
+     version = "0.7.10",
+ )
+
+--- bazel/crates/extensions.bzl
++++ bazel/crates/extensions.bzl
+@@ -113,2 +113,2 @@
+         if m.name == "oak" and not m.is_root:
+-            repo_name = "@@oak"
++            repo_name = "@oak"

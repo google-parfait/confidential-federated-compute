@@ -1,0 +1,152 @@
+// Copyright 2026 The Trusted Computations Platform Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package apps.willow.committee_selector.service;
+
+// TODO import EndorsementStatus from secure_aggregation.proto
+enum EndorsementStatus {
+  ENDORSEMENT_STATUS_UNSPECIFIED = 0;
+  ENDORSEMENT_STATUS_VALID = 1;
+  ENDORSEMENT_STATUS_INVALID = 2;
+  ENDORSEMENT_STATUS_DUPLICATE = 3;
+}
+
+// Container of events triggered by CommitteeSelector commands
+message CommitteeSelectorEvent {
+  oneof event {
+    CreateCommitteeEvent create_committee_event = 1;
+    VolunteerBatchForCommitteeEvent volunteer_batch_for_committee_event = 2;
+    SampleCommitteeEvent sample_committee_event = 3;
+  }
+}
+
+// CommitteeSelector event fired while processing CreateCommittee commands
+message CreateCommitteeEvent {
+  int64 committee_id = 1;  // The committee ID is assigned while processing the command.
+}
+
+message VolunteerKeyDigest {
+  int64 public_key_digest = 1;
+  EndorsementStatus key_endorsement_status = 2;
+}
+
+message CommitteeAssignment {
+  int64 public_key_digest = 1;
+  EndorsementStatus status = 2;
+  int64 committee_id = 3;
+}
+
+// CommitteeSelector event fired while processing VolunteerBatchForCommittee commands
+message VolunteerBatchForCommitteeEvent {
+  // The members public key and endorsement is checked upon receiving the
+  // command, and only the digest of the public key, acting as a unique ID, is
+  // retained. If the public key in the command is not valid, the public key
+  // digest is not included in the event.
+  repeated VolunteerKeyDigest volunteer_key_digests = 1;
+  // Randomness is sampled in the command handler and passed to the event
+  // handler so that the same randomness is used across all replicas.
+  uint64 randomness = 2;
+}
+
+// CommitteeSelector event fired while processing SampleCommittee commands
+message SampleCommitteeEvent {
+  int64 committee_id = 1;
+}
+
+// Data snapshot for CommitteeSelector
+message CommitteeSelectorSnapshot {
+  repeated CommitteeSnapshot committees = 1;
+}
+
+enum CommitteeStatus {
+  COMMITTEE_STATUS_UNSPECIFIED = 0;
+  COMMITTEE_STATUS_ACCEPTING_VOLUNTEERS = 1;
+  COMMITTEE_STATUS_SELECTION_COMPLETE = 2;
+}
+
+message CommitteeSnapshot {
+  int64 committee_id = 1;
+  CommitteeStatus status = 2;
+  int64 sequential_order = 3;
+  repeated int64 member_public_key_digests = 4;
+  int64 total_volunteers_seen = 5;
+  bytes bloom_filter = 6;
+  int64 rejected_volunteers_count = 7;
+}
+
+message CreateCommitteeRequest {
+  int64 committee_id = 1;
+}
+
+message CreateCommitteeResponse {
+}
+
+message VolunteerForCommitteeRequest {
+  bytes public_key = 1;
+  bytes key_endorsement = 2;
+}
+
+message VolunteerBatchForCommitteeRequest {
+  repeated VolunteerForCommitteeRequest volunteers = 1;
+}
+
+message VolunteerRecord {
+  int64 member_public_key_digest = 1;
+  int64 committee_id = 2;
+  EndorsementStatus key_endorsement_status = 3;
+}
+
+message VolunteerBatchForCommitteeResponse {
+  repeated VolunteerRecord assignments = 1;
+}
+
+message SampleCommitteeRequest {
+  int64 committee_id = 1;
+}
+
+message CheckCommitteeStatusRequest {
+  int64 committee_id = 1;
+}
+
+message CheckCommitteeStatusResponse {
+  int64 committee_id = 1;
+  CommitteeStatus status = 2;
+  repeated int64 members = 3;
+  int64 rejected_volunteers_count = 4;
+}
+
+message CommitteeSelectorStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+message CommitteeSelectorRequest {
+  oneof msg {
+    CreateCommitteeRequest create_committee = 1;
+    VolunteerBatchForCommitteeRequest volunteer_batch_for_committee = 2;
+    SampleCommitteeRequest sample_committee = 3;
+    CheckCommitteeStatusRequest check_committee_status = 4;
+  }
+}
+
+message CommitteeSelectorResponse {
+  oneof msg {
+    CreateCommitteeResponse create_committee = 1;
+    VolunteerBatchForCommitteeResponse volunteer_batch_for_committee = 2;
+    CheckCommitteeStatusResponse check_committee_status = 3;
+    CommitteeSelectorStatus error = 4;
+  }
+}

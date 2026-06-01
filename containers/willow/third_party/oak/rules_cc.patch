@@ -1,0 +1,10 @@
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -25,4 +25,7 @@
+ # https://github.com/bazelbuild/platforms
+ bazel_dep(name = "platforms", version = "1.0.0")
+ 
++# https://github.com/bazelbuild/rules_cc
++bazel_dep(name = "rules_cc", version = "0.2.14")
++
+ # https://github.com/bazel-contrib/toolchains_llvm
