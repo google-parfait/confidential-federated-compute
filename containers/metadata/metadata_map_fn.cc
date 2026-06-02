@@ -17,6 +17,7 @@
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "containers/big_endian.h"
+#include "containers/common/checkpoint_utils.h"
 #include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
 #include "fcp/base/monitoring.h"
@@ -48,21 +49,6 @@ using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
-
-absl::StatusOr<std::string> GetPrivacyId(CheckpointParser& parser) {
-  FCP_ASSIGN_OR_RETURN(Tensor privacy_id_tensor,
-                       parser.GetTensor(kPrivacyIdColumnName));
-  if (privacy_id_tensor.dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "`%s` tensor must be a string tensor", kPrivacyIdColumnName));
-  }
-  if (!privacy_id_tensor.is_scalar()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("`%s` tensor must be a scalar", kPrivacyIdColumnName));
-  }
-  return std::string(privacy_id_tensor.AsScalar<absl::string_view>());
-}
 
 absl::StatusOr<uint64_t> GetUpper64HashedPrivacyId(CheckpointParser& parser) {
   FCP_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(parser));
@@ -128,25 +114,6 @@ absl::StatusOr<EventTimeRange> GetCoarseEventTimeRange(
   }
 }
 
-absl::StatusOr<Tensor> GetEventTime(CheckpointParser& parser,
-                                    absl::string_view on_device_query_name) {
-  // All checkpoints, including message-based ones, represent the event time as
-  // a scalar string Tensor.
-  FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
-                       parser.GetTensor(absl::StrCat(on_device_query_name, "/",
-                                                     kEventTimeColumnName)));
-  if (time_tensor.dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "`%s` tensor must be a string tensor", kEventTimeColumnName));
-  }
-  if (time_tensor.shape().dim_sizes().size() != 1) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "`%s` tensor must have one dimension", kEventTimeColumnName));
-  }
-  return time_tensor;
-}
-
 struct MinMaxEventTimes {
   absl::CivilSecond min = absl::CivilSecond::max();
   absl::CivilSecond max = absl::CivilSecond::min();
@@ -154,14 +121,14 @@ struct MinMaxEventTimes {
 
 absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
     CheckpointParser& parser, absl::string_view on_device_query_name) {
-  FCP_ASSIGN_OR_RETURN(Tensor time_tensor,
+  FCP_ASSIGN_OR_RETURN(std::vector<std::string> event_times,
                        GetEventTime(parser, on_device_query_name));
-  if (time_tensor.num_elements() == 0) {
+  if (event_times.empty()) {
     return std::nullopt;
   }
   MinMaxEventTimes min_max_event_times;
   // Iterate over the event times and find the min and max.
-  for (auto event_time : time_tensor.AsSpan<absl::string_view>()) {
+  for (const auto& event_time : event_times) {
     FCP_ASSIGN_OR_RETURN(absl::CivilSecond civil_time,
                          ConvertEventTimeToCivilSecond(event_time));
     min_max_event_times.min = std::min(min_max_event_times.min, civil_time);

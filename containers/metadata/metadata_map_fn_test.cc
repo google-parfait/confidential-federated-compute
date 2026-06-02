@@ -471,9 +471,10 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongType) {
   auto result = fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
   EXPECT_THAT(result->status().code(), Eq(google::rpc::Code::INVALID_ARGUMENT));
-  EXPECT_THAT(result->status().message(),
-              HasSubstr("`confidential_compute_event_time` tensor must be a "
-                        "string tensor"));
+  EXPECT_THAT(
+      result->status().message(),
+      HasSubstr("`test_query/confidential_compute_event_time` tensor must be a "
+                "string tensor"));
 }
 
 TEST_F(MetadataMapFnTest, MapFailsIfPrivacyIdHasWrongShape) {
@@ -514,7 +515,7 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongShape) {
   ASSERT_THAT(result, IsOk());
   EXPECT_THAT(result->status().code(), Eq(google::rpc::Code::INVALID_ARGUMENT));
   EXPECT_THAT(result->status().message(),
-              HasSubstr("`confidential_compute_event_time` tensor "
+              HasSubstr("`test_query/confidential_compute_event_time` tensor "
                         "must have one dimension"));
 }
 }  // namespace

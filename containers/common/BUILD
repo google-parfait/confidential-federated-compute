@@ -208,3 +208,40 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
+
+cc_library(
+    name = "checkpoint_utils",
+    srcs = ["checkpoint_utils.cc"],
+    hdrs = ["checkpoint_utils.h"],
+    visibility = ["//containers:__subpackages__"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@federated-compute//fcp/base",
+        "@federated-compute//fcp/confidentialcompute:constants",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_utils_test",
+    size = "small",
+    srcs = ["checkpoint_utils_test.cc"],
+    deps = [
+        ":checkpoint_utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/confidentialcompute:constants",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:in_memory_checkpoint_parser",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
+    ],
+)
