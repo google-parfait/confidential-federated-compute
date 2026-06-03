@@ -699,13 +699,8 @@ where
             &request.authorized_logical_pipeline_policies_hashes,
             &self.payload_signer,
         )
-        .unwrap_or_else(|err| {
-            // TODO: b/454946443 - Until the AttestationTransparencyService is
-            // guaranteed to be initialized, don't fail the request if
-            // attestation-transparency-based keys cannot be derived.
-            warn!("Failed to derive SignedPayloads: {err}");
-            Vec::new()
-        });
+        .context("failed to derive signed public keys")
+        .map_err(Self::convert_error)?;
 
         Ok(Response::new(DeriveKeysResponse { public_keys, signed_public_keys }))
     }

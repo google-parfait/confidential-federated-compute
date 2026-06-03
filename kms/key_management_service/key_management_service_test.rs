@@ -490,10 +490,7 @@ async fn derive_keys_ignores_payload_signer_errors() {
     };
     assert_that!(
         kms.derive_keys(request.into_request()).await.map(Response::into_inner),
-        ok(pat!(DeriveKeysResponse {
-            public_keys: elements_are![not(is_empty()), not(is_empty())],
-            signed_public_keys: is_empty(),
-        }))
+        err(displays_as(contains_substring("signing failed")))
     );
 }
 
