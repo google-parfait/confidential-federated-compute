@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "containers/fed_sql/inference_model.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
