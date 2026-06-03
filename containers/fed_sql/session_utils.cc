@@ -20,7 +20,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "containers/fed_sql/inference_model.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"

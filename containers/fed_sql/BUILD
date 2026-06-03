@@ -262,10 +262,10 @@ cc_library(
     hdrs = ["session_utils.h"],
     visibility = ["//containers:__subpackages__"],
     deps = [
-        ":inference_model",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:protobuf",
+        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
