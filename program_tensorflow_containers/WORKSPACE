@@ -110,12 +110,12 @@ http_archive(
 
 http_archive(
     name = "jax_privacy",
-    integrity = "sha256-RVbubReikV0L7UFLesswIA+vj7S5osMLSrJd3Xz1bxg=",
+    integrity = "sha256-hCExiV+6kNdxdgv7E9VcIyVkJoNsZAUiStaArWUD6xo=",
     patches = [
         "//third_party/jax_privacy:dpmf.patch",
     ],
-    strip_prefix = "jax_privacy-26a6c8a3dffa8c0fe5f3f2af845fa91cf2bbfbf5",
-    url = "https://github.com/google-deepmind/jax_privacy/archive/26a6c8a3dffa8c0fe5f3f2af845fa91cf2bbfbf5.tar.gz",
+    strip_prefix = "jax_privacy-7ad9c12b72926951854ca1868352f8b33f829080",
+    url = "https://github.com/google-deepmind/jax_privacy/archive/7ad9c12b72926951854ca1868352f8b33f829080.tar.gz",
 )
 
 git_repository(

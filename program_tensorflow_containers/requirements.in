@@ -29,4 +29,5 @@ jax>=0.4.30
 jaxlib>=0.4.30
 
 # Additional dependencies required for jax_privacy.
-optax
+optax>=0.2.3
+chex

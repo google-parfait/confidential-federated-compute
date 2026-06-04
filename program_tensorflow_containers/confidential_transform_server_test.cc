@@ -347,18 +347,6 @@ _jax2tf_convert_cpu_native = functools.partial(
 
 _CLIP_NORM = 1.0
 _NOISE_MULTIPLIER = 7.379
-_BLT_BUF_DECAY = [
-    0.9999999999921251,
-    0.9944453083640997,
-    0.8985923474607591,
-    0.4912001418098778,
-]
-_BLT_OUTPUT_SCALE = [
-    0.0070314825502323835,
-    0.10613806907600574,
-    0.1898159060327625,
-    0.1966594748073734,
-]
 _TEST_STRUCT_TYPE = federated_language.StructWithPythonType(
     elements=(
         federated_language.TensorType(dtype=np.float32, shape=(3,)),
@@ -368,9 +356,8 @@ _TEST_STRUCT_TYPE = federated_language.StructWithPythonType(
 )
 
 def trusted_program(external_handle):
-  matrix_mechanism = buffered_toeplitz.BufferedToeplitz.build(
-      buf_decay=_BLT_BUF_DECAY,
-      output_scale=_BLT_OUTPUT_SCALE,
+  matrix_mechanism = buffered_toeplitz.optimize(
+      n=3, min_sep=1, max_participations=1, min_buffers=3, max_buffers=5,
   ).inverse_as_streaming_matrix()
   # Use a constant noise seed so the results are reproducible.
   global_noise_seed = 123
@@ -423,10 +410,10 @@ def trusted_program(external_handle):
   ASSERT_THAT(
       result.struct_().element(0).value().array().float32_list().value(),
       ::testing::Pointwise(::testing::FloatNear(0.001f),
-                           {-1.99844682f, 0.358718932f, 6.17356777f}));
+                           {-4.220541f, -3.31984639f, 9.05659103f}));
   ASSERT_THAT(
       result.struct_().element(1).value().array().float32_list().value(),
-      ::testing::Pointwise(::testing::FloatNear(0.001f), {-3.8099432f}));
+      ::testing::Pointwise(::testing::FloatNear(0.001f), {-3.40336657f}));
 
   tensorflow_federated::v0::Value num_clipped_updates;
   num_clipped_updates.ParseFromString(released_data["num_clipped_updates"]);
