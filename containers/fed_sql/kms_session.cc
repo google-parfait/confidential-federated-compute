@@ -214,6 +214,9 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
 
   // TODO: Check that all blobs are within the aggregation window.
 
+  // Save the data size before moving it out so that it can be reported
+  // back in metrics.
+  size_t unencrypted_data_size = unencrypted_data.size();
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(std::move(unencrypted_data)));
@@ -266,7 +269,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
 
   uncommitted_inputs_.push_back(*std::move(input));
 
-  return ToWriteFinishedResponse(absl::OkStatus(), metadata.total_size_bytes());
+  return ToWriteFinishedResponse(absl::OkStatus(), unencrypted_data_size);
 }
 
 absl::StatusOr<WriteFinishedResponse> KmsFedSqlSession::AccumulatePrivateState(
