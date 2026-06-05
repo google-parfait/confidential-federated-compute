@@ -234,5 +234,28 @@ TEST(IntervalMapTest, GetGapsBeyondStoredIntervals) {
   EXPECT_THAT(gaps, ElementsAre(Interval<int>(0, 10), Interval<int>(20, 30)));
 }
 
+TEST(IntervalMapTest, LastIntervalEndEmptyMap) {
+  IntervalMap<int, int> map;
+  EXPECT_FALSE(map.last_interval_end().has_value());
+}
+
+TEST(IntervalMapTest, LastIntervalEndWithIntervals) {
+  IntervalMap<int, int> map({{{0, 10}, 1}, {{20, 30}, 2}, {{40, 100}, 3}});
+  EXPECT_EQ(map.last_interval_end(), 100);
+}
+
+TEST(IntervalMapTest, EraseIfByStoredValue) {
+  IntervalMap<int, int> map({{{0, 10}, 1}, {{10, 20}, 2}, {{20, 30}, 3}});
+  map.EraseIf([](const auto& pair) { return pair.second < 3; });
+  EXPECT_THAT(map, ElementsAre(ENTRY(20, 30, 3)));
+}
+
+TEST(IntervalMapTest, EraseIfByIntervalEnd) {
+  IntervalMap<int, int> map(
+      {{{0, 10}, 1}, {{10, 20}, 2}, {{20, 30}, 3}, {{30, 40}, 4}});
+  map.EraseIf([](const auto& pair) { return pair.first.end() <= 20; });
+  EXPECT_THAT(map, ElementsAre(ENTRY(20, 30, 3), ENTRY(30, 40, 4)));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

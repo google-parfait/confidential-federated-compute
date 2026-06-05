@@ -121,5 +121,30 @@ TEST(BudgetIntervalMapTest, InsertInterval) {
   EXPECT_TRUE(map.HasBudget({10, 15}));
 }
 
+TEST(BudgetIntervalMapTest, CleanupStaleIntervalsEmptyMap) {
+  BudgetIntervalMap map(5);
+  // Should be a no-op on an empty map.
+  map.CleanupStaleIntervals(100);
+  EXPECT_TRUE(map.empty());
+}
+
+TEST(BudgetIntervalMapTest, CleanupStaleIntervalsRemovesExpired) {
+  BudgetIntervalMap map(5);
+  map.Insert({0, 10}, 3);
+  map.Insert({10, 20}, 2);
+  map.Insert({40, 70}, 2);
+  map.Insert({100, 110}, 4);
+
+  // TTL = 50. Latest interval ends at 110.
+  // expiration_cutoff = 110 - 50 = 60.
+  // Intervals [0,10) and [10,20) end before 60 -> removed.
+  map.CleanupStaleIntervals(50);
+
+  BudgetIntervalMap expected(5);
+  expected.Insert({40, 70}, 2);
+  expected.Insert({100, 110}, 4);
+  EXPECT_EQ(map, expected);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

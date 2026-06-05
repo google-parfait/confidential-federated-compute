@@ -201,5 +201,40 @@ TEST(TimeBudgetTest, ParseOverlappingIntervals) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST(TimeBudgetTest, CleanupStaleIntervals) {
+  TimeBudget budget(2);
+
+  // 1st update: window [60, 120) seconds -> minute 1 to 2.
+  EXPECT_THAT(budget.UpdateBudget(Interval<uint64_t>(60, 120)), IsOk());
+  EXPECT_EQ(budget.anchor_time(), 1);
+
+  // 2nd update: window [7,782,000, 7,782,120) seconds -> minute [129,700,
+  // 129,702). TTL = 90 days = 129,600 minutes. expiration_cutoff = 129,702 -
+  // 129,600 = 102 minutes. The first interval [1, 2) ends before 102, so it is
+  // expired and deleted.
+  EXPECT_THAT(budget.UpdateBudget(Interval<uint64_t>(7782000, 7782120)),
+              IsOk());
+
+  // Anchor time should be updated to the second interval: 129,700.
+  EXPECT_EQ(budget.anchor_time(), 129700);
+
+  // Querying the deleted interval [60, 120) should return false.
+  EXPECT_FALSE(budget.HasRemainingBudget(Interval<uint64_t>(60, 120)));
+
+  // Querying a window before the new anchor should also return false.
+  EXPECT_FALSE(budget.HasRemainingBudget(Interval<uint64_t>(600, 1200)));
+
+  // Querying a window after the stored interval should return true.
+  EXPECT_TRUE(budget.HasRemainingBudget(Interval<uint64_t>(7782120, 7782720)));
+
+  // Serialization should only contain the second interval.
+  BudgetState::TimeBudgetState serialized = budget.Serialize();
+  EXPECT_EQ(serialized.anchor_time(), 7782000);
+  EXPECT_EQ(serialized.intervals_size(), 1);
+  EXPECT_EQ(serialized.intervals(0).start_index(), 0);
+  EXPECT_EQ(serialized.intervals(0).count(), 2);
+  EXPECT_EQ(serialized.intervals(0).remaining_budget(), 1);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql
