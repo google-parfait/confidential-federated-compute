@@ -117,6 +117,19 @@ class BudgetIntervalMap {
     return map_.Insert(interval, value);
   }
 
+  // Removes expired intervals. An interval is expired if it ended more than
+  // `ttl_mins` ago relative to the latest stored interval.
+  void CleanupStaleIntervals(uint64_t ttl_mins) {
+    auto last_end = map_.last_interval_end();
+    if (!last_end.has_value()) return;
+
+    uint64_t expiration_cutoff =
+        (*last_end > ttl_mins) ? *last_end - ttl_mins : 0;
+    map_.EraseIf([expiration_cutoff](const auto& pair) {
+      return pair.first.end() <= expiration_cutoff;
+    });
+  }
+
  private:
   InnerMap map_;
   uint64_t default_budget_;

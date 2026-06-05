@@ -16,9 +16,11 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_MAP_H_
 
 #include <initializer_list>
+#include <optional>
 #include <ostream>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
@@ -93,6 +95,12 @@ class IntervalMap {
   bool empty() const { return map_.empty(); }
 
   void Clear() { map_.clear(); }
+
+  // Returns the end of the last interval or std::nullopt if empty.
+  std::optional<T> last_interval_end() const {
+    if (map_.empty()) return std::nullopt;
+    return map_.rbegin()->first.end();
+  }
 
   // Applies `func` to every stored value within the given interval.
   // Intervals that are only partially covered by the given interval are split
@@ -193,6 +201,21 @@ class IntervalMap {
     TryMergeAt(interval.start());
     TryMergeAt(interval.end());
     return true;
+  }
+
+  // Erases all intervals for which the predicate returns true.
+  template <typename Predicate>
+  void EraseIf(Predicate pred) {
+    std::vector<Interval<T>> to_erase;
+    for (auto it = map_.begin(); it != map_.end(); ++it) {
+      if (pred(*it)) {
+        to_erase.push_back(it->first);
+      }
+    }
+
+    for (const auto& key : to_erase) {
+      map_.erase(key);
+    }
   }
 
  private:

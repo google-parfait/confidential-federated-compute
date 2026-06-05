@@ -14,7 +14,6 @@
 
 #include "containers/fed_sql/time_budget/time_budget.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -27,6 +26,11 @@
 #include "containers/fed_sql/time_budget/budget_interval_map.h"
 
 namespace confidential_federated_compute::fed_sql {
+namespace {
+
+constexpr uint64_t kDefaultTtlMinutes = 90 * 24 * 60;  // 90 days
+
+}  // namespace
 
 absl::Status TimeBudget::Parse(const std::string& data) {
   BudgetState::TimeBudgetState state;
@@ -138,21 +142,24 @@ absl::Status TimeBudget::UpdateBudget(Interval<uint64_t> time_window) {
   }
 
   // Convert input seconds to minute boundaries.
-  uint64_t start_min = time_window.start() / 60;
-  uint64_t end_min = (time_window.end() + 59) / 60;
+  uint64_t start_mins = time_window.start() / 60;
+  uint64_t end_mins = (time_window.end() + 59) / 60;
 
   auto anchor = anchor_time();
-  if (anchor.has_value() && start_min < *anchor) {
+  if (anchor.has_value() && start_mins < *anchor) {
     return absl::FailedPreconditionError(
         "Cannot update budget for a time window starting before the anchor "
         "time.");
   }
 
-  Interval<uint64_t> aligned_window(start_min, end_min);
+  Interval<uint64_t> aligned_window(start_mins, end_mins);
   if (!budget_map_->SubtractBudget(aligned_window)) {
     return absl::FailedPreconditionError(
         "The budget is exhausted for the specified time window.");
   }
+
+  // Cleanup expired intervals..
+  budget_map_->CleanupStaleIntervals(kDefaultTtlMinutes);
 
   return absl::OkStatus();
 }
