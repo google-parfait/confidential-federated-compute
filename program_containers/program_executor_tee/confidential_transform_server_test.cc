@@ -326,7 +326,7 @@ TYPED_TEST_SUITE(ProgramExecutorTeeSessionTest,
                  ::testing::Types<ProgramExecutorTeeConfidentialTransform>);
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
-  this->CreateSession("unused program");
+  ASSERT_TRUE(this->CreateSession("unused program").ok());
   SessionRequest session_request;
   SessionResponse session_response;
   BlobMetadata metadata = PARSE_TEXT_PROTO(R"pb(
@@ -349,10 +349,11 @@ TYPED_TEST(ProgramExecutorTeeSessionTest, SessionWriteFailsUnsupported) {
 }
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, InvalidProgramFails) {
-  this->CreateSession(R"(
+  ASSERT_TRUE(this->CreateSession(R"(
 def incorrectly_named_trusted_program(external_handle):
   return 10
-  )");
+  )")
+                  .ok());
 
   SessionRequest session_request;
   SessionResponse session_response;
@@ -371,13 +372,14 @@ def incorrectly_named_trusted_program(external_handle):
 }
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSession) {
-  this->CreateSession(R"(
+  ASSERT_TRUE(this->CreateSession(R"(
 def trusted_program(external_handle):
   result_1 = "a" + "b" + "c"
   result_2 = "d" + "e" + "f"
   external_handle.release_unencrypted(result_1.encode(), b"result_1")
   external_handle.release_unencrypted(result_2.encode(), b"result_2")
-  )");
+  )")
+                  .ok());
   SessionRequest session_request;
   SessionResponse session_response;
   session_request.mutable_finalize();
@@ -428,8 +430,8 @@ TYPED_TEST(ProgramExecutorTeeSessionTest,
         blob_id, data));
   }
 
-  this->CreateSession(
-      R"(
+  ASSERT_TRUE(this->CreateSession(
+                      R"(
 import struct
 
 FORMAT_STRING = '<i'
@@ -445,9 +447,10 @@ def trusted_program(external_handle):
 
   external_handle.release_unencrypted(struct.pack(FORMAT_STRING, sum), b"result")
   )",
-      /*kms_private_state=*/"",
-      /*blob_ids=*/
-      {blob_id_1, blob_id_2});
+                      /*kms_private_state=*/"",
+                      /*blob_ids=*/
+                      {blob_id_1, blob_id_2})
+                  .ok());
 
   SessionRequest session_request;
   SessionResponse session_response;
@@ -481,7 +484,7 @@ def trusted_program(external_handle):
   // Session 1: First run. No recovery info available yet, so should fail to
   // recover and then run the loop for i=0 and i=1 before the simulated
   // interruption.
-  this->CreateSession(program);
+  ASSERT_TRUE(this->CreateSession(program).ok());
   SessionRequest session_request;
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -502,7 +505,7 @@ def trusted_program(external_handle):
   auto released_state_changes =
       this->fake_data_read_write_service_.GetReleasedStateChanges();
   std::string kms_state = released_state_changes["key_1"].second.value();
-  this->CreateSession(program, kms_state);
+  ASSERT_TRUE(this->CreateSession(program, kms_state).ok());
   session_request.Clear();
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -534,7 +537,7 @@ def trusted_program(external_handle):
   // Session 1: First run. No recovery info available yet, so should fail to
   // recover and then run the loop for i=0 and i=1 before the simulated
   // interruption.
-  this->CreateSession(program);
+  ASSERT_TRUE(this->CreateSession(program).ok());
   SessionRequest session_request;
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -556,7 +559,7 @@ def trusted_program(external_handle):
   auto released_state_changes =
       this->fake_data_read_write_service_.GetReleasedStateChanges();
   std::string kms_state = released_state_changes["key_1"].second.value();
-  this->CreateSession(program, kms_state);
+  ASSERT_TRUE(this->CreateSession(program, kms_state).ok());
   session_request.Clear();
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -587,7 +590,7 @@ def trusted_program(external_handle):
   // Session 1: First run. No recovery info available yet, so should fail to
   // recover and then hit a simulated interruption before finishing the round
   // for i=0.
-  this->CreateSession(program);
+  ASSERT_TRUE(this->CreateSession(program).ok());
   SessionRequest session_request;
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -605,7 +608,7 @@ def trusted_program(external_handle):
   // Session 2: Second run. Recovery should be unsuccessful from recovery_key_0
   // since no recovery info has been committed yet. The program should run but
   // fail again at the same spot.
-  this->CreateSession(program);
+  ASSERT_TRUE(this->CreateSession(program).ok());
   session_request.Clear();
   session_request.mutable_finalize();
   ASSERT_TRUE(this->stream_->Write(session_request));
@@ -629,7 +632,7 @@ def trusted_program(external_handle):
   external_handle.release_unencrypted(b"value_1", "key_1")
   )";
 
-  this->CreateSession(program);
+  ASSERT_TRUE(this->CreateSession(program).ok());
   SessionRequest session_request;
   session_request.mutable_finalize();
 
@@ -643,6 +646,102 @@ def trusted_program(external_handle):
               HasSubstr("Releasing unencrypted information without associated "
                         "recovery information is unsupported if there has been "
                         "a prior attempt to save recovery information."));
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           DuplicateFinalizeSessionNotAllowed_BasicProgram) {
+  std::string program = R"(
+def trusted_program(external_handle):
+  external_handle.release_unencrypted(b"value_0", "key_0")
+  external_handle.release_unencrypted(b"value_1", "key_1")
+  )";
+
+  // Session 1: First run.
+  ASSERT_TRUE(this->CreateSession(program).ok());
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 2);
+  ASSERT_EQ(released_data["key_0"], "value_0");
+  ASSERT_EQ(released_data["key_1"], "value_1");
+
+  // Session 2: Second run attempted from scratch. Should fail to release
+  // anything because of exhausted budget.
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  std::string kms_state = released_state_changes["key_1"].second.value();
+  absl::Status status = this->CreateSession(program, kms_state);
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr(
+          "Programs may recover, but cannot run from scratch multiple times"));
+}
+
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           DuplicateFinalizeSessionNotAllowed_RecoveryProgram) {
+  std::string program = R"(
+def trusted_program(external_handle):
+  recovery_val = external_handle.restore_recovery_info("recovery_key")
+  if recovery_val is not None:
+    start_index = int(recovery_val.decode()) + 1
+  else:
+    start_index = 0
+  
+  for i in range(start_index, 3):
+    external_handle.save_recovery_info(str(i).encode(), f"recovery_key", [(f"value_{i}".encode(), f"key_{i}")])
+    if i == 1:
+      raise Exception("Simulated interruption")
+  )";
+
+  // Session 1: First run. No recovery info available yet, so recovery_val will
+  // be None and the program will start from scratch. It will run the loop for
+  // i=0 and i=1 before the simulated interruption.
+  ASSERT_TRUE(this->CreateSession(program).ok());
+  SessionRequest session_request;
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  SessionResponse session_response;
+  // Read should fail because the program throws an exception.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  grpc::Status status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(status.error_message(), HasSubstr("Simulated interruption"));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 2);
+  ASSERT_EQ(released_data["key_0"], "value_0");
+  ASSERT_EQ(released_data["key_1"], "value_1");
+
+  // Remove the recovery information so that we can simulate attempting a second
+  // run of the program from scratch.
+  ASSERT_TRUE(
+      this->fake_data_read_write_service_.RemoveMessage("recovery_key").ok());
+
+  // Session 2: Second run attempted from scratch. No new information should be
+  // released because the budget indicates that the program should must
+  // successfully load recovery information first.
+  auto released_state_changes =
+      this->fake_data_read_write_service_.GetReleasedStateChanges();
+  std::string kms_state = released_state_changes["key_1"].second.value();
+  ASSERT_TRUE(this->CreateSession(program, kms_state).ok());
+  session_request.Clear();
+  session_request.mutable_finalize();
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  session_response.Clear();
+  // Read should fail because the expected state is not provided for recovery.
+  ASSERT_FALSE(this->stream_->Read(&session_response));
+  status = this->stream_->Finish();
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::INTERNAL);
+  ASSERT_THAT(
+      status.error_message(),
+      HasSubstr("Saving recovery information is unsupported if a previous "
+                "program execution previously released information but the "
+                "corresponding recovery information has not yet been loaded"));
 }
 
 }  // namespace

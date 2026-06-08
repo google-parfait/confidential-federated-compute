@@ -247,4 +247,13 @@ absl::Status FakeDataReadWriteService::StorePlaintextMessage(
   return absl::OkStatus();
 }
 
+absl::Status FakeDataReadWriteService::RemoveMessage(absl::string_view id) {
+  auto it = id_to_read_response_.find(std::string(id));
+  if (it == id_to_read_response_.end()) {
+    return absl::NotFoundError("No message stored for id.");
+  }
+  id_to_read_response_.erase(it);
+  return absl::OkStatus();
+}
+
 }  // namespace confidential_federated_compute::program_executor_tee

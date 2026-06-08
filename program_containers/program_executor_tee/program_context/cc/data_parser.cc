@@ -197,6 +197,12 @@ absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
 absl::Status DataParser::SaveRecoveryInfo(
     std::string recovery_value, std::string recovery_key,
     std::vector<std::pair<std::string, std::string>> release_queue) {
+  if (!private_state_->AllowSaveRecovery()) {
+    return absl::FailedPreconditionError(
+        "Saving recovery information is unsupported if a previous program "
+        "execution previously released information but the corresponding "
+        "recovery information has not yet been loaded.");
+  }
   // Build the RecoveryInfo proto from the raw value and the committed recovery
   // blob ID from the private state.
   RecoveryInfo recovery_info;
@@ -302,7 +308,8 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
         "Failed to parse RecoveryInfo from decrypted data.");
   }
 
-  if (!private_state_->AllowRecovery(blob_header.blob_id(), recovery_info)) {
+  if (!private_state_->AttemptRestoreRecovery(blob_header.blob_id(),
+                                              recovery_info)) {
     return absl::InvalidArgumentError(
         "The recovery info does not match the expected state for recovery.");
   }

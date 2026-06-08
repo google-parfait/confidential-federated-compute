@@ -66,6 +66,9 @@ class FakeDataReadWriteService
   absl::Status StorePlaintextMessage(absl::string_view uri,
                                      absl::string_view message);
 
+  // Removes the entry with the given id from the internal map of ReadResponses.
+  absl::Status RemoveMessage(absl::string_view id);
+
   std::pair<std::string, std::string> GetInputPublicPrivateKeyPair() {
     return input_public_private_key_pair_;
   }

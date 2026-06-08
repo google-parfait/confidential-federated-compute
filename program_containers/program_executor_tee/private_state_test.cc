@@ -32,6 +32,10 @@ TEST(PrivateStateTest, CreatePrivateState_NoInitialState) {
   ASSERT_TRUE(result.ok());
   std::unique_ptr<PrivateState> state = std::move(result.value());
 
+  // Saving recovery information should automatically be allowed when there is
+  // no initial state.
+  EXPECT_TRUE(state->AllowSaveRecovery());
+
   // For the first release operation, the initial state should be empty and the
   // update state should show a counter incremented by 1.
   EXPECT_FALSE(state->GetState().has_value());
@@ -128,7 +132,7 @@ TEST(PrivateStateTest, AllowRecovery_MatchingRecoveryBlobId) {
 
   // Recovery should be allowed because recovery_blob_id matches
   // the recovery blob id in the internal BudgetState.
-  EXPECT_TRUE(state->AllowRecovery("blob_123", recovery_info));
+  EXPECT_TRUE(state->AttemptRestoreRecovery("blob_123", recovery_info));
 }
 
 TEST(PrivateStateTest, AllowRecovery_MatchingCommittedBlobId) {
@@ -147,7 +151,7 @@ TEST(PrivateStateTest, AllowRecovery_MatchingCommittedBlobId) {
   // Recovery should be allowed because the committed blob id attached
   // to the recovery info matches the recovery blob id in the internal
   // BudgetState.
-  EXPECT_TRUE(state->AllowRecovery("other_blob", recovery_info));
+  EXPECT_TRUE(state->AttemptRestoreRecovery("other_blob", recovery_info));
 }
 
 TEST(PrivateStateTest, AllowRecovery_NoMatch) {
@@ -165,7 +169,7 @@ TEST(PrivateStateTest, AllowRecovery_NoMatch) {
 
   // Recovery should be denied because neither the recovery_blob_id nor the
   // committed_blob_id matches.
-  EXPECT_FALSE(state->AllowRecovery("different_blob", recovery_info));
+  EXPECT_FALSE(state->AttemptRestoreRecovery("different_blob", recovery_info));
 }
 
 TEST(PrivateStateTest, AllowRecovery_BothUnset) {
@@ -179,7 +183,7 @@ TEST(PrivateStateTest, AllowRecovery_BothUnset) {
   RecoveryInfo recovery_info;
 
   // Recovery should be allowed when both sides are in the initial state.
-  EXPECT_TRUE(state->AllowRecovery("any_blob_id", recovery_info));
+  EXPECT_TRUE(state->AttemptRestoreRecovery("any_blob_id", recovery_info));
 }
 
 TEST(PrivateStateTest, AllowRecovery_OnlyInternalUnset) {
@@ -193,7 +197,7 @@ TEST(PrivateStateTest, AllowRecovery_OnlyInternalUnset) {
 
   // Recovery should be denied: internal state has no recovery_blob_id but the
   // RecoveryInfo has a committed_blob_id, so they are out of sync.
-  EXPECT_FALSE(state->AllowRecovery("any_blob_id", recovery_info));
+  EXPECT_FALSE(state->AttemptRestoreRecovery("any_blob_id", recovery_info));
 }
 
 TEST(PrivateStateTest, SetRecoveryBlobId) {
@@ -208,8 +212,8 @@ TEST(PrivateStateTest, SetRecoveryBlobId) {
   recovery_info.set_committed_blob_id("other_blob");
 
   // After setting the recovery blob ID, AllowRecovery should match on it.
-  EXPECT_TRUE(state->AllowRecovery("new_blob_id", recovery_info));
-  EXPECT_FALSE(state->AllowRecovery("wrong_blob_id", recovery_info));
+  EXPECT_TRUE(state->AttemptRestoreRecovery("new_blob_id", recovery_info));
+  EXPECT_FALSE(state->AttemptRestoreRecovery("wrong_blob_id", recovery_info));
 
   // CommitNewState should include the recovery blob ID.
   BudgetState committed;
@@ -280,6 +284,27 @@ TEST(PrivateStateTest, HasPriorSaveRecovery) {
 
   // True when initialized with state containing recovery blob id.
   EXPECT_TRUE(state2->HasPriorSaveRecovery());
+}
+
+TEST(PrivateStateTest, AllowSaveRecovery) {
+  BudgetState initial_budget_state;
+  initial_budget_state.set_recovery_blob_id("blob_123");
+
+  absl::StatusOr<std::unique_ptr<PrivateState>> result =
+      PrivateState::CreatePrivateState(
+          initial_budget_state.SerializeAsString());
+  ASSERT_TRUE(result.ok());
+  std::unique_ptr<PrivateState> state = std::move(result.value());
+
+  // Saving recovery information should be disallowed when the initial state
+  // already has a recovery blob id (recovery must be restored first).
+  EXPECT_FALSE(state->AllowSaveRecovery());
+
+  // After a successful restore recovery operation, saving recovery information
+  // should be permitted.
+  RecoveryInfo recovery_info;
+  ASSERT_TRUE(state->AttemptRestoreRecovery("blob_123", recovery_info));
+  EXPECT_TRUE(state->AllowSaveRecovery());
 }
 
 }  // namespace
