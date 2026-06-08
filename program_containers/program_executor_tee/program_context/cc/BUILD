@@ -137,6 +137,7 @@ cc_library(
         "@confidential-federated-compute//containers:crypto_test_utils",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:cose",
+        "@federated-compute//fcp/confidentialcompute:crypto",
         "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
@@ -320,6 +321,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//program_executor_tee/proto:executor_wrapper_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
