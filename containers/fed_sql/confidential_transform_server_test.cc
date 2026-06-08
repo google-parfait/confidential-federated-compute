@@ -227,6 +227,13 @@ FedSqlContainerInitializeConfiguration DefaultFedSqlDpContainerConfig() {
     agg_configuration {
       intrinsic_configs: {
         intrinsic_uri: "fedsql_dp_group_by"
+        intrinsic_args {
+          input_tensor {
+            name: "key"
+            dtype: DT_INT64
+            shape { dim_sizes: -1 }
+          }
+        }
         intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
         intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
         intrinsic_args { parameter { dtype: DT_INT64 int64_val: 0 } }
@@ -261,16 +268,23 @@ DefaultFedSqlDpContainerConfigForAutotuning() {
     agg_configuration {
       intrinsic_configs: {
         intrinsic_uri: "fedsql_dp_group_by"
-        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.1 } }
+        intrinsic_args {
+          input_tensor {
+            name: "key"
+            dtype: DT_INT64
+            shape { dim_sizes: -1 }
+          }
+        }
+        intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.0 } }
         intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 0.01 } }
-        intrinsic_args { parameter { dtype: DT_INT64 int64_val: 0 } }
+        intrinsic_args { parameter { dtype: DT_INT64 int64_val: -1 } }
         output_tensors {
           name: "key_out"
           dtype: DT_INT64
           shape { dim_sizes: -1 }
         }
         inner_intrinsics {
-          intrinsic_uri: "GoogleSQL:sum"
+          intrinsic_uri: "GoogleSQL:$differential_privacy_sum"
           intrinsic_args: {
             input_tensor {
               name: "val"
@@ -278,7 +292,7 @@ DefaultFedSqlDpContainerConfigForAutotuning() {
               shape {}
             }
           }
-          intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
+          intrinsic_args { parameter { dtype: DT_DOUBLE double_val: 1.0 } }
           intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
           intrinsic_args { parameter { dtype: DT_DOUBLE double_val: -1.0 } }
           output_tensors {
@@ -922,7 +936,8 @@ TEST_F(FedSqlServerTest, StreamInitializeWithUnencryptedAutotuningSuccess) {
   FedSqlContainerInitializeConfiguration config =
       DefaultFedSqlDpContainerConfigForAutotuning();
   config.mutable_auto_tuning_config()->set_auto_tuning_data(
-      PackAutotuningParams({{"L1_0_estimated", 0.5}}));
+      PackAutotuningParams({{"max_groups_contributed_estimated", 3.0},
+                            {"L1_0_estimated", 0.5}}));
 
   InitializeRequest request =
       CreateInitializeRequest(config, DefaultFedSqlDpConfigConstraints());
@@ -936,6 +951,12 @@ TEST_F(FedSqlServerTest, StreamInitializeWithUnencryptedAutotuningSuccess) {
                                         budget_state.SerializeAsString()));
   EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
               IsOk());
+
+  // Verify that the session can be created and configured with the autotuning
+  // parameters.
+  grpc::ClientContext session_context;
+  auto stream = ConfigureDefaultSession(&session_context);
+  EXPECT_NE(stream, nullptr);
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {

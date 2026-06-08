@@ -425,7 +425,7 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
   std::optional<AutotuningBundle> autotuning_data;
   if (fed_sql_config.has_auto_tuning_config()) {
     FCP_ASSIGN_OR_RETURN(
-        AutotuningBundle autotuning_data,
+        autotuning_data,
         GetAutotuningData(fed_sql_config.auto_tuning_config()));
   }
   FCP_RETURN_IF_ERROR(
