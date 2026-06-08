@@ -20,6 +20,6 @@ py_binary(
     deps = [
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
-        "@pypi//tensorflow",
+        "@pypi//tensorflow_cpu",
     ],
 )

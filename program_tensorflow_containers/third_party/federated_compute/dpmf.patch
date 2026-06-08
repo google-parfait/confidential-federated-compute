@@ -11,7 +11,8 @@ index f84ee24..7d7a0b2 100644
          "@pypi//jax",
 -        "@pypi//jax_privacy",
          "@pypi//optax",
-         "@pypi//tensorflow",
+-        "@pypi//tensorflow",
++        "@pypi//tensorflow_cpu",
      ],
 @@ -133,7 +133,7 @@ py_library(
      tags = ["manual"],

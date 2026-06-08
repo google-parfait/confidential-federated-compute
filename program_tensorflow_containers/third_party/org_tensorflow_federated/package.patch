@@ -22,7 +22,7 @@ index 0704e191f..2ec0991db 100644
 +        "@pypi//tensorflow_privacy",
 +        "@pypi//tqdm",
 +        "@pypi//typing_extensions",
-+        "@pypi//tensorflow",
++        "@pypi//tensorflow_cpu",
 +        "@pypi//googleapis_common_protos",
      ],
  )

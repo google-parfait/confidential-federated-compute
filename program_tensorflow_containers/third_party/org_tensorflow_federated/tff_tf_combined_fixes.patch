@@ -17,7 +17,7 @@ index 0704e19..7fe6a70 100644
 +        "@pypi//scipy",
 +        "@pypi//tqdm",
 +        "@pypi//typing_extensions",
-+        "@pypi//tensorflow",
++        "@pypi//tensorflow_cpu",
 +        "@pypi//googleapis_common_protos",
      ],
  )

@@ -58,13 +58,14 @@ py_library(
     deps = [
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//tensorflow",
+        "@pypi//tensorflow_cpu",
     ],
 )
 
 cc_binary(
     name = "computation_runner_binary_tensorflow",
     srcs = ["computation_runner_main_tensorflow.cc"],
+    linkopts = ["-Wl,-s"],
     deps = [
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/flags:flag",
@@ -203,6 +204,7 @@ cc_binary(
         ":libz.so.1",
     ],
     linkopts = [
+        "-Wl,-s",
         "-Wl,--version-script=$(location :hide_symbols.lds)",
         # Bazel symlinks won't make it into the container tarball, so we need
         # to include the path of libpython since the Bazel _solib symlink will

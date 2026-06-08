@@ -19,6 +19,11 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+local_repository(
+    name = "pypi_compat",
+    path = "third_party/pypi_compat",
+)
+
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive
 http_archive(
     name = "boringssl",
@@ -43,16 +48,12 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-Ta+vXrW/VBKYWLbdVl1HAAZstyBFYQ09fVdIUMiW5wc=",
-    # Adds missing C++ module dependencies (core_headers and protobuf_lite) to confidential_transform_server and crypto to fake_data_read_write_service required by strict Clang Modules compilation.
-    patches = [
-        "//third_party/confidential_federated_compute_program:deps.patch",
-    ],
+    integrity = "sha256-BPh599WH8kzqXlZwPJSxMF3bhHzOLIFtDEk9Kp1r9Qc=",
     repo_mapping = {
         "@federated-compute": "@federated_compute",
     },
-    strip_prefix = "confidential-federated-compute-17afec33628a435234f081a7b13e844388e5ebe5/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/17afec33628a435234f081a7b13e844388e5ebe5.tar.gz",
+    strip_prefix = "confidential-federated-compute-623819024308093e4c30c9e5d030bca62d7a5b15/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/623819024308093e4c30c9e5d030bca62d7a5b15.tar.gz",
 )
 
 http_archive(
@@ -162,6 +163,7 @@ http_archive(
     patches = [
         "//third_party/org_tensorflow_federated:tff_tf_combined_fixes.patch",
     ],
+    repo_mapping = {"@pypi": "@pypi_compat"},
     strip_prefix = "tensorflow-federated-189fb8e13aa97ff11653a95de631b305420f9a5a",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/189fb8e13aa97ff11653a95de631b305420f9a5a.tar.gz",
 )
