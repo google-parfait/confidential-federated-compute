@@ -33,6 +33,9 @@ ABSL_FLAG(std::vector<std::string>, worker_bns, {},
 ABSL_FLAG(std::string, serialized_reference_values, "",
           "The serialized reference values of the program worker for setting "
           "up the client noise session.");
+ABSL_FLAG(int32_t, max_concurrent_computation_calls, -1,
+          "The number of calls that can be handled in parallel by the leaf "
+          "executors. Non-positive values indicate no maximum.");
 
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
@@ -41,6 +44,13 @@ CreateExecutor() {
 
 int main(int argc, char* argv[]) {
   absl::ParseCommandLine(argc, argv);
+
+  // The XLA executor does not support the max_concurrent_computation_calls arg.
+  if (absl::GetFlag(FLAGS_max_concurrent_computation_calls) > 0) {
+    LOG(ERROR) << "Unsupported max_concurrent_computation_calls arg.";
+    return -1;
+  }
+
   const std::string server_address =
       absl::StrCat("[::1]:", absl::GetFlag(FLAGS_computatation_runner_port));
   grpc::ServerBuilder builder;

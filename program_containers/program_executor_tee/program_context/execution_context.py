@@ -50,6 +50,7 @@ class TrustedContext(federated_language.program.FederatedContext):
       outgoing_server_address: str,
       worker_bns: list[str] = [],
       serialized_reference_values: bytes = b"",
+      max_concurrent_computation_calls=-1,
   ):
     """Initializes the execution context with an invoke helper function.
 
@@ -67,6 +68,9 @@ class TrustedContext(federated_language.program.FederatedContext):
         to be set to a non-empty string if a non-empty list of worker bns
         addresses is provided and the program workers are running on AMD SEV/SNP
         machines.
+      max_concurrent_computation_calls: The number of calls that can be handled
+        in parallel by the leaf executors. Non-positive values indicate no
+        maximum.
     """
 
     if compiler_fn is not None:
@@ -93,6 +97,7 @@ class TrustedContext(federated_language.program.FederatedContext):
         # Convert the base64-encoded serialized reference value bytestring to a string.
         # The computation runner will decode this arg into a ReferenceValues proto.
         f"--serialized_reference_values={serialized_reference_values.decode('utf-8')}",
+        f"--max_concurrent_computation_calls={max_concurrent_computation_calls}",
     ]
     self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
     channel_options = [

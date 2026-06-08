@@ -30,7 +30,9 @@ def run_program(
     blob_ids: list[bytes],
     model_id_to_zip_file: dict[str, str],
     outgoing_server_address: str,
-    resolve_blob_id_to_tensor_fn: Callable[[bytes, str], tensor_pb2.TensorProto],
+    resolve_blob_id_to_tensor_fn: Callable[
+        [bytes, str], tensor_pb2.TensorProto
+    ],
     release_unencrypted_fn: Callable[[bytes, str], None],
     save_recovery_info_fn: Callable[
         [bytes, str, Sequence[tuple[bytes, str]]], None

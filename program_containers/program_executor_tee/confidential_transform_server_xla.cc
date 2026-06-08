@@ -32,7 +32,8 @@ XLAProgramExecutorTeeConfidentialTransform::GetProgramInitializeFn() {
       .attr("get_program_initialize_fn")(
           initialize_config.outgoing_server_address(), GetWorkerBnsAddresses(),
           pybind11::bytes(absl::Base64Escape(
-              initialize_config.reference_values().SerializeAsString())));
+              initialize_config.reference_values().SerializeAsString())),
+          initialize_config.max_concurrent_computation_calls());
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee
