@@ -22,6 +22,7 @@
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -185,7 +186,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
               << data_read_write_server_address_ << std::endl;
   }
 
-  void CreateSession(
+  absl::Status CreateSession(
       std::string program, std::string kms_private_state = "",
       std::vector<std::string> blob_ids = {},
       std::map<std::string, std::string> file_id_to_filepath = {}) {
@@ -265,8 +266,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
       writer->Write(request);
     }
     CHECK(writer->WritesDone());
-    auto status = writer->Finish();
-    CHECK(status.ok()) << "StreamInitialize failed: " << status.error_message();
+    FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(writer->Finish()));
 
     SessionRequest session_request;
     SessionResponse session_response;
@@ -276,6 +276,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     stream_ = this->stub_->Session(session_context_.get());
     CHECK(stream_->Write(session_request));
     CHECK(stream_->Read(&session_response));
+    return absl::OkStatus();
   }
 
  protected:

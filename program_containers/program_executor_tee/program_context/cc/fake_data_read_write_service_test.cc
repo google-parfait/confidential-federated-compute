@@ -358,5 +358,48 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
   ASSERT_EQ(*plaintext_result, "intermediate_data");
 }
 
+TEST_F(FakeDataReadWriteServiceTest, RemoveMessageSuccess) {
+  // Prepopulate the FakeDataReadWriteService with a plaintext message.
+  std::string blob_id = "blob_id";
+  std::string message = "message";
+  CHECK_OK(
+      fake_data_read_write_service_->StorePlaintextMessage(blob_id, message));
+
+  // Verify that a ReadRequest for the blob_id succeeds before removal.
+  {
+    ReadRequest read_request;
+    read_request.set_blob_id(blob_id);
+    ClientContext read_client_context;
+    std::unique_ptr<ClientReader<ReadResponse>> reader(
+        stub_->Read(&read_client_context, read_request));
+    ReadResponse read_response;
+    ASSERT_TRUE(reader->Read(&read_response));
+    EXPECT_EQ(read_response.data(), message);
+    ASSERT_TRUE(reader->Finish().ok());
+  }
+
+  // Remove the message.
+  ASSERT_TRUE(fake_data_read_write_service_->RemoveMessage(blob_id).ok());
+
+  // Verify that a ReadRequest for the removed blob_id now fails.
+  {
+    ReadRequest read_request;
+    read_request.set_blob_id(blob_id);
+    ClientContext client_context;
+    std::unique_ptr<ClientReader<ReadResponse>> reader(
+        stub_->Read(&client_context, read_request));
+    grpc::Status status = reader->Finish();
+    ASSERT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+    ASSERT_THAT(status.error_message(),
+                HasSubstr("Requested key blob_id not found"));
+  }
+}
+
+TEST_F(FakeDataReadWriteServiceTest, RemoveMessageFailureForUnknownId) {
+  // Attempt to remove a message that was never stored.
+  auto result = fake_data_read_write_service_->RemoveMessage("nonexistent_id");
+  EXPECT_EQ(result, absl::NotFoundError("No message stored for id."));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

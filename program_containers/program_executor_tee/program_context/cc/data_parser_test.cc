@@ -283,27 +283,23 @@ TEST_F(DataParserTest, SaveAndRestoreRecoveryInfo) {
   EXPECT_EQ(released_data["my_key_2"], "def");
 }
 
-TEST_F(DataParserTest, RestoreRecoveryInfo_NotAllowed) {
-  // Initialize with a BudgetState that has a recovery_blob_id set.
-  // SaveRecoveryInfo will update it to a new blob id. Then we simulate a
-  // second SaveRecoveryInfo with a different blob id. Restoring the first
-  // recovery info should fail because AllowRecovery will reject the stale
-  // blob id.
-  BudgetState initial_state;
-  initial_state.set_recovery_blob_id("old_blob_id");
-  InitDataParser(initial_state.SerializeAsString());
+TEST_F(DataParserTest, RestoreRecoveryInfo_FailStale) {
+  // Start with no initial state. SaveRecoveryInfo twice: the first save
+  // includes a release to commit state with the first recovery blob id, and
+  // the second save updates the recovery blob id again. Restoring the first
+  // recovery info should fail because AllowRestoreRecovery will reject the
+  // stale blob id.
+  InitDataParser();
 
-  // Save first recovery info.
+  // Save first recovery info, including a release to commit state.
   ASSERT_TRUE(
-      data_parser_->SaveRecoveryInfo("first_value", "recovery_key_1", {}).ok());
+      data_parser_->SaveRecoveryInfo("first_value", "recovery_key_1", {{}})
+          .ok());
 
   // Save second recovery info, which updates the recovery blob id again.
-  // This also releases unencrypted data, which commits the state with the
-  // first recovery info's blob id.
-  ASSERT_TRUE(data_parser_
-                  ->SaveRecoveryInfo("second_value", "recovery_key_2",
-                                     {{"data", "release_key"}})
-                  .ok());
+  ASSERT_TRUE(
+      data_parser_->SaveRecoveryInfo("second_value", "recovery_key_2", {})
+          .ok());
 
   // Restoring the first recovery info should fail: the private state's
   // recovery_blob_id was updated to the second save's blob id, which won't
@@ -313,6 +309,41 @@ TEST_F(DataParserTest, RestoreRecoveryInfo_NotAllowed) {
   EXPECT_EQ(recovery_info.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(recovery_info.status().message(),
               HasSubstr("does not match the expected state for recovery"));
+}
+
+TEST_F(DataParserTest, SaveRecoveryInfo_FailsWhenRestoreExpectedFirst) {
+  // First, save recovery info with a release so that the state gets committed
+  // with a recovery_blob_id.
+  InitDataParser();
+  ASSERT_TRUE(data_parser_
+                  ->SaveRecoveryInfo("recovery_value", "recovery_key",
+                                     {{"data", "release_key"}})
+                  .ok());
+
+  // Re-initialize with the committed state, which has a recovery_blob_id.
+  // This simulates a new program execution that must restore before saving.
+  std::string committed_state = private_state_->GetState().value();
+  InitDataParser(committed_state);
+
+  // SaveRecoveryInfo should fail because AllowSaveRecovery returns false
+  // until recovery is restored first.
+  auto status =
+      data_parser_->SaveRecoveryInfo("new_value", "new_recovery_key", {});
+  ASSERT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Saving recovery information is unsupported if a previous "
+                "program execution previously released information but the "
+                "corresponding recovery information has not yet been loaded."));
+
+  // After restoring the recovery info, SaveRecoveryInfo should succeed.
+  auto recovery_info = data_parser_->RestoreRecoveryInfo("recovery_key");
+  ASSERT_TRUE(recovery_info.ok()) << recovery_info.status().ToString();
+  EXPECT_EQ(recovery_info.value(), "recovery_value");
+
+  ASSERT_TRUE(
+      data_parser_->SaveRecoveryInfo("new_value", "new_recovery_key", {}).ok());
 }
 
 }  // namespace

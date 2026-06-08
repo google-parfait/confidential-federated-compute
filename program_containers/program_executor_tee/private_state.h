@@ -36,8 +36,11 @@ class PrivateState {
       std::optional<std::string> initial_state);
 
   // Whether recovery from a given blob is permitted.
-  bool AllowRecovery(std::string recovery_blob_id,
-                     const RecoveryInfo& recovery_info) const;
+  bool AttemptRestoreRecovery(std::string recovery_blob_id,
+                              const RecoveryInfo& recovery_info);
+
+  // Whether saving recovery information is permitted.
+  bool AllowSaveRecovery() const;
 
   // Whether any save recovery calls have been made in the current run or have
   // been committed to KMS in previous runs.
@@ -59,7 +62,8 @@ class PrivateState {
   PrivateState(std::optional<std::string> initial_state,
                BudgetState internal_state)
       : committed_serialized_state_(std::move(initial_state)),
-        internal_state_(std::move(internal_state)) {}
+        internal_state_(std::move(internal_state)),
+        save_recovery_allowed_(!internal_state_.has_recovery_blob_id()) {}
 
  private:
   // Each release operation produces a release token containing a "initial
@@ -67,10 +71,18 @@ class PrivateState {
   // state" that KMS should update its stored state to.
   // The "initial state" to use for the next release operation.
   std::optional<std::string> committed_serialized_state_;
+
   // The internal state from which the "update state" can be derived for a
   // release operation. Opon a release operation, this becomes the committed
   // state.
   BudgetState internal_state_;
+
+  // Whether the program is in a state that allows recovery information to be
+  // saved. If the initial state when the program is executed indicates that
+  // recovery information has been previously committed, then additional
+  // recovery information may not be saved until the proper recovery information
+  // is loaded.
+  bool save_recovery_allowed_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

@@ -43,8 +43,8 @@ absl::StatusOr<std::unique_ptr<PrivateState>> PrivateState::CreatePrivateState(
       new PrivateState(std::move(initial_state), std::move(internal_state)));
 }
 
-bool PrivateState::AllowRecovery(std::string recovery_blob_id,
-                                 const RecoveryInfo& recovery_info) const {
+bool PrivateState::AttemptRestoreRecovery(std::string recovery_blob_id,
+                                          const RecoveryInfo& recovery_info) {
   // Recovery from a specific blob is allowed in the cases described below. Note
   // that the committed blob id in the blob's RecoveryInfo message represents
   // the recovery blob id in the BudgetState tracked by KMS at the time the
@@ -67,11 +67,19 @@ bool PrivateState::AllowRecovery(std::string recovery_blob_id,
   if (!internal_state_.has_recovery_blob_id()) {
     return !recovery_info.has_committed_blob_id();
   }
-  return internal_state_.recovery_blob_id() == recovery_blob_id ||
-         (recovery_info.has_committed_blob_id() &&
-          internal_state_.recovery_blob_id() ==
-              recovery_info.committed_blob_id());
+  if (internal_state_.recovery_blob_id() == recovery_blob_id ||
+      (recovery_info.has_committed_blob_id() &&
+       internal_state_.recovery_blob_id() ==
+           recovery_info.committed_blob_id())) {
+    // Since the recovery restoration succeeded, allow saving new recovery
+    // information.
+    save_recovery_allowed_ = true;
+    return true;
+  }
+  return false;
 }
+
+bool PrivateState::AllowSaveRecovery() const { return save_recovery_allowed_; }
 
 bool PrivateState::HasPriorSaveRecovery() const {
   return internal_state_.has_recovery_blob_id();
