@@ -18,7 +18,6 @@
 #include <cstdint>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "containers/fed_sql/interval.h"
 #include "containers/fed_sql/interval_map.h"
 
@@ -75,60 +74,23 @@ class BudgetIntervalMap {
   }
 
   // Returns true if every point in `interval` has budget > 0.
-  bool HasBudget(Interval<uint64_t> interval) {
-    return map_.ForEachValue(interval, [](uint64_t& v) { return v > 0; });
-  }
+  bool HasBudget(Interval<uint64_t> interval);
 
   // Subtracts 1 from the budget of every point in `interval`.
   //
   // Returns false without modifying the map if any point in `interval`
   // already has budget == 0. Returns true if the interval is empty.
-  bool SubtractBudget(Interval<uint64_t> interval) {
-    if (interval.empty()) return true;
-    if (!HasBudget(interval)) return false;
-
-    // Decrement all stored intervals within the range.
-    map_.ForEachValue(interval, [](uint64_t& v) {
-      v--;
-      return true;
-    });
-
-    // Fill each gap with (default_budget_ - 1)
-    for (const auto& gap : map_.GetGaps(interval)) {
-      CHECK(map_.Insert(gap, default_budget_ - 1))
-          << "Gap should never overlap";
-    }
-    return true;
-  }
+  bool SubtractBudget(Interval<uint64_t> interval);
 
   // Insert an interval in the map.
   //
   // Returns false if the value is greater than the `default_budget_`.
   // Returns false if the interval overlaps with an existing stored interval.
-  bool Insert(Interval<uint64_t> interval, uint64_t value) {
-    // Nothing to insert in the map.
-    if (interval.empty() || value == default_budget_) return true;
-
-    if (value > default_budget_) {
-      LOG(ERROR)
-          << "Inserting value greater than default budget is not allowed.";
-      return false;
-    }
-    return map_.Insert(interval, value);
-  }
+  bool Insert(Interval<uint64_t> interval, uint64_t value);
 
   // Removes expired intervals. An interval is expired if it ended more than
   // `ttl_mins` ago relative to the latest stored interval.
-  void CleanupStaleIntervals(uint64_t ttl_mins) {
-    auto last_end = map_.last_interval_end();
-    if (!last_end.has_value()) return;
-
-    uint64_t expiration_cutoff =
-        (*last_end > ttl_mins) ? *last_end - ttl_mins : 0;
-    map_.EraseIf([expiration_cutoff](const auto& pair) {
-      return pair.first.end() <= expiration_cutoff;
-    });
-  }
+  void CleanupStaleIntervals(uint64_t ttl_mins);
 
  private:
   InnerMap map_;
