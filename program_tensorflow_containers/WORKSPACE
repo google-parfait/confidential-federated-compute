@@ -48,12 +48,12 @@ http_archive(
 
 http_archive(
     name = "confidential-federated-compute-program",
-    integrity = "sha256-CvP3IfKTAuehiU2fuePd4lNNUrovwDDKjRsMw888LZA=",
+    integrity = "sha256-2Bs+jzjxdr0kM7Y9zZ7sFN7OqFGeewGjf9KiP1ib1ww=",
     repo_mapping = {
         "@federated-compute": "@federated_compute",
     },
-    strip_prefix = "confidential-federated-compute-af6d345a437456421250476c8122e6be982c21b7/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/af6d345a437456421250476c8122e6be982c21b7.tar.gz",
+    strip_prefix = "confidential-federated-compute-04674dc99a81428abeb683777455237df63e4037/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/04674dc99a81428abeb683777455237df63e4037.tar.gz",
 )
 
 http_archive(
