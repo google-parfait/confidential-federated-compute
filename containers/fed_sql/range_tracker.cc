@@ -113,6 +113,18 @@ bool RangeTracker::AddRange(uint64_t start, uint64_t end) {
   return ranges_.Add(Interval(start, end));
 }
 
+void RangeTracker::MergeAggWindow(Interval<uint64_t> agg_window) {
+  if (!agg_window_.has_value()) {
+    agg_window_ = agg_window;
+    return;
+  }
+
+  // Create a bounding aggregation window (smallest start, largest end).
+  agg_window_ =
+      Interval<uint64_t>(std::min(agg_window_->start(), agg_window.start()),
+                         std::max(agg_window_->end(), agg_window.end()));
+}
+
 bool RangeTracker::Merge(const RangeTracker& other) {
   // Partition keys must match (if both are set).
   if (!partition_index_.has_value()) {
@@ -133,13 +145,8 @@ bool RangeTracker::Merge(const absl::flat_hash_set<std::string>& keys,
                          const IntervalSet<uint64_t>& ranges,
                          const absl::flat_hash_set<std::string>& expired_keys,
                          std::optional<Interval<uint64_t>> agg_window) {
-  if (!agg_window_.has_value()) {
-    agg_window_ = agg_window;
-  } else if (agg_window.has_value()) {
-    // Create a bounding aggregation window (smallest start, largest end).
-    agg_window_ = Interval<uint64_t>(
-        std::min(agg_window_->start(), agg_window.value().start()),
-        std::max(agg_window_->end(), agg_window.value().end()));
+  if (agg_window.has_value()) {
+    MergeAggWindow(agg_window.value());
   }
 
   // Merge keys.

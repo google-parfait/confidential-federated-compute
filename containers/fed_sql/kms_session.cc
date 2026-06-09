@@ -112,11 +112,9 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::shared_ptr<MessageFactory> message_factory,
     absl::string_view on_device_query_name,
     confidential_federated_compute::Decryptor& decryptor,
-    std::optional<uint64_t> max_output_partitions,
-    std::optional<Interval<uint64_t>> agg_window)
+    std::optional<uint64_t> max_output_partitions)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
-      range_tracker_(agg_window),
       private_state_(std::move(private_state)),
       dp_unit_parameters_(dp_unit_parameters),
       message_factory_(std::move(message_factory)),

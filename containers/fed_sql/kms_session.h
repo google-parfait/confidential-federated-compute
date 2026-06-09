@@ -58,8 +58,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       std::shared_ptr<MessageFactory> message_factory,
       absl::string_view on_device_query_name,
       confidential_federated_compute::Decryptor& decryptor,
-      std::optional<uint64_t> max_output_partitions,
-      std::optional<Interval<uint64_t>> agg_window);
+      std::optional<uint64_t> max_output_partitions);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(

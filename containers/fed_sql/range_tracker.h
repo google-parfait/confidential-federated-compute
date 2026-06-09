@@ -33,9 +33,7 @@ namespace confidential_federated_compute::fed_sql {
 // visited during execution in FedSql Confidential Transform.
 class RangeTracker {
  public:
-  explicit RangeTracker(
-      std::optional<Interval<uint64_t>> agg_window = std::nullopt)
-      : agg_window_(agg_window) {}
+  RangeTracker() = default;
 
   // This class is move-only.
   RangeTracker(const RangeTracker&) = delete;
@@ -61,6 +59,9 @@ class RangeTracker {
   // Tracks [start, end) range as visited for the specified key. This method
   // returns false if this range overlaps with an already visited range.
   bool AddRange(uint64_t start, uint64_t end);
+
+  // Merges the aggregation time window with this RangeTracker
+  void MergeAggWindow(Interval<uint64_t> agg_window);
 
   // Merges the range data with another RangeTracker.
   // The sets of keys are combined, and the ranges are merged together.
