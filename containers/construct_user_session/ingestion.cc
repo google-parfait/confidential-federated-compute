@@ -14,6 +14,7 @@
 
 #include "containers/construct_user_session/ingestion.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "containers/common/checkpoint_utils.h"
+#include "containers/common/row_set.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
@@ -104,6 +106,28 @@ absl::StatusOr<DeserializedCheckpoint> DeserializeCheckpoint(
       .event_times = std::move(event_times),
       .data_tensors = std::move(data_tensors),
   };
+}
+
+std::vector<RowLocation> FilterForSessionWindow(
+    absl::Span<const absl::Time> event_times, uint64_t group_key,
+    uint32_t input_index, absl::Time window_start, absl::Time window_end) {
+  std::vector<RowLocation> row_locations;
+  row_locations.reserve(event_times.size());
+
+  for (size_t row_index = 0; row_index < event_times.size(); ++row_index) {
+    const absl::Time t = event_times[row_index];
+    // Half-open interval: [window_start, window_end).
+    // Sentinel values (absl::InfinitePast()) are naturally excluded since they
+    // fall outside any valid session window.
+    if (t >= window_start && t < window_end) {
+      row_locations.push_back(
+          RowLocation{.group_key = group_key,
+                      .input_index = input_index,
+                      .row_index = static_cast<uint32_t>(row_index)});
+    }
+  }
+
+  return row_locations;
 }
 
 }  // namespace confidential_federated_compute::construct_user_session
