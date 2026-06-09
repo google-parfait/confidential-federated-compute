@@ -18,6 +18,7 @@ package(default_visibility = ["//containers:__subpackages__"])
 
 cc_library(
     name = "budget_interval_map",
+    srcs = ["budget_interval_map.cc"],
     hdrs = ["budget_interval_map.h"],
     deps = [
         "//containers/fed_sql:interval",
