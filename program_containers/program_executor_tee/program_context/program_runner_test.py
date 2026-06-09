@@ -46,12 +46,12 @@ class ProgramRunnerTest(unittest.TestCase):
   def test_run_program(self):
     mock_release_fn = mock.MagicMock(spec=Callable)
     mock_save_fn = mock.MagicMock(spec=Callable)
-    mock_restore_fn = mock.MagicMock(spec=Callable, return_value=b"restored_data")
+    mock_restore_fn = mock.MagicMock(
+        spec=Callable, return_value=b"restored_data"
+    )
     program_runner.run_program(
         initialize_fn=None,
-        program=base64.b64encode(
-            _TRUSTED_PROGRAM_STRING.encode("utf-8")
-        ),
+        program=base64.b64encode(_TRUSTED_PROGRAM_STRING.encode("utf-8")),
         blob_ids=[],
         model_id_to_zip_file={},
         outgoing_server_address="fake_address",
@@ -69,10 +69,12 @@ class ProgramRunnerTest(unittest.TestCase):
     )
     self.assertEqual(mock_release_fn.call_count, 1)
     mock_release_fn.assert_called_once_with(
-        value_3.SerializeToString(), b"result1",
+        value_3.SerializeToString(),
+        b"result1",
     )
     mock_save_fn.assert_called_once_with(
-        b"checkpoint", "recovery_key",
+        b"checkpoint",
+        "recovery_key",
         [(value_2.SerializeToString(), "result2")],
     )
     mock_restore_fn.assert_called_once_with("recovery_key")

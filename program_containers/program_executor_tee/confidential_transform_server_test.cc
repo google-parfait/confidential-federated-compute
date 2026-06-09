@@ -439,8 +439,8 @@ BYTE_COUNT = 4
 
 def trusted_program(external_handle):
   sum = 0
-  for client_id in external_handle.client_ids:
-    tensor = external_handle.resolve_blob_id_to_tensor(client_id, "my_key_name")
+  for blob_id in external_handle.blob_ids:
+    tensor = external_handle.resolve_blob_id_to_tensor(blob_id, "my_key_name")
 
     for unpacked_tuple in struct.iter_unpack(FORMAT_STRING, tensor.content):
       sum += unpacked_tuple[0]
