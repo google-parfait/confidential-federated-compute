@@ -26,7 +26,6 @@
 #include "containers/common/row_view.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -38,7 +37,6 @@
 namespace confidential_federated_compute {
 namespace {
 
-using ::fcp::confidentialcompute::BlobHeader;
 using ::google::protobuf::Descriptor;
 using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
@@ -159,12 +157,11 @@ void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
 }
 
 }  // namespace
-Input::Input(ContentsVariant contents,
-             fcp::confidentialcompute::BlobHeader blob_header,
+Input::Input(ContentsVariant contents, std::string metadata,
              std::vector<std::string> column_names,
              std::optional<std::string> privacy_id)
     : contents_(std::move(contents)),
-      blob_header_(std::move(blob_header)),
+      metadata_(std::move(metadata)),
       column_names_(std::move(column_names)),
       privacy_id_(std::move(privacy_id)) {}
 
@@ -184,7 +181,7 @@ absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
 }
 
 absl::StatusOr<Input> Input::CreateFromTensors(
-    std::vector<Tensor> contents, BlobHeader blob_header,
+    std::vector<Tensor> contents, std::string metadata,
     std::optional<Tensor> privacy_id) {
   FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
                        ExtractPrivacyIdAndValidate(privacy_id));
@@ -210,7 +207,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(
           "All columns must have the same number of rows.");
     }
   }
-  return Input(TensorContents(std::move(contents)), std::move(blob_header),
+  return Input(TensorContents(std::move(contents)), std::move(metadata),
                std::move(column_names), std::move(privacy_id_string));
 }
 
@@ -258,7 +255,7 @@ size_t Input::TensorContents::GetRowCount() const {
 
 absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<Message>> messages,
-    std::vector<Tensor> system_columns, BlobHeader blob_header,
+    std::vector<Tensor> system_columns, std::string metadata,
     std::optional<Tensor> privacy_id) {
   FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
                        ExtractPrivacyIdAndValidate(privacy_id));
@@ -273,7 +270,7 @@ absl::StatusOr<Input> Input::CreateFromMessages(
   }
   return Input(MessageContents(std::move(messages), std::move(system_columns),
                                std::move(field_paths)),
-               std::move(blob_header), std::move(column_names),
+               std::move(metadata), std::move(column_names),
                std::move(privacy_id_string));
 }
 
@@ -362,7 +359,7 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
 }
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
-    fcp::confidentialcompute::BlobHeader blob_header,
+    std::string metadata,
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name) {
   std::string column_prefix = absl::StrCat(on_device_query_name, "/");
@@ -411,8 +408,8 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
   std::vector<Tensor> system_columns;
   system_columns.reserve(1);
   system_columns.push_back(std::move(time_tensor));
-  return Input::CreateFromMessages(std::move(messages),
-                                   std::move(system_columns), blob_header);
+  return Input::CreateFromMessages(
+      std::move(messages), std::move(system_columns), std::move(metadata));
 }
 
 absl::StatusOr<std::unique_ptr<MessageFactory>>

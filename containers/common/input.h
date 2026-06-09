@@ -26,7 +26,6 @@
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "containers/common/row_view.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
@@ -80,6 +79,10 @@ class FileDescriptorSetMessageFactory : public MessageFactory {
 // Represents the contents of a single table, which may be backed by
 // different underlying storage types (e.g., Tensors, Messages). This class uses
 // absl::variant to abstract the specific storage mechanism.
+//
+// An Input can carry an opaque metadata string that is propagated through the
+// abstraction layer without being interpreted by Input itself. Callers may use
+// this to attach context (e.g., a key ID) that is needed downstream.
 class Input {
  public:
   // Creates an Input from Tensors.
@@ -87,7 +90,7 @@ class Input {
   // The optional `privacy_id` Tensor must be a scalar tensor of type STRING.
   static absl::StatusOr<Input> CreateFromTensors(
       std::vector<tensorflow_federated::aggregation::Tensor> contents,
-      fcp::confidentialcompute::BlobHeader blob_header,
+      std::string metadata = "",
       std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
           std::nullopt);
 
@@ -105,7 +108,7 @@ class Input {
   static absl::StatusOr<Input> CreateFromMessages(
       std::vector<std::unique_ptr<google::protobuf::Message>> messages,
       std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
-      fcp::confidentialcompute::BlobHeader blob_header,
+      std::string metadata = "",
       std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
           std::nullopt);
 
@@ -128,9 +131,8 @@ class Input {
 
   size_t GetRowCount() const;
 
-  const fcp::confidentialcompute::BlobHeader& GetBlobHeader() const {
-    return blob_header_;
-  }
+  // Returns the opaque metadata string associated with this Input.
+  const std::string& GetMetadata() const { return metadata_; }
 
   const std::optional<std::string>& GetPrivacyId() const { return privacy_id_; }
 
@@ -215,19 +217,18 @@ class Input {
 
   using ContentsVariant = absl::variant<TensorContents, MessageContents>;
 
-  Input(ContentsVariant contents,
-        fcp::confidentialcompute::BlobHeader blob_header,
+  Input(ContentsVariant contents, std::string metadata,
         std::vector<std::string> column_names,
         std::optional<std::string> privacy_id);
 
   ContentsVariant contents_;
-  fcp::confidentialcompute::BlobHeader blob_header_;
+  std::string metadata_;
   std::vector<std::string> column_names_;
   std::optional<std::string> privacy_id_;
 };
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
-    fcp::confidentialcompute::BlobHeader blob_header,
+    std::string metadata,
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name);
 

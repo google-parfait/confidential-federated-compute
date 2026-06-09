@@ -63,7 +63,6 @@ namespace {
 using ::confidential_federated_compute::fed_sql::Deserialize;
 using ::confidential_federated_compute::fed_sql::InferenceOutputProcessor;
 using ::confidential_federated_compute::fed_sql::InferencePromptProcessor;
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceTask;
@@ -459,8 +458,7 @@ absl::Status BatchedInferenceFn::Do(Session::KV kv, Context& context) {
         absl::StrCat("Failed to deserialize tensors from checkpoint: ",
                      tensors_or.status()));
   }
-  auto input_or =
-      Input::CreateFromTensors(std::move(*tensors_or), BlobHeader());
+  auto input_or = Input::CreateFromTensors(std::move(*tensors_or));
   if (!input_or.ok()) {
     return absl::InternalError(absl::StrCat(
         "Failed to create input from tensors: ", input_or.status()));

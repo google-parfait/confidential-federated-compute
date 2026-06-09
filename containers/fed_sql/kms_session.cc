@@ -227,8 +227,9 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   }
   absl::StatusOr<Input> input;
   if (message_factory_ != nullptr) {
-    input = CreateFromMessageCheckpoint(
-        blob_header, parser->get(), *message_factory_, on_device_query_name_);
+    input =
+        CreateFromMessageCheckpoint(blob_header.key_id(), parser->get(),
+                                    *message_factory_, on_device_query_name_);
     // TODO: handle sensitive columns for Message checkpoints.
   } else {
     auto model_inference_configuration =
@@ -247,7 +248,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                          "AGGREGATION_TYPE_ACCUMULATE: ",
                          contents.status()));
     }
-    input = Input::CreateFromTensors(std::move(contents.value()), blob_header);
+    input = Input::CreateFromTensors(std::move(contents.value()),
+                                     blob_header.key_id());
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(
@@ -431,8 +433,8 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   for (auto& uncommitted_input : uncommitted_inputs_) {
     // TODO: Once we switch to using DP time unit for budget buckets, we'll
     // need to use DP time units here instead of key ID.
-    if (!uncommitted_input.GetBlobHeader().key_id().empty()) {
-      unique_key_ids.insert(uncommitted_input.GetBlobHeader().key_id());
+    if (!uncommitted_input.GetMetadata().empty()) {
+      unique_key_ids.insert(std::string(uncommitted_input.GetMetadata()));
     }
   }
 
