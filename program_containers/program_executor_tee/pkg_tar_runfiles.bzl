@@ -17,22 +17,6 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_pkg//:providers.bzl", "PackageFilesInfo")
 
-_EXCLUDE_PATTERNS = [
-    # Redundant C++ API library from python tensorflow package
-    "external/pypi_tensorflow_cpu/site-packages/tensorflow/libtensorflow_cc.so",
-    # Unused TFF precompiled worker binary
-    "external/org_tensorflow_federated/tensorflow_federated/data/worker_binary",
-    # C++ header files in python tensorflow
-    "external/pypi_tensorflow_cpu/site-packages/tensorflow/include/",
-    # Duplicate libpython in Bazel solib symlinks directory
-    "_solib_k8/",
-    # Test directories
-    "/tests/",
-    "/test/",
-    "/testing/",
-    "_test.py",
-]
-
 def _pkg_runfiles_impl(ctx):
     """Implementation of pkg_tar_runfiles rule."""
     runfiles = ctx.runfiles().merge_all([
@@ -49,7 +33,7 @@ def _pkg_runfiles_impl(ctx):
                 file.short_path,
             ),
         )
-        if any([p in dest for p in _EXCLUDE_PATTERNS]):
+        if any([p in dest for p in ctx.attr.exclude_paths]):
             continue
         dest_src_map[dest] = file
 
@@ -69,6 +53,10 @@ pkg_tar_runfiles = rule(
         "runfiles_prefix": attr.string(
             doc = "Path prefix for the runfiles directory.",
             default = ".",
+        ),
+        "exclude_paths": attr.string_list(
+            doc = "A list of paths to exclude to packaging into the tar ball.",
+            default = [],
         ),
     },
     doc = """A rule to fix the runfiles structure for a tarball. The standard
