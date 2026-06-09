@@ -25,6 +25,7 @@ cc_library(
     hdrs = ["ingestion.h"],
     deps = [
         "//containers/common:checkpoint_utils",
+        "//containers/common:row_set",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -32,6 +33,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:constants",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",

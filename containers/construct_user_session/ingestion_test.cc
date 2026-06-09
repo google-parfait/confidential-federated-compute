@@ -47,6 +47,7 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
 
@@ -56,6 +57,12 @@ absl::Time ParseRfc3339(absl::string_view s) {
   std::string err;
   CHECK(absl::ParseTime(absl::RFC3339_full, s, &t, &err)) << err;
   return t;
+}
+
+absl::Time Hours(int hours) { return absl::Time() + absl::Hours(hours); }
+
+auto RowLocationIs(int group_key, int input_index, int row_index) {
+  return FieldsAre(group_key, input_index, row_index);
 }
 
 TEST(DeserializeCheckpointTest, ValidCheckpoint) {
@@ -223,6 +230,121 @@ TEST(DeserializeCheckpointTest, SameWallClockDifferentOffsetsAreNotEqual) {
 
   ASSERT_THAT(result->event_times.size(), Eq(2));
   EXPECT_NE(result->event_times[0], result->event_times[1]);
+}
+
+TEST(FilterForSessionWindowTest, AllEventsPassFilter) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      Hours(6),
+      Hours(12),
+      Hours(18),
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/42,
+                             /*input_index=*/5, window_start, window_end);
+
+  // One RowLocation is created for each event time.
+  EXPECT_THAT(result,
+              ElementsAre(RowLocationIs(42, 5, 0), RowLocationIs(42, 5, 1),
+                          RowLocationIs(42, 5, 2)));
+}
+
+TEST(FilterForSessionWindowTest, AllEventsRejected) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      // Before window.
+      Hours(-1),
+      // After window.
+      Hours(25),
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/1,
+                             /*input_index=*/0, window_start, window_end);
+
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(FilterForSessionWindowTest, PartialPassFilter) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      Hours(-1),  // row 0: before window
+      Hours(12),  // row 1: in window
+      Hours(25),  // row 2: after window
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/99,
+                             /*input_index=*/2, window_start, window_end);
+
+  // Only row 1 survives.
+  EXPECT_THAT(result, ElementsAre(RowLocationIs(99, 2, 1)));
+}
+
+TEST(FilterForSessionWindowTest, EmptyEventTimes) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times;
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/0,
+                             /*input_index=*/0, window_start, window_end);
+
+  EXPECT_TRUE(result.empty());
+}
+
+// Verifies that absl::InfinitePast() sentinel values (from malformed
+// timestamps) are naturally excluded by the window check.
+TEST(FilterForSessionWindowTest, MalformedTimestampSentinelsAreExcluded) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      absl::InfinitePast(),  // row 0: sentinel (excluded)
+      Hours(6),              // row 1: in window
+      absl::InfinitePast(),  // row 2: sentinel (excluded)
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/7,
+                             /*input_index=*/3, window_start, window_end);
+
+  EXPECT_THAT(result, ElementsAre(RowLocationIs(7, 3, 1)));
+}
+
+// Verifies that window_start is inclusive: an event exactly at window_start
+// survives.
+TEST(FilterForSessionWindowTest, WindowStartIsInclusive) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      Hours(0),
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/100,
+                             /*input_index=*/0, window_start, window_end);
+
+  EXPECT_THAT(result, ElementsAre(RowLocationIs(100, 0, 0)));
+}
+
+// Verifies that window_end is exclusive: an event exactly at window_end is
+// rejected.
+TEST(FilterForSessionWindowTest, WindowEndIsExclusive) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(24);
+  std::vector<absl::Time> event_times = {
+      Hours(24),
+  };
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/100,
+                             /*input_index=*/0, window_start, window_end);
+
+  EXPECT_TRUE(result.empty());
 }
 
 }  // namespace

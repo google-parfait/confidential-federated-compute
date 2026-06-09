@@ -15,6 +15,7 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_INGESTION_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_INGESTION_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,8 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "containers/common/row_set.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
@@ -62,6 +65,18 @@ struct DeserializedCheckpoint {
 absl::StatusOr<DeserializedCheckpoint> DeserializeCheckpoint(
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     absl::string_view on_device_query_name);
+
+// Filters event times against the session window [window_start, window_end)
+// and produces RowLocation metadata for surviving rows.
+//
+// For each event time in `event_times`, if the time satisfies
+// `window_start <= t < window_end`, a RowLocation is created with the given
+// `group_key`, `input_index`, and the row's index within `event_times`.
+// Sentinel values (absl::InfinitePast()) from malformed timestamps are
+// naturally excluded since they fall outside any valid session window.
+std::vector<RowLocation> FilterForSessionWindow(
+    absl::Span<const absl::Time> event_times, uint64_t group_key,
+    uint32_t input_index, absl::Time window_start, absl::Time window_end);
 
 }  // namespace confidential_federated_compute::construct_user_session
 
