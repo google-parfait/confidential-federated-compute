@@ -12,6 +12,7 @@ def get_program_initialize_fn(
     outgoing_server_address: str,
     worker_bns: list[str] = [],
     serialized_reference_values: bytes = b"",
+    max_concurrent_computation_calls = -1,
 ):
 
   def initialize():
@@ -22,6 +23,7 @@ def get_program_initialize_fn(
             outgoing_server_address,
             worker_bns,
             serialized_reference_values,
+            max_concurrent_computation_calls,
         )
     )
 

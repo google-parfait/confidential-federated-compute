@@ -33,10 +33,14 @@ ABSL_FLAG(std::vector<std::string>, worker_bns, {},
 ABSL_FLAG(std::string, serialized_reference_values, "",
           "The serialized reference values of the program worker for setting "
           "up the client noise session.");
+ABSL_FLAG(int32_t, max_concurrent_computation_calls, -1,
+          "The number of calls that can be handled in parallel by the leaf "
+          "executors. Non-positive values indicate no maximum.");
 
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
-  return tensorflow_federated::CreateTensorFlowExecutor();
+  return tensorflow_federated::CreateTensorFlowExecutor(
+      absl::GetFlag(FLAGS_max_concurrent_computation_calls));
 }
 
 int main(int argc, char* argv[]) {
