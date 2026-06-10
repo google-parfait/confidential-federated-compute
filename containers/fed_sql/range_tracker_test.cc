@@ -360,14 +360,16 @@ TEST(RangeTrackerTest, ExpiredKeys) {
 }
 
 TEST(RangeTrackerTest, SetAggregationWindowSuccess) {
-  RangeTracker range_tracker(Interval<uint64_t>(100, 200));
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(100, 200));
   ASSERT_TRUE(range_tracker.GetAggregationWindow().has_value());
   EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
   EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
 }
 
 TEST(RangeTrackerTest, SerializeAndParseAggWindow) {
-  RangeTracker range_tracker(Interval<uint64_t>(1000, 2000));
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(1000, 2000));
   range_tracker.AddKey("foo");
   EXPECT_TRUE(range_tracker.AddRange(1, 5));
 

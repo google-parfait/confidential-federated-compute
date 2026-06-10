@@ -174,8 +174,7 @@ KmsFedSqlSession CreateDefaultSession() {
                           std::nullopt, std::nullopt, CreatePrivateState("", 1),
                           {},
                           /*prototype=*/nullptr, "test_query", decryptor,
-                          /*max_output_partitions=*/10,
-                          /*agg_window=*/std::nullopt);
+                          /*max_output_partitions=*/10);
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -300,8 +299,7 @@ class KmsFedSqlSessionWriteTest : public Test {
   void CreateSession(
       Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
       std::optional<RangeTracker> consumed_tracker = std::nullopt,
-      absl::Cord autotuning_data = absl::Cord{},
-      std::optional<Interval<uint64_t>> agg_window = std::nullopt) {
+      absl::Cord autotuning_data = absl::Cord{}) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -320,7 +318,7 @@ class KmsFedSqlSessionWriteTest : public Test {
                            std::move(consumed_tracker),
                            std::move(autotuning_data)),
         absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor,
-        /* max_output_partitions= */ 10, agg_window);
+        /* max_output_partitions= */ 10);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -641,152 +639,6 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   // input column
   EXPECT_THAT((*parser)->GetTensor("val_out"),
               IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
-}
-
-TEST_F(KmsFedSqlSessionWriteTest,
-       AccumulateCommitReportWithTimeWindowSucceeds) {
-  CreateSession(default_decryptor_, /*default_budget=*/5,
-                /*consumed_tracker=*/std::nullopt,
-                /*autotuning_data=*/absl::Cord{},
-                /*agg_window=*/Interval<uint64_t>(1200, 2400));
-
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-  WriteRequest write_request1;
-  write_request1.mutable_first_request_configuration()->PackFrom(config);
-  *write_request1.mutable_first_request_metadata() =
-      MakeBlobMetadata(data, 1, "key_foo");
-  WriteRequest write_request2;
-  write_request2.mutable_first_request_configuration()->PackFrom(config);
-  *write_request2.mutable_first_request_metadata() =
-      MakeBlobMetadata(data, 2, "key_foo");
-
-  auto write_result1 = session_->Write(write_request1, data, context_);
-  ASSERT_THAT(write_result1, IsOk());
-  EXPECT_EQ(write_result1->status().code(), Code::OK)
-      << write_result1->status().message();
-  auto write_result2 = session_->Write(write_request2, data, context_);
-  ASSERT_THAT(write_result2, IsOk());
-  EXPECT_EQ(write_result2->status().code(), Code::OK)
-      << write_result2->status().message();
-
-  CommitRequest commit_request;
-  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
-    range { start: 1 end: 3 }
-  )pb");
-  commit_request.mutable_configuration()->PackFrom(commit_config);
-  auto commit_response = session_->Commit(commit_request, context_);
-  ASSERT_THAT(commit_response, IsOk());
-  EXPECT_EQ(commit_response->status().code(), Code::OK)
-      << commit_response->status().message();
-  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 2);
-
-  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
-  )pb");
-  FinalizeRequest finalize_request;
-  finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  std::string result_data;
-  std::optional<std::string> src;
-  std::string dst;
-  int index;
-  ExpectEmitReleasable(index, src, dst, result_data);
-  BlobMetadata unused;
-  auto finalize_response =
-      session_->Finalize(finalize_request, unused, context_);
-  ASSERT_THAT(finalize_response, IsOk());
-
-  EXPECT_EQ(index, 1);
-  EXPECT_EQ(src, initial_private_state_);
-  BudgetState new_state;
-  EXPECT_TRUE(new_state.ParseFromString(dst));
-  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets { key: "key_foo" budget: 1 }
-                buckets { key: "key_bar" budget: 3 }
-                buckets { key: "key_baz" budget: 0 }
-                time_budget {
-                  anchor_time: 1200
-                  intervals { start_index: 0 count: 20 remaining_budget: 4 }
-                }
-              )pb"));
-
-  FederatedComputeCheckpointParserFactory parser_factory;
-  auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
-  ASSERT_THAT(parser, IsOk());
-  EXPECT_THAT((*parser)->GetTensor("val_out"),
-              IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
-}
-
-TEST_F(KmsFedSqlSessionWriteTest, FinalizeWithNoRemainingTimeBudgetFails) {
-  // Construct a budget state that already has zero remaining budget for the
-  // target time window.
-  BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "key_foo" budget: 1 }
-    buckets { key: "key_bar" budget: 3 }
-    buckets { key: "key_baz" budget: 0 }
-    time_budget {
-      anchor_time: 1200
-      intervals { start_index: 0 count: 20 remaining_budget: 0 }
-    }
-  )pb");
-  initial_private_state_ = budget_state.SerializeAsString();
-
-  // Re-create the session with this initial private state.
-  session_ = std::make_unique<KmsFedSqlSession>(
-      CheckpointAggregator::Create(DefaultConfiguration()).value(), intrinsics_,
-      std::nullopt, std::nullopt,
-      CreatePrivateState(initial_private_state_, /*default_budget=*/5),
-      absl::flat_hash_set<std::string>(), nullptr, "test_query",
-      default_decryptor_, /*max_output_partitions=*/10,
-      /*agg_window=*/Interval<uint64_t>(1200, 2400));
-
-  ConfigureRequest request;
-  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
-    raw_sql: "SELECT key, val * 2 AS val FROM input"
-    database_schema {
-      table {
-        name: "input"
-        column { name: "key" type: INT64 }
-        column { name: "val" type: INT64 }
-        create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
-      }
-    }
-    output_columns { name: "key" type: INT64 }
-    output_columns { name: "val" type: INT64 }
-  )pb");
-  request.mutable_configuration()->PackFrom(sql_query);
-  ASSERT_THAT(session_->Configure(request, context_), IsOk());
-
-  // Write some input.
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-  WriteRequest write_request;
-  write_request.mutable_first_request_configuration()->PackFrom(config);
-  *write_request.mutable_first_request_metadata() =
-      MakeBlobMetadata(data, 1, "key_foo");
-  auto write_result = session_->Write(write_request, data, context_);
-  ASSERT_THAT(write_result, IsOk());
-
-  CommitRequest commit_request;
-  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
-    range { start: 1 end: 3 }
-  )pb");
-  commit_request.mutable_configuration()->PackFrom(commit_config);
-  ASSERT_THAT(session_->Commit(commit_request, context_), IsOk());
-
-  // Finalize should fail because the time budget is exhausted.
-  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
-  )pb");
-  FinalizeRequest finalize_request;
-  finalize_request.mutable_configuration()->PackFrom(finalize_config);
-  BlobMetadata unused;
-  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
@@ -1983,7 +1835,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
         std::nullopt, CreatePrivateState(initial_private_state_, 5),
         absl::flat_hash_set<std::string>(),
         /*prototype=*/nullptr, "test_query", decryptor_,
-        /*max_output_partitions=*/10, /*agg_window=*/std::nullopt);
+        /*max_output_partitions=*/10);
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -2156,7 +2008,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
         absl::flat_hash_set<std::string>(),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
         "test_query", decryptor_,
-        /*max_output_partitions=*/10, /*agg_window=*/std::nullopt);
+        /*max_output_partitions=*/10);
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects

@@ -633,7 +633,8 @@ TEST(BudgetTest, UpdateInfiniteBudget) {
 
 TEST(BudgetTest, UpdateBudgetWithTimeWindow) {
   Budget budget(/*default_budget=*/1);
-  RangeTracker range_tracker(Interval<uint64_t>(1200, 2400));
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
 
   EXPECT_TRUE(budget.HasRemainingBudget(Interval<uint64_t>(1200, 2400)));
   // Update with time_window should update TimeBudget, not per-key budgets.
@@ -656,8 +657,8 @@ TEST(BudgetTest, UpdateBudgetWithTimeWindowCleansExpiredKeys) {
   Budget budget(/*default_budget=*/1);
   EXPECT_THAT(budget.Parse(state), IsOk());
 
-  Interval<uint64_t> time_window(1200, 2400);
-  RangeTracker range_tracker(time_window);
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
   range_tracker.SetExpiredKeys({"expired_key"});
 
   // Update with time_window: should update time budget and clean expired keys.
@@ -675,8 +676,8 @@ TEST(BudgetTest, UpdateBudgetWithTimeWindowCleansExpiredKeys) {
 
 TEST(BudgetTest, SerializeAndParseTimeBudget) {
   Budget budget(/*default_budget=*/3);
-  Interval<uint64_t> time_window(1200, 2400);
-  RangeTracker range_tracker(time_window);
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
   range_tracker.AddKey("foo");
   EXPECT_TRUE(range_tracker.AddRange(1, 4));
 
@@ -688,7 +689,7 @@ TEST(BudgetTest, SerializeAndParseTimeBudget) {
   EXPECT_THAT(budget2.Parse(serialized), IsOk());
 
   // Time budget state should survive the round-trip.
-  EXPECT_TRUE(budget2.HasRemainingBudget(time_window));
+  EXPECT_TRUE(budget2.HasRemainingBudget(Interval<uint64_t>(1200, 2400)));
   EXPECT_THAT(budget2.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(serialized));
 }

@@ -461,16 +461,6 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
     max_output_partitions_ = fed_sql_config_constraints.max_output_partitions();
   }
 
-  // Initialize the aggregation window and check that there is remaining
-  // budget.
-  if (fed_sql_config.has_start_time() && fed_sql_config.has_end_time()) {
-    agg_window_ = Interval<uint64_t>(fed_sql_config.start_time().seconds(),
-                                     fed_sql_config.end_time().seconds());
-    if (!private_state_->budget.HasRemainingBudget(*agg_window_)) {
-      return absl::FailedPreconditionError(
-          "No time-based budget remaining for the aggregation window.");
-    }
-  }
   return absl::OkStatus();
 }
 
@@ -677,7 +667,7 @@ FedSqlConfidentialTransform::CreateSession() {
   return std::make_unique<KmsFedSqlSession>(
       std::move(aggregator), *intrinsics, inference_configuration_,
       dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
-      on_device_query_name_, *decryptor, max_output_partitions_, agg_window_);
+      on_device_query_name_, *decryptor, max_output_partitions_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(
