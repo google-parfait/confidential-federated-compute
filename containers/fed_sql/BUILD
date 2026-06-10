@@ -197,6 +197,7 @@ cc_test(
         ":budget_cc_proto",
         ":confidential_transform_server",
         ":inference_model",
+        ":range_tracker",
         "//containers:big_endian",
         "//containers:crypto",
         "//containers:crypto_test_utils",

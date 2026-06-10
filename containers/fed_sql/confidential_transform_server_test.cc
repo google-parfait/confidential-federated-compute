@@ -32,6 +32,7 @@
 #include "containers/crypto_test_utils.h"
 #include "containers/fed_sql/budget.pb.h"
 #include "containers/fed_sql/inference_model.h"
+#include "containers/fed_sql/range_tracker.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "fcp/base/status_converters.h"
@@ -100,8 +101,11 @@ using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
+using ::fcp::confidentialcompute::
+    FedSqlContainerPartitionedOutputFinalizedState;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
+using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
@@ -467,12 +471,16 @@ class FedSqlServerTest : public Test {
   InitializeRequest CreateInitializeRequest(
       FedSqlContainerInitializeConfiguration init_config,
       FedSqlContainerConfigConstraints config_constraints =
-          DefaultFedSqlConfigConstraints()) {
+          DefaultFedSqlConfigConstraints(),
+      std::optional<std::pair<std::string, std::string>> key_pair =
+          std::nullopt) {
     InitializeRequest request;
     request.mutable_configuration()->PackFrom(init_config);
     request.set_max_num_sessions(kMaxNumSessions);
 
-    auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+    auto public_private_key_pair =
+        key_pair.has_value() ? *key_pair
+                             : crypto_test_utils::GenerateKeyPair(key_id_);
     public_key_ = public_private_key_pair.first;
     message_decryptor_ =
         std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
@@ -480,7 +488,8 @@ class FedSqlServerTest : public Test {
 
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
-    // Add 2 re-encryption keys - Merge and Report.
+    // Add 3 re-encryption keys - Merge, Report, and Private State.
+    protected_response.add_result_encryption_keys(public_key_);
     protected_response.add_result_encryption_keys(public_key_);
     protected_response.add_result_encryption_keys(public_key_);
     protected_response.add_decryption_keys(public_private_key_pair.second);
@@ -535,9 +544,15 @@ class FedSqlServerTest : public Test {
 
   std::pair<BlobMetadata, std::string> Encrypt(std::string message,
                                                std::string associated_data) {
+    return Encrypt(message, associated_data, public_key_);
+  }
+
+  std::pair<BlobMetadata, std::string> Encrypt(std::string message,
+                                               std::string associated_data,
+                                               const std::string& public_key) {
     MessageEncryptor encryptor;
     absl::StatusOr<EncryptMessageResult> encrypt_result =
-        encryptor.Encrypt(message, public_key_, associated_data);
+        encryptor.Encrypt(message, public_key, associated_data);
     CHECK(encrypt_result.ok()) << encrypt_result.status();
 
     BlobMetadata metadata;
@@ -945,6 +960,47 @@ TEST_F(FedSqlServerTest, StreamInitializeWithUnencryptedAutotuningSuccess) {
   grpc::ClientContext context;
 
   auto writer = stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(WriteInitializeRequest(std::move(writer), std::move(request)),
+              IsOk());
+
+  // Verify that the session can be created and configured with the autotuning
+  // parameters.
+  grpc::ClientContext session_context;
+  auto stream = ConfigureDefaultSession(&session_context);
+  EXPECT_NE(stream, nullptr);
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeWithEncryptedAutotuningSuccess) {
+  auto key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
+
+  FedSqlContainerInitializeConfiguration config =
+      DefaultFedSqlDpContainerConfigForAutotuning();
+  absl::Cord packed_params = PackAutotuningParams(
+      {{"max_groups_contributed_estimated", 3.0}, {"L1_0_estimated", 0.5}});
+  RangeTracker range_tracker;
+  range_tracker.AddKey("foo");
+  range_tracker.AddRange(0, 100);
+  std::string bundled_data =
+      BundleRangeTracker(std::string(packed_params), std::move(range_tracker));
+
+  BlobHeader header;
+  header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
+  header.set_key_id(key_id_);
+  header.set_access_policy_sha256(allowed_policy_hash_);
+
+  auto [metadata, ciphertext] =
+      Encrypt(bundled_data, header.SerializeAsString(), key_pair.first);
+  *config.mutable_auto_tuning_config()->mutable_auto_tuning_metadata() =
+      metadata;
+  config.mutable_auto_tuning_config()->set_auto_tuning_data(ciphertext);
+
+  InitializeRequest request = CreateInitializeRequest(
+      config, DefaultFedSqlDpConfigConstraints(), key_pair);
+  InitializeResponse response;
+  grpc::ClientContext context;
+
+  auto writer = stub_->StreamInitialize(&context, &response);
   BudgetState budget_state =
       PARSE_TEXT_PROTO(R"pb(buckets { key: "foo" budget: 1 })pb");
   EXPECT_TRUE(WritePipelinePrivateState(writer.get(),
@@ -957,6 +1013,33 @@ TEST_F(FedSqlServerTest, StreamInitializeWithUnencryptedAutotuningSuccess) {
   grpc::ClientContext session_context;
   auto stream = ConfigureDefaultSession(&session_context);
   EXPECT_NE(stream, nullptr);
+
+  // Finalize the session and verify that the PartitionedOutput has the
+  // autotuning params
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  SessionRequest finalize_request;
+  SessionResponse read_response;
+  SessionResponse finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      finalize_config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(read_response.has_read());
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_TRUE(finalize_response.has_finalize());
+
+  std::string decrypted_data =
+      Decrypt(read_response.read().first_response_metadata(),
+              read_response.read().data());
+
+  FedSqlContainerPartitionedOutputFinalizedState finalized_state;
+  ASSERT_TRUE(finalized_state.ParseFromString(decrypted_data));
+
+  // The same autotuning params should be returned in the finalized state, but
+  // no longer encrypted.
+  EXPECT_EQ(finalized_state.auto_tuning_data(), packed_params);
 }
 
 TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {

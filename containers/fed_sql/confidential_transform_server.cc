@@ -557,18 +557,18 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
       access_budget.has_times() ? std::optional<uint32_t>(access_budget.times())
                                 : std::nullopt;
 
+  std::optional<RangeTracker> consumed_ranges;
+  absl::Cord autotuning_data_to_release;
+  if (autotuning_data.has_value()) {
+    consumed_ranges.emplace(std::move(autotuning_data->consumed_ranges));
+    autotuning_data_to_release =
+        std::move(autotuning_data->autotuning_data_to_release);
+  }
+
   auto size = std::filesystem::file_size(file_path);
   if (size > 0) {
     std::string private_state(size, '\0');
     file.read(private_state.data(), size);
-
-    std::optional<RangeTracker> consumed_ranges;
-    absl::Cord autotuning_data_to_release;
-    if (autotuning_data.has_value()) {
-      consumed_ranges.emplace(std::move(autotuning_data->consumed_ranges));
-      autotuning_data_to_release =
-          std::move(autotuning_data->autotuning_data_to_release);
-    }
 
     private_state_ = std::make_shared<PrivateState>(
         std::move(private_state), num_access_times, std::move(consumed_ranges),
@@ -599,8 +599,9 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
     }
     return absl::OkStatus();
   } else {
-    private_state_ =
-        std::make_shared<PrivateState>(std::nullopt, num_access_times);
+    private_state_ = std::make_shared<PrivateState>(
+        std::nullopt, num_access_times, std::move(consumed_ranges),
+        std::move(autotuning_data_to_release));
     return absl::OkStatus();
   }
 }
