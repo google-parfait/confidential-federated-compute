@@ -259,9 +259,19 @@ cc_binary(
     ],
 )
 
+_EXCLUSION_LIST = [
+    # C++ header files in python tensorflow
+    "external/pypi_tensorflow_cpu/site-packages/tensorflow/include/",
+    # Duplicate libpython in Bazel solib symlinks directory
+    "_solib_k8/",
+    # Test directories
+    "/tests/",
+]
+
 pkg_tar_runfiles(
     name = "runfiles",
     srcs = [":main"],
+    exclude_paths = _EXCLUSION_LIST,
     runfiles_prefix = "main.runfiles",
 )
 
@@ -291,6 +301,7 @@ oci_runtime_bundle(
 pkg_tar_runfiles(
     name = "worker_runfiles",
     srcs = [":worker_main_tensorflow"],
+    exclude_paths = _EXCLUSION_LIST,
     runfiles_prefix = "worker_main_tensorflow.runfiles",
 )
 
