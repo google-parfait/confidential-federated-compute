@@ -16,7 +16,7 @@ module(name = "confidential-federated-compute")
 
 # Dependencies when CFC is used as a library.
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20260211.0")
@@ -24,17 +24,17 @@ bazel_dep(name = "federated-compute")
 bazel_dep(name = "flatbuffers", version = "25.12.19")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
-bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "grpc-java", version = "1.78.0", repo_name = "io_grpc_grpc_java")
 bazel_dep(name = "oak")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "rules_java", version = "9.4.2")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
-bazel_dep(name = "rules_python", version = "1.5.4")
+bazel_dep(name = "rules_python", version = "2.0.2")
 bazel_dep(name = "rules_rust", version = "0.69.0")
 # go/keep-sorted end
 
@@ -56,7 +56,15 @@ cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps", dev_dependency
 use_repo(cfc_dev_deps, "llama_cpp")
 
 # Module overrides.
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+single_version_override(
+    module_name = "abseil-cpp",
+    # Force 20260526.0 despite it having a lower compatibility_level than
+    # earlier versions. 20260526.0 stopped setting compatibility_level because
+    # it's deprecated starting in bazel 8.6.
+    version = "20260526.0",
+)
+
 archive_override(
     module_name = "confidential-federated-compute-sysroot",
     # Build provenance available at https://search.sigstore.dev/?hash=<sha256>,
@@ -67,9 +75,9 @@ archive_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-RaFp03GvfKtkOpia9/NBWhBuE5O9NS5wDLr1BF2lB9c=",
-    strip_prefix = "federated-compute-53c2ffa171730f130c8abdf2ef6fbb697e7278a3",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/53c2ffa171730f130c8abdf2ef6fbb697e7278a3.tar.gz"],
+    integrity = "sha256-2ew2yLeB312CVvNX9uZOwsF4qozEc/dUumjhYj5nGTk=",
+    strip_prefix = "federated-compute-49422d8dcb8e9d23459b4a406716790e4a7ead2d",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/49422d8dcb8e9d23459b4a406716790e4a7ead2d.tar.gz"],
 )
 
 archive_override(

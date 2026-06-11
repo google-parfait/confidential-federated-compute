@@ -63,6 +63,11 @@ test:ubsan --test_tag_filters=-noubsan
 # (https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html).
 build --@rules_rust//rust/settings:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//rust/settings:extra_exec_rustc_flag=-Zlinker-features=-lld
 
+# Suppress an error when building abseil-cpp 20260526.0 with clang 14 or 15.
+# See https://github.com/abseil/abseil-cpp/issues/2073. This should be removed
+# when either abseil-cpp or clang is updated.
+build --per_file_copt=external/abseil-cpp./absl/strings/internal/stl_type_traits.h@-Wno-invalid-partial-specialization
+
 # sqlite3 options; see https://sqlite.org/compile.html.
 build --copt=-DSQLITE_DQS=0
 build --copt=-DSQLITE_THREADSAFE=1
