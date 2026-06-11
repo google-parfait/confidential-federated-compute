@@ -16,6 +16,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
 #include "containers/common/checkpoint_utils.h"
 #include "containers/fns/map_fn.h"
@@ -121,14 +122,15 @@ struct MinMaxEventTimes {
 
 absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
     CheckpointParser& parser, absl::string_view on_device_query_name) {
-  FCP_ASSIGN_OR_RETURN(std::vector<std::string> event_times,
+  FCP_ASSIGN_OR_RETURN(Tensor event_times_tensor,
                        GetEventTime(parser, on_device_query_name));
-  if (event_times.empty()) {
+  if (event_times_tensor.num_elements() == 0) {
     return std::nullopt;
   }
   MinMaxEventTimes min_max_event_times;
   // Iterate over the event times and find the min and max.
-  for (const auto& event_time : event_times) {
+  for (const absl::string_view event_time :
+       event_times_tensor.AsSpan<absl::string_view>()) {
     FCP_ASSIGN_OR_RETURN(absl::CivilSecond civil_time,
                          ConvertEventTimeToCivilSecond(event_time));
     min_max_event_times.min = std::min(min_max_event_times.min, civil_time);

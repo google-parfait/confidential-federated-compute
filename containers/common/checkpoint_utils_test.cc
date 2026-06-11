@@ -99,7 +99,7 @@ TEST(CheckpointUtilsTest, GetEventTimeValid) {
   InMemoryCheckpointParser parser(std::move(tensors));
   auto result = GetEventTime(parser, "my_query");
   ASSERT_THAT(result, IsOk());
-  EXPECT_THAT(*result,
+  EXPECT_THAT(result->ToStringVector(),
               ElementsAre("2026-01-01T10:00:00Z", "2026-01-01T10:01:00Z"));
 }
 

@@ -15,7 +15,6 @@
 #include "containers/common/checkpoint_utils.h"
 
 #include <string>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -49,8 +48,8 @@ absl::StatusOr<std::string> GetPrivacyId(CheckpointParser& parser) {
   return std::string(privacy_id_tensor.AsScalar<absl::string_view>());
 }
 
-absl::StatusOr<std::vector<std::string>> GetEventTime(
-    CheckpointParser& parser, absl::string_view on_device_query_name) {
+absl::StatusOr<Tensor> GetEventTime(CheckpointParser& parser,
+                                    absl::string_view on_device_query_name) {
   // All checkpoints, including message-based ones, represent the event time as
   // a 1D string Tensor.
   const std::string time_tensor_name =
@@ -64,7 +63,7 @@ absl::StatusOr<std::vector<std::string>> GetEventTime(
     return absl::InvalidArgumentError(absl::StrFormat(
         "`%s` tensor must have one dimension", time_tensor_name));
   }
-  return time_tensor.ToStringVector();
+  return time_tensor;
 }
 
 }  // namespace confidential_federated_compute
