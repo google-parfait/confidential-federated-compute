@@ -170,9 +170,9 @@ TEST(SqlDataIngressFnConfigureTest, NoColumnsFails) {
   ASSERT_THAT(factory, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(SqlDataIngressFnConfigureTest, MultipleOutputColumnsFails) {
+TEST(SqlDataIngressFnConfigureTest, NoOutputColumnsFails) {
   SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
-    raw_sql: "SELECT 1, 2"
+    raw_sql: "SELECT 1"
     database_schema {
       table {
         name: "input"
@@ -180,8 +180,6 @@ TEST(SqlDataIngressFnConfigureTest, MultipleOutputColumnsFails) {
         create_table_sql: "CREATE TABLE input (text TEXT)"
       }
     }
-    output_columns { name: "result1" type: STRING }
-    output_columns { name: "result2" type: STRING }
   )pb");
   SqlDataIngressContainerInitializeConfiguration init_config;
   *init_config.mutable_sql_query() = sql_query;
@@ -192,7 +190,8 @@ TEST(SqlDataIngressFnConfigureTest, MultipleOutputColumnsFails) {
   ASSERT_THAT(factory, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(SqlDataIngressFnTest, ResultColumnNotStringFails) {
+TEST(SqlDataIngressFnCustomConfigTest,
+     EmitEncryptedCheckpointInt64ColumnSucceeds) {
   SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
     raw_sql: "SELECT 1 AS result FROM input"
     database_schema {
@@ -224,8 +223,91 @@ TEST_F(SqlDataIngressFnTest, ResultColumnNotStringFails) {
       ->set_blob_id("blob_id");
 
   StrictMock<MockContext> context;
+  std::string emitted_data;
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
+      .WillOnce([&emitted_data](int, Session::KV kv) {
+        emitted_data = std::move(kv.data);
+        EXPECT_EQ(kv.blob_id, "blob_id");
+        return true;
+      });
+
   auto result = (*fn)->Write(request, checkpoint_str, context);
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition));
+  ASSERT_THAT(result, IsOk());
+
+  // Parse the emitted checkpoint and verify the SQL result.
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(emitted_data));
+  ASSERT_THAT(parser, IsOk());
+
+  auto result_tensor = (*parser)->GetTensor("result");
+  ASSERT_THAT(result_tensor, IsOk());
+  EXPECT_EQ(result_tensor->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(result_tensor->num_elements(), 1);
+  EXPECT_THAT(result_tensor->AsSpan<int64_t>(), testing::ElementsAre(1));
+}
+
+TEST(SqlDataIngressFnCustomConfigTest,
+     EmitEncryptedCheckpointMultipleColumnsSucceeds) {
+  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+    raw_sql: "SELECT text AS result1, length(text) AS result2 FROM input"
+    database_schema {
+      table {
+        name: "input"
+        column { name: "text" type: STRING }
+        create_table_sql: "CREATE TABLE input (text TEXT)"
+      }
+    }
+    output_columns { name: "result1" type: STRING }
+    output_columns { name: "result2" type: INT64 }
+  )pb");
+  SqlDataIngressContainerInitializeConfiguration init_config;
+  *init_config.mutable_sql_query() = sql_query;
+  Any config;
+  config.PackFrom(init_config);
+
+  auto factory = ProvideSqlDataIngressFnFactory(config, Any(), {});
+  ASSERT_THAT(factory, IsOk());
+  auto fn = (*factory)->CreateFn();
+  ASSERT_THAT(fn, IsOk());
+
+  auto checkpoint = CreateInputCheckpoint({"abc", "de"});
+  ASSERT_THAT(checkpoint, IsOk());
+  std::string checkpoint_str = std::move(checkpoint).value();
+
+  WriteRequest request;
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob_id");
+
+  StrictMock<MockContext> context;
+  std::string emitted_data;
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
+      .WillOnce([&emitted_data](int, Session::KV kv) {
+        emitted_data = std::move(kv.data);
+        EXPECT_EQ(kv.blob_id, "blob_id");
+        return true;
+      });
+
+  auto result = (*fn)->Write(request, checkpoint_str, context);
+  ASSERT_THAT(result, IsOk());
+
+  // Parse the emitted checkpoint and verify the SQL result.
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(emitted_data));
+  ASSERT_THAT(parser, IsOk());
+
+  auto result_tensor1 = (*parser)->GetTensor("result1");
+  ASSERT_THAT(result_tensor1, IsOk());
+  EXPECT_EQ(result_tensor1->dtype(), DataType::DT_STRING);
+  EXPECT_EQ(result_tensor1->num_elements(), 2);
+  EXPECT_THAT(result_tensor1->AsSpan<absl::string_view>(),
+              testing::ElementsAre("abc", "de"));
+
+  auto result_tensor2 = (*parser)->GetTensor("result2");
+  ASSERT_THAT(result_tensor2, IsOk());
+  EXPECT_EQ(result_tensor2->dtype(), DataType::DT_INT64);
+  EXPECT_EQ(result_tensor2->num_elements(), 2);
+  EXPECT_THAT(result_tensor2->AsSpan<int64_t>(), testing::ElementsAre(3, 2));
 }
 
 TEST_F(SqlDataIngressFnTest, InvalidCheckpointDataFails) {
@@ -300,7 +382,7 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedCheckpointSucceeds) {
   auto parser = parser_factory.Create(absl::Cord(emitted_data));
   ASSERT_THAT(parser, IsOk());
 
-  auto result_tensor = (*parser)->GetTensor(kOutputTensorName);
+  auto result_tensor = (*parser)->GetTensor("result");
   ASSERT_THAT(result_tensor, IsOk());
   EXPECT_EQ(result_tensor->dtype(), DataType::DT_STRING);
   EXPECT_EQ(result_tensor->num_elements(), 3);

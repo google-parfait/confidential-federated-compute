@@ -95,9 +95,8 @@ class SqlDataIngressFnFactory : public fns::FnFactory {
 }  // namespace
 
 // This function executes the SQL query on the input data, and emits the result
-// as an encrypted checkpoint. The SQL query output must contain exactly one
-// column of type STRING. The output checkpoint will contain one string tensor
-// named "data".
+// as an encrypted checkpoint. The output checkpoint will contain one tensor
+// for each output column, using the output column's name.
 //
 // For example, if the SQL query is:
 // SELECT text AS result FROM input
@@ -107,7 +106,7 @@ class SqlDataIngressFnFactory : public fns::FnFactory {
 // | example1 |
 // | example2 |
 // | example3 |
-// then the output checkpoint will contain one string tensor named "data" with
+// then the output checkpoint will contain one string tensor named "result" with
 // the values ["example1", "example2", "example3"].
 //
 // Note that this function hasn't supported executing SQL queries at DP unit
@@ -143,21 +142,13 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
       std::vector<Tensor> sql_result,
       SqliteAdapter::ExecuteQuery(sql_configuration_, row_set));
 
-  if (sql_result.size() != 1) {
-    return absl::FailedPreconditionError(
-        "SQL query result must contain exactly one column.");
-  }
-  if (sql_result[0].dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::FailedPreconditionError(
-        "SQL query result column must be of type STRING.");
-  }
-
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
 
-  ABSL_RETURN_IF_ERROR(
-      builder->Add(kOutputTensorName, std::move(sql_result[0])));
+  for (auto& tensor : sql_result) {
+    std::string name = tensor.name();
+    ABSL_RETURN_IF_ERROR(builder->Add(name, std::move(tensor)));
+  }
   ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, builder->Build());
 
   if (!context.EmitEncrypted(
@@ -185,9 +176,9 @@ absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideSqlDataIngressFnFactory(
     return absl::InvalidArgumentError(
         "SQL query input schema does not contain exactly one table schema.");
   }
-  if (sql_query.output_columns_size() != 1) {
+  if (sql_query.output_columns_size() == 0) {
     return absl::InvalidArgumentError(
-        "SQL query output schema must contain exactly one column.");
+        "SQL query output schema has no columns.");
   }
   if (sql_query.database_schema().table(0).column_size() == 0) {
     return absl::InvalidArgumentError("SQL query input schema has no columns.");

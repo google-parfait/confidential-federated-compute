@@ -24,8 +24,6 @@
 
 namespace confidential_federated_compute::sql_data_ingress {
 
-constexpr char kOutputTensorName[] = "data";
-
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideSqlDataIngressFnFactory(
     const google::protobuf::Any& configuration,
     const google::protobuf::Any& config_constraints,
