@@ -18,11 +18,11 @@ bazel_dep(name = "confidential-federated-compute")
 bazel_dep(name = "federated-compute")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983")
 bazel_dep(name = "oak")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
-bazel_dep(name = "rules_python", version = "1.5.4")
+bazel_dep(name = "rules_python", version = "2.0.2")
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
@@ -34,7 +34,15 @@ fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
 
 # Module overrides.
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+single_version_override(
+    module_name = "abseil-cpp",
+    # 20260526.0 requires bazel 8.6.0 or later so that compatibility_level is
+    # ignored. But we can't use bazel >= 8.5 because of
+    # https://github.com/bazelbuild/bazel/issues/28286.
+    version = "20260107.1",
+)
+
 archive_override(
     module_name = "boringssl",
     integrity = "sha256-UuLZZ1nUg+OE45ZKJRN4HqBctrLWd/H49aQEmuowU10=",
@@ -52,9 +60,9 @@ archive_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-Ss5xWqFubvQ/p2Ap/rFgVPl5NZCl/gqrGg5GNsx51o0=",
-    strip_prefix = "federated-compute-845c00825ae7bd4f3a70617d13a6b444bb90251f",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/845c00825ae7bd4f3a70617d13a6b444bb90251f.tar.gz"],
+    integrity = "sha256-2ew2yLeB312CVvNX9uZOwsF4qozEc/dUumjhYj5nGTk=",
+    strip_prefix = "federated-compute-49422d8dcb8e9d23459b4a406716790e4a7ead2d",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/49422d8dcb8e9d23459b4a406716790e4a7ead2d.tar.gz"],
 )
 
 archive_override(
