@@ -49,15 +49,7 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
-using ::testing::UnorderedElementsAre;
-
-// Parses an RFC3339 string to absl::Time for use in test assertions.
-absl::Time ParseRfc3339(absl::string_view s) {
-  absl::Time t;
-  std::string err;
-  CHECK(absl::ParseTime(absl::RFC3339_full, s, &t, &err)) << err;
-  return t;
-}
+using ::testing::SizeIs;
 
 absl::Time Hours(int hours) { return absl::Time() + absl::Hours(hours); }
 
@@ -75,14 +67,14 @@ TEST(DeserializeCheckpointTest, ValidCheckpoint) {
   tensors.push_back(Tensor({"valB1", "valB2"}, "colB"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
   EXPECT_THAT(result->privacy_id, Eq("user123"));
-  EXPECT_THAT(result->event_times,
-              ElementsAre(ParseRfc3339("2026-01-01T10:00:00+00:00"),
-                          ParseRfc3339("2026-01-01T10:01:00+00:00")));
-  EXPECT_THAT(result->data_tensors.size(), Eq(2));
+  EXPECT_THAT(
+      result->event_times.ToStringVector(),
+      ElementsAre("2026-01-01T10:00:00+00:00", "2026-01-01T10:01:00+00:00"));
+  EXPECT_THAT(result->data_tensors, SizeIs(2));
 
   auto col_a_it = result->data_tensors.find("test_query/colA");
   ASSERT_NE(col_a_it, result->data_tensors.end());
@@ -99,15 +91,9 @@ TEST(DeserializeCheckpointTest, MissingPrivacyIdFails) {
                            "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound,
                                HasSubstr("confidential_compute_privacy_id")));
-}
-
-TEST(DeserializeCheckpointTest, NullCheckpointFails) {
-  EXPECT_THAT(DeserializeCheckpoint(nullptr, "test_query"),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("checkpoint must not be null")));
 }
 
 TEST(DeserializeCheckpointTest, MissingEventTimeFails) {
@@ -115,7 +101,7 @@ TEST(DeserializeCheckpointTest, MissingEventTimeFails) {
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound,
                                HasSubstr("confidential_compute_event_time")));
 }
@@ -133,7 +119,7 @@ TEST(DeserializeCheckpointTest, MultidimensionalDataTensorFails) {
   tensors.push_back(*std::move(data_tensor));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
                                HasSubstr("Data tensor `test_query/colA` must "
                                          "have one dimension.")));
@@ -149,7 +135,7 @@ TEST(DeserializeCheckpointTest, MismatchedRowCountsFails) {
       Tensor({"valA1"}, "test_query/colA"));  // 1 row instead of 2.
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   EXPECT_THAT(result,
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Data tensor `test_query/colA` has 1 rows, "
@@ -165,81 +151,37 @@ TEST(DeserializeCheckpointTest, NoDataTensorsSucceeds) {
                            "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
   EXPECT_THAT(result->privacy_id, Eq("user789"));
-  EXPECT_THAT(result->event_times.size(), Eq(1));
+  EXPECT_EQ(result->event_times.num_elements(), 1);
   EXPECT_TRUE(result->data_tensors.empty());
 }
 
-// Verifies that malformed timestamps are stored as absl::InfinitePast()
-// sentinels rather than causing a hard error, and valid timestamps in the same
-// tensor are parsed correctly.
-TEST(DeserializeCheckpointTest, MalformedEventTimeBecomesInfinitePast) {
+// Verifies that timestamps are stored as-is in the raw strings
+TEST(DeserializeCheckpointTest, EventTimeIsPreserved) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
-  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00", "not-a-timestamp",
-                            "2026-01-01T10:02:00+00:00"},
-                           "test_query/confidential_compute_event_time"));
+  tensors.push_back(Tensor(
+      {"2026-01-01T10:00:00Z", "not-a-timestamp", "2026-01-01T10:02:00+14:00"},
+      "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
+  auto result = DeserializeCheckpoint(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
-  ASSERT_THAT(result->event_times.size(), Eq(3));
-  EXPECT_THAT(result->event_times[0],
-              Eq(ParseRfc3339("2026-01-01T10:00:00+00:00")));
-  EXPECT_THAT(result->event_times[1], Eq(absl::InfinitePast()));
-  EXPECT_THAT(result->event_times[2],
-              Eq(ParseRfc3339("2026-01-01T10:02:00+00:00")));
-}
-
-// Verifies that two timestamps representing the same UTC instant but written
-// with different timezone offsets parse to identical absl::Time values.
-// e.g. 05:30 IST == 00:00 UTC.
-TEST(DeserializeCheckpointTest, SameInstantDifferentOffsetsAreEqual) {
-  std::vector<Tensor> tensors;
-  tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
-  tensors.push_back(Tensor({"2026-01-01T05:30:00+05:30",   // IST = 00:00 UTC
-                            "2026-01-01T00:00:00+00:00"},  // UTC = 00:00 UTC
-                           "test_query/confidential_compute_event_time"));
-
-  InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
-  ASSERT_THAT(result, IsOk());
-
-  ASSERT_THAT(result->event_times.size(), Eq(2));
-  EXPECT_THAT(result->event_times[0], Eq(result->event_times[1]));
-}
-
-// Verifies that two timestamps with the same wall-clock time but different
-// timezone offsets parse to *different* absl::Time values.
-// e.g. 12:00 UTC and 12:00 PST (UTC-8) are 8 hours apart.
-TEST(DeserializeCheckpointTest, SameWallClockDifferentOffsetsAreNotEqual) {
-  std::vector<Tensor> tensors;
-  tensors.push_back(Tensor("user456", kPrivacyIdColumnName));
-  tensors.push_back(
-      Tensor({"2026-01-01T12:00:00+00:00",   // 12:00 UTC
-              "2026-01-01T12:00:00-08:00"},  // 12:00 PST = 20:00 UTC
-             "test_query/confidential_compute_event_time"));
-
-  InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(&parser, "test_query");
-  ASSERT_THAT(result, IsOk());
-
-  ASSERT_THAT(result->event_times.size(), Eq(2));
-  EXPECT_NE(result->event_times[0], result->event_times[1]);
+  EXPECT_THAT(result->event_times.ToStringVector(),
+              ElementsAre("2026-01-01T10:00:00Z", "not-a-timestamp",
+                          "2026-01-01T10:02:00+14:00"));
 }
 
 TEST(FilterForSessionWindowTest, AllEventsPassFilter) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      Hours(6),
-      Hours(12),
-      Hours(18),
-  };
+  Tensor event_times({"1970-01-01T06:00:00+00:00", "1970-01-01T12:00:00+00:00",
+                      "1970-01-01T18:00:00+00:00"},
+                     "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/42,
@@ -254,12 +196,12 @@ TEST(FilterForSessionWindowTest, AllEventsPassFilter) {
 TEST(FilterForSessionWindowTest, AllEventsRejected) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      // Before window.
-      Hours(-1),
-      // After window.
-      Hours(25),
-  };
+  Tensor event_times(
+      {// Before window.
+       "1969-12-31T23:00:00+00:00",
+       // After window.
+       "1970-01-02T01:00:00+00:00"},
+      "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/1,
@@ -271,11 +213,10 @@ TEST(FilterForSessionWindowTest, AllEventsRejected) {
 TEST(FilterForSessionWindowTest, PartialPassFilter) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      Hours(-1),  // row 0: before window
-      Hours(12),  // row 1: in window
-      Hours(25),  // row 2: after window
-  };
+  Tensor event_times({"1969-12-31T23:00:00+00:00",   // row 0: before window
+                      "1970-01-01T12:00:00+00:00",   // row 1: in window
+                      "1970-01-02T01:00:00+00:00"},  // row 2: after window
+                     "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/99,
@@ -288,7 +229,7 @@ TEST(FilterForSessionWindowTest, PartialPassFilter) {
 TEST(FilterForSessionWindowTest, EmptyEventTimes) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times;
+  Tensor event_times(std::vector<std::string>{}, "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/0,
@@ -297,16 +238,14 @@ TEST(FilterForSessionWindowTest, EmptyEventTimes) {
   EXPECT_TRUE(result.empty());
 }
 
-// Verifies that absl::InfinitePast() sentinel values (from malformed
-// timestamps) are naturally excluded by the window check.
-TEST(FilterForSessionWindowTest, MalformedTimestampSentinelsAreExcluded) {
+// Verifies that malformed timestamp strings are excluded by the filter.
+TEST(FilterForSessionWindowTest, MalformedTimestampsAreExcluded) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      absl::InfinitePast(),  // row 0: sentinel (excluded)
-      Hours(6),              // row 1: in window
-      absl::InfinitePast(),  // row 2: sentinel (excluded)
-  };
+  Tensor event_times({"not-a-timestamp",  // row 0: malformed (excluded)
+                      "1970-01-01T06:00:00+00:00",  // row 1: in window
+                      "also-not-valid"},  // row 2: malformed (excluded)
+                     "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/7,
@@ -320,9 +259,7 @@ TEST(FilterForSessionWindowTest, MalformedTimestampSentinelsAreExcluded) {
 TEST(FilterForSessionWindowTest, WindowStartIsInclusive) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      Hours(0),
-  };
+  Tensor event_times({"1970-01-01T00:00:00+00:00"}, "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/100,
@@ -336,15 +273,33 @@ TEST(FilterForSessionWindowTest, WindowStartIsInclusive) {
 TEST(FilterForSessionWindowTest, WindowEndIsExclusive) {
   absl::Time window_start = Hours(0);
   absl::Time window_end = Hours(24);
-  std::vector<absl::Time> event_times = {
-      Hours(24),
-  };
+  Tensor event_times({"1970-01-02T00:00:00+00:00"}, "event_time");
 
   std::vector<RowLocation> result =
       FilterForSessionWindow(event_times, /*group_key=*/100,
                              /*input_index=*/0, window_start, window_end);
 
   EXPECT_TRUE(result.empty());
+}
+
+// Verifies that FilterForSessionWindow correctly handles timestamps with
+// different timezone offsets.
+TEST(FilterForSessionWindowTest, DifferentOffsetsResolveToSameInstant) {
+  absl::Time window_start = Hours(0);
+  absl::Time window_end = Hours(1);
+
+  Tensor event_times(
+      {"1970-01-01T05:30:00+05:30",   // IST = 00:00 UTC (in window)
+       "1970-01-01T00:00:00+00:00",   // UTC = 00:00 UTC (in window)
+       "1970-01-01T12:00:00-08:00"},  // PST = 20:00 UTC (outside window)
+      "event_time");
+
+  std::vector<RowLocation> result =
+      FilterForSessionWindow(event_times, /*group_key=*/1,
+                             /*input_index=*/0, window_start, window_end);
+
+  EXPECT_THAT(result,
+              ElementsAre(RowLocationIs(1, 0, 0), RowLocationIs(1, 0, 1)));
 }
 
 }  // namespace

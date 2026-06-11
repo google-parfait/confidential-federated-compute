@@ -16,10 +16,10 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_CHECKPOINT_UTILS_H_
 
 #include <string>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
 namespace confidential_federated_compute {
@@ -34,7 +34,7 @@ absl::StatusOr<std::string> GetPrivacyId(
 // The tensor fully qualified name is
 // `<on_device_query_name>/confidential_compute_event_time`. Validates that the
 // tensor exists, is a string tensor, and has exactly one dimension.
-absl::StatusOr<std::vector<std::string>> GetEventTime(
+absl::StatusOr<tensorflow_federated::aggregation::Tensor> GetEventTime(
     tensorflow_federated::aggregation::CheckpointParser& parser,
     absl::string_view on_device_query_name);
 

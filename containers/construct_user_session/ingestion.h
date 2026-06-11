@@ -23,7 +23,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "containers/common/row_set.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -37,10 +36,10 @@ struct DeserializedCheckpoint {
   // `confidential_compute_privacy_id` string tensor.
   std::string privacy_id;
 
-  // Parsed event times from
-  // `<on_device_query_name>/confidential_compute_event_time`. Malformed
-  // timestamps are stored as absl::InfinitePast().
-  std::vector<absl::Time> event_times;
+  // Raw event time tensor from
+  // `<on_device_query_name>/confidential_compute_event_time`.
+  // Each element is expected to have the format YYYY-MM-DDTHH:MM:SS±HH:MM.
+  tensorflow_federated::aggregation::Tensor event_times;
 
   // All data tensors found in the checkpoint keyed by their tensor name. Each
   // tensor is 1-dimensional with the same row count as `event_times`.
@@ -55,28 +54,27 @@ struct DeserializedCheckpoint {
 // (1) Loads all tensors from the checkpoint.
 // (2) Extracts the scalar `confidential_compute_privacy_id` tensor.
 // (3) Extracts the 1D `<on_device_query_name>/confidential_compute_event_time`
-//     string tensor and parses each ISO-8601 event time string into an
-//     absl::Time. Malformed timestamps are stored as absl::InfinitePast()
-//     sentinels.
-// (4) stores all remaining tensors in the `data_tensors` map (name → Tensor),
-// (5) validates that the privacy ID tensor is scalar, that the event time
+//     string tensor and stores it as-is in `event_times`.
+// (4) Stores all remaining tensors in the `data_tensors` map (name → Tensor),
+// (5) Validates that the privacy ID tensor is scalar, that the event time
 //     tensor is 1-dimensional, that all data tensors are 1-dimensional, and
-//     that all data tensors have the same row count as event_times.size().
+//     that all data tensors have the same row count as event_times.
 absl::StatusOr<DeserializedCheckpoint> DeserializeCheckpoint(
-    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
+    tensorflow_federated::aggregation::CheckpointParser& checkpoint,
     absl::string_view on_device_query_name);
 
 // Filters event times against the session window [window_start, window_end)
 // and produces RowLocation metadata for surviving rows.
 //
-// For each event time in `event_times`, if the time satisfies
-// `window_start <= t < window_end`, a RowLocation is created with the given
-// `group_key`, `input_index`, and the row's index within `event_times`.
-// Sentinel values (absl::InfinitePast()) from malformed timestamps are
-// naturally excluded since they fall outside any valid session window.
+// For each event time string in `event_times`, the string is parsed to
+// absl::Time. If the parsed time satisfies `window_start <= t < window_end`,
+// a RowLocation is created with the given `group_key`, `input_index`, and the
+// row's index within `event_times`.
+// Malformed timestamps that fail to parse are logged and excluded.
 std::vector<RowLocation> FilterForSessionWindow(
-    absl::Span<const absl::Time> event_times, uint64_t group_key,
-    uint32_t input_index, absl::Time window_start, absl::Time window_end);
+    const tensorflow_federated::aggregation::Tensor& event_times,
+    uint64_t group_key, uint32_t input_index, absl::Time window_start,
+    absl::Time window_end);
 
 }  // namespace confidential_federated_compute::construct_user_session
 
