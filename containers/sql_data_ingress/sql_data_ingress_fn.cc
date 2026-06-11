@@ -30,7 +30,6 @@
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "fcp/base/monitoring.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/message_description.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -44,7 +43,6 @@ namespace confidential_federated_compute::sql_data_ingress {
 
 namespace {
 
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::MessageDescription;
 using ::fcp::confidentialcompute::
     SqlDataIngressContainerInitializeConfiguration;
@@ -137,8 +135,8 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
     tensors.push_back(std::move(it->second));
   }
 
-  FCP_ASSIGN_OR_RETURN(Input sql_input, Input::CreateFromTensors(
-                                            std::move(tensors), BlobHeader()));
+  FCP_ASSIGN_OR_RETURN(Input sql_input,
+                       Input::CreateFromTensors(std::move(tensors)));
 
   FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&sql_input));
   FCP_ASSIGN_OR_RETURN(

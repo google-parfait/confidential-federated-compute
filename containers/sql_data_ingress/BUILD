@@ -32,7 +32,6 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
-        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:message_description_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_data_ingress_config_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sql_query_cc_proto",

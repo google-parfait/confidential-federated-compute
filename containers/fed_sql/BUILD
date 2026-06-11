@@ -167,7 +167,7 @@ cc_test(
     tags = ["manual"],
     deps = [
         ":inference_model",
-        "//containers/sql:input",
+        "//containers/common:input",
         "//testing:parse_text_proto",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",

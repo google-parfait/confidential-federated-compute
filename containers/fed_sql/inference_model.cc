@@ -36,7 +36,6 @@
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::ColumnConfiguration;
 using ::fcp::confidentialcompute::GEMMA2_2B;
 using ::fcp::confidentialcompute::GEMMA2_9B;
@@ -572,7 +571,7 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
     return absl::OkStatus();
   }
 
-  const BlobHeader blob_header = input.GetBlobHeader();
+  std::string metadata = std::string(input.GetMetadata());
   std::optional<std::string> original_privacy_id = input.GetPrivacyId();
 
   FCP_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
@@ -596,7 +595,7 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
   }
   FCP_ASSIGN_OR_RETURN(
       Input new_input,
-      Input::CreateFromTensors(std::move(final_columns), blob_header,
+      Input::CreateFromTensors(std::move(final_columns), std::move(metadata),
                                std::move(privacy_id_tensor)));
   input = std::move(new_input);
   return absl::OkStatus();

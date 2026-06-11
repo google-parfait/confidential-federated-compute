@@ -34,7 +34,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 
 using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::Prompt;
 using ::gcpp::Gemma;
@@ -117,9 +116,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceParserAuto) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -163,9 +160,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceReturnsError) {
   columns.push_back(Tensor({"one"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   EXPECT_THAT(status, Not(IsOk()));
@@ -347,9 +342,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfig) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -396,9 +389,7 @@ TEST_F(InferenceModelTest, RunGemmaCppInferenceValidConfigMultipleInputs) {
   columns.push_back(Tensor({"aol", "bat", "cat"}, "transcript2"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -457,9 +448,7 @@ TEST_F(InferenceModelTest, RunInferenceMultipleInferenceTasks) {
   columns.push_back(Tensor({"uno", "dos", "tres"}, "input"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -515,9 +504,7 @@ TEST_F(InferenceModelTest, RunInferenceKeepsNonPromptColumns) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -570,9 +557,7 @@ TEST_F(InferenceModelTest, RunInferenceInputColumnNotFound) {
   columns.push_back(Tensor({1, 2, 3}, "input_int_col"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -609,9 +594,7 @@ TEST_F(InferenceModelTest, RunInferenceInputColumnNotFoundMultipleInputs) {
   columns.push_back(Tensor({"uno", "dos", "tres"}, "input_str_col"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -647,9 +630,7 @@ TEST_F(InferenceModelTest, RunInferenceNoPrompt) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -683,9 +664,7 @@ TEST_F(InferenceModelTest, RunInferenceNoPromptMultipleInputs) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -719,10 +698,7 @@ TEST_F(InferenceModelTest, RunInferenceModelNotInitialized) {
   std::vector<Tensor> columns;
   // Prompt column.
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
-
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kUnimplemented);
@@ -756,10 +732,7 @@ TEST_F(InferenceModelTest, RunInferenceModelNotInitializedMultipleInputs) {
   std::vector<Tensor> columns;
   // Prompt column.
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
-
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   auto status = inference_model_.RunInference(*input);
   ASSERT_EQ(status.code(), absl::StatusCode::kUnimplemented);
@@ -824,9 +797,7 @@ TEST_F(InferenceModelTest, RunInferenceWithRuntimeConfigFlags) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -877,9 +848,7 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceValidConfigMultipleInputs) {
   columns.push_back(Tensor({"aol", "bat", "cat"}, "transcript_2"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -929,9 +898,7 @@ TEST_F(InferenceModelTest, RunLlamaCppInferenceSuccess) {
   columns.push_back(Tensor({"one", "two", "three"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -969,9 +936,7 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplication) {
   columns.push_back(Tensor({"foo", "bar"}, "transcript"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -1028,9 +993,7 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
   columns.push_back(Tensor({"a", "b"}, "other_input"));
 
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
-  BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
@@ -1053,7 +1016,7 @@ TEST_F(InferenceModelTest, RunInferenceWithDuplicationAndMultiplePrompts) {
 }
 
 TEST_F(InferenceModelTest,
-       RunInferenceMultipleRowsPreservesBlobHeaderAndPrivacyId) {
+       RunInferenceMultipleRowsPreservesMetadataAndPrivacyId) {
   MockInferenceModel::InferenceOutput topic_output;
   topic_output.tensor = Tensor({"t1", "t2", "t3"}, "topic");
   topic_output.per_row_output_counts = {1, 2};
@@ -1077,21 +1040,16 @@ TEST_F(InferenceModelTest,
   columns.push_back(Tensor({"foo", "bar"}, "transcript"));
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
 
-  BlobHeader blob_header;
-  blob_header.set_blob_id("blob_id_1");
-  blob_header.set_access_policy_node_id(99);
-  blob_header.set_key_id("key_1");
-
   Tensor privacy_id_tensor("privacy_id_1", "privacy_id");
 
   absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(columns), blob_header, std::move(privacy_id_tensor));
+      std::move(columns), "key_1", std::move(privacy_id_tensor));
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
       std::move(*input).MoveToTensors();
   ASSERT_THAT(output_tensors, IsOk());
-  EXPECT_THAT(input->GetBlobHeader(), EqualsProto(blob_header));
+  EXPECT_EQ(input->GetMetadata(), "key_1");
   ASSERT_TRUE(input->GetPrivacyId().has_value());
   EXPECT_EQ(input->GetPrivacyId().value(), "privacy_id_1");
 }

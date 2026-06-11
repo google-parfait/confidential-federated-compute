@@ -26,8 +26,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "benchmark/benchmark.h"
+#include "containers/common/input.h"
 #include "containers/fed_sql/inference_model.h"
-#include "containers/sql/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "inference_model.h"
@@ -42,8 +42,7 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
-using ::confidential_federated_compute::sql::Input;
-using ::fcp::confidentialcompute::BlobHeader;
+using ::confidential_federated_compute::Input;
 using ::tensorflow_federated::aggregation::Tensor;
 
 // Synthetic dataset transcripts from gen_checkpoints_main.cc
@@ -131,8 +130,7 @@ BENCHMARK_DEFINE_F(GemmaInferenceBenchmark,
   }
   std::vector<Tensor> columns;
   columns.push_back(Tensor(std::move(prompt_inputs), "transcript"));
-  BlobHeader blob_header;
-  auto input_or = Input::CreateFromTensors(std::move(columns), blob_header);
+  auto input_or = Input::CreateFromTensors(std::move(columns));
   if (!input_or.ok()) {
     state.SkipWithError("Failed to create input tensors.");
     return;

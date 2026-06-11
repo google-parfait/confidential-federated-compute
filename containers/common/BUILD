@@ -113,7 +113,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@federated-compute//fcp/base",
         "@federated-compute//fcp/confidentialcompute:constants",
-        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",

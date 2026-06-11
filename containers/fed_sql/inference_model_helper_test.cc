@@ -79,9 +79,7 @@ TEST_F(InferenceModelInternalTest, PopulatePromptTemplateSuccess) {
   columns.push_back(std::move(*msg_tensor));
   columns.push_back(std::move(*id_tensor));
 
-  fcp::confidentialcompute::BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
@@ -111,9 +109,7 @@ TEST_F(InferenceModelInternalTest,
   ASSERT_THAT(user_tensor, IsOk());
   std::vector<Tensor> columns;
   columns.push_back(std::move(*user_tensor));
-  fcp::confidentialcompute::BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
@@ -153,9 +149,7 @@ TEST_F(InferenceModelInternalTest, PopulatePromptTemplateTruncation) {
   ASSERT_THAT(user_tensor, IsOk());
   std::vector<Tensor> columns;
   columns.push_back(std::move(*user_tensor));
-  fcp::confidentialcompute::BlobHeader blob_header;
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), blob_header);
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
