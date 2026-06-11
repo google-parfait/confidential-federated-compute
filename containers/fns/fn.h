@@ -17,8 +17,8 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
 
@@ -66,7 +66,7 @@ class Fn : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
       fcp::confidentialcompute::ConfigureRequest configure_request,
       Context& context) override final {
-    FCP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         InitializeReplica(configure_request.configuration(), context));
     return fcp::confidentialcompute::ConfigureResponse();
   }
@@ -75,7 +75,7 @@ class Fn : public confidential_federated_compute::Session {
       fcp::confidentialcompute::FinalizeRequest request,
       fcp::confidentialcompute::BlobMetadata input_metadata,
       Context& context) override final {
-    FCP_RETURN_IF_ERROR(FinalizeReplica(request.configuration(), context));
+    ABSL_RETURN_IF_ERROR(FinalizeReplica(request.configuration(), context));
     // TODO: Add support for releasing the results (if needed).
     return fcp::confidentialcompute::FinalizeResponse();
   }

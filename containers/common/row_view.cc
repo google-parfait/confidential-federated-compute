@@ -14,7 +14,7 @@
 #include "containers/common/row_view.h"
 
 #include "absl/status/status.h"
-#include "fcp/base/monitoring.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/message.h"
@@ -25,8 +25,8 @@ namespace confidential_federated_compute {
 absl::StatusOr<RowView> RowView::CreateFromTensors(
     absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
     uint32_t row_index) {
-  FCP_ASSIGN_OR_RETURN(TensorRowView tensor_row_view,
-                       TensorRowView::Create(columns, row_index));
+  ABSL_ASSIGN_OR_RETURN(TensorRowView tensor_row_view,
+                        TensorRowView::Create(columns, row_index));
   return RowView(std::move(tensor_row_view));
 }
 
@@ -84,7 +84,7 @@ RowView::MessageRowView::GetMessageColumnType(int column_index) const {
     case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
       return tensorflow_federated::aggregation::DataType::DT_STRING;
     default:
-      FCP_LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
+      LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
   }
 }
 

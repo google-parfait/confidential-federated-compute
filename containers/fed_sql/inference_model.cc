@@ -20,6 +20,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "common/common.h"  // From @llama_cpp.
 #include "containers/common/input.h"
@@ -144,7 +145,7 @@ absl::Status InferenceModel::BuildModel(
             "Missing session gemma.cpp configuration.");
       }
       model_.emplace<GemmaCppModel>();
-      FCP_RETURN_IF_ERROR(BuildGemmaCppModel(
+      ABSL_RETURN_IF_ERROR(BuildGemmaCppModel(
           inference_configuration.gemma_configuration.value()));
       break;
     }
@@ -154,7 +155,7 @@ absl::Status InferenceModel::BuildModel(
             "Missing session llama.cpp configuration.");
       }
       model_.emplace<LlamaCppModel>();
-      FCP_RETURN_IF_ERROR(BuildLlamaCppModel(
+      ABSL_RETURN_IF_ERROR(BuildLlamaCppModel(
           inference_configuration.llama_configuration.value()));
       break;
     }
@@ -174,10 +175,10 @@ InferenceModel::RunGemmaCppInference(
     absl::Span<const size_t> input_column_indices,
     const std::string& output_column_name) {
   if (input_column_indices.empty()) {
-    FCP_ASSIGN_OR_RETURN(Tensor tensor,
-                         Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                                        std::make_unique<MutableStringData>(0),
-                                        output_column_name));
+    ABSL_ASSIGN_OR_RETURN(Tensor tensor,
+                          Tensor::Create(DataType::DT_STRING, TensorShape({0}),
+                                         std::make_unique<MutableStringData>(0),
+                                         output_column_name));
     return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
 
@@ -249,8 +250,8 @@ InferenceModel::RunGemmaCppInference(
     std::vector<gcpp::PromptTokens> prompt_tokens(batch_size);
     std::vector<size_t> prompt_sizes(batch_size);
     for (size_t i = 0; i < batch_size; ++i) {
-      FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(batch_start + i));
-      FCP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(batch_start + i));
+      ABSL_ASSIGN_OR_RETURN(
           std::string combined_prompt,
           prompt_processor_.PopulatePromptTemplate(
               prompt, row, input.GetColumnNames(), input_column_indices,
@@ -343,7 +344,7 @@ InferenceModel::RunGemmaCppInference(
     }
   }
 
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor output_tensor,
       Tensor::Create(DataType::DT_STRING,
                      TensorShape({static_cast<long>(num_output_rows)}),
@@ -491,10 +492,10 @@ InferenceModel::RunLlamaCppInference(
     absl::Span<const size_t> input_column_indices,
     const std::string& output_column_name) {
   if (input_column_indices.empty()) {
-    FCP_ASSIGN_OR_RETURN(Tensor tensor,
-                         Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                                        std::make_unique<MutableStringData>(0),
-                                        output_column_name));
+    ABSL_ASSIGN_OR_RETURN(Tensor tensor,
+                          Tensor::Create(DataType::DT_STRING, TensorShape({0}),
+                                         std::make_unique<MutableStringData>(0),
+                                         output_column_name));
     return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
   LlamaCppModel& llama_model = std::get<LlamaCppModel>(model_);
@@ -520,14 +521,14 @@ InferenceModel::RunLlamaCppInference(
   // over the combined prompt. Each element in the output tensor corresponds
   // to the inference result of one row of the input columns.
   for (int i = 0; i < input.GetRowCount(); ++i) {
-    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
+    ABSL_ASSIGN_OR_RETURN(
         std::string combined_prompt,
         prompt_processor_.PopulatePromptTemplate(
             prompt, row, input.GetColumnNames(), input_column_indices,
             output_column_name, max_prompt_size));
     // Generate inference output for a row.
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::string output_string,
         RunLlamaCppInferencePerRow(combined_prompt, llama_model, vocab));
 
@@ -548,7 +549,7 @@ InferenceModel::RunLlamaCppInference(
     }
   }
 
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor output_tensor,
       Tensor::Create(DataType::DT_STRING,
                      TensorShape({static_cast<long>(num_output_rows)}),
@@ -574,8 +575,8 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
   std::string metadata = std::string(input.GetMetadata());
   std::optional<std::string> original_privacy_id = input.GetPrivacyId();
 
-  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
-                       std::move(input).MoveToTensors());
+  ABSL_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
+                        std::move(input).MoveToTensors());
 
   const auto& per_row_output_counts = per_row_output_counts_map.begin()->second;
 
@@ -585,15 +586,16 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
   }
 
   // Use the shared helper for tensor row duplication.
-  FCP_ASSIGN_OR_RETURN(std::vector<Tensor> final_columns,
-                       DuplicateTensorRows(original_columns, original_row_count,
-                                           per_row_output_counts));
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<Tensor> final_columns,
+      DuplicateTensorRows(original_columns, original_row_count,
+                          per_row_output_counts));
 
   std::optional<Tensor> privacy_id_tensor;
   if (original_privacy_id.has_value()) {
     privacy_id_tensor = Tensor(*original_privacy_id, "privacy_id");
   }
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Input new_input,
       Input::CreateFromTensors(std::move(final_columns), std::move(metadata),
                                std::move(privacy_id_tensor)));
@@ -644,12 +646,12 @@ absl::Status InferenceModel::RunInference(Input& input) {
 
     InferenceOutput inference_output;
     if (std::holds_alternative<GemmaCppModel>(model_)) {
-      FCP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           inference_output,
           RunGemmaCppInference(inference_task.prompt(), input,
                                input_column_indices, output_column_name));
     } else if (std::holds_alternative<LlamaCppModel>(model_)) {
-      FCP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           inference_output,
           RunLlamaCppInference(inference_task.prompt(), input,
                                input_column_indices, output_column_name));
@@ -672,11 +674,11 @@ absl::Status InferenceModel::RunInference(Input& input) {
           output_column_name,
           std::move(inference_output.per_row_output_counts));
 
-      FCP_RETURN_IF_ERROR(DuplicateColumnsForMultipleRows(
+      ABSL_RETURN_IF_ERROR(DuplicateColumnsForMultipleRows(
           input, current_output_column, per_row_output_counts_map));
     }
 
-    FCP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         input.AddColumn(std::move(current_output_column.begin()->second)));
   }
 

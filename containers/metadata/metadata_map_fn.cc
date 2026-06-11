@@ -15,13 +15,13 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
 #include "containers/common/checkpoint_utils.h"
 #include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -52,7 +52,7 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::Tensor;
 
 absl::StatusOr<uint64_t> GetUpper64HashedPrivacyId(CheckpointParser& parser) {
-  FCP_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(parser));
+  ABSL_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(parser));
   return LoadBigEndian<uint64_t>(fcp::ComputeSHA256(privacy_id));
 }
 
@@ -122,8 +122,8 @@ struct MinMaxEventTimes {
 
 absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
     CheckpointParser& parser, absl::string_view on_device_query_name) {
-  FCP_ASSIGN_OR_RETURN(Tensor event_times_tensor,
-                       GetEventTime(parser, on_device_query_name));
+  ABSL_ASSIGN_OR_RETURN(Tensor event_times_tensor,
+                        GetEventTime(parser, on_device_query_name));
   if (event_times_tensor.num_elements() == 0) {
     return std::nullopt;
   }
@@ -131,8 +131,8 @@ absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
   // Iterate over the event times and find the min and max.
   for (const absl::string_view event_time :
        event_times_tensor.AsSpan<absl::string_view>()) {
-    FCP_ASSIGN_OR_RETURN(absl::CivilSecond civil_time,
-                         ConvertEventTimeToCivilSecond(event_time));
+    ABSL_ASSIGN_OR_RETURN(absl::CivilSecond civil_time,
+                          ConvertEventTimeToCivilSecond(event_time));
     min_max_event_times.min = std::min(min_max_event_times.min, civil_time);
     min_max_event_times.max = std::max(min_max_event_times.max, civil_time);
   }
@@ -160,21 +160,21 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
           absl::StrCat("Failed to deserialize checkpoint: ", parser.status()));
     }
 
-    FCP_ASSIGN_OR_RETURN(uint64_t upper_64_hashed_privacy_id,
-                         GetUpper64HashedPrivacyId(**parser));
-    FCP_ASSIGN_OR_RETURN(std::optional<MinMaxEventTimes> min_max_event_times,
-                         GetMinMaxEventTimes(**parser, on_device_query_name_));
+    ABSL_ASSIGN_OR_RETURN(uint64_t upper_64_hashed_privacy_id,
+                          GetUpper64HashedPrivacyId(**parser));
+    ABSL_ASSIGN_OR_RETURN(std::optional<MinMaxEventTimes> min_max_event_times,
+                          GetMinMaxEventTimes(**parser, on_device_query_name_));
 
     PayloadMetadataSet payload_metadata_set;
     for (auto& [name, metadata_config] : config_.metadata_configs()) {
-      FCP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           uint64_t partition_key,
           ComputePartitionKey(upper_64_hashed_privacy_id, metadata_config));
       TeePayloadMetadata tee_payload_metadata;
       tee_payload_metadata.set_partition_key(partition_key);
 
       if (min_max_event_times.has_value()) {
-        FCP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             EventTimeRange event_time_range,
             GetCoarseEventTimeRange(
                 min_max_event_times->min, min_max_event_times->max,

@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "containers/fns/fn.h"
 #include "containers/session.h"
@@ -45,7 +46,7 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> DoFn::Write(
   input.data = std::move(unencrypted_data);
   input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
-  FCP_RETURN_IF_ERROR(Do(std::move(input), context));
+  ABSL_RETURN_IF_ERROR(Do(std::move(input), context));
 
   fcp::confidentialcompute::WriteFinishedResponse response;
   response.set_committed_size_bytes(unencrypted_data_size);

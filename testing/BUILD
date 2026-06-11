@@ -23,9 +23,9 @@ cc_library(
     testonly = 1,
     hdrs = ["parse_text_proto.h"],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
-        "@federated-compute//fcp/base",
     ],
 )
 

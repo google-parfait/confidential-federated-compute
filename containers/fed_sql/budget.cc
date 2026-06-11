@@ -18,8 +18,8 @@
 #include <limits>
 #include <string>
 
+#include "absl/status/status_macros.h"
 #include "containers/fed_sql/budget.pb.h"
-#include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute::fed_sql {
 
@@ -54,7 +54,7 @@ absl::Status Budget::Parse(const BudgetState& state) {
   std::swap(per_key_budgets_, map);
 
   if (state.has_time_budget()) {
-    FCP_RETURN_IF_ERROR(time_budget_.Parse(state.time_budget()));
+    ABSL_RETURN_IF_ERROR(time_budget_.Parse(state.time_budget()));
   }
 
   return absl::OkStatus();
@@ -208,10 +208,10 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
       range_tracker.GetAggregationWindow();
   if (time_window.has_value()) {
     // When a time_window is provided, update only the time-based budget.
-    FCP_RETURN_IF_ERROR(time_budget_.UpdateBudget(time_window.value()));
+    ABSL_RETURN_IF_ERROR(time_budget_.UpdateBudget(time_window.value()));
   } else {
     // Otherwise, update the legacy per-key budgets.
-    FCP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         UpdatePerKeyBudget(range_tracker.GetKeys(), range_tracker.GetRanges()));
   }
 

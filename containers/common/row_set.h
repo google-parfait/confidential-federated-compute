@@ -22,11 +22,11 @@
 #include <tuple>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "containers/common/input.h"
 #include "containers/common/row_view.h"
-#include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute {
 struct RowLocation {
@@ -73,7 +73,7 @@ class RowSet {
     reference operator*() const {
       const Input& input = all_inputs_[current_location_->input_index];
       absl::StatusOr<RowView> row = input.GetRow(current_location_->row_index);
-      FCP_CHECK(row.ok()) << row.status();
+      CHECK(row.ok()) << row.status();
       return *row;
     }
 

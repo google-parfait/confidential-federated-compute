@@ -21,7 +21,6 @@
 #include "absl/status/statusor.h"
 #include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/range_tracker.pb.h"
-#include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute::fed_sql {
 

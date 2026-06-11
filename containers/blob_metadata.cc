@@ -13,7 +13,9 @@
 // limitations under the License.
 #include "containers/blob_metadata.h"
 
-#include "fcp/base/monitoring.h"
+#include <string>
+
+#include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 
 namespace confidential_federated_compute {

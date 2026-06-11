@@ -21,9 +21,9 @@
 #include <variant>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "grpcpp/support/sync_stream.h"
@@ -92,8 +92,8 @@ absl::StatusOr<SessionRequest> SessionStream::Read() {
   while (stream_->Read(&request)) {
     switch (request.kind_case()) {
       case SessionRequest::kWrite: {
-        FCP_ASSIGN_OR_RETURN(bool is_commit,
-                             chunked_state.Append(request.mutable_write()));
+        ABSL_ASSIGN_OR_RETURN(bool is_commit,
+                              chunked_state.Append(request.mutable_write()));
         if (is_commit) {
           // All chunks received.
           return request;
@@ -101,8 +101,8 @@ absl::StatusOr<SessionRequest> SessionStream::Read() {
         break;
       }
       case SessionRequest::kMerge: {
-        FCP_ASSIGN_OR_RETURN(bool is_commit,
-                             chunked_state.Append(request.mutable_merge()));
+        ABSL_ASSIGN_OR_RETURN(bool is_commit,
+                              chunked_state.Append(request.mutable_merge()));
         if (is_commit) {
           // All chunks received.
           return request;
@@ -111,7 +111,7 @@ absl::StatusOr<SessionRequest> SessionStream::Read() {
       }
       case SessionRequest::kConfigure:
         // Overwrite the chunk size.
-        FCP_RETURN_IF_ERROR(chunked_state.CheckContinuation());
+        ABSL_RETURN_IF_ERROR(chunked_state.CheckContinuation());
         chunk_size_ = request.configure().chunk_size();
         if (chunk_size_ == 0) {
           return absl::InvalidArgumentError("Invalid chunk size: 0");
@@ -119,7 +119,7 @@ absl::StatusOr<SessionRequest> SessionStream::Read() {
         return request;
 
       default:
-        FCP_RETURN_IF_ERROR(chunked_state.CheckContinuation());
+        ABSL_RETURN_IF_ERROR(chunked_state.CheckContinuation());
         return request;
     }
   }
@@ -145,7 +145,7 @@ absl::Status SessionStream::Write(SessionResponse response) {
       do {
         mutable_read->set_data(data.Subcord(0, chunk_size_));
         data.RemovePrefix(chunk_size_);
-        FCP_RETURN_IF_ERROR(WriteImpl(response));
+        ABSL_RETURN_IF_ERROR(WriteImpl(response));
         mutable_read->clear_first_response_configuration();
         mutable_read->clear_first_response_metadata();
       } while (data.size() > chunk_size_);

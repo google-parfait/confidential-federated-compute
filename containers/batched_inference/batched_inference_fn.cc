@@ -20,6 +20,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_join.h"
 #include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/common/input.h"
@@ -578,8 +579,8 @@ absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
 
   // Compute the Cartesian product across tasks and populate output column
   // tensors.
-  FCP_ASSIGN_OR_RETURN(std::vector<size_t> input_row_duplication_counts,
-                       CartesianExpand(task_outputs, num_rows));
+  ABSL_ASSIGN_OR_RETURN(std::vector<size_t> input_row_duplication_counts,
+                        CartesianExpand(task_outputs, num_rows));
 
   // Extract input tensors from the input blob.
   absl::StatusOr<std::vector<Tensor>> input_tensors =

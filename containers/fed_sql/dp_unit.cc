@@ -21,13 +21,13 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/interval_set.h"
 #include "containers/fed_sql/session_utils.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
@@ -130,7 +130,7 @@ absl::StatusOr<int> FindColumnIndex(const Input& input,
 template <typename T>
 absl::StatusOr<T> GetRowValue(const Input& input, uint32_t row_index,
                               int col_index) {
-  FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(row_index));
+  ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(row_index));
   return row.GetValue<T>(col_index);
 }
 
@@ -150,28 +150,28 @@ absl::Status DpUnitProcessor::StageInputForCommit(Input&& input) {
   }
   absl::string_view privacy_id = *optional_privacy_id;
 
-  FCP_ASSIGN_OR_RETURN(int event_time_col_index,
-                       FindColumnIndex(input, kEventTimeColumnName));
+  ABSL_ASSIGN_OR_RETURN(int event_time_col_index,
+                        FindColumnIndex(input, kEventTimeColumnName));
   std::vector<int64_t> dp_col_indices;
   dp_col_indices.reserve(dp_column_names.size());
   for (const auto& dp_column_name : dp_column_names) {
-    FCP_ASSIGN_OR_RETURN(int dp_col_index,
-                         FindColumnIndex(input, dp_column_name));
+    ABSL_ASSIGN_OR_RETURN(int dp_col_index,
+                          FindColumnIndex(input, dp_column_name));
     dp_col_indices.push_back(dp_col_index);
   }
   absl::Span<const int64_t> dp_indices = dp_col_indices;
 
   for (uint32_t i = 0; i < num_rows; ++i) {
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         absl::string_view event_time,
         GetRowValue<absl::string_view>(input, i, event_time_col_index));
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         absl::CivilSecond start_civil_time,
         fcp::confidentialcompute::ConvertEventTimeToCivilSecond(event_time));
-    FCP_ASSIGN_OR_RETURN(absl::CivilSecond dp_time_unit,
-                         ComputeDPTimeUnit(start_civil_time));
-    FCP_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(absl::CivilSecond dp_time_unit,
+                          ComputeDPTimeUnit(start_civil_time));
+    ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
+    ABSL_ASSIGN_OR_RETURN(
         uint64_t dp_unit_hash,
         ComputeDPUnitHash(privacy_id, dp_time_unit, row, dp_indices));
     uint32_t row_index = i;
@@ -203,8 +203,8 @@ DpUnitProcessor::CommitRowsGroupingByDpUnit() {
     absl::Span<const RowLocation> dp_unit_span(&*it,
                                                std::distance(it, end_of_range));
     it = end_of_range;  // Move to the next DP unit.
-    FCP_ASSIGN_OR_RETURN(RowSet row_set,
-                         RowSet::Create(dp_unit_span, uncommitted_inputs_));
+    ABSL_ASSIGN_OR_RETURN(RowSet row_set,
+                          RowSet::Create(dp_unit_span, uncommitted_inputs_));
     absl::StatusOr<std::vector<Tensor>> sql_result =
         SqliteAdapter::ExecuteQuery(sql_configuration_, row_set);
     // Errors from the SQL query itself (eg. division by zero, invalid column

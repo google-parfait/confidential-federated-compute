@@ -23,6 +23,7 @@
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
@@ -217,7 +218,7 @@ absl::StatusOr<WriteFinishedResponse> ConfidentialTransformBase::HandleWrite(
 absl::Status ConfidentialTransformBase::HandleInitialize(
     InitializeRequest initialize_request) {
   ServerEncryptor server_encryptor(*oak_encryption_key_handle_);
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       DecryptionResult decryption_result,
       server_encryptor.Decrypt(initialize_request.protected_response()));
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
@@ -249,7 +250,7 @@ absl::Status ConfidentialTransformBase::HandleInitialize(
        associated_data.authorized_logical_pipeline_policies_hashes()) {
     authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
   }
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       SetActiveKeyIds({protected_response.decryption_keys().begin(),
                        protected_response.decryption_keys().end()},
                       {associated_data.omitted_decryption_key_ids().begin(),
@@ -278,7 +279,7 @@ absl::Status ConfidentialTransformBase::HandleInitialize(
         protected_response.decryption_keys().end()));
   }
 
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       StreamInitializeTransform(initialize_request.configuration(),
                                 associated_data.config_constraints()));
 
@@ -303,7 +304,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeImpl(
               "Expect one of the StreamInitializeRequests to be "
               "configured with a InitializeRequest, found more than one.");
         }
-        FCP_RETURN_IF_ERROR(HandleInitialize(request.initialize_request()));
+        ABSL_RETURN_IF_ERROR(HandleInitialize(request.initialize_request()));
         has_initialize_request = true;
         break;
       }
@@ -318,7 +319,7 @@ absl::Status ConfidentialTransformBase::StreamInitializeImpl(
               "Expect all StreamInitializeRequests.write_configurations to be "
               "sent before the StreamInitializeRequest.initialize_request.");
         }
-        FCP_RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             ReadWriteConfigurationRequest(request.write_configuration()));
         break;
       }
@@ -380,7 +381,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   }
 
   // Create the session.
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
       CreateSession());
   // This provides the context for encryption and writing of ReadResponse
@@ -398,7 +399,7 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   // ConfigureResponse is used further below in the loop to write the response.
   // The response is wrapped in std::optional to verify that only the first
   // ConfigureRequest received before other requests is valid.
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<ConfigureResponse> configure_response,
       session->Configure(std::move(configure_request), context));
 
@@ -422,12 +423,12 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
         *session_response.mutable_configure() =
             std::move(configure_response).value();
         context.ApplyCountersToResponse(&session_response);
-        FCP_RETURN_IF_ERROR(stream->Write(session_response));
+        ABSL_RETURN_IF_ERROR(stream->Write(session_response));
         break;
       }
 
       case SessionRequest::kWrite: {
-        FCP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             WriteFinishedResponse write_response,
             HandleWrite(session.get(),
                         std::move(*session_request->mutable_write()), decryptor,
@@ -435,29 +436,29 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
         SessionResponse session_response;
         *session_response.mutable_write() = std::move(write_response);
         context.ApplyCountersToResponse(&session_response);
-        FCP_RETURN_IF_ERROR(stream->Write(session_response));
+        ABSL_RETURN_IF_ERROR(stream->Write(session_response));
         break;
       }
 
       case SessionRequest::kCommit: {
-        FCP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             CommitResponse commit_response,
             session->Commit(session_request->commit(), context));
         SessionResponse session_response;
         *session_response.mutable_commit() = std::move(commit_response);
         context.ApplyCountersToResponse(&session_response);
-        FCP_RETURN_IF_ERROR(stream->Write(session_response));
+        ABSL_RETURN_IF_ERROR(stream->Write(session_response));
         break;
       }
 
       case SessionRequest::kFinalize: {
-        FCP_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
-                             session->Finalize(session_request->finalize(),
-                                               result_blob_metadata, context));
+        ABSL_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
+                              session->Finalize(session_request->finalize(),
+                                                result_blob_metadata, context));
         SessionResponse session_response;
         *session_response.mutable_finalize() = std::move(finalize_response);
         context.ApplyCountersToResponse(&session_response);
-        FCP_RETURN_IF_ERROR(stream->Write(session_response));
+        ABSL_RETURN_IF_ERROR(stream->Write(session_response));
         return absl::OkStatus();
       }
 

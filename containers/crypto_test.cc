@@ -23,7 +23,6 @@
 #include "containers/crypto_test_utils.h"
 #include "containers/session.h"
 #include "fcp/base/compression.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"

@@ -19,12 +19,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "containers/common/row_view.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
@@ -126,9 +127,8 @@ void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
   for (int i = 0; i < descriptor->field_count(); ++i) {
     const google::protobuf::FieldDescriptor* field = descriptor->field(i);
     if (field->is_repeated()) {
-      FCP_LOG(WARNING)
-          << "Repeated fields are not supported and will be skipped: "
-          << field->full_name();
+      LOG(WARNING) << "Repeated fields are not supported and will be skipped: "
+                   << field->full_name();
       continue;
     }
     current_path.push_back(field);
@@ -173,7 +173,8 @@ absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
   if (privacy_id->dtype() != tensorflow_federated::aggregation::DT_STRING) {
     return absl::InvalidArgumentError("Privacy ID must be of type DT_STRING.");
   }
-  FCP_ASSIGN_OR_RETURN(int64_t num_elements, privacy_id->shape().NumElements());
+  ABSL_ASSIGN_OR_RETURN(int64_t num_elements,
+                        privacy_id->shape().NumElements());
   if (num_elements != 1) {
     return absl::InvalidArgumentError("Privacy ID must be a scalar.");
   }
@@ -183,8 +184,8 @@ absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
 absl::StatusOr<Input> Input::CreateFromTensors(
     std::vector<Tensor> contents, std::string metadata,
     std::optional<Tensor> privacy_id) {
-  FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
-                       ExtractPrivacyIdAndValidate(privacy_id));
+  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
+                        ExtractPrivacyIdAndValidate(privacy_id));
   if (contents.empty()) {
     return absl::InvalidArgumentError("No columns provided.");
   }
@@ -222,7 +223,7 @@ absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
 }
 
 absl::Status Input::AddColumn(Tensor&& new_column) {
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidateNewColumn(new_column, column_names_, GetRowCount()));
   column_names_.push_back(new_column.name());
   absl::visit(
@@ -257,9 +258,9 @@ absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<Message>> messages,
     std::vector<Tensor> system_columns, std::string metadata,
     std::optional<Tensor> privacy_id) {
-  FCP_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
-                       ExtractPrivacyIdAndValidate(privacy_id));
-  FCP_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
+  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
+                        ExtractPrivacyIdAndValidate(privacy_id));
+  ABSL_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
   std::vector<std::string> column_names;
   FieldPath current_path;
   FieldPathList field_paths;
@@ -295,7 +296,7 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
   std::vector<RowView> row_views;
   row_views.reserve(num_rows);
   for (size_t i = 0; i < num_rows; ++i) {
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         RowView row_view,
         RowView::CreateFromMessage(messages_[i].get(), system_columns_, i,
                                    &field_paths_));
@@ -344,7 +345,7 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
       default:
         return absl::InvalidArgumentError("Unsupported column type.");
     }
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Tensor tensor,
         Tensor::Create(dtype, shape, std::move(tensor_data), column_names[i]));
     tensors.push_back(std::move(tensor));
@@ -363,7 +364,7 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name) {
   std::string column_prefix = absl::StrCat(on_device_query_name, "/");
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor entry_tensor,
       checkpoint->GetTensor(absl::StrCat(
           column_prefix, fcp::confidential_compute::kPrivateLoggerEntryKey)));
@@ -373,7 +374,7 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
         absl::StrFormat("`%s` tensor must be a string tensor",
                         fcp::confidential_compute::kPrivateLoggerEntryKey));
   }
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor time_tensor,
       checkpoint->GetTensor(absl::StrCat(
           column_prefix, fcp::confidential_compute::kEventTimeColumnName)));
@@ -386,7 +387,7 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
 
   // Rename the time tensor to remove the column prefix. Pipelines that process
   // Message-based checkpoints don't use the column name prefix.
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       time_tensor.set_name(fcp::confidential_compute::kEventTimeColumnName));
 
   std::vector<std::unique_ptr<Message>> messages;

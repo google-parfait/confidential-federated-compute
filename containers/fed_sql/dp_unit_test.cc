@@ -19,6 +19,7 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/optional.h"
 #include "containers/common/input.h"
@@ -170,7 +171,7 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
 
   // Key tensor
   auto key_data = std::make_unique<MutableVectorData<int64_t>>(std::move(keys));
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor key_tensor,
       Tensor::Create(DataType::DT_INT64, TensorShape({(int64_t)num_rows}),
                      std::move(key_data)));
@@ -179,7 +180,7 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
 
   // Val tensor
   auto val_data = std::make_unique<MutableVectorData<int64_t>>(std::move(vals));
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor val_tensor,
       Tensor::Create(DataType::DT_INT64, TensorShape({(int64_t)num_rows}),
                      std::move(val_data)));
@@ -187,7 +188,7 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
   tensors.push_back(std::move(val_tensor));
 
   // Event time tensor
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor event_times_tensor,
       Tensor::Create(DataType::DT_STRING, {(int64_t)num_rows},
                      CreateStringTestData(std::move(event_times))));
@@ -198,9 +199,10 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
   for (auto& [name, values] : dp_columns) {
     auto col_data =
         std::make_unique<MutableVectorData<int64_t>>(std::move(values));
-    FCP_ASSIGN_OR_RETURN(Tensor dp_column_tensor,
-                         Tensor::Create(DataType::DT_INT64, {(int64_t)num_rows},
-                                        std::move(col_data)));
+    ABSL_ASSIGN_OR_RETURN(
+        Tensor dp_column_tensor,
+        Tensor::Create(DataType::DT_INT64, {(int64_t)num_rows},
+                       std::move(col_data)));
     dp_column_tensor.set_name(name);
     tensors.push_back(std::move(dp_column_tensor));
   }
@@ -212,7 +214,7 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
 absl::StatusOr<Tensor> CreatePrivacyIdTensor(std::string id) {
   auto privacy_id_data = std::make_unique<MutableStringData>(1);
   privacy_id_data->Add(std::move(id));
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor privacy_id_tensor,
       Tensor::Create(DataType::DT_STRING, {}, std::move(privacy_id_data)));
   privacy_id_tensor.set_name(kPrivacyIdColumnName);

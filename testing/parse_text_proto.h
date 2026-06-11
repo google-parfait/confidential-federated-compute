@@ -19,8 +19,8 @@
 
 #include <type_traits>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "fcp/base/monitoring.h"
 #include "google/protobuf/text_format.h"
 
 namespace confidential_federated_compute {
@@ -54,7 +54,7 @@ class ParseProtoHelper {
     static_assert(std::is_base_of<google::protobuf::Message, T>::value &&
                   !std::is_same<google::protobuf::Message, T>::value);
     T msg;
-    FCP_CHECK(google::protobuf::TextFormat::ParseFromString(
+    CHECK(google::protobuf::TextFormat::ParseFromString(
         std::string(string_view_),  // NOLINT
         &msg));
     return msg;

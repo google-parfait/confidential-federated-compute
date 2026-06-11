@@ -21,9 +21,10 @@
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "fcp/base/monitoring.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/message.h"
@@ -193,7 +194,7 @@ template <typename T>
 T RowView::MessageRowView::GetMessageValue(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
-  FCP_LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
+  LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
 }
 
 template <>
@@ -204,8 +205,7 @@ inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
     return reflection->GetEnumValue(msg, field);
   }
-  FCP_CHECK(field->cpp_type() ==
-            google::protobuf::FieldDescriptor::CPPTYPE_INT32)
+  CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT32)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int32";
   return reflection->GetInt32(msg, field);
@@ -215,8 +215,7 @@ template <>
 inline int64_t RowView::MessageRowView::GetMessageValue<int64_t>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
-  FCP_CHECK(field->cpp_type() ==
-            google::protobuf::FieldDescriptor::CPPTYPE_INT64)
+  CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT64)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int64";
   return msg.GetReflection()->GetInt64(msg, field);
@@ -226,8 +225,7 @@ template <>
 inline float RowView::MessageRowView::GetMessageValue<float>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
-  FCP_CHECK(field->cpp_type() ==
-            google::protobuf::FieldDescriptor::CPPTYPE_FLOAT)
+  CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_FLOAT)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected float";
   return msg.GetReflection()->GetFloat(msg, field);
@@ -237,8 +235,7 @@ template <>
 inline double RowView::MessageRowView::GetMessageValue<double>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
-  FCP_CHECK(field->cpp_type() ==
-            google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE)
+  CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected double";
   return msg.GetReflection()->GetDouble(msg, field);
@@ -255,11 +252,10 @@ RowView::MessageRowView::GetMessageValue<absl::string_view>(
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
     return reflection->GetEnum(msg, field)->name();
   }
-  FCP_CHECK(field->cpp_type() ==
-            google::protobuf::FieldDescriptor::CPPTYPE_STRING)
+  CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected string";
-  FCP_CHECK(field->options().ctype() == google::protobuf::FieldOptions::STRING)
+  CHECK(field->options().ctype() == google::protobuf::FieldOptions::STRING)
       << "Field " << field->name() << " has unsupported ctype "
       << field->options().ctype();
   // GetStringReference copies the field into `unused` if the field is

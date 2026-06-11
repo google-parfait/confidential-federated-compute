@@ -17,10 +17,10 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -45,7 +45,7 @@ absl::StatusOr<absl::string_view> KmsEncryptor::GetReencryptionKey(
 
 absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
     absl::string_view reencryption_key, absl::string_view blob_id) const {
-  FCP_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
+  ABSL_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
 
   BlobHeader header;
   header.set_blob_id(blob_id);
@@ -78,11 +78,11 @@ absl::StatusOr<KmsEncryptor::EncryptedResult>
 KmsEncryptor::EncryptIntermediateResult(int reencryption_key_index,
                                         absl::string_view plaintext,
                                         absl::string_view blob_id) const {
-  FCP_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
-                       GetReencryptionKey(reencryption_key_index));
-  FCP_ASSIGN_OR_RETURN(std::string associated_data,
-                       CreateAssociatedData(reencryption_key, blob_id));
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
+                        GetReencryptionKey(reencryption_key_index));
+  ABSL_ASSIGN_OR_RETURN(std::string associated_data,
+                        CreateAssociatedData(reencryption_key, blob_id));
+  ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor_.Encrypt(plaintext, reencryption_key, associated_data));
 
@@ -97,18 +97,18 @@ KmsEncryptor::EncryptReleasableResult(
     int reencryption_key_index, absl::string_view plaintext,
     absl::string_view blob_id, std::optional<absl::string_view> src_state,
     absl::string_view dst_state) const {
-  FCP_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
-                       GetReencryptionKey(reencryption_key_index));
-  FCP_ASSIGN_OR_RETURN(std::string associated_data,
-                       CreateAssociatedData(reencryption_key, blob_id));
+  ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
+                        GetReencryptionKey(reencryption_key_index));
+  ABSL_ASSIGN_OR_RETURN(std::string associated_data,
+                        CreateAssociatedData(reencryption_key, blob_id));
   MessageEncryptor message_encryptor;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor_.EncryptForRelease(
           plaintext, reencryption_key, associated_data, src_state, dst_state,
           [this](absl::string_view message) -> absl::StatusOr<std::string> {
-            FCP_ASSIGN_OR_RETURN(auto signature,
-                                 signing_key_handle_->Sign(message));
+            ABSL_ASSIGN_OR_RETURN(auto signature,
+                                  signing_key_handle_->Sign(message));
             return std::move(*signature.mutable_signature());
           }));
 

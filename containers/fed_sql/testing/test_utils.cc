@@ -20,6 +20,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "fcp/confidentialcompute/constants.h"
@@ -141,25 +142,26 @@ absl::StatusOr<std::string> BuildMessageCheckpoint(
       absl::StrCat(on_device_query_name, "/", kPrivateLoggerEntryKey);
 
   // Create entry tensor
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto entry_tensor,
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(serialized_messages.size())},
                      CreateStringTestData(std::move(serialized_messages))));
-  FCP_RETURN_IF_ERROR(builder->Add(entry_tensor_name, std::move(entry_tensor)));
+  ABSL_RETURN_IF_ERROR(
+      builder->Add(entry_tensor_name, std::move(entry_tensor)));
 
   // Create event_time tensor
   std::string event_time_tensor_name =
       absl::StrCat(on_device_query_name, "/", kEventTimeColumnName);
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto time_tensor,
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(event_times.size())},
                      CreateStringTestData(std::move(event_times))));
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       builder->Add(event_time_tensor_name, std::move(time_tensor)));
 
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord, builder->Build());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint_cord, builder->Build());
   return std::string(checkpoint_cord);
 }
 

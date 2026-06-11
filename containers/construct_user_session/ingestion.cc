@@ -22,6 +22,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -30,7 +31,6 @@
 #include "absl/types/span.h"
 #include "containers/common/checkpoint_utils.h"
 #include "containers/common/row_set.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -49,14 +49,14 @@ absl::StatusOr<DeserializedCheckpoint> DeserializeCheckpoint(
     CheckpointParser& checkpoint, absl::string_view on_device_query_name) {
   // Extract system tensors via the shared helpers (which handle all
   // dtype and shape validation internally).
-  FCP_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(checkpoint));
-  FCP_ASSIGN_OR_RETURN(Tensor event_times,
-                       GetEventTime(checkpoint, on_device_query_name));
+  ABSL_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(checkpoint));
+  ABSL_ASSIGN_OR_RETURN(Tensor event_times,
+                        GetEventTime(checkpoint, on_device_query_name));
   const size_t num_rows = event_times.num_elements();
 
   // Load all tensors and erase the two system tensor keys that have
   // already been processed.
-  FCP_ASSIGN_OR_RETURN(auto all_tensors, checkpoint.LoadAllTensors());
+  ABSL_ASSIGN_OR_RETURN(auto all_tensors, checkpoint.LoadAllTensors());
   all_tensors.erase(std::string(kPrivacyIdColumnName));
   all_tensors.erase(
       absl::StrCat(on_device_query_name, "/", kEventTimeColumnName));

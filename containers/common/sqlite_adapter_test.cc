@@ -17,11 +17,11 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "containers/common/input.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
 #include "gmock/gmock.h"
@@ -237,13 +237,13 @@ class AddTableContentsTest : public SqliteAdapterTest {
       std::string str_col_name = "str_vals") {
     std::vector<Tensor> contents;
 
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Tensor int_tensor,
         Tensor::Create(DataType::DT_INT64,
                        {static_cast<int64_t>(int_vals.size())},
                        CreateTestData<int64_t>(int_vals), int_col_name));
 
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Tensor str_tensor,
         Tensor::Create(DataType::DT_STRING,
                        {static_cast<int64_t>(str_vals.size())},

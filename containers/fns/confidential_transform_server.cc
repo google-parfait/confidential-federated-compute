@@ -23,13 +23,13 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "containers/confidential_transform_server_base.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 
 namespace confidential_federated_compute::fns {
 namespace {
@@ -75,9 +75,9 @@ absl::Status FnConfidentialTransform::StreamInitializeTransform(
           "Malformed configuration file is found.");
     }
   }
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<FnFactory> fn_factory,
-                       fn_factory_provider_(configuration, config_constraints,
-                                            write_configuration_map));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<FnFactory> fn_factory,
+                        fn_factory_provider_(configuration, config_constraints,
+                                             write_configuration_map));
   fn_factory_.emplace(std::move(fn_factory));
   return absl::OkStatus();
 }
@@ -162,8 +162,8 @@ absl::Status FnConfidentialTransform::ReadWriteConfigurationRequest(
 
   auto& [current_file_path, expected_total_size_bytes, commit] =
       write_configuration_map_[current_configuration_id_];
-  FCP_RETURN_IF_ERROR(WriteCordToTempFile(current_file_path, file_open_mode,
-                                          write_configuration.data()));
+  ABSL_RETURN_IF_ERROR(WriteCordToTempFile(current_file_path, file_open_mode,
+                                           write_configuration.data()));
   // Update the commit status of the data blob in write_configuration_map_.
   commit = write_configuration.commit();
 

@@ -27,7 +27,6 @@ cc_library(
         "//containers:session",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status:statusor",
-        "@federated-compute//fcp/base",
         "@federated-compute//fcp/base:status_converters",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

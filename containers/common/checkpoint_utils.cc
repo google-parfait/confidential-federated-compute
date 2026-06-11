@@ -17,11 +17,11 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -35,8 +35,8 @@ using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
 
 absl::StatusOr<std::string> GetPrivacyId(CheckpointParser& parser) {
-  FCP_ASSIGN_OR_RETURN(Tensor privacy_id_tensor,
-                       parser.GetTensor(kPrivacyIdColumnName));
+  ABSL_ASSIGN_OR_RETURN(Tensor privacy_id_tensor,
+                        parser.GetTensor(kPrivacyIdColumnName));
   if (privacy_id_tensor.dtype() != DataType::DT_STRING) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "`%s` tensor must be a string tensor", kPrivacyIdColumnName));
@@ -54,7 +54,7 @@ absl::StatusOr<Tensor> GetEventTime(CheckpointParser& parser,
   // a 1D string Tensor.
   const std::string time_tensor_name =
       absl::StrCat(on_device_query_name, "/", kEventTimeColumnName);
-  FCP_ASSIGN_OR_RETURN(Tensor time_tensor, parser.GetTensor(time_tensor_name));
+  ABSL_ASSIGN_OR_RETURN(Tensor time_tensor, parser.GetTensor(time_tensor_name));
   if (time_tensor.dtype() != DataType::DT_STRING) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "`%s` tensor must be a string tensor", time_tensor_name));

@@ -14,7 +14,6 @@
 #include "containers/blob_metadata.h"
 
 #include "absl/status/status_matchers.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

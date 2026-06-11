@@ -20,13 +20,13 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "benchmark/benchmark.h"
 #include "containers/common/row_set.h"
 #include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/session_utils.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
@@ -176,19 +176,19 @@ absl::StatusOr<std::vector<Tensor>> CreateTableContents(
     absl::string_view str_col_name = "str_vals") {
   std::vector<Tensor> contents;
 
-  FCP_ASSIGN_OR_RETURN(Tensor int_tensor,
-                       Tensor::Create(DataType::DT_INT64,
-                                      {static_cast<int64_t>(int_vals.size())},
-                                      CreateTestData<int64_t>(int_vals),
-                                      std::string(int_col_name)));
+  ABSL_ASSIGN_OR_RETURN(Tensor int_tensor,
+                        Tensor::Create(DataType::DT_INT64,
+                                       {static_cast<int64_t>(int_vals.size())},
+                                       CreateTestData<int64_t>(int_vals),
+                                       std::string(int_col_name)));
 
-  FCP_ASSIGN_OR_RETURN(Tensor str_tensor,
-                       Tensor::Create(DataType::DT_STRING,
-                                      {static_cast<int64_t>(str_vals.size())},
-                                      CreateStringTestData(str_vals),
-                                      std::string(str_col_name)));
+  ABSL_ASSIGN_OR_RETURN(Tensor str_tensor,
+                        Tensor::Create(DataType::DT_STRING,
+                                       {static_cast<int64_t>(str_vals.size())},
+                                       CreateStringTestData(str_vals),
+                                       std::string(str_col_name)));
 
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor event_time_tensor,
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(event_times.size())},
@@ -247,14 +247,14 @@ absl::StatusOr<std::vector<Input>> CreateMessageInput(
   }
 
   std::vector<Tensor> system_columns;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tensor event_time_tensor,
       Tensor::Create(DataType::DT_STRING,
                      {static_cast<int64_t>(event_times.size())},
                      CreateStringTestData(event_times), kEventTimeColumnName));
   system_columns.push_back(std::move(event_time_tensor));
 
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Input input, Input::CreateFromMessages(std::move(messages),
                                              std::move(system_columns), {}));
   std::vector<Input> inputs;

@@ -19,13 +19,13 @@
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "fcp/base/compression.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
@@ -55,8 +55,8 @@ absl::StatusOr<std::string> Decompress(
       return std::string(input);
 
     case BlobMetadata::COMPRESSION_TYPE_GZIP: {
-      FCP_ASSIGN_OR_RETURN(absl::Cord decompressed,
-                           fcp::UncompressWithGzip(input));
+      ABSL_ASSIGN_OR_RETURN(absl::Cord decompressed,
+                            fcp::UncompressWithGzip(input));
       return std::string(decompressed);
     }
 
@@ -115,7 +115,7 @@ absl::StatusOr<std::string> Decryptor::DecryptBlob(const BlobMetadata& metadata,
         return absl::InvalidArgumentError(
             "Blob to decrypt must contain kms_symmetric_key_associated_data");
       }
-      FCP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           decrypted,
           message_decryptor_.Decrypt(
               blob, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
@@ -158,21 +158,21 @@ absl::StatusOr<BlobProvenance> VerifyBlobProvenance(
     absl::string_view signing_key_endorsement, absl::string_view kms_public_key,
     absl::string_view expected_invocation_id) {
   // Create a signature verifier that uses the KMS public key.
-  FCP_ASSIGN_OR_RETURN(Ec2Key kms_key, Ec2Key::Decode(kms_public_key));
-  FCP_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier kms_verifier,
-                       CreateP256Verifier(kms_key));
+  ABSL_ASSIGN_OR_RETURN(Ec2Key kms_key, Ec2Key::Decode(kms_public_key));
+  ABSL_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier kms_verifier,
+                        CreateP256Verifier(kms_key));
 
   // Parse and verify the signing key endorsement.
-  FCP_ASSIGN_OR_RETURN(Ec2Cwt endorsement,
-                       Ec2Cwt::Decode(signing_key_endorsement));
+  ABSL_ASSIGN_OR_RETURN(Ec2Cwt endorsement,
+                        Ec2Cwt::Decode(signing_key_endorsement));
   if (endorsement.algorithm != kms_key.algorithm) {
     return absl::InvalidArgumentError(
         "signing key endorsement has wrong algorithm");
   }
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string sig_structure,
       Ec2Cwt::GetSigStructureForVerifying(signing_key_endorsement, ""));
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       kms_verifier.Verify(sig_structure, endorsement.signature));
   if (!endorsement.public_key) {
     return absl::InvalidArgumentError(
@@ -184,11 +184,11 @@ absl::StatusOr<BlobProvenance> VerifyBlobProvenance(
     return absl::InvalidArgumentError(
         "signing key endorsement has wrong invocation ID");
   }
-  FCP_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier endorsed_verifier,
-                       CreateP256Verifier(*endorsement.public_key));
+  ABSL_ASSIGN_OR_RETURN(EcdsaP256R1SignatureVerifier endorsed_verifier,
+                        CreateP256Verifier(*endorsement.public_key));
 
   // Verify the data's signature.
-  FCP_RETURN_IF_ERROR(endorsed_verifier.Verify(data, signature));
+  ABSL_RETURN_IF_ERROR(endorsed_verifier.Verify(data, signature));
 
   return BlobProvenance{
       .transform_index = *endorsement.transform_index,

@@ -21,13 +21,13 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "containers/common/row_set.h"
 #include "containers/common/row_view.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/client/example_query_result.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "fcp/protos/data_type.pb.h"
@@ -334,22 +334,22 @@ SqliteAdapter::~SqliteAdapter() { sqlite3_close(db_); }
 
 absl::Status SqliteAdapter::DefineTable(TableSchema schema) {
   sqlite3_stmt* stmt;
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(
       sqlite3_prepare_v2(db_, schema.create_table_sql().data(),
                          schema.create_table_sql().size(), &stmt, nullptr)));
   StatementFinalizer finalizer(stmt);
 
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
   table_schema_.emplace(std::move(schema));
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Tensor>> SqliteAdapter::ExecuteQuery(
     const SqlConfiguration& configuration, RowSet rows) {
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
-                       SqliteAdapter::Create());
-  FCP_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
-  FCP_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SqliteAdapter> sqlite,
+                        SqliteAdapter::Create());
+  ABSL_RETURN_IF_ERROR(sqlite->DefineTable(configuration.input_schema));
+  ABSL_RETURN_IF_ERROR(sqlite->AddTableContents(rows));
   return sqlite->EvaluateQuery(configuration.query,
                                configuration.output_columns);
 }
@@ -358,21 +358,21 @@ absl::Status SqliteAdapter::InsertRows(const RowSet& rows,
                                        absl::string_view insert_stmt,
                                        absl::Span<const int> column_indices) {
   sqlite3_stmt* stmt;
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_prepare_v2(
       db_, insert_stmt.data(), insert_stmt.size(), &stmt, nullptr)));
   StatementFinalizer finalizer(stmt);
 
   int ordinal = 1;
   for (const auto& row : rows) {
     for (const auto& col_index : column_indices) {
-      FCP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           BindValue(stmt, ordinal, row, col_index, result_handler_));
       ordinal++;
     }
   }
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_reset(stmt)));
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_clear_bindings(stmt)));
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_step(stmt)));
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_reset(stmt)));
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(sqlite3_clear_bindings(stmt)));
 
   return absl::OkStatus();
 }
@@ -386,7 +386,7 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
   if (rows.size() == 0) {
     return absl::OkStatus();
   }
-  FCP_RETURN_IF_ERROR(ValidateRowSet(rows, *table_schema_));
+  ABSL_RETURN_IF_ERROR(ValidateRowSet(rows, *table_schema_));
 
   // The RowSet may contain columns that are not present in the table schema.
   // For example, the table schema will not contain the input columns used for
@@ -422,8 +422,8 @@ absl::Status SqliteAdapter::AddTableContents(const RowSet& rows) {
           absl::StrJoin(
               std::vector<absl::string_view>(batch_size, row_template), ", "));
     }
-    FCP_RETURN_IF_ERROR(InsertRows(rows.subspan(current_row, batch_size),
-                                   insert_stmt, column_indices));
+    ABSL_RETURN_IF_ERROR(InsertRows(rows.subspan(current_row, batch_size),
+                                    insert_stmt, column_indices));
     current_row += batch_size;
   }
 
@@ -464,17 +464,17 @@ absl::StatusOr<std::vector<Tensor>> SqliteAdapter::EvaluateQuery(
   }
 
   sqlite3_stmt* stmt;
-  FCP_RETURN_IF_ERROR(result_handler_.ToStatus(
+  ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(
       sqlite3_prepare_v2(db_, query.data(), query.size(), &stmt, nullptr)));
   StatementFinalizer finalizer(stmt);
-  FCP_RETURN_IF_ERROR(ValidateQueryOutputColumns(stmt, output_columns));
+  ABSL_RETURN_IF_ERROR(ValidateQueryOutputColumns(stmt, output_columns));
 
   // SQLite uses `sqlite3_step()` to iterate over result rows, and
   // `sqlite_column_*()` functions to extract values for each column.
   int num_rows = 0;
   while (true) {
     int step_result = sqlite3_step(stmt);
-    FCP_RETURN_IF_ERROR(result_handler_.ToStatus(step_result));
+    ABSL_RETURN_IF_ERROR(result_handler_.ToStatus(step_result));
     if (step_result != SQLITE_ROW) {
       break;
     }
@@ -486,17 +486,17 @@ absl::StatusOr<std::vector<Tensor>> SqliteAdapter::EvaluateQuery(
             "SQLite adapter does not support NULL result values.",
             output_columns.at(i).name()));
       }
-      FCP_RETURN_IF_ERROR(ReadSqliteColumn(stmt, output_columns.at(i).type(), i,
-                                           result_handler_,
-                                           result_columns.at(i).get()));
+      ABSL_RETURN_IF_ERROR(ReadSqliteColumn(stmt, output_columns.at(i).type(),
+                                            i, result_handler_,
+                                            result_columns.at(i).get()));
     }
   }
   std::vector<Tensor> result(output_columns.size());
 
   for (int i = 0; i < output_columns.size(); ++i) {
-    FCP_ASSIGN_OR_RETURN(DataType dtype,
-                         SqlDataTypeToTensorDtype(output_columns.at(i).type()));
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
+        DataType dtype, SqlDataTypeToTensorDtype(output_columns.at(i).type()));
+    ABSL_ASSIGN_OR_RETURN(
         Tensor column_tensor,
         Tensor::Create(dtype, {num_rows}, std::move(result_columns.at(i)),
                        output_columns.at(i).name()));

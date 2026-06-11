@@ -22,6 +22,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
@@ -33,7 +34,6 @@
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
@@ -255,7 +255,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         input.status()));
   }
   if (inference_model_.HasModel()) {
-    FCP_RETURN_IF_ERROR(inference_model_.RunInference(*input));
+    ABSL_RETURN_IF_ERROR(inference_model_.RunInference(*input));
   }
 
   // TODO: Calculate the DP unit for each row in the blob and add a RowLocation
@@ -311,8 +311,8 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
 KmsFedSqlSession::Merge(fcp::confidentialcompute::BlobMetadata metadata,
                         std::string unencrypted_data) {
   //  Merges can be immediately processed.
-  FCP_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
-                       UnbundleRangeTracker(unencrypted_data));
+  ABSL_ASSIGN_OR_RETURN(RangeTracker other_range_tracker,
+                        UnbundleRangeTracker(unencrypted_data));
   if (!range_tracker_.Merge(other_range_tracker)) {
     return absl::FailedPreconditionError(
         "Failed to merge due to conflicting ranges.");
@@ -378,7 +378,7 @@ KmsFedSqlSession::CommitRowsGroupingByInput(
     std::unique_ptr<CheckpointParser> parser;
     // Execute the per-client SQL query if configured on each uncommitted blob.
     if (sql_configuration_.has_value()) {
-      FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&uncommitted_input));
+      ABSL_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&uncommitted_input));
       absl::StatusOr<std::vector<Tensor>> sql_result =
           SqliteAdapter::ExecuteQuery(*sql_configuration_, row_set);
       if (!sql_result.ok()) {
@@ -438,7 +438,7 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
 
   int num_committed = uncommitted_inputs_.size();
   // TODO: Commit rows by DP unit if DP parameters are configured.
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<absl::Status> ignored_errors,
       CommitRowsGroupingByInput(std::move(uncommitted_inputs_), range));
 
@@ -505,8 +505,8 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::Serialize(Context& context) {
   // Serialize the aggregator and bundle it with the range tracker.
-  FCP_ASSIGN_OR_RETURN(std::string serialized_data,
-                       std::move(*aggregator_).Serialize());
+  ABSL_ASSIGN_OR_RETURN(std::string serialized_data,
+                        std::move(*aggregator_).Serialize());
   aggregator_.reset();
   std::string bundled_data =
       BundleRangeTracker(std::move(serialized_data), range_tracker_);
@@ -550,8 +550,8 @@ KmsFedSqlSession::Partition(Context& context, uint64_t num_partitions) {
         "Number of partitions must be greater than zero.");
   }
 
-  FCP_ASSIGN_OR_RETURN(std::vector<std::string> partitions,
-                       std::move(*aggregator_).Partition(num_partitions));
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> partitions,
+                        std::move(*aggregator_).Partition(num_partitions));
   aggregator_.reset();
   CHECK(partitions.size() == num_partitions);
   for (int i = 0; i < num_partitions; ++i) {
@@ -575,10 +575,10 @@ KmsFedSqlSession::Partition(Context& context, uint64_t num_partitions) {
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::Report(Context& context) {
   // Update the private state
-  FCP_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
+  ABSL_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
 
   // Produce the final report.
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
   // Emit the final encrypted result.
   std::string release_token;
   if (!context.EmitReleasable(
@@ -596,7 +596,7 @@ KmsFedSqlSession::Report(Context& context) {
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::ReportPartition(Context& context) {
   // Produce the final report.
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
   // If there is unlimited budget, emit an unencrypted result
   // since budget tracking is not required.
   if (private_state_->budget.HasUnlimitedBudget()) {
@@ -636,7 +636,7 @@ KmsFedSqlSession::ReportPrivateState(Context& context) {
   }
 
   // Update the private state
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       private_state_->budget.UpdateBudget(private_state_->consumed_tracker));
 
   // Produce the finalized private state.
@@ -673,7 +673,7 @@ KmsFedSqlSession::ReportAutotuningParams(Context& context) {
   // - The result is reported from the aggregator, similar to Report.
   // - The RangeTracker is bundled with the result, as in Serialize.
   // - The combined result is emitted temporarily encrypted as in Serialize.
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
   absl::Cord bundled_data =
       BundleAny(range_tracker_.Serialize(), std::move(checkpoint));
 
@@ -693,8 +693,8 @@ absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {
   }
   // Fail if there were no valid inputs, as this likely indicates some
   // issue with configuration of the overall workload.
-  FCP_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
-                       aggregator_->GetNumCheckpointsAggregated());
+  ABSL_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
+                        aggregator_->GetNumCheckpointsAggregated());
   if (num_checkpoints_aggregated < 1) {
     return absl::InvalidArgumentError(
         "The aggregation can't be successfully completed because no "
@@ -707,9 +707,9 @@ absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-  FCP_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
+  ABSL_RETURN_IF_ERROR(aggregator_->Report(*checkpoint_builder));
   aggregator_.reset();
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, checkpoint_builder->Build());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, checkpoint_builder->Build());
   return checkpoint;
 }
 

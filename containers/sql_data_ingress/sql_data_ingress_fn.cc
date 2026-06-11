@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "containers/common/input.h"
@@ -29,7 +30,6 @@
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/message_description.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -119,11 +119,11 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
   }
 
   FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
       parser_factory.Create(absl::Cord(std::move(input.data))));
 
-  FCP_ASSIGN_OR_RETURN(auto tensor_map, parser->LoadAllTensors());
+  ABSL_ASSIGN_OR_RETURN(auto tensor_map, parser->LoadAllTensors());
   std::vector<Tensor> tensors;
   tensors.reserve(sql_configuration_.input_schema.column_size());
   for (const auto& col : sql_configuration_.input_schema.column()) {
@@ -135,11 +135,11 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
     tensors.push_back(std::move(it->second));
   }
 
-  FCP_ASSIGN_OR_RETURN(Input sql_input,
-                       Input::CreateFromTensors(std::move(tensors)));
+  ABSL_ASSIGN_OR_RETURN(Input sql_input,
+                        Input::CreateFromTensors(std::move(tensors)));
 
-  FCP_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&sql_input));
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&sql_input));
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<Tensor> sql_result,
       SqliteAdapter::ExecuteQuery(sql_configuration_, row_set));
 
@@ -156,9 +156,9 @@ absl::Status SqlDataIngressDoFn::Do(KV input, Context& context) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
 
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       builder->Add(kOutputTensorName, std::move(sql_result[0])));
-  FCP_ASSIGN_OR_RETURN(absl::Cord checkpoint, builder->Build());
+  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, builder->Build());
 
   if (!context.EmitEncrypted(
           /*reencryption_key_index=*/0,
@@ -216,7 +216,7 @@ absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideSqlDataIngressFnFactory(
       return absl::InvalidArgumentError(
           "Failed to parse logged_message_descriptor_set.");
     }
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         message_factory,
         FileDescriptorSetMessageFactory::Create(
             descriptor_set, message_description.message_name()));
@@ -224,7 +224,7 @@ absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideSqlDataIngressFnFactory(
         config.private_logger_uploads_config().on_device_query_name();
   }
 
-  FCP_RETURN_IF_ERROR(SqliteAdapter::Initialize());
+  ABSL_RETURN_IF_ERROR(SqliteAdapter::Initialize());
 
   return std::make_unique<SqlDataIngressFnFactory>(
       std::move(sql_configuration), std::move(message_factory),
