@@ -1,0 +1,9 @@
+--- src/com/google/android/as/oss/privateinference/library/oakutil/public_keys.proto	2026-05-27 02:18:20.361324686 +0000
++++ src/com/google/android/as/oss/privateinference/library/oakutil/public_keys.proto	2026-05-27 02:18:24.273389595 +0000
+@@ -26,5 +26,5 @@
+   bytes tink_serialized_public_keyset = 1;
+ 
+   // Time until keyset is guaranteed to be valid for verification.
+-  google.protobuf.Timestamp valid_until = 2;
++  .google.protobuf.Timestamp valid_until = 2;
+ }

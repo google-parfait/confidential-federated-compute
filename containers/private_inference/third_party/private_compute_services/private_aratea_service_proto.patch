@@ -1,0 +1,98 @@
+# Removed 'deadline' option from RPC definitions as it is a Google-internal
+# option and not supported in the open-source build environment.
+# Also adds fields and messages needed for Aratea Private Inference.
+--- src/com/google/android/as/oss/privateinference/api/private_aratea_service.proto	2026-05-27 02:26:21.691832205 +0000
++++ src/com/google/android/as/oss/privateinference/api/private_aratea_service.proto	2026-05-27 02:26:24.648282265 +0000
+@@ -17,31 +17,29 @@
+ package mdi.privatearatea;
+ 
+ import "src/com/google/android/as/oss/privateinference/api/anonymous_token_request.proto";
+-
+-import
+-"java/com/google/android/as/oss/privateinference/api/device_attestation_request.proto";
+-
+-import "third_party/oak/proto/session/session.proto";
++import "src/com/google/android/as/oss/privateinference/api/device_attestation_request.proto";
++import "proto/session/session.proto";
++import "src/com/google/android/as/oss/privateinference/service/api/private_inference.proto";
+ 
+ option java_outer_classname = "PrivateArateaServiceOuterClass";
+ option java_package = "com.google.search.mdi.privatearatea.proto";
+ 
+ service PrivateArateaService {
+   // Starts a Noise session by performing remote attestation, and a secure
+-  // handshake. <http://www.noiseprotocol.org/noise.html>
++  // handshake. http://www.noiseprotocol.org/noise.html
+   //
+   // After a secure session is established, the client and server exchange a
+   // stream of encrypted messages.
+   rpc StartNoiseSession(stream oak.session.v1.SessionRequest)
+-      returns (stream oak.session.v1.SessionResponse) {
+-    option deadline = 600.0;
+-  }
++      returns (stream oak.session.v1.SessionResponse) {}
+ }
+ 
+ // An open-sourced, binary-compatible subset of the PrivateArateaRequest
+ // message, containing only the request types needed from within PCS.
+-  message PcsPrivateArateaRequest {
++message PcsPrivateArateaRequest {
++  com.google.android.as.oss.privateinference.service.api.PcsPrivateInferenceFeatureName feature_name = 1;
+   oneof request {
++    PcsGenerateContentRequest generate_content_request = 4;
+     // This is the only request type that we use directly in pcs.
+     DeviceAttestationRequest device_attestation_request =
+         6
+@@ -51,4 +49,52 @@
+         8
+         ;
+   }
++  int32 request_id = 5;
++}
++
++message PcsPrivateArateaResponse {
++  oneof response {
++    PcsGenerateContentResponse generate_content_response = 3;
++  }
++  int32 request_id = 4;
++}
++
++message PcsGenerateContentRequest {
++  repeated PcsContent contents = 2;
++}
++
++// The base structured datatype containing multi-part content of a message.
++message PcsContent {
++  string role = 1;
++  // Ordered `Parts` that constitute a single message. Parts may have different
++  // IANA MIME types.
++  repeated PcsPart parts = 2;
++}
++
++// A datatype containing media that is part of a multi-part `Content` message.
++//
++// A `Part` consists of data which has an associated datatype. A `Part` can only
++// contain one of the accepted types in `Part.data`.
++message PcsPart {
++  oneof data {
++    // Text part (can be code).
++    string text = 1;
++  }
++}
++
++message PcsGenerateContentResponse {
++  repeated PcsCandidate candidates = 1;
++}
++
++message PcsCandidate {
++  PcsContent content = 2;
++  // The reason why the model stopped generating tokens.
++  enum FinishReason {
++    // Default value. This value is unused.
++    FINISH_REASON_UNSPECIFIED = 0;
++    // The model had a natural stop point or encountered the stop sequence.
++    STOP = 1;
++  }
++  // The reason why the model stopped generating tokens.
++  FinishReason finish_reason = 3;
+ }

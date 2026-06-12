@@ -29,6 +29,8 @@
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "src/com/google/android/as/oss/privateinference/api/private_aratea_service.pb.h"
+#include "src/com/google/android/as/oss/privateinference/service/api/private_inference.pb.h"
 
 namespace confidential_federated_compute::private_inference {
 namespace {
@@ -137,8 +139,15 @@ TEST(PiClientTest, RequestResponseDecryptionSucceeds) {
   EXPECT_EQ(decrypted_bytes, plaintext_request);
 
   // Server sends response
-  std::string plaintext_response = "generated answer";
-  auto server_write_status = server_session->Write(plaintext_response);
+  ::mdi::privatearatea::PcsPrivateArateaResponse proto_response;
+  proto_response.set_request_id(42);
+  auto* candidate =
+      proto_response.mutable_generate_content_response()->add_candidates();
+  candidate->mutable_content()->add_parts()->set_text("generated answer");
+  candidate->set_finish_reason(::mdi::privatearatea::PcsCandidate::STOP);
+  std::string serialized_response = proto_response.SerializeAsString();
+
+  auto server_write_status = server_session->Write(serialized_response);
   ASSERT_TRUE(server_write_status.ok());
 
   auto encrypted_response = server_session->GetOutgoingMessage();
@@ -153,7 +162,19 @@ TEST(PiClientTest, RequestResponseDecryptionSucceeds) {
 
   std::string payload =
       static_cast<std::string>(decrypted_response_or->value());
-  EXPECT_EQ(payload, "generated answer");
+
+  ::mdi::privatearatea::PcsPrivateArateaResponse parsed_response;
+  ASSERT_TRUE(parsed_response.ParseFromString(payload));
+  EXPECT_EQ(parsed_response.request_id(), 42);
+  EXPECT_EQ(parsed_response.generate_content_response()
+                .candidates(0)
+                .content()
+                .parts(0)
+                .text(),
+            "generated answer");
+  EXPECT_EQ(
+      parsed_response.generate_content_response().candidates(0).finish_reason(),
+      ::mdi::privatearatea::PcsCandidate::STOP);
 }
 
 TEST(PiClientTest, CreatePiClientFailsWhenServerIsUnreachable) {

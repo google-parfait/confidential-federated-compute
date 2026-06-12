@@ -1,0 +1,30 @@
+# Removed 'deadline' option from RPC definitions as it is a Google-internal
+# option and not supported in the open-source build environment.
+--- src/com/google/android/as/oss/privateinference/service/api/private_inference.proto	2026-05-27 02:26:13.247265735 +0000
++++ src/com/google/android/as/oss/privateinference/service/api/private_inference.proto	2026-05-27 02:26:15.470941350 +0000
+@@ -25,22 +25,16 @@
+   //
+   // Invokes a RPC for private inference.
+   rpc PerformInference(PcsPrivateInferenceRequest)
+-      returns (PcsPrivateInferenceResponse) {
+-    option deadline = 60.0;
+-  }
++      returns (PcsPrivateInferenceResponse) {}
+ 
+   // Prepares a session for private inference. Client apps should call this
+   // before starting a private inference session.
+   rpc PrepareInferenceSession(PrivateInferencePrepareRequest)
+-      returns (PrivateInferencePrepareResponse) {
+-    option deadline = 60.0;
+-  }
++      returns (PrivateInferencePrepareResponse) {}
+ 
+   // Invokes a streaming session for private inference.
+   rpc StartInferenceSession(stream PrivateInferenceSessionRequest)
+-      returns (stream PrivateInferenceSessionResponse) {
+-    option deadline = 60.0;
+-  }
++      returns (stream PrivateInferenceSessionResponse) {}
+ }
+ 
+ // Request for a Private Inference session.

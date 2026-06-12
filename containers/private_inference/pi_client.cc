@@ -21,24 +21,23 @@
 #include <utility>
 #include <vector>
 
+#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/security/credentials.h"
-#include "proto/verification_keys.pb.h"
-
-// Oak includes
-#include "proto/services/session_v1_service.grpc.pb.h"
-// Assuming these paths based on provided code, might need adjustment.
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
 #include "cc/oak_session/server_session.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/security/credentials.h"
 #include "oak_session_utils.h"
 #include "proto/services/session_v1_service.grpc.pb.h"
+#include "src/com/google/android/as/oss/privateinference/api/private_aratea_service.pb.h"
+#include "src/com/google/android/as/oss/privateinference/library/oakutil/public_keys.pb.h"
+#include "src/com/google/android/as/oss/privateinference/service/api/private_inference.pb.h"
 
 // Forward declaration of the Rust function.
 extern "C" {
@@ -49,6 +48,9 @@ update_peer_unidirectional_session_config(
     int tink_serialized_public_keyset_len);
 }
 
+ABSL_FLAG(std::string, feature_name, "FEATURE_NAME_PSI_MEMORY_GENERATION",
+          "Feature name for the Pi Server");
+
 constexpr absl::string_view kProdVerificationKeysPath =
     "private_inference/public_keys_prod_proto.binarypb";
 
@@ -56,15 +58,23 @@ namespace confidential_federated_compute::private_inference {
 
 namespace {
 
+using ::com::google::android::as::oss::privateinference::library::oakutil::
+    VerificationKeys;
+using ::com::google::android::as::oss::privateinference::service::api::
+    PcsPrivateInferenceFeatureName;
+using ::mdi::privatearatea::PcsGenerateContentRequest;
+using ::mdi::privatearatea::PcsPrivateArateaRequest;
+using ::mdi::privatearatea::PcsPrivateArateaResponse;
 using ::oak::session::ClientSession;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
-using ::private_inference::proto::VerificationKeys;
 
 class PiClientImpl : public PiClient {
  public:
-  explicit PiClientImpl(std::string server_address)
-      : server_address_(std::move(server_address)) {}
+  explicit PiClientImpl(std::string server_address,
+                        PcsPrivateInferenceFeatureName feature_name)
+      : server_address_(std::move(server_address)),
+        feature_name_(feature_name) {}
 
   absl::Status Initialize() {
     // 1. Establish channel
@@ -136,7 +146,16 @@ class PiClientImpl : public PiClient {
     // Session is already established and handshake completed during
     // initialization.
 
-    auto write_status = session_->Write(prompt);
+    // 3. Send PcsGenerateContentRequest wrapped in a
+    // PcsPrivateArateaRequest.
+    PcsPrivateArateaRequest request;
+    request.set_feature_name(feature_name_);
+
+    PcsGenerateContentRequest generate_request;
+    generate_request.add_contents()->add_parts()->set_text(prompt);
+    *request.mutable_generate_content_request() = generate_request;
+
+    auto write_status = session_->Write(request.SerializeAsString());
     if (!write_status.ok()) {
       return absl::Status(
           write_status.code(),
@@ -175,7 +194,40 @@ class PiClientImpl : public PiClient {
       }
 
       if (decrypted_message->has_value()) {
-        return static_cast<std::string>(decrypted_message->value());
+        std::string payload =
+            static_cast<std::string>(decrypted_message->value());
+
+        PcsPrivateArateaResponse response;
+        if (!response.ParseFromString(payload)) {
+          return absl::InternalError(
+              "PiClientImpl::Generate: Failed to parse "
+              "PcsPrivateArateaResponse");
+        }
+
+        if (response.has_generate_content_response()) {
+          const auto& generate_content_response =
+              response.generate_content_response();
+          if (generate_content_response.candidates_size() > 0) {
+            const auto& candidate = generate_content_response.candidates(0);
+            if (candidate.finish_reason() !=
+                ::mdi::privatearatea::PcsCandidate::STOP) {
+              LOG(WARNING)
+                  << "Finish reason is not STOP: "
+                  << ::mdi::privatearatea::PcsCandidate::FinishReason_Name(
+                         candidate.finish_reason());
+            }
+            if (candidate.content().parts_size() > 0) {
+              std::string result;
+              for (const auto& part : candidate.content().parts()) {
+                absl::StrAppend(&result, part.text());
+              }
+              return result;
+            }
+          }
+        }
+
+        return absl::InternalError(
+            "PiClientImpl::Generate: No text found in GenerateContentResponse");
       }
       auto pump_status2 = PumpOutgoingMessages(session_.get(), stream_.get());
       if (!pump_status2.ok()) {
@@ -190,6 +242,7 @@ class PiClientImpl : public PiClient {
 
  private:
   std::string server_address_;
+  PcsPrivateInferenceFeatureName feature_name_;
   grpc::ClientContext context_;
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<oak::services::OakSessionV1Service::Stub> stub_;
@@ -202,7 +255,17 @@ class PiClientImpl : public PiClient {
 
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
     std::string server_address) {
-  auto client = std::make_unique<PiClientImpl>(std::move(server_address));
+  std::string feature_name_str = absl::GetFlag(FLAGS_feature_name);
+  PcsPrivateInferenceFeatureName feature_name;
+  if (!::com::google::android::as::oss::privateinference::service::api::
+          PcsPrivateInferenceFeatureName_Parse(feature_name_str,
+                                               &feature_name)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse feature name: ", feature_name_str));
+  }
+
+  auto client =
+      std::make_unique<PiClientImpl>(std::move(server_address), feature_name);
   absl::Status status = client->Initialize();
   if (!status.ok()) {
     return status;
