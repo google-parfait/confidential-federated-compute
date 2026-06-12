@@ -102,9 +102,6 @@ class FedSqlConfidentialTransform final
   // Key used to hash sensitive values. Once we start partitioning the join
   // data, we likely want this to be held by the FedSqlSession instead.
   std::string sensitive_values_key_;
-  // Parameters for the differential privacy unit.
-  std::optional<DpUnitParameters> dp_unit_parameters_;
-  std::optional<SessionInferenceConfiguration> inference_configuration_;
   // Track the configuration ID of the current data blob passed to container
   // through `ReadWriteConfigurationRequest`.
   std::string current_configuration_id_;
@@ -118,18 +115,10 @@ class FedSqlConfidentialTransform final
       write_configuration_map_;
   // Initial private state shared between all sessions.
   std::shared_ptr<PrivateState> private_state_;
-  // Key ids that have already expired and must be removed from the budget.
-  absl::flat_hash_set<std::string> expired_key_ids_;
   // Configuration for the expected logged proto message. Set if the container
   // is configured for serialized Message checkpoints.
   std::shared_ptr<MessageFactory> message_factory_;
-  // The name of query that was executed on-device.
-  std::string on_device_query_name_ = "";
-  // The maximum number of output partitions allowed when using partitioned
-  // aggregation. If set to std::nullopt, then unpartitioned aggregation will
-  // be used i.e. all aggregates are merged together in a single worker before
-  // release.
-  std::optional<uint64_t> max_output_partitions_;
+  KmsSessionConfiguration session_config_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

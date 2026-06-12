@@ -170,11 +170,10 @@ KmsFedSqlSession CreateDefaultSession() {
       tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
           .value();
   Decryptor decryptor;
-  return KmsFedSqlSession(std::move(checkpoint_aggregator), intrinsics,
-                          std::nullopt, std::nullopt, CreatePrivateState("", 1),
-                          {},
-                          /*prototype=*/nullptr, "test_query", decryptor,
-                          /*max_output_partitions=*/10);
+  return KmsFedSqlSession(
+      std::move(checkpoint_aggregator), intrinsics, CreatePrivateState("", 1),
+      /*message_factory=*/nullptr, decryptor,
+      {.on_device_query_name = "test_query", .max_output_partitions = 10});
 }
 
 BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
@@ -299,7 +298,8 @@ class KmsFedSqlSessionWriteTest : public Test {
   void CreateSession(
       Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
       std::optional<RangeTracker> consumed_tracker = std::nullopt,
-      absl::Cord autotuning_data = absl::Cord{}) {
+      absl::Cord autotuning_data = absl::Cord{},
+      uint64_t min_agg_window_minutes = 0) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -312,13 +312,15 @@ class KmsFedSqlSessionWriteTest : public Test {
     )pb");
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
-        std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
-        std::nullopt,
+        std::move(checkpoint_aggregator), intrinsics_,
         CreatePrivateState(initial_private_state_, default_budget,
                            std::move(consumed_tracker),
                            std::move(autotuning_data)),
-        absl::flat_hash_set<std::string>(), nullptr, "test_query", decryptor,
-        /* max_output_partitions= */ 10);
+        /*message_factory=*/nullptr, decryptor,
+        KmsSessionConfiguration{
+            .on_device_query_name = "test_query",
+            .max_output_partitions = 10,
+            .min_agg_window_minutes = min_agg_window_minutes});
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -639,6 +641,153 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
   // input column
   EXPECT_THAT((*parser)->GetTensor("val_out"),
               IsOkAndHolds(IsTensor<int64_t>({1}, {4})));
+}
+
+TEST(KmsFedSqlSessionAggWindowTest, ReportSucceedsWhenAggWindowMeetsMinimum) {
+  // When the aggregation window meets or exceeds the minimum, Report succeeds.
+  std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  std::vector<Intrinsic> intrinsics =
+      tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
+          .value();
+  Decryptor decryptor;
+  KmsFedSqlSession session(std::move(checkpoint_aggregator), intrinsics,
+                           CreatePrivateState("", 1),
+                           /*message_factory=*/nullptr, decryptor,
+                           {.on_device_query_name = "test_query",
+                            .max_output_partitions = 10,
+                            .min_agg_window_minutes = 60});
+
+  ConfigureRequest configure_request;
+  MockContext context;
+  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+    raw_sql: "SELECT key, val * 2 AS val FROM input"
+    database_schema {
+      table {
+        name: "input"
+        column { name: "key" type: INT64 }
+        column { name: "val" type: INT64 }
+        create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
+      }
+    }
+    output_columns { name: "key" type: INT64 }
+    output_columns { name: "val" type: INT64 }
+  )pb");
+  configure_request.mutable_configuration()->PackFrom(sql_query);
+  ASSERT_THAT(session.Configure(configure_request, context), IsOk());
+
+  // Create a serialized aggregator with a range tracker that has
+  // an aggregation window of 120 (exceeds the 60 minimum).
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> input_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
+  std::string agg_data = std::move(*input_aggregator).Serialize().value();
+
+  RangeTracker range_tracker;
+  range_tracker.AddKey("key_foo");
+  range_tracker.AddRange(1, 3);
+  range_tracker.MergeAggWindow(Interval<uint64_t>(0, 7200));  // 7200s = 120 min
+  std::string blob = BundleRangeTracker(agg_data, range_tracker);
+
+  // Merge the blob (sets the agg window on the session's range_tracker_).
+  FedSqlContainerWriteConfiguration write_config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(write_config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob, 1, "");
+  ASSERT_THAT(session.Write(write_request, blob, context), IsOk());
+
+  // Report should succeed since agg window (7200s = 120 min) >= minimum (60
+  // min).
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  EXPECT_CALL(context, EmitReleasable)
+      .WillOnce([&](int, KmsFedSqlSession::KV kv,
+                    std::optional<absl::string_view>, absl::string_view,
+                    std::string&) { return true; });
+  BlobMetadata unused;
+  EXPECT_THAT(session.Finalize(finalize_request, unused, context), IsOk());
+}
+
+TEST(KmsFedSqlSessionAggWindowTest, ReportFailsWhenAggWindowBelowMinimum) {
+  // When the aggregation window is smaller than the minimum, Report fails.
+  std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  std::vector<Intrinsic> intrinsics =
+      tensorflow_federated::aggregation::ParseFromConfig(DefaultConfiguration())
+          .value();
+  Decryptor decryptor;
+  KmsFedSqlSession session(std::move(checkpoint_aggregator), intrinsics,
+                           CreatePrivateState("", 1),
+                           /*message_factory=*/nullptr, decryptor,
+                           {.on_device_query_name = "test_query",
+                            .max_output_partitions = 10,
+                            .min_agg_window_minutes = 60});
+
+  ConfigureRequest configure_request;
+  MockContext context;
+  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+    raw_sql: "SELECT key, val * 2 AS val FROM input"
+    database_schema {
+      table {
+        name: "input"
+        column { name: "key" type: INT64 }
+        column { name: "val" type: INT64 }
+        create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
+      }
+    }
+    output_columns { name: "key" type: INT64 }
+    output_columns { name: "val" type: INT64 }
+  )pb");
+  configure_request.mutable_configuration()->PackFrom(sql_query);
+  ASSERT_THAT(session.Configure(configure_request, context), IsOk());
+
+  // Create a serialized aggregator with a range tracker that has
+  // an aggregation window of only 30 (below the 60 minimum).
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto input_parser =
+      parser_factory.Create(absl::Cord(BuildFedSqlGroupByCheckpoint({4}, {3})))
+          .value();
+  std::unique_ptr<CheckpointAggregator> input_aggregator =
+      CheckpointAggregator::Create(DefaultConfiguration()).value();
+  ASSERT_THAT(input_aggregator->Accumulate(*input_parser), IsOk());
+  std::string agg_data = std::move(*input_aggregator).Serialize().value();
+
+  RangeTracker range_tracker;
+  range_tracker.AddKey("key_foo");
+  range_tracker.AddRange(1, 3);
+  range_tracker.MergeAggWindow(Interval<uint64_t>(0, 1800));  // 1800s = 30 min
+  std::string blob = BundleRangeTracker(agg_data, range_tracker);
+
+  // Merge the blob (sets the agg window on the session's range_tracker_).
+  FedSqlContainerWriteConfiguration write_config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(write_config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(blob, 1, "");
+  ASSERT_THAT(session.Write(write_request, blob, context), IsOk());
+
+  // Report should fail since agg window (1800s = 30 min) < minimum (60 min).
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  EXPECT_THAT(session.Finalize(finalize_request, unused, context),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("less than the minimum required")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
@@ -1401,6 +1550,11 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
 
 TEST_F(KmsFedSqlSessionWriteTest,
        MergeReportPrivateStateWithTimeWindowSucceeds) {
+  CreateSession(default_decryptor_, /*default_budget=*/5,
+                /*consumed_tracker=*/std::nullopt,
+                /*autotuning_data=*/absl::Cord{},
+                /*min_agg_window_minutes=*/15);
+
   PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     symmetric_keys { id: 2 symmetric_key: "key2" }
@@ -1486,6 +1640,69 @@ TEST_F(KmsFedSqlSessionWriteTest,
                 keys { partition_index: 3 symmetric_key: "key3" }
                 keys { partition_index: 4 symmetric_key: "key4" }
               )pb"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       MergeReportPrivateStateWithTimeWindowConstraintViolatedFails) {
+  CreateSession(default_decryptor_, /*default_budget=*/5,
+                /*consumed_tracker=*/std::nullopt,
+                /*autotuning_data=*/absl::Cord{},
+                /*min_agg_window_minutes=*/30);
+
+  // Merged time windows are (2400 - 1200) = 1200s = 20 minutes.
+  // The constraint is 30 minutes, so the check should fail.
+  PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 1 symmetric_key: "key1" }
+    symmetric_keys { id: 2 symmetric_key: "key2" }
+    expired_keys: "key_baz"
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_MERGE_PRIVATE_STATE
+  )pb");
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() = metadata;
+  auto write_result = session_->Write(
+      write_request, private_state.SerializeAsString(), context_);
+
+  private_state = PARSE_TEXT_PROTO(R"pb(
+    symmetric_keys { id: 3 symmetric_key: "key3" }
+    symmetric_keys { id: 4 symmetric_key: "key4" }
+    expired_keys: "key_baz"
+    keys: "key_foo"
+    keys: "key_bar"
+    values: 1
+    values: 4
+    values: 7
+    values: 10
+    start_time { seconds: 1200 }
+    end_time { seconds: 2400 }
+  )pb");
+  metadata.set_total_size_bytes(private_state.SerializeAsString().size());
+  *write_request.mutable_first_request_metadata() = metadata;
+  write_result = session_->Write(write_request,
+                                 private_state.SerializeAsString(), context_);
+
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_PRIVATE_STATE
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+
+  BlobMetadata unused;
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("less than the minimum required")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
@@ -1831,11 +2048,11 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
   void SetPrivateStateAndConfigure(BudgetState budget_state) {
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
-        std::move(checkpoint_aggregator_), intrinsics_, std::nullopt,
-        std::nullopt, CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(),
-        /*prototype=*/nullptr, "test_query", decryptor_,
-        /*max_output_partitions=*/10);
+        std::move(checkpoint_aggregator_), intrinsics_,
+        CreatePrivateState(initial_private_state_, 5),
+        /*message_factory=*/nullptr, decryptor_,
+        KmsSessionConfiguration{.on_device_query_name = "test_query",
+                                .max_output_partitions = 10});
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
       raw_sql: "SELECT key, val * 2 AS val FROM input"
@@ -2003,12 +2220,12 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
     )pb");
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
-        std::move(checkpoint_aggregator), intrinsics_, std::nullopt,
-        std::nullopt, CreatePrivateState(initial_private_state_, 5),
-        absl::flat_hash_set<std::string>(),
+        std::move(checkpoint_aggregator), intrinsics_,
+        CreatePrivateState(initial_private_state_, 5),
         std::make_shared<TestMessageFactory>(message_helper_.prototype()),
-        "test_query", decryptor_,
-        /*max_output_partitions=*/10);
+        decryptor_,
+        KmsSessionConfiguration{.on_device_query_name = "test_query",
+                                .max_output_partitions = 10});
     ConfigureRequest request;
     // The input table will have columns "key" and "val" (from message) and
     // "confidential_compute_event_time" (system column). The aggregator expects
