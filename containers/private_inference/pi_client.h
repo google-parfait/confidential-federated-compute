@@ -20,6 +20,8 @@
 
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "src/com/google/android/as/oss/privateinference/api/private_aratea_service.pb.h"
+#include "src/com/google/android/as/oss/privateinference/service/api/private_inference.pb.h"
 
 namespace confidential_federated_compute::private_inference {
 

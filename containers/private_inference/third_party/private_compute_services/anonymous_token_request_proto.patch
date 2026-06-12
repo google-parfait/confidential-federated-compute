@@ -1,0 +1,11 @@
+--- src/com/google/android/as/oss/privateinference/api/anonymous_token_request.proto	2026-05-26 04:39:27.496412203 +0000
++++ src/com/google/android/as/oss/privateinference/api/anonymous_token_request.proto	2026-05-26 04:39:29.189488003 +0000
+@@ -16,7 +16,7 @@
+ 
+ package mdi.privatearatea;
+ 
+-import "third_party/protobuf/cpp_features.proto";
++import "google/protobuf/cpp_features.proto";
+ 
+ option features.(pb.cpp).string_type = VIEW;
+ option java_multiple_files = true;

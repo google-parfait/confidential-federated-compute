@@ -78,7 +78,6 @@ cc_library(
     deps = [
         ":oak_session_utils",
         ":session_config_rs",
-        "//proto:verification_keys_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -90,6 +89,9 @@ cc_library(
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:server_session",
         "@oak//proto/services:session_v1_service_cc_grpc",
+        "@private_compute_services//src/com/google/android/as/oss/privateinference/api:private_aratea_service_cc_proto",
+        "@private_compute_services//src/com/google/android/as/oss/privateinference/library/oakutil:public_keys_cc_proto",
+        "@private_compute_services//src/com/google/android/as/oss/privateinference/service/api:private_inference_cc_proto",
     ],
 )
 
@@ -173,4 +175,11 @@ oci_image(
 oci_runtime_bundle(
     name = "batched_inference_pi_oak_oci_runtime_bundle",
     image = ":batched_inference_pi_oak_oci_image",
+)
+
+genrule(
+    name = "copy_public_keys",
+    srcs = ["@private_compute_services//src/com/google/android/as/oss/privateinference/library/oakutil:public_keys_prod_proto"],
+    outs = ["public_keys_prod_proto.binarypb"],
+    cmd = "cp $< $@",
 )

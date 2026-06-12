@@ -44,6 +44,7 @@ bazel_dep(name = "aspect_bazel_lib", version = "2.9.4")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
 bazel_dep(name = "rules_rust", version = "0.69.0")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
+bazel_dep(name = "private_compute_services")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.defaults(python_version = "3.13")
@@ -85,9 +86,9 @@ use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-oVQ9GoFdflYUdiF/Xk4hc58ofLLK9dcPhzAV9JXvJro=",
-    strip_prefix = "confidential-federated-compute-199846cdd20b731a294886492cb9bce6a1e0fac4",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/199846cdd20b731a294886492cb9bce6a1e0fac4.zip"],
+    integrity = "sha256-ndyO10lxDJdoD2TAq1wBByDp5NXpOsZ2N3rpJ0SHzKI=",
+    strip_prefix = "confidential-federated-compute-b61afce35a32019e5b7b1c8276d8b9110b3627c3",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/b61afce35a32019e5b7b1c8276d8b9110b3627c3.zip"],
 )
 
 bazel_dep(name = "oak")
@@ -110,6 +111,7 @@ archive_override(
 bazel_dep(name = "gemma", version = "0.0.1")
 archive_override(
     module_name = "gemma",
+    integrity = "sha256-nJsct9hZ1G+26LO4FIGBEVJrwja7Jp10lsumnzkv5cE=",
     strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
     urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
 )
@@ -119,6 +121,24 @@ archive_override(
     integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
     strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
     urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
+)
+
+archive_override(
+    module_name = "private_compute_services",
+    integrity = "sha256-ltYbQfGVOV4PlFXZbOyNKGVUaA3ZMeBweSc/UjnPGFU=",
+    patches = [
+        "//third_party/private_compute_services:MODULE_bazel.patch",
+        "//third_party/private_compute_services:private_inference_proto.patch",
+        "//third_party/private_compute_services:private_aratea_service_proto.patch",
+        "//third_party/private_compute_services:anonymous_token_request_proto.patch",
+        "//third_party/private_compute_services:device_attestation_request_proto.patch",
+        "//third_party/private_compute_services:public_keys_proto.patch",
+        "//third_party/private_compute_services:add_oakutil_build.patch",
+        "//third_party/private_compute_services:add_service_api_build.patch",
+        "//third_party/private_compute_services:add_api_build.patch",
+    ],
+    strip_prefix = "private-compute-services-a0f528e4c443bf697adb5f7801f1e7cfc01ed191",
+    urls = ["https://github.com/google/private-compute-services/archive/a0f528e4c443bf697adb5f7801f1e7cfc01ed191.tar.gz"],
 )
 
 # Rust crates.
