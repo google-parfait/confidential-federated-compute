@@ -18,25 +18,11 @@
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "containers/fns/fn.h"
+#include "containers/fns/fn_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute::fns {
-
-namespace {
-// Returns the blob ID from the BlobMetadata if it exists, otherwise returns an
-// empty string.
-std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata) {
-  switch (metadata.encryption_metadata_case()) {
-    case fcp::confidentialcompute::BlobMetadata::kUnencrypted:
-      return metadata.unencrypted().blob_id();
-    case fcp::confidentialcompute::BlobMetadata::kHpkePlusAeadData:
-      return metadata.hpke_plus_aead_data().blob_id();
-    default:
-      return "";
-  }
-}
-}  // namespace
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> DoFn::Write(
     fcp::confidentialcompute::WriteRequest write_request,
