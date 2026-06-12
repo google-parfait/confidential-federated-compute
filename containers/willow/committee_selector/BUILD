@@ -19,6 +19,11 @@ load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+exports_files(
+    ["proto/willow_committee_selector.proto"],
+    visibility = ["//multi_decryptor:__pkg__"],
+)
+
 proto_data(
     name = "insecure_reference_values",
     src = "insecure_reference_values.txtpb",
@@ -98,7 +103,8 @@ rust_library(
     }),
     proc_macro_deps = ["@oak_crates_index//:prost-derive"],
     visibility = [
-        "//containers/willow/committee_selector:__subpackages__",
+        "//committee_selector:__subpackages__",
+        "//multi_decryptor:__pkg__",
     ],
     deps = [
         ":build",

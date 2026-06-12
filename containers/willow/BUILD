@@ -37,6 +37,7 @@ platform(
 # destination directory.
 _RELEASE_BINARIES = {
     # keep-sorted start
+    "//multi_decryptor:bundle.tar": "willow_multi_decryptor/container.tar",
     "//transform:oci_runtime_bundle.tar": "willow_transform/container.tar",
     # keep-sorted end
 }
