@@ -41,6 +41,23 @@
 
 namespace confidential_federated_compute::fed_sql {
 
+// Configuration for KmsFedSqlSession.
+struct KmsSessionConfiguration {
+  // Optional inference model configuration for sessions.
+  std::optional<SessionInferenceConfiguration> inference_configuration;
+  // Parameters for the DP units.
+  std::optional<DpUnitParameters> dp_unit_parameters;
+  // Key IDs that have already expired and must be removed from the budget.
+  absl::flat_hash_set<std::string> expired_key_ids;
+  // The name of the query that executes on the device.
+  std::string on_device_query_name;
+  // The maximum number of output partitions allowed when using partitioned
+  // aggregation.
+  std::optional<uint64_t> max_output_partitions;
+  // The minimum aggregation window duration in minutes.
+  uint64_t min_agg_window_minutes = 0;
+};
+
 // FedSql implementation of Session interface that works in conjunction with the
 // Confidential Federated Compute Key Management Service (CFC KMS). Not
 // thread-safe.
@@ -51,14 +68,10 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
           aggregator,
       const std::vector<tensorflow_federated::aggregation::Intrinsic>&
           intrinsics,
-      std::optional<SessionInferenceConfiguration> inference_configuration,
-      std::optional<DpUnitParameters> dp_unit_parameters,
       std::shared_ptr<PrivateState> private_state,
-      const absl::flat_hash_set<std::string>& expired_key_ids,
       std::shared_ptr<MessageFactory> message_factory,
-      absl::string_view on_device_query_name,
       confidential_federated_compute::Decryptor& decryptor,
-      std::optional<uint64_t> max_output_partitions);
+      KmsSessionConfiguration config);
 
   // Configure the optional per-client SQL query.
   absl::StatusOr<fcp::confidentialcompute::ConfigureResponse> Configure(
@@ -131,10 +144,16 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
 
   // Produces the final aggregated report and returns the serialized checkpoint.
   absl::StatusOr<absl::Cord> BuildReport();
+
   // Commits rows, grouping by uncommitted Input. Returns any ignored
   // errors.
   absl::StatusOr<std::vector<absl::Status>> CommitRowsGroupingByInput(
       std::vector<Input>&& uncommitted_inputs, const Interval<uint64_t>& range);
+
+  // Validates that the aggregation window duration tracked in the range tracker
+  // is at least min_agg_window_minutes_.
+  absl::Status ValidateAggregationWindow(
+      const RangeTracker& range_tracker) const;
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
@@ -168,6 +187,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // be used i.e. all aggregates are merged together in a single worker before
   // release.
   const std::optional<uint64_t> max_output_partitions_;
+  // The minimum aggregation window duration in minutes. Budget updates are
+  // rejected if the aggregation window is smaller than this constraint.
+  const uint64_t min_agg_window_minutes_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

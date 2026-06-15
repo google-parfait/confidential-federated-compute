@@ -259,16 +259,15 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
     }
   }
 
-  // Populate inference_configuration_.initialize_configuration.
-  inference_configuration_.emplace();
-  inference_configuration_->initialize_configuration = inference_init_config;
+  // Populate session_config_.inference_configuration.
+  session_config_.inference_configuration.emplace();
+  auto& inference_config = *session_config_.inference_configuration;
+  inference_config.initialize_configuration = inference_init_config;
 
-  switch (inference_configuration_->initialize_configuration
-              .model_init_config_case()) {
+  switch (inference_config.initialize_configuration.model_init_config_case()) {
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
       const GemmaInitializeConfiguration& gemma_init_config =
-          inference_configuration_->initialize_configuration
-              .gemma_init_config();
+          inference_config.initialize_configuration.gemma_init_config();
       if (write_configuration_map_.find(
               gemma_init_config.tokenizer_configuration_id()) ==
           write_configuration_map_.end()) {
@@ -285,7 +284,6 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
                          gemma_init_config.model_weight_configuration_id(),
                          " is missing in WriteConfigurationRequest."));
       }
-      // Populate inference_configuration_.gemma_configuration.
       SessionGemmaCppConfiguration gemma_config;
       gemma_config.tokenizer_path =
           write_configuration_map_[gemma_init_config
@@ -295,13 +293,12 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
           write_configuration_map_[gemma_init_config
                                        .model_weight_configuration_id()]
               .file_path;
-      inference_configuration_->gemma_configuration = std::move(gemma_config);
+      inference_config.gemma_configuration = std::move(gemma_config);
       break;
     }
     case InferenceInitializeConfiguration::kLlamaCppInitConfig: {
       const LlamaCppInitializeConfiguration& llama_init_config =
-          inference_configuration_->initialize_configuration
-              .llama_cpp_init_config();
+          inference_config.initialize_configuration.llama_cpp_init_config();
       if (write_configuration_map_.find(
               llama_init_config.model_weight_configuration_id()) ==
           write_configuration_map_.end()) {
@@ -318,14 +315,13 @@ FedSqlConfidentialTransform::InitializeSessionInferenceConfiguration(
                                        .model_weight_configuration_id()]
               .file_path;
 
-      inference_configuration_->llama_configuration = std::move(llama_config);
+      inference_config.llama_configuration = std::move(llama_config);
       break;
     }
     default:
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported model_init_config_case: ",
-                       inference_configuration_->initialize_configuration
-                           .model_init_config_case()));
+      return absl::UnimplementedError(absl::StrCat(
+          "Unsupported model_init_config_case: ",
+          inference_config.initialize_configuration.model_init_config_case()));
   }
   return absl::OkStatus();
 }
@@ -358,7 +354,7 @@ absl::Status FedSqlConfidentialTransform::SetAndValidateMessageFactory(
         FileDescriptorSetMessageFactory::Create(
             descriptor_set, message_description.message_name()));
   }
-  on_device_query_name_ =
+  session_config_.on_device_query_name =
       fed_sql_config.private_logger_uploads_config().on_device_query_name();
   return absl::OkStatus();
 }
@@ -448,7 +444,7 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
          fed_sql_config_constraints.dp_column_names()) {
       dp_params.column_names.push_back(column_name);
     }
-    dp_unit_parameters_ = std::move(dp_params);
+    session_config_.dp_unit_parameters = std::move(dp_params);
   }
 
   if (fed_sql_config.has_inference_init_config()) {
@@ -456,11 +452,15 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
         fed_sql_config.inference_init_config()));
   }
 
-  max_output_partitions_ = std::nullopt;
+  session_config_.max_output_partitions = std::nullopt;
   if (fed_sql_config_constraints.has_max_output_partitions() &&
       fed_sql_config_constraints.max_output_partitions() != 0) {
-    max_output_partitions_ = fed_sql_config_constraints.max_output_partitions();
+    session_config_.max_output_partitions =
+        fed_sql_config_constraints.max_output_partitions();
   }
+
+  session_config_.min_agg_window_minutes =
+      fed_sql_config_constraints.min_agg_window_minutes();
 
   return absl::OkStatus();
 }
@@ -585,7 +585,7 @@ absl::Status FedSqlConfidentialTransform::InitializePrivateState(
     auto active_keys = GetActiveKeyIds();
     for (const auto& key : persisted_budget_keys) {
       if (!active_keys.contains(key)) {
-        expired_key_ids_.insert(key);
+        session_config_.expired_key_ids.insert(key);
       }
     }
     return absl::OkStatus();
@@ -624,28 +624,30 @@ FedSqlConfidentialTransform::CreateSession() {
   ABSL_ASSIGN_OR_RETURN(Decryptor * decryptor, GetDecryptor());
 
   // Build the shared Gemma model lazily on first session creation and store it
-  // in inference_configuration_ for all sessions to share.
+  // in session_config_.inference_configuration for all sessions to share.
   // Protected by mutex_ to prevent data races from concurrent session creation.
   {
     absl::MutexLock l(mutex_);
-    if (inference_configuration_.has_value() &&
-        inference_configuration_->gemma_configuration.has_value() &&
-        !inference_configuration_->shared_gemma_model) {
+    if (session_config_.inference_configuration.has_value() &&
+        session_config_.inference_configuration->gemma_configuration
+            .has_value() &&
+        !session_config_.inference_configuration->shared_gemma_model) {
+      auto& inference_config = *session_config_.inference_configuration;
       auto model_mode =
-          inference_configuration_->initialize_configuration.inference_config()
+          inference_config.initialize_configuration.inference_config()
               .runtime_config()
               .model_mode();
       if (model_mode != fcp::confidentialcompute::RuntimeConfig::
                             MODEL_MODE_MODEL_PER_SESSION) {
         // Build the shared model for UNSPECIFIED and SHARED_MODEL modes.
         gcpp::LoaderArgs loader_args(
-            inference_configuration_->gemma_configuration->tokenizer_path,
-            inference_configuration_->gemma_configuration->model_weight_path);
+            inference_config.gemma_configuration->tokenizer_path,
+            inference_config.gemma_configuration->model_weight_path);
         gcpp::InferenceArgs inference_args;
-        size_t seq_len = inference_configuration_->initialize_configuration
-                             .inference_config()
-                             .runtime_config()
-                             .seq_len();
+        size_t seq_len =
+            inference_config.initialize_configuration.inference_config()
+                .runtime_config()
+                .seq_len();
         if (seq_len > 0) {
           inference_args.seq_len = seq_len;
         }
@@ -654,21 +656,21 @@ FedSqlConfidentialTransform::CreateSession() {
         auto shared_model = std::make_shared<SharedGemmaCppModel>();
         shared_model->gemma = std::make_unique<gcpp::Gemma>(
             loader_args, inference_args, loading_ctx);
-        // Create shared ThreadingContext and MatMulEnv for all sessions to use.
-        // These are serialized via shared_model->mutex during GenerateBatch.
+        // Create shared ThreadingContext and MatMulEnv for all sessions to
+        // use. These are serialized via shared_model->mutex during
+        // GenerateBatch.
         shared_model->ctx =
             std::make_unique<gcpp::ThreadingContext>(threading_args);
         shared_model->env =
             std::make_unique<gcpp::MatMulEnv>(*shared_model->ctx);
-        inference_configuration_->shared_gemma_model = std::move(shared_model);
+        inference_config.shared_gemma_model = std::move(shared_model);
       }
     }
   }
 
-  return std::make_unique<KmsFedSqlSession>(
-      std::move(aggregator), *intrinsics, inference_configuration_,
-      dp_unit_parameters_, private_state_, expired_key_ids_, message_factory,
-      on_device_query_name_, *decryptor, max_output_partitions_);
+  return std::make_unique<KmsFedSqlSession>(std::move(aggregator), *intrinsics,
+                                            private_state_, message_factory,
+                                            *decryptor, session_config_);
 }
 
 absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(

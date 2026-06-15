@@ -105,33 +105,31 @@ KmsFedSqlSession::KmsFedSqlSession(
     std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
         aggregator,
     const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics,
-    std::optional<SessionInferenceConfiguration> inference_configuration,
-    std::optional<DpUnitParameters> dp_unit_parameters,
     std::shared_ptr<PrivateState> private_state,
-    const absl::flat_hash_set<std::string>& expired_key_ids,
     std::shared_ptr<MessageFactory> message_factory,
-    absl::string_view on_device_query_name,
     confidential_federated_compute::Decryptor& decryptor,
-    std::optional<uint64_t> max_output_partitions)
+    KmsSessionConfiguration config)
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       private_state_(std::move(private_state)),
-      dp_unit_parameters_(dp_unit_parameters),
+      dp_unit_parameters_(std::move(config.dp_unit_parameters)),
       message_factory_(std::move(message_factory)),
-      on_device_query_name_(on_device_query_name),
+      on_device_query_name_(std::move(config.on_device_query_name)),
       decryptor_(decryptor),
-      max_output_partitions_(max_output_partitions) {
+      max_output_partitions_(config.max_output_partitions),
+      min_agg_window_minutes_(config.min_agg_window_minutes) {
   CHECK_OK(SqliteAdapter::Initialize());
-  range_tracker_.SetExpiredKeys(expired_key_ids);
-  if (inference_configuration.has_value()) {
-    if (inference_configuration->shared_gemma_model &&
-        inference_configuration->shared_gemma_model->gemma) {
+  range_tracker_.SetExpiredKeys(config.expired_key_ids);
+  if (config.inference_configuration.has_value()) {
+    if (config.inference_configuration->shared_gemma_model &&
+        config.inference_configuration->shared_gemma_model->gemma) {
       // Use the shared Gemma model (no per-session weight loading).
       CHECK_OK(inference_model_.SetSharedGemmaCppModel(
-          inference_configuration.value()));
+          config.inference_configuration.value()));
     } else {
       // Fallback: build a per-session model (e.g., for llama.cpp).
-      CHECK_OK(inference_model_.BuildModel(inference_configuration.value()));
+      CHECK_OK(
+          inference_model_.BuildModel(config.inference_configuration.value()));
     }
   }
 };
@@ -572,8 +570,27 @@ KmsFedSqlSession::Partition(Context& context, uint64_t num_partitions) {
   return FinalizeResponse{};
 }
 
+absl::Status KmsFedSqlSession::ValidateAggregationWindow(
+    const RangeTracker& range_tracker) const {
+  auto agg_window = range_tracker.GetAggregationWindow();
+  if (agg_window.has_value()) {
+    uint64_t window_duration_seconds = agg_window->end() - agg_window->start();
+    uint64_t window_duration_minutes = window_duration_seconds / 60;
+    if (window_duration_minutes < min_agg_window_minutes_) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Aggregation window duration (", window_duration_minutes,
+                       " minutes) is less than the minimum required (",
+                       min_agg_window_minutes_, " minutes)."));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
 KmsFedSqlSession::Report(Context& context) {
+  // Validate the aggregation window meets the minimum duration constraint.
+  ABSL_RETURN_IF_ERROR(ValidateAggregationWindow(range_tracker_));
+
   // Update the private state
   ABSL_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
 
@@ -634,6 +651,10 @@ KmsFedSqlSession::ReportPrivateState(Context& context) {
     return absl::FailedPreconditionError(
         "Conflicting ranges between autotuning and aggregation.");
   }
+
+  // Validate the aggregation window meets the minimum duration constraint.
+  ABSL_RETURN_IF_ERROR(
+      ValidateAggregationWindow(private_state_->consumed_tracker));
 
   // Update the private state
   ABSL_RETURN_IF_ERROR(
