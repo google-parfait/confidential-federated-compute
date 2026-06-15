@@ -15,6 +15,8 @@
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 
@@ -182,4 +184,41 @@ genrule(
     srcs = ["@private_compute_services//src/com/google/android/as/oss/privateinference/library/oakutil:public_keys_prod_proto"],
     outs = ["public_keys_prod_proto.binarypb"],
     cmd = "cp $< $@",
+)
+
+# All release (i.e. production) binaries, along with their names in the
+# destination directory. Used by scripts/build.sh for Kokoro release builds.
+_RELEASE_BINARIES = {
+    # keep-sorted start
+    ":batched_inference_pi_oak_oci_runtime_bundle.tar": "batched_inference_paic/container.tar",
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "release_binaries",
+    srcs = _RELEASE_BINARIES.keys(),
+    renames = _RELEASE_BINARIES,
+)
+
+pkg_install(
+    name = "install_release_binaries",
+    srcs = [":release_binaries"],
+)
+
+# All release and testing binaries, along with their names in the destination
+# directory.
+_ALL_BINARIES = _RELEASE_BINARIES | {
+    # keep-sorted start
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "all_binaries",
+    srcs = _ALL_BINARIES.keys(),
+    renames = _ALL_BINARIES,
+)
+
+pkg_install(
+    name = "install_all_binaries",
+    srcs = [":all_binaries"],
 )
