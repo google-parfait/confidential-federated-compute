@@ -35,7 +35,7 @@ class PiClient {
 // TODO: This raw string client will be replaced by the private aratea feature
 // later.
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
-    std::string server_address);
+    std::string server_address, int feature_name_id);
 
 }  // namespace confidential_federated_compute::private_inference
 

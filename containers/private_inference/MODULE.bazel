@@ -23,9 +23,14 @@ single_version_override(
     version = "1.5.4",
 )
 
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20260526.0",
+)
+
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
 bazel_dep(name = "rules_oci", version = "2.2.6")
@@ -86,9 +91,9 @@ use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-ndyO10lxDJdoD2TAq1wBByDp5NXpOsZ2N3rpJ0SHzKI=",
-    strip_prefix = "confidential-federated-compute-b61afce35a32019e5b7b1c8276d8b9110b3627c3",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/b61afce35a32019e5b7b1c8276d8b9110b3627c3.zip"],
+    integrity = "sha256-r0DSblmX1gtazd9BhywnJdZFJSHp+TkiHuhjjhXhFIE=",
+    strip_prefix = "confidential-federated-compute-498fa6c9e0e22be7e38fb9ac494db8483282fa18",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/498fa6c9e0e22be7e38fb9ac494db8483282fa18.zip"],
 )
 
 bazel_dep(name = "oak")
@@ -103,9 +108,9 @@ bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "federated-compute")
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-1ixsFoZUXs9VwUN3+32nIelRCkyI7SzSirR+CAFYyZs=",
-    strip_prefix = "federated-compute-f7c4a0a651742968ab0f2addcd8c1b922ebf2e3f",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/f7c4a0a651742968ab0f2addcd8c1b922ebf2e3f.tar.gz"],
+    integrity = "sha256-oak9bLZJ8qJkwVPo/0ufLHY2IEX48N7/DOPL7ce55JI=",
+    strip_prefix = "federated-compute-e31c7a718fbe5de54a9919ea2cbec6ef5f848c94",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/e31c7a718fbe5de54a9919ea2cbec6ef5f848c94.tar.gz"],
 )
 
 bazel_dep(name = "gemma", version = "0.0.1")

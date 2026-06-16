@@ -60,8 +60,13 @@ PiBatchedInferenceProvider::GetEngineForInferenceConfig(
   // the collaborator's server. This assumes server_address_ is just an IP
   // or hostname without a port.
   std::string server_target = absl::StrFormat("%s:%d", server_address_, port);
+  if (!config.has_paic_config()) {
+    LOG(ERROR) << "InferenceConfiguration is missing paic_config.";
+    return nullptr;
+  }
+  int feature_name_id = config.paic_config().paic_feature_id();
   absl::StatusOr<std::unique_ptr<PiClient>> pi_client =
-      CreatePiClient(server_target);
+      CreatePiClient(server_target, feature_name_id);
   if (!pi_client.ok()) {
     LOG(ERROR) << "Failed to create PiClient: " << pi_client.status();
     return nullptr;

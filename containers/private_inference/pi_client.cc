@@ -48,9 +48,6 @@ update_peer_unidirectional_session_config(
     int tink_serialized_public_keyset_len);
 }
 
-ABSL_FLAG(std::string, feature_name, "FEATURE_NAME_PSI_MEMORY_GENERATION",
-          "Feature name for the Pi Server");
-
 constexpr absl::string_view kProdVerificationKeysPath =
     "private_inference/public_keys_prod_proto.binarypb";
 
@@ -254,15 +251,15 @@ class PiClientImpl : public PiClient {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
-    std::string server_address) {
-  std::string feature_name_str = absl::GetFlag(FLAGS_feature_name);
-  PcsPrivateInferenceFeatureName feature_name;
+    std::string server_address, int feature_name_id) {
   if (!::com::google::android::as::oss::privateinference::service::api::
-          PcsPrivateInferenceFeatureName_Parse(feature_name_str,
-                                               &feature_name)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to parse feature name: ", feature_name_str));
+          PcsPrivateInferenceFeatureName_IsValid(feature_name_id)) {
+    LOG(WARNING) << "Feature name ID " << feature_name_id
+                 << " is not defined in the client's enum definition. "
+                    "Proceeding anyway.";
   }
+  PcsPrivateInferenceFeatureName feature_name =
+      static_cast<PcsPrivateInferenceFeatureName>(feature_name_id);
 
   auto client =
       std::make_unique<PiClientImpl>(std::move(server_address), feature_name);

@@ -178,7 +178,7 @@ TEST(PiClientTest, RequestResponseDecryptionSucceeds) {
 }
 
 TEST(PiClientTest, CreatePiClientFailsWhenServerIsUnreachable) {
-  auto client_or = CreatePiClient("localhost:12345");
+  auto client_or = CreatePiClient("localhost:12345", 100);
 
   // CreatePiClient now performs the handshake, so it should fail if
   // unreachable.
@@ -188,6 +188,12 @@ TEST(PiClientTest, CreatePiClientFailsWhenServerIsUnreachable) {
                   testing::HasSubstr("ExchangeHandshakeMessages failed"),
                   testing::HasSubstr("Failed to open verification keys file"),
                   testing::HasSubstr("ClientSession::Create failed")));
+}
+
+TEST(PiClientTest, CreatePiClientDoesNotFailOnInvalidFeatureId) {
+  auto client_or = CreatePiClient("localhost:12345", 999);
+  EXPECT_FALSE(client_or.ok());
+  EXPECT_NE(client_or.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace
