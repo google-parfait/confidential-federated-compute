@@ -20,6 +20,7 @@ jobs:
         module-root:
           - {root: ., name: .}
           - {root: containers/gcp, name: containers_gcp}
+          - {root: containers/private_inference, name: containers_private_inference}
           - {root: containers/private_evolution/nn_histogram, name: nn_histogram}
           - {root: containers/private_evolution/sentence_transformers, name: sentence_transformers}
           - {root: containers/willow, name: willow}
