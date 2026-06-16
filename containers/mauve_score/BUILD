@@ -15,7 +15,14 @@
 """BUILD rules for the MAUVE score container."""
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
+load("@confidential-federated-compute//containers/bazel:gen_python_path.bzl", "gen_python_path")
+load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
@@ -60,4 +67,139 @@ py_test(
         ":compute_mauve_score_lib",
         "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_py_pb2",
     ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_riegeli//riegeli/bytes:fd_reader",
+        "@com_google_riegeli//riegeli/records:record_reader",
+        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "py_mauve_delegate",
+    srcs = ["py_mauve_delegate.cc"],
+    hdrs = ["py_mauve_delegate.h"],
+    data = [":compute_mauve_score_lib"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@pybind11",
+        "@rules_python//python/cc:current_py_cc_libs",
+    ],
+)
+
+cc_library(
+    name = "mauve_score_fn",
+    srcs = ["mauve_score_fn.cc"],
+    hdrs = ["mauve_score_fn.h"],
+    deps = [
+        ":py_mauve_delegate",
+        ":utils",
+        "//containers/fns",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:any_cc_proto",
+        "@confidential-federated-compute//containers:session",
+        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
+    ],
+)
+
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":mauve_score_fn",
+        ":py_mauve_delegate",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@confidential-federated-compute//containers/fns:fns",
+        "@oak//cc/containers/sdk:encryption_key_handle",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
+    ],
+)
+
+cc_test(
+    name = "mauve_score_fn_test",
+    srcs = ["mauve_score_fn_test.cc"],
+    args = [
+        # FullLifecycleSuccess requires a Python runtime with the MAUVE library.
+        "--gtest_filter=-MauveScoreFnTest.FullLifecycleSuccess",
+    ],
+    deps = [
+        ":mauve_score_fn",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
+    ],
+)
+
+pkg_tar(
+    name = "tar",
+    srcs = [":main"],
+    include_runfiles = True,
+)
+
+gen_python_path(
+    name = "py_path",
+    cc_binary_name = "main",
+    py_deps = [":compute_mauve_score_lib"],
+)
+
+oci_image(
+    name = "oci_image",
+    base = "@python_3_11_slim_bookworm_linux_amd64",
+    entrypoint = ["/main"],
+    env = ":py_path",
+    tars = [":tar"],
+)
+
+oci_runtime_bundle(
+    name = "oci_runtime_bundle",
+    image = ":oci_image",
+    visibility = ["//:__pkg__"],
+)
+
+# All release binaries with their destination paths.
+_RELEASE_BINARIES = {
+    # keep-sorted start
+    "//:oci_runtime_bundle.tar": "mauve_score/container.tar",
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "release_binaries",
+    srcs = _RELEASE_BINARIES.keys(),
+    renames = _RELEASE_BINARIES,
+)
+
+pkg_install(
+    name = "install_release_binaries",
+    srcs = [":release_binaries"],
 )
