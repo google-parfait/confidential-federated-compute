@@ -67,14 +67,16 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-Uw5kZdENFMbrRGKgKENCBUFxLtR7v6z69Ws5ij9Vws4=",
+    integrity = "sha256-oDxVrBtisUvlyMza94c+QCOgi0AqSca18mNqCyiBxDY=",
     patches = [
         "//third_party/oak:module.patch",
         "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:oak_restricted_kernel_sdk.patch",
         "//third_party/oak:session_binder.patch",
+        "//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-422986c03a0af002d2cc600e2771357e83775794",
-    urls = ["https://github.com/project-oak/oak/archive/422986c03a0af002d2cc600e2771357e83775794.tar.gz"],
+    strip_prefix = "oak-e72bbdbf0342f7a13373bc26d14135fcc37f0410",
+    urls = ["https://github.com/project-oak/oak/archive/e72bbdbf0342f7a13373bc26d14135fcc37f0410.tar.gz"],
 )
 
 archive_override(
@@ -162,31 +164,19 @@ llvm.sysroot(
 )
 use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
 
-rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
-rust.toolchain(
-    edition = "2024",
-    sha256s = {
-        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
-        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
-        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
-        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
-        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
-    },
-    versions = ["nightly/2025-03-01"],
-)
-
 rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")
 rust_host_tools.host_tools(
     name = "rust_host_tools_nightly",
     edition = "2024",
     sha256s = {
-        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
-        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
-        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
-        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
-        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
+        "2026-04-11/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "b4c95336c94a70b33f5b7b471315c8b4ab0a10c5c936554d73101d8e9dd76444",
+        "2026-04-11/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "658854d7dd8c4ed312ed703768578fed74509775a6053f3552663f4074c8c03f",
+        "2026-04-11/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "133a0d5c074964af93661ba86d1200b4363c16ab1cbcdb57d56818610a6d2ad7",
+        "2026-04-11/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "e438f81cb8340e1093d7e799c6e742eb76779b360146d178b7104b4f7a89b3e1",
+        "2026-04-11/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "6c32f2c2bf33b2d45a5f969f5d30c764f3c5c35179af65f7dae3448779bdfa89",
+        "2026-04-11/rustfmt-nightly-x86_64-unknown-linux-gnu.tar.xz": "f64247b36ca1de77472e194027c1d28a0b8fe1fa27c7fd25dd0f8715ef051f7a",
     },
-    version = "nightly/2025-03-01",
+    version = "nightly/2026-04-11",
 )
 use_repo(rust_host_tools, "rust_host_tools_nightly")
 

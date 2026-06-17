@@ -1,0 +1,18 @@
+# Disable ML-DSA-44 support, which requires a large number of C++ libraries and
+# is not required by the KMS.
+--- tr/c2sp/BUILD
++++ tr/c2sp/BUILD
+@@ -27,8 +27,7 @@
+     # ML-DSA-44 support requires the Tink C++ FFI, which depends on a C++
+     # runtime and is therefore only available on Linux.  On bare-metal targets
+     # (x86_64-unknown-none) the feature is absent and all ML-DSA code paths
+     # are compiled out.
+     crate_features = select({
+-        "//:x86_64-linux-setting": ["ml_dsa"],
+         "//conditions:default": [],
+     }),
+@@ -44,4 +43,3 @@
+     ] + select({
+-        "//:x86_64-linux-setting": ["//oak_crypto:oak_crypto_tink"],
+         "//conditions:default": [],
+     }),

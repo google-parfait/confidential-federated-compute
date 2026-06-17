@@ -119,8 +119,8 @@ impl OakSessionV1Service for FakeServer {
                         .unwrap(),
                     )
                     .expect("failed to put incoming message");
-                if session.is_open() {
-                    if let Some(msg) = session.read().expect("failed to read from session") {
+                if session.is_open() &&
+                     let Some(msg) = session.read().expect("failed to read from session") {
                         let request = StorageRequest::decode(msg.plaintext.as_slice()).unwrap();
                         debug!("Decoded StorageRequest: {:?}", request);
                         match storage.call(request.kind.expect("no request kind")) {
@@ -140,7 +140,6 @@ impl OakSessionV1Service for FakeServer {
                                 return;
                             }
                         };
-                    }
                 }
 
                 while let Some(response) = session.get_outgoing_message().unwrap() {

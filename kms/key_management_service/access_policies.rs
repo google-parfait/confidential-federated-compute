@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use access_policy_proto::fcp::confidentialcompute::{
@@ -134,24 +135,28 @@ pub fn authorize_transform(
 
     // Check each transform, stopping as soon as a match is found. For
     // non-matching transforms, collect the failure reason.
-    //
-    // We abuse Result to implement this short-circuiting, where the Ok and Err
-    // types are swapped. This could be more cleanly implemented using
-    // std::ops::ControlFlow once it's stable.
-    let auth_results: Result<Vec<anyhow::Error>, AuthorizedTransform> = policy
-        .transforms
-        .into_iter()
-        .enumerate()
-        .map(|(index, transform)| {
-            match match_transform(index, transform, &evidence, &endorsements, tag, now_utc_millis) {
-                Ok(authorized_transform) => Err(authorized_transform),
-                Err(err) => Ok(err),
+    let auth_results = policy.transforms.into_iter().enumerate().try_fold(
+        Vec::new(),
+        |mut acc, (index, transform)| match match_transform(
+            index,
+            transform,
+            &evidence,
+            &endorsements,
+            tag,
+            now_utc_millis,
+        ) {
+            Ok(authorized_transform) => ControlFlow::Break(authorized_transform),
+            Err(err) => {
+                acc.push(err);
+                ControlFlow::Continue(acc)
             }
-        })
-        .collect();
+        },
+    );
     match auth_results {
-        Err(authorized_transform) => Ok(authorized_transform),
-        Ok(match_errors) => Err(anyhow!("no transforms matched: {:#?}", match_errors)),
+        ControlFlow::Break(authorized_transform) => Ok(authorized_transform),
+        ControlFlow::Continue(match_errors) => {
+            Err(anyhow!("no transforms matched: {:#?}", match_errors))
+        }
     }
 }
 
