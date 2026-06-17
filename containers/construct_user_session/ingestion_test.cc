@@ -49,7 +49,9 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
-using ::testing::SizeIs;
+using ::testing::Pair;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 absl::Time Hours(int hours) { return absl::Time() + absl::Hours(hours); }
 
@@ -57,56 +59,57 @@ auto RowLocationIs(int group_key, int input_index, int row_index) {
   return FieldsAre(group_key, input_index, row_index);
 }
 
-TEST(DeserializeCheckpointTest, ValidCheckpoint) {
+template <typename NameMatcher, typename ValuesMatcher>
+auto ColumnTensorIs(NameMatcher name_matcher, ValuesMatcher values_matcher) {
+  return Pair(name_matcher, Property(&Tensor::ToStringVector, values_matcher));
+}
+
+TEST(CheckpointTest, ValidCheckpoint) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
-  tensors.push_back(
-      Tensor({"2026-01-01T10:00:00+00:00", "2026-01-01T10:01:00+00:00"},
-             "test_query/confidential_compute_event_time"));
+  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00", "bad-timestamp"},
+                           "test_query/confidential_compute_event_time"));
   tensors.push_back(Tensor({"valA1", "valA2"}, "test_query/colA"));
   tensors.push_back(Tensor({"valB1", "valB2"}, "colB"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
-  EXPECT_THAT(result->privacy_id, Eq("user123"));
+  EXPECT_THAT(result->privacy_id(), Eq("user123"));
+
   EXPECT_THAT(
-      result->event_times.ToStringVector(),
-      ElementsAre("2026-01-01T10:00:00+00:00", "2026-01-01T10:01:00+00:00"));
-  EXPECT_THAT(result->data_tensors, SizeIs(2));
-
-  auto col_a_it = result->data_tensors.find("test_query/colA");
-  ASSERT_NE(col_a_it, result->data_tensors.end());
-  EXPECT_THAT(col_a_it->second.ToStringVector(), ElementsAre("valA1", "valA2"));
-
-  auto col_b_it = result->data_tensors.find("colB");
-  ASSERT_NE(col_b_it, result->data_tensors.end());
-  EXPECT_THAT(col_b_it->second.ToStringVector(), ElementsAre("valB1", "valB2"));
+      result->column_tensors(),
+      UnorderedElementsAre(
+          ColumnTensorIs(
+              "test_query/confidential_compute_event_time",
+              ElementsAre("2026-01-01T10:00:00+00:00", "bad-timestamp")),
+          ColumnTensorIs("test_query/colA", ElementsAre("valA1", "valA2")),
+          ColumnTensorIs("colB", ElementsAre("valB1", "valB2"))));
 }
 
-TEST(DeserializeCheckpointTest, MissingPrivacyIdFails) {
+TEST(CheckpointTest, MissingPrivacyIdFails) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
                            "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound,
                                HasSubstr("confidential_compute_privacy_id")));
 }
 
-TEST(DeserializeCheckpointTest, MissingEventTimeFails) {
+TEST(CheckpointTest, MissingEventTimeFails) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound,
                                HasSubstr("confidential_compute_event_time")));
 }
 
-TEST(DeserializeCheckpointTest, MultidimensionalDataTensorFails) {
+TEST(CheckpointTest, MultidimensionalColumnTensorFails) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
   tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
@@ -119,13 +122,13 @@ TEST(DeserializeCheckpointTest, MultidimensionalDataTensorFails) {
   tensors.push_back(*std::move(data_tensor));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
-                               HasSubstr("Data tensor `test_query/colA` must "
+                               HasSubstr("Column tensor `test_query/colA` must "
                                          "have one dimension.")));
 }
 
-TEST(DeserializeCheckpointTest, MismatchedRowCountsFails) {
+TEST(CheckpointTest, MismatchedRowCountsFails) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
   tensors.push_back(
@@ -135,45 +138,81 @@ TEST(DeserializeCheckpointTest, MismatchedRowCountsFails) {
       Tensor({"valA1"}, "test_query/colA"));  // 1 row instead of 2.
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   EXPECT_THAT(result,
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Data tensor `test_query/colA` has 1 rows, "
+                       HasSubstr("Column tensor `test_query/colA` has 1 rows, "
                                  "expected 2 matching event time tensor.")));
 }
 
-// Verifies that a checkpoint with no data tensors (only system tensors)
-// deserializes successfully with an empty data_tensors map.
-TEST(DeserializeCheckpointTest, NoDataTensorsSucceeds) {
+// Verifies that a checkpoint with no client data columns (only metadata and
+// event time) deserializes successfully with column_tensors containing only the
+// event time.
+TEST(CheckpointTest, NoClientDataColumnsSucceeds) {
   std::vector<Tensor> tensors;
   tensors.push_back(Tensor("user789", kPrivacyIdColumnName));
   tensors.push_back(Tensor({"2026-03-01T08:00:00+00:00"},
                            "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
-  EXPECT_THAT(result->privacy_id, Eq("user789"));
-  EXPECT_EQ(result->event_times.num_elements(), 1);
-  EXPECT_TRUE(result->data_tensors.empty());
+  EXPECT_THAT(result->privacy_id(), Eq("user789"));
+  // Only the event time tensor is in column_tensors.
+  EXPECT_THAT(result->column_tensors(),
+              UnorderedElementsAre(
+                  ColumnTensorIs("test_query/confidential_compute_event_time",
+                                 ElementsAre("2026-03-01T08:00:00+00:00"))));
 }
 
-// Verifies that timestamps are stored as-is in the raw strings
-TEST(DeserializeCheckpointTest, EventTimeIsPreserved) {
+TEST(CheckpointTest, PrivacyIdGetterSucceeds) {
   std::vector<Tensor> tensors;
-  tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
-  tensors.push_back(Tensor(
-      {"2026-01-01T10:00:00Z", "not-a-timestamp", "2026-01-01T10:02:00+14:00"},
-      "test_query/confidential_compute_event_time"));
+  tensors.push_back(Tensor("precise_user_id_42", kPrivacyIdColumnName));
+  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
+                           "test_query/confidential_compute_event_time"));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = DeserializeCheckpoint(parser, "test_query");
+  auto result = Checkpoint::Create(parser, "test_query");
   ASSERT_THAT(result, IsOk());
 
-  EXPECT_THAT(result->event_times.ToStringVector(),
-              ElementsAre("2026-01-01T10:00:00Z", "not-a-timestamp",
-                          "2026-01-01T10:02:00+14:00"));
+  EXPECT_EQ(result->privacy_id(), "precise_user_id_42");
+}
+
+// Verifies that take_privacy_id_tensor() moves the tensor out and that the
+// returned tensor is a valid scalar DT_STRING tensor.
+TEST(CheckpointTest, TakePrivacyIdTensorMoveSemantics) {
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor("user_to_move", kPrivacyIdColumnName));
+  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
+                           "test_query/confidential_compute_event_time"));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto result = Checkpoint::Create(parser, "test_query");
+  ASSERT_THAT(result, IsOk());
+
+  // Move the privacy ID tensor out.
+  Tensor moved_tensor = result->take_privacy_id_tensor();
+  EXPECT_TRUE(moved_tensor.is_scalar());
+  EXPECT_EQ(moved_tensor.dtype(), DataType::DT_STRING);
+  EXPECT_EQ(moved_tensor.AsScalar<absl::string_view>(), "user_to_move");
+}
+
+// Verifies that column_tensors() does not include the privacy ID tensor.
+TEST(CheckpointTest, ColumnTensorsExcludePrivacyId) {
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor("user123", kPrivacyIdColumnName));
+  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
+                           "test_query/confidential_compute_event_time"));
+  tensors.push_back(Tensor({"val1"}, "test_query/colA"));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto result = Checkpoint::Create(parser, "test_query");
+  ASSERT_THAT(result, IsOk());
+
+  // Privacy ID should not be in column_tensors.
+  EXPECT_EQ(result->column_tensors().find(std::string(kPrivacyIdColumnName)),
+            result->column_tensors().end());
 }
 
 TEST(FilterForSessionWindowTest, AllEventsPassFilter) {

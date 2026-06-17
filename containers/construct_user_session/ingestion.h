@@ -29,48 +29,66 @@
 
 namespace confidential_federated_compute::construct_user_session {
 
-// Represents the extracted "system columns" (privacy ID and event time) and
-// data tensors from a client checkpoint.
-struct DeserializedCheckpoint {
-  // The precise Privacy ID extracted from the scalar
-  // `confidential_compute_privacy_id` string tensor.
-  std::string privacy_id;
+// Represents the extracted checkpoint metadata (privacy ID) and 1-dimensional
+// column tensors (event time and client data columns) from a client upload.
+//
+// This class validates and maintains the required tensor structure for
+// construct sessions, ensuring that metadata and column tensors are properly
+// formatted and aligned in dimension.
+class Checkpoint {
+ public:
+  // Returns a string view of the privacy ID.
+  absl::string_view privacy_id() const;
 
-  // Raw event time tensor from
-  // `<on_device_query_name>/confidential_compute_event_time`.
-  // Each element is expected to have the format YYYY-MM-DDTHH:MM:SS±HH:MM.
-  tensorflow_federated::aggregation::Tensor event_times;
+  // Moves and returns the original scalar privacy ID tensor. This method is
+  // destructive.
+  tensorflow_federated::aggregation::Tensor take_privacy_id_tensor();
 
-  // All data tensors found in the checkpoint keyed by their tensor name. Each
-  // tensor is 1-dimensional with the same row count as `event_times`.
+  // Returns a map of all 1-dimensional column tensors, including the event time
+  // DT_STRING tensor and opaque client data columns.
+  const absl::flat_hash_map<std::string,
+                            tensorflow_federated::aggregation::Tensor>&
+  column_tensors() const;
+
+  // Validates that the contents of `checkpoint` match the expected
+  // structure, including the presence and formatting of checkpoint metadata and
+  // column tensors, and constructs a Checkpoint upon success.
+  static absl::StatusOr<Checkpoint> Create(
+      tensorflow_federated::aggregation::CheckpointParser& checkpoint,
+      absl::string_view on_device_query_name);
+
+  Checkpoint(Checkpoint&&) = default;
+  Checkpoint& operator=(Checkpoint&&) = default;
+  Checkpoint(const Checkpoint&) = delete;
+  Checkpoint& operator=(const Checkpoint&) = delete;
+
+ private:
+  Checkpoint(tensorflow_federated::aggregation::Tensor privacy_id_tensor,
+             absl::flat_hash_map<std::string,
+                                 tensorflow_federated::aggregation::Tensor>
+                 column_tensors);
+
+  // Original scalar DT_STRING tensor for the privacy ID.
+  tensorflow_federated::aggregation::Tensor privacy_id_tensor_;
+
+  // Map of tensor name to tensor object. Includes all 1-dimensional column
+  // tensors (event time and client data columns).
+  //
+  // Invariants:
+  // - The event time tensor is a 1-dimensional DT_STRING tensor.
+  // - All other column tensors are 1-dimensional with the same row count as the
+  //   event time tensor.
   absl::flat_hash_map<std::string, tensorflow_federated::aggregation::Tensor>
-      data_tensors;
+      column_tensors_;
 };
 
-// Deserializes a client checkpoint into its constituent parts using dynamic
-// tensor discovery.
-//
-// This function:
-// (1) Loads all tensors from the checkpoint.
-// (2) Extracts the scalar `confidential_compute_privacy_id` tensor.
-// (3) Extracts the 1D `<on_device_query_name>/confidential_compute_event_time`
-//     string tensor and stores it as-is in `event_times`.
-// (4) Stores all remaining tensors in the `data_tensors` map (name → Tensor),
-// (5) Validates that the privacy ID tensor is scalar, that the event time
-//     tensor is 1-dimensional, that all data tensors are 1-dimensional, and
-//     that all data tensors have the same row count as event_times.
-absl::StatusOr<DeserializedCheckpoint> DeserializeCheckpoint(
-    tensorflow_federated::aggregation::CheckpointParser& checkpoint,
-    absl::string_view on_device_query_name);
-
 // Filters event times against the session window [window_start, window_end)
-// and produces RowLocation metadata for surviving rows.
+// and returns RowLocation metadata for the surviving rows.
 //
-// For each event time string in `event_times`, the string is parsed to
-// absl::Time. If the parsed time satisfies `window_start <= t < window_end`,
-// a RowLocation is created with the given `group_key`, `input_index`, and the
-// row's index within `event_times`.
-// Malformed timestamps that fail to parse are logged and excluded.
+// Each valid event time in `event_times` that falls within the window is
+// represented in the result with the specified `group_key`, `input_index`,
+// and its row index within `event_times`. Malformed timestamps are logged
+// and excluded from the result.
 std::vector<RowLocation> FilterForSessionWindow(
     const tensorflow_federated::aggregation::Tensor& event_times,
     uint64_t group_key, uint32_t input_index, absl::Time window_start,
