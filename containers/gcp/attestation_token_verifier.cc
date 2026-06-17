@@ -142,6 +142,9 @@ class AttestationTokenVerifierImpl : public AttestationTokenVerifier {
     absl::StatusOr<std::string> hw_tcb_date =
         absl::InternalError("Uninitialized");
 
+    // Token temporal claim for age checks
+    absl::Time token_issuance_time;
+
     // Confidential Space operational attributes (e.g., DEBUG/EXPERIMENTAL).
     std::vector<std::string> cs_support_attributes;
   };
@@ -456,6 +459,18 @@ AttestationTokenVerifierImpl::ExtractAndLogClaims(
                     ? "[None Found]"
                     : nlohmann::json(claims.cs_support_attributes).dump());
 
+  auto iat_or = verified_jwt.GetIssuedAt();
+  if (iat_or.ok()) {
+    claims.token_issuance_time = *iat_or;
+    LOG(INFO) << "  iat (issued_at): "
+              << absl::FormatTime(claims.token_issuance_time);
+  } else {
+    claims.token_issuance_time = absl::Now();
+    LOG(WARNING)
+        << "  iat (issued_at) not found in token! Using current host time: "
+        << absl::FormatTime(claims.token_issuance_time);
+  }
+
   LOG(INFO) << "----------------------------";
   return claims;
 }
@@ -487,9 +502,18 @@ absl::Status AttestationTokenVerifierImpl::EnforcePolicy(
   // 3. Debugging Status: Ensures no platform debugging is possible.
   if (!policy_.allow_debug()) {
     // Check hardware debug status (dbgstat)
-    status =
-        CheckStringMatch(claims.dbgstat, "disabled", kJwtDbgstatAttributeName);
-    if (!status.ok()) return status;
+    if (!claims.dbgstat.ok()) {
+      return absl::PermissionDeniedError(absl::StrCat(
+          "Policy violation: Failed to get '", kJwtDbgstatAttributeName,
+          "': ", claims.dbgstat.status().ToString()));
+    }
+    if (*claims.dbgstat != "disabled" &&
+        *claims.dbgstat != "disabled-since-boot") {
+      return absl::PermissionDeniedError(
+          absl::StrCat("Policy violation: dbgstat mismatch. Expected "
+                       "'disabled' or 'disabled-since-boot', Got '",
+                       *claims.dbgstat, "'"));
+    }
 
     // Check Confidential Space operational attributes for the 'DEBUG' flag.
     for (const auto& attr : claims.cs_support_attributes) {
@@ -568,33 +592,69 @@ absl::Status AttestationTokenVerifierImpl::EnforcePolicy(
     return absl::OkStatus();
   };
 
-  // 5. TCB Freshness: Enforce up-to-date measurements or minimum dates.
-  // GCP Software TCB check.
-  if (!policy_.allow_outdated_sw_tcb()) {
-    status =
-        CheckStringMatch(claims.sw_tcb_status, "UpToDate",
-                         "SW TCB Status (" + std::string(kSwTcbStatus) + ")");
-    if (!status.ok()) return status;
-    LOG(INFO) << "  [PASS] SW TCB is UpToDate.";
-  }
-  // Enforce SW Minimum Date
+  // Helper for TCB age check
+  auto enforce_max_age = [](uint32_t max_age_days,
+                            const absl::StatusOr<std::string>& actual_date_str,
+                            absl::Time token_time,
+                            absl::string_view label) -> absl::Status {
+    if (max_age_days == 0) {
+      return absl::PermissionDeniedError(absl::StrCat(
+          "Policy violation: ", label,
+          " limit must be explicitly configured and greater than 0."));
+    }
+
+    if (!actual_date_str.ok()) {
+      return absl::PermissionDeniedError(absl::StrCat(
+          "Policy violation: Failed to get '", label,
+          "' for maximum age check: ", actual_date_str.status().ToString()));
+    }
+
+    absl::Time actual_date;
+    std::string err;
+    if (!absl::ParseTime(absl::RFC3339_full, *actual_date_str, &actual_date,
+                         &err)) {
+      return absl::PermissionDeniedError(
+          absl::StrCat("Policy violation: Failed to parse '", label, "' ('",
+                       *actual_date_str, "') as RFC3339 timestamp: ", err));
+    }
+
+    absl::Duration age = token_time - actual_date;
+    absl::Duration max_age =
+        absl::Hours(24 * static_cast<int64_t>(max_age_days));
+
+    if (age > max_age) {
+      return absl::PermissionDeniedError(absl::StrCat(
+          "Policy violation: ", label, " is too old. Got TCB date ",
+          absl::FormatTime(actual_date), ", which is ",
+          absl::ToInt64Hours(age) / 24,
+          " days old relative to token issuance (",
+          absl::FormatTime(token_time), "). Required maximum is ", max_age_days,
+          " days."));
+    }
+
+    LOG(INFO) << "  [PASS] " << label << " meets maximum age requirement ("
+              << absl::ToInt64Hours(age) / 24 << " days old, limit is "
+              << max_age_days << " days).";
+    return absl::OkStatus();
+  };
+
+  // 5. TCB Freshness: Enforce minimum dates and/or maximum ages.
+  // Software TCB Check:
   status = enforce_min_date(policy_.min_sw_tcb_date(), claims.sw_tcb_date,
                             "SW TCB Date");
   if (!status.ok()) return status;
 
-  // Intel Hardware TCB check.
-  if (!policy_.allow_outdated_hw_tcb()) {
-    status =
-        CheckStringMatch(claims.hw_tcb_status, "UpToDate",
-                         "HW TCB Status (" + std::string(kHwTcbStatus) + ")");
-    if (!status.ok()) return status;
-    LOG(INFO) << "  [PASS] HW TCB is UpToDate.";
-  } else {
-    LOG(INFO) << "  [INFO] HW TCB UpToDate check skipped (allowed by policy).";
-  }
-  // Enforce HW Minimum Date (even if UpToDate check is skipped)
+  status = enforce_max_age(policy_.max_sw_tcb_age_days(), claims.sw_tcb_date,
+                           claims.token_issuance_time, "SW TCB Date");
+  if (!status.ok()) return status;
+
+  // Hardware TCB Check:
   status = enforce_min_date(policy_.min_hw_tcb_date(), claims.hw_tcb_date,
                             "HW TCB Date");
+  if (!status.ok()) return status;
+
+  status = enforce_max_age(policy_.max_hw_tcb_age_days(), claims.hw_tcb_date,
+                           claims.token_issuance_time, "HW TCB Date");
   if (!status.ok()) return status;
 
   // 6. Workload Measurement: Final integrity check on container.

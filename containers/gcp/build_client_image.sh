@@ -17,6 +17,10 @@ ATTESTATION="ita"
 ALTS=true
 MODEL=""
 MAX_AGE_DAYS=60
+MIN_SW_TCB_DATE=""
+MIN_HW_TCB_DATE=""
+MAX_SW_TCB_AGE_DAYS=540
+MAX_HW_TCB_AGE_DAYS=540
 EXTRA_BAZEL_ARGS=""
 
 # ─── Parse flags ─────────────────────────────────────────────────────────────
@@ -27,6 +31,10 @@ for arg in "$@"; do
     --alts)           ALTS=true ;;
     --no-alts)        ALTS=false ;;
     --max_age_days=*) MAX_AGE_DAYS="${arg#*=}" ;;
+    --min_sw_tcb_date=*) MIN_SW_TCB_DATE="${arg#*=}" ;;
+    --min_hw_tcb_date=*) MIN_HW_TCB_DATE="${arg#*=}" ;;
+    --max_sw_tcb_age_days=*) MAX_SW_TCB_AGE_DAYS="${arg#*=}" ;;
+    --max_hw_tcb_age_days=*) MAX_HW_TCB_AGE_DAYS="${arg#*=}" ;;
     --server_digest=*) EXTRA_BAZEL_ARGS="--//:server_digest=${arg#*=}" ;;
     --help|-h)
       echo "Usage: $0 --model=<model_name> [--attestation=ita|gca] [--alts|--no-alts]"
@@ -37,6 +45,10 @@ for arg in "$@"; do
       echo "  --alts           Use ALTS transport (default: true)"
       echo "  --no-alts        Disable ALTS transport"
       echo "  --max_age_days   Max age of server images to accept (default: 60)"
+      echo "  --min_sw_tcb_date Minimum software TCB date (RFC3339 timestamp)"
+      echo "  --min_hw_tcb_date Minimum hardware TCB date (RFC3339 timestamp)"
+      echo "  --max_sw_tcb_age_days Maximum software TCB age in days (default: 540)"
+      echo "  --max_hw_tcb_age_days Maximum hardware TCB age in days (default: 540)"
       echo "  --server_digest  Manual override: bypass registry, use this single digest"
       exit 0
       ;;
@@ -81,6 +93,10 @@ echo "════════════════════════�
 echo "  Model filter:       $MODEL"
 echo "  Attestation:        $ATTESTATION (server filter: $SERVER_ATTESTATION)"
 echo "  Max server age:     ${MAX_AGE_DAYS} days"
+echo "  Min SW TCB date:    $MIN_SW_TCB_DATE"
+echo "  Min HW TCB date:    $MIN_HW_TCB_DATE"
+echo "  Max SW TCB age:     $MAX_SW_TCB_AGE_DAYS days"
+echo "  Max HW TCB age:     $MAX_HW_TCB_AGE_DAYS days"
 echo "  Bazel target:       $CLIENT_TARGET"
 if [[ -n "$EXTRA_BAZEL_ARGS" ]]; then
   echo "  Manual override:    $EXTRA_BAZEL_ARGS"
@@ -92,6 +108,10 @@ BAZEL_CMD=(
   bazelisk build -c opt "$CLIENT_TARGET"
   "--//:server_attestation=$SERVER_ATTESTATION"
   "--//:server_max_age_days=$MAX_AGE_DAYS"
+  "--//:min_sw_tcb_date=$MIN_SW_TCB_DATE"
+  "--//:min_hw_tcb_date=$MIN_HW_TCB_DATE"
+  "--//:max_sw_tcb_age_days=$MAX_SW_TCB_AGE_DAYS"
+  "--//:max_hw_tcb_age_days=$MAX_HW_TCB_AGE_DAYS"
 )
 
 if [[ -n "$MODEL" ]]; then

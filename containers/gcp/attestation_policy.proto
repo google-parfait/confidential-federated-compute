@@ -39,15 +39,13 @@ message AttestationPolicy {
 
   // --- TCB Freshness ---
 
-  // Default (false): Software TCB (kernel, CS agent) MUST be "UpToDate".
-  // Set true to allow outdated or unknown software TCB status, and/or to
-  // explicitly control it using the `min_sw_tcb_date` field (below).
-  bool allow_outdated_sw_tcb = 13;
+  // Maximum allowed age of the Software TCB in days relative to the token's issued-at time.
+  // This field is mandatory and must be greater than 0. The default build configuration sets this to 540.
+  uint32 max_sw_tcb_age_days = 13;
 
-  // Default (false): Hardware TCB (microcode, TDX) MUST be "UpToDate".
-  // Set true to allow outdated or unknown hardware TCB status, and/or to
-  // explicitly control it using the `min_hw_tcb_date` field (below).
-  bool allow_outdated_hw_tcb = 14;
+  // Maximum allowed age of the Hardware TCB in days relative to the token's issued-at time.
+  // This field is mandatory and must be greater than 0. The default build configuration sets this to 540.
+  uint32 max_hw_tcb_age_days = 14;
 
   // Minimum date requirements for TCB.
   // Uses RFC 3339 format (e.g., "2024-08-14T00:00:00Z").

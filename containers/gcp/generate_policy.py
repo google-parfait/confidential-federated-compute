@@ -35,6 +35,14 @@ def main():
                         help="Filter by attestation flavor (empty = all).")
     parser.add_argument("--max_age_days", type=int, default=60,
                         help="Max age in days for registry entries.")
+    parser.add_argument("--min_sw_tcb_date", default="",
+                        help="Minimum software TCB date.")
+    parser.add_argument("--min_hw_tcb_date", default="",
+                        help="Minimum hardware TCB date.")
+    parser.add_argument("--max_sw_tcb_age_days", type=int, required=True,
+                        help="Maximum software TCB age in days.")
+    parser.add_argument("--max_hw_tcb_age_days", type=int, required=True,
+                        help="Maximum hardware TCB age in days.")
     args = parser.parse_args()
 
     with open(args.registry) as f:
@@ -61,8 +69,14 @@ def main():
 
     with open(args.output, "w") as f:
         f.write(f"verifier_type: {args.verifier_type}\n")
-        f.write("allow_debug: true\n")
-        f.write("allow_outdated_hw_tcb: true\n")
+        f.write("allow_debug: false\n")
+        f.write("skip_secboot: false\n")
+        f.write(f"max_sw_tcb_age_days: {args.max_sw_tcb_age_days}\n")
+        f.write(f"max_hw_tcb_age_days: {args.max_hw_tcb_age_days}\n")
+        f.write(f'min_sw_tcb_date: "{args.min_sw_tcb_date}"\n')
+        f.write(f'min_hw_tcb_date: "{args.min_hw_tcb_date}"\n')
+        f.write('expected_project_id: ""\n')
+        f.write('expected_service_account: ""\n')
         for d in digests:
             f.write(f'expected_image_digest: "{d}"\n')
 

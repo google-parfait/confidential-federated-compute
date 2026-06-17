@@ -373,10 +373,36 @@ int_flag(
     build_setting_default = 60,
 )
 
+image_digest_flag(
+    name = "min_sw_tcb_date",
+    build_setting_default = "",
+)
+
+image_digest_flag(
+    name = "min_hw_tcb_date",
+    build_setting_default = "",
+)
+
+# Default to 540. Can be overridden on command line or in rules if needed.
+int_flag(
+    name = "max_sw_tcb_age_days",
+    build_setting_default = 540,
+)
+
+# Default to 540. Can be overridden on command line or in rules if needed.
+int_flag(
+    name = "max_hw_tcb_age_days",
+    build_setting_default = 540,
+)
+
 generate_policy(
     name = "gen_policy_ita",
     out = "policy_ita.textproto",
     digest_flag = ":server_digest",
+    max_hw_tcb_age_days = ":max_hw_tcb_age_days",
+    max_sw_tcb_age_days = ":max_sw_tcb_age_days",
+    min_hw_tcb_date = ":min_hw_tcb_date",
+    min_sw_tcb_date = ":min_sw_tcb_date",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
     server_max_age_days = ":server_max_age_days",
@@ -396,6 +422,10 @@ generate_policy(
     name = "gen_policy_gca",
     out = "policy_gca.textproto",
     digest_flag = ":server_digest",
+    max_hw_tcb_age_days = ":max_hw_tcb_age_days",
+    max_sw_tcb_age_days = ":max_sw_tcb_age_days",
+    min_hw_tcb_date = ":min_hw_tcb_date",
+    min_sw_tcb_date = ":min_sw_tcb_date",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
     server_max_age_days = ":server_max_age_days",

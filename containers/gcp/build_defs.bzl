@@ -30,14 +30,36 @@ int_flag = rule(
 def _generate_policy_impl(ctx):
     digest = ctx.attr.digest_flag[BuildSettingInfo].value
     out = ctx.actions.declare_file(ctx.attr.out)
+    min_sw_date = ctx.attr.min_sw_tcb_date[BuildSettingInfo].value if ctx.attr.min_sw_tcb_date else ""
+    min_hw_date = ctx.attr.min_hw_tcb_date[BuildSettingInfo].value if ctx.attr.min_hw_tcb_date else ""
+    max_sw_age = ctx.attr.max_sw_tcb_age_days[IntSettingInfo].value if ctx.attr.max_sw_tcb_age_days else 0
+    max_hw_age = ctx.attr.max_hw_tcb_age_days[IntSettingInfo].value if ctx.attr.max_hw_tcb_age_days else 0
+
+    if max_sw_age <= 0:
+        fail("max_sw_tcb_age_days must be explicitly configured and greater than 0")
+    if max_hw_age <= 0:
+        fail("max_hw_tcb_age_days must be explicitly configured and greater than 0")
 
     if digest and digest != "skip":
         # Manual override: single digest from --//:server_digest flag.
         content = """verifier_type: {type}
-allow_debug: true
-allow_outdated_hw_tcb: true
+allow_debug: false
+skip_secboot: false
+max_sw_tcb_age_days: {max_sw_age}
+max_hw_tcb_age_days: {max_hw_age}
+min_sw_tcb_date: "{min_sw_date}"
+min_hw_tcb_date: "{min_hw_date}"
+expected_project_id: ""
+expected_service_account: ""
 expected_image_digest: "{digest}"
-""".format(type = ctx.attr.verifier_type, digest = digest)
+""".format(
+            type = ctx.attr.verifier_type,
+            digest = digest,
+            min_sw_date = min_sw_date,
+            min_hw_date = min_hw_date,
+            max_sw_age = max_sw_age,
+            max_hw_age = max_hw_age,
+        )
 
         # buildifier: disable=print
         print("Generating policy (%s) [manual digest]:\n%s" % (ctx.attr.verifier_type, content))
@@ -59,7 +81,11 @@ expected_image_digest: "{digest}"
                 " --verifier_type={type}" +
                 " --model={model}" +
                 " --attestation={attest}" +
-                " --max_age_days={age}"
+                " --max_age_days={age}" +
+                " --min_sw_tcb_date='{min_sw_date}'" +
+                " --min_hw_tcb_date='{min_hw_date}'" +
+                " --max_sw_tcb_age_days={max_sw_age}" +
+                " --max_hw_tcb_age_days={max_hw_age}"
             ).format(
                 script = ctx.file._generate_policy_script.path,
                 registry = ctx.file.registry_file.path,
@@ -68,14 +94,30 @@ expected_image_digest: "{digest}"
                 model = model_filter,
                 attest = attest_filter,
                 age = max_age,
+                min_sw_date = min_sw_date,
+                min_hw_date = min_hw_date,
+                max_sw_age = max_sw_age,
+                max_hw_age = max_hw_age,
             ),
         )
     else:
         # No digest, no registry — generate policy without digest check.
         content = """verifier_type: {type}
-allow_debug: true
-allow_outdated_hw_tcb: true
-""".format(type = ctx.attr.verifier_type)
+allow_debug: false
+skip_secboot: false
+max_sw_tcb_age_days: {max_sw_age}
+max_hw_tcb_age_days: {max_hw_age}
+min_sw_tcb_date: "{min_sw_date}"
+min_hw_tcb_date: "{min_hw_date}"
+expected_project_id: ""
+expected_service_account: ""
+""".format(
+            type = ctx.attr.verifier_type,
+            min_sw_date = min_sw_date,
+            min_hw_date = min_hw_date,
+            max_sw_age = max_sw_age,
+            max_hw_age = max_hw_age,
+        )
 
         # buildifier: disable=print
         print("Generating policy (%s) [no digest check]:\n%s" % (ctx.attr.verifier_type, content))
@@ -102,6 +144,20 @@ generate_policy = rule(
         ),
         "server_max_age_days": attr.label(
             doc = "Build flag: max age in days for registry entries (default: 60).",
+        ),
+        "min_sw_tcb_date": attr.label(
+            doc = "Build flag: minimum software TCB date.",
+        ),
+        "min_hw_tcb_date": attr.label(
+            doc = "Build flag: minimum hardware TCB date.",
+        ),
+        "max_sw_tcb_age_days": attr.label(
+            mandatory = True,
+            doc = "Build flag: maximum software TCB age in days.",
+        ),
+        "max_hw_tcb_age_days": attr.label(
+            mandatory = True,
+            doc = "Build flag: maximum hardware TCB age in days.",
         ),
         "_generate_policy_script": attr.label(
             default = ":generate_policy.py",
