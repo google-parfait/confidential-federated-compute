@@ -23,8 +23,8 @@ use oak_attestation_verification::{
 use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_crypto::{encryptor::Encryptor, noise_handshake::OrderedCrypter};
 use oak_proto_rust::oak::attestation::v1::{
-    reference_values, AmdSevReferenceValues, OakContainersReferenceValues, ReferenceValues,
-    RootLayerReferenceValues,
+    AmdSevReferenceValues, OakContainersReferenceValues, ReferenceValues, RootLayerReferenceValues,
+    reference_values,
 };
 use oak_session::{
     aggregators::PassThrough,

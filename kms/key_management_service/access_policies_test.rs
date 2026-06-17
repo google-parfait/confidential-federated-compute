@@ -13,14 +13,13 @@
 // limitations under the License.
 
 use access_policies::{
-    authorize_transform, validate_pipeline_invocation_policies, AuthorizedTransform,
+    AuthorizedTransform, authorize_transform, validate_pipeline_invocation_policies,
 };
 use access_policy_proto::{
     any_proto::google::protobuf::Any,
     fcp::confidentialcompute::{
-        pipeline_variant_policy::Transform, ApplicationMatcher,
-        DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
-        PipelineVariantPolicy,
+        ApplicationMatcher, DataAccessPolicy as AuthorizedLogicalPipelinePolicies,
+        LogicalPipelinePolicy, PipelineVariantPolicy, pipeline_variant_policy::Transform,
     },
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };

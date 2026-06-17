@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, ensure, Context};
+use anyhow::{Context, bail, ensure};
 use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 use futures_util::TryFutureExt as _;
 use integer_encoding::VarIntReader;
 use messages_proto::oak::session::v1::EndorsedEvidence;
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
-    extracted_evidence::EvidenceValues, Evidence, OakContainersData, OakRestrictedKernelData,
-    ReferenceValues,
+    Evidence, OakContainersData, OakRestrictedKernelData, ReferenceValues,
+    extracted_evidence::EvidenceValues,
 };
 use prost::Message;
 use prost_types::Any;
@@ -28,11 +28,11 @@ use sha2::{Digest, Sha256};
 use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
 use verification_record_proto::{
     access_policy_proto::fcp::confidentialcompute::{
-        access_budget::Kind, data_access_policy, pipeline_variant_policy, AccessBudget,
-        DataAccessPolicy, PipelineVariantPolicy,
+        AccessBudget, DataAccessPolicy, PipelineVariantPolicy, access_budget::Kind,
+        data_access_policy, pipeline_variant_policy,
     },
     fcp::confidentialcompute::AttestationVerificationRecord,
-    payload_transparency_proto::fcp::confidentialcompute::{signed_payload, SignedPayload},
+    payload_transparency_proto::fcp::confidentialcompute::{SignedPayload, signed_payload},
 };
 
 /// Writes a human readable explanation for the given FCP

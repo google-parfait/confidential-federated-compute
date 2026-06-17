@@ -14,23 +14,24 @@
 
 use std::sync::Arc;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use attestation_transparency_service::{
-    build_signed_payload_sig_structure, AttestationTransparencyService,
+    AttestationTransparencyService, build_signed_payload_sig_structure,
 };
 use attestation_transparency_service_proto::{
     fcp::confidentialcompute::{
+        CreateSigningKeyRequest, GetStatusRequest, GetStatusResponse,
         attestation_transparency_service_client::AttestationTransparencyServiceClient,
         attestation_transparency_service_server::AttestationTransparencyServiceServer,
         create_signing_key_request, create_signing_key_request::CommitKey,
-        create_signing_key_response, CreateSigningKeyRequest, GetStatusRequest, GetStatusResponse,
+        create_signing_key_response,
     },
     payload_transparency_proto::{
         fcp::confidentialcompute::{
-            signed_payload::{signature, signature::Headers, Signature},
             SignedPayload,
+            signed_payload::{Signature, signature, signature::Headers},
         },
-        key_proto::fcp::confidentialcompute::{key, Key},
+        key_proto::fcp::confidentialcompute::{Key, key},
     },
     session_proto::oak::session::v1::SessionRequest,
 };
@@ -41,7 +42,7 @@ use oak_crypto::signer::Signer;
 use oak_proto_rust::oak::attestation::v1::Stage0Measurements;
 use oak_sdk_standalone::{Standalone, StandaloneBuilder};
 use oak_session::session_binding::{SessionBinder, SignatureBinder};
-use oak_time::{clock::FixedClock, UNIX_EPOCH};
+use oak_time::{UNIX_EPOCH, clock::FixedClock};
 use p256::ecdsa::{SigningKey, VerifyingKey};
 use payload_signer::PayloadSigner;
 use prost::Message;
@@ -50,8 +51,8 @@ use tokio::{net::TcpListener, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::task::AbortOnDropHandle;
 use tonic::{
-    transport::{server::TcpIncoming, Server},
     Response,
+    transport::{Server, server::TcpIncoming},
 };
 
 struct TestSigner {

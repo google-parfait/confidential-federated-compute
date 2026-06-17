@@ -21,9 +21,9 @@ use oak_proto_rust::oak::{
     attestation::v1::ReferenceValues,
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
-use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
-use oak_time::{clock::FixedClock, Clock, Instant, UNIX_EPOCH};
-use prost::{bytes::Bytes, Message};
+use oak_session::{ClientSession, ProtocolEngine, Session, session_binding::SessionBinder};
+use oak_time::{Clock, Instant, UNIX_EPOCH, clock::FixedClock};
+use prost::{Message, bytes::Bytes};
 use prost_proto_conversion::ProstProtoConversionExt;
 use rand::Rng;
 use session_config::create_session_config;
@@ -32,8 +32,8 @@ use slog::Drain;
 use storage_actor::StorageActor;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, read_response, storage_request, storage_response, update_request,
         ReadRequest, ReadResponse, StorageRequest, StorageResponse, UpdateRequest, UpdateResponse,
+        read_request, read_response, storage_request, storage_response, update_request,
     },
     duration_proto::google::protobuf::Duration,
     status_proto::google::rpc::Status,

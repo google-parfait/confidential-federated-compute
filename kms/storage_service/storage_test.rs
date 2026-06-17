@@ -18,7 +18,7 @@ use oak_time::{Instant, UNIX_EPOCH};
 use storage::Storage;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, read_response, update_request, ReadRequest, ReadResponse, UpdateRequest,
+        ReadRequest, ReadResponse, UpdateRequest, read_request, read_response, update_request,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,

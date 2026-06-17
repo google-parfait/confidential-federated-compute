@@ -89,11 +89,11 @@ pub fn get_test_session_binder() -> Arc<dyn SessionBinder> {
 /// Returns reference values compatible with the test evidence.
 pub fn get_test_reference_values() -> ReferenceValues {
     use access_policy_proto::reference_value_proto::oak::attestation::v1::{
+        BinaryReferenceValue, ContainerLayerReferenceValues, InsecureReferenceValues,
+        KernelBinaryReferenceValue, KernelLayerReferenceValues, OakContainersReferenceValues,
+        RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues, TextReferenceValue,
         binary_reference_value, kernel_binary_reference_value, reference_values,
-        text_reference_value, BinaryReferenceValue, ContainerLayerReferenceValues,
-        InsecureReferenceValues, KernelBinaryReferenceValue, KernelLayerReferenceValues,
-        OakContainersReferenceValues, RootLayerReferenceValues, SkipVerification,
-        SystemLayerReferenceValues, TextReferenceValue,
+        text_reference_value,
     };
 
     let skip = BinaryReferenceValue {

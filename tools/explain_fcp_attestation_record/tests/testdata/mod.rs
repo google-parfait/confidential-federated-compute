@@ -16,17 +16,17 @@ use prost::Message as _;
 use rustls::pki_types::pem::PemObject as _;
 use verification_record_proto::{
     access_policy_proto::fcp::confidentialcompute::{
+        AccessBudget, ApplicationMatcher, DataAccessPolicy, StructMatcher, ValueMatcher,
         access_budget, data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
-        value_matcher::NumberMatcher, AccessBudget, ApplicationMatcher, DataAccessPolicy,
-        StructMatcher, ValueMatcher,
+        value_matcher::NumberMatcher,
     },
     access_policy_proto::reference_value_proto::oak::attestation::v1::{
-        binary_reference_value, kernel_binary_reference_value, reference_values,
-        tcb_version_reference_value, text_reference_value, AmdSevReferenceValues,
-        BinaryReferenceValue, ContainerLayerReferenceValues, KernelBinaryReferenceValue,
-        KernelLayerReferenceValues, OakContainersReferenceValues, ReferenceValues,
-        RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
-        TcbVersionReferenceValue, TextReferenceValue,
+        AmdSevReferenceValues, BinaryReferenceValue, ContainerLayerReferenceValues,
+        KernelBinaryReferenceValue, KernelLayerReferenceValues, OakContainersReferenceValues,
+        ReferenceValues, RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
+        TcbVersionReferenceValue, TextReferenceValue, binary_reference_value,
+        kernel_binary_reference_value, reference_values, tcb_version_reference_value,
+        text_reference_value,
     },
     access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion,
     evidence_proto::oak::attestation::v1::Evidence,
@@ -164,10 +164,10 @@ pub fn test_certs() -> (reqwest::Certificate, rustls::server::ServerConfig) {
     let server_config = rustls::server::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(
-            vec![rustls::pki_types::CertificateDer::from_pem_slice(include_bytes!(
-                "test_cert.pem"
-            ))
-            .expect("must be a valid certificate")],
+            vec![
+                rustls::pki_types::CertificateDer::from_pem_slice(include_bytes!("test_cert.pem"))
+                    .expect("must be a valid certificate"),
+            ],
             rustls::pki_types::PrivateKeyDer::from_pem_slice(include_bytes!("test_cert.key.pem"))
                 .expect("must be a valid private key"),
         )

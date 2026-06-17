@@ -13,26 +13,26 @@
 // limitations under the License.
 
 use access_policies::{authorize_transform, validate_pipeline_invocation_policies};
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{Context, anyhow, ensure};
 use bssl_crypto::{digest::Sha256, ec, ecdsa};
 use coset::{
+    CborSerializable, CoseEncrypt0, CoseKeyBuilder,
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder, Timestamp as CwtTimestamp},
     iana::{Algorithm, EllipticCurve, KeyOperation},
-    CborSerializable, CoseEncrypt0, CoseKeyBuilder,
 };
 use hashbrown::HashMap;
 use key_derivation::{
-    derive_private_keys, derive_public_cwts, derive_public_keys, derive_signed_public_keys,
-    get_derived_key_id, HPKE_BASE_X25519_SHA256_AES128GCM,
+    HPKE_BASE_X25519_SHA256_AES128GCM, derive_private_keys, derive_public_cwts, derive_public_keys,
+    derive_signed_public_keys, get_derived_key_id,
 };
 use kms_proto::fcp::confidentialcompute::{
-    authorize_confidential_transform_response, key_management_service_server, keyset,
     AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
     ClusterPublicKey, DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest,
     GetKeysetRequest, GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
     RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
     ReleaseResultsResponse, RotateKeysetRequest, RotateKeysetResponse,
+    authorize_confidential_transform_response, key_management_service_server, keyset,
 };
 use oak_crypto::encryptor::ClientEncryptor;
 use oak_sdk_containers::Signer;
@@ -41,15 +41,15 @@ use payload_transparency_proto::fcp::confidentialcompute::signed_payload::signat
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use release_tokens::{
-    compute_logical_pipeline_updates, decrypt_release_token, endorse_transform_signing_key,
-    verify_release_token, LogicalPipelineUpdate,
+    LogicalPipelineUpdate, compute_logical_pipeline_updates, decrypt_release_token,
+    endorse_transform_signing_key, verify_release_token,
 };
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        logical_pipeline_state_value::BlockedPolicies, read_request, read_response, update_request,
         ClusterKeyValue, KeysetKeyValue, LogicalPipelineStateValue, PipelineInvocationStateValue,
-        ReadRequest, UpdateRequest,
+        ReadRequest, UpdateRequest, logical_pipeline_state_value::BlockedPolicies, read_request,
+        read_response, update_request,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -235,14 +235,19 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
             let response = self
                 .storage_client
                 .read(ReadRequest {
-                    ranges: vec![Self::create_range(
-                        StorageKey::KeysetKey { keyset_id: u64::MIN, key_id: MIN_KEYSET_KEY_ID },
-                        Some(StorageKey::KeysetKey {
-                            keyset_id: u64::MAX,
-                            key_id: MAX_KEYSET_KEY_ID,
-                        }),
-                    )
-                    .unwrap()],
+                    ranges: vec![
+                        Self::create_range(
+                            StorageKey::KeysetKey {
+                                keyset_id: u64::MIN,
+                                key_id: MIN_KEYSET_KEY_ID,
+                            },
+                            Some(StorageKey::KeysetKey {
+                                keyset_id: u64::MAX,
+                                key_id: MAX_KEYSET_KEY_ID,
+                            }),
+                        )
+                        .unwrap(),
+                    ],
                 })
                 .await?;
             for entry in response.entries {
@@ -535,17 +540,19 @@ where
         let response = self
             .storage_client
             .read(ReadRequest {
-                ranges: vec![Self::create_range(
-                    StorageKey::KeysetKey {
-                        keyset_id: request.keyset_id,
-                        key_id: MIN_KEYSET_KEY_ID,
-                    },
-                    Some(StorageKey::KeysetKey {
-                        keyset_id: request.keyset_id,
-                        key_id: MAX_KEYSET_KEY_ID,
-                    }),
-                )
-                .unwrap()],
+                ranges: vec![
+                    Self::create_range(
+                        StorageKey::KeysetKey {
+                            keyset_id: request.keyset_id,
+                            key_id: MIN_KEYSET_KEY_ID,
+                        },
+                        Some(StorageKey::KeysetKey {
+                            keyset_id: request.keyset_id,
+                            key_id: MAX_KEYSET_KEY_ID,
+                        }),
+                    )
+                    .unwrap(),
+                ],
             })
             .await
             .map_err(Self::convert_error)?;
@@ -615,7 +622,7 @@ where
                 Ok(_) => {
                     return Ok(Response::new(RotateKeysetResponse {
                         key_id: key_id.to_be_bytes().to_vec(),
-                    }))
+                    }));
                 }
                 Err(err) if err.downcast_ref::<Code>() == Some(&Code::FailedPrecondition) => {
                     // The `exists: false` precondition failed, so the key
@@ -637,17 +644,19 @@ where
         let response = self
             .storage_client
             .read(ReadRequest {
-                ranges: vec![Self::create_range(
-                    StorageKey::KeysetKey {
-                        keyset_id: request.keyset_id,
-                        key_id: MIN_KEYSET_KEY_ID,
-                    },
-                    Some(StorageKey::KeysetKey {
-                        keyset_id: request.keyset_id,
-                        key_id: MAX_KEYSET_KEY_ID,
-                    }),
-                )
-                .unwrap()],
+                ranges: vec![
+                    Self::create_range(
+                        StorageKey::KeysetKey {
+                            keyset_id: request.keyset_id,
+                            key_id: MIN_KEYSET_KEY_ID,
+                        },
+                        Some(StorageKey::KeysetKey {
+                            keyset_id: request.keyset_id,
+                            key_id: MAX_KEYSET_KEY_ID,
+                        }),
+                    )
+                    .unwrap(),
+                ],
             })
             .await
             .map_err(Self::convert_error)?;
@@ -713,11 +722,10 @@ where
         let response = self
             .storage_client
             .read(ReadRequest {
-                ranges: vec![Self::create_range(
-                    Self::get_logical_pipeline_storage_key(&request.name),
-                    None,
-                )
-                .unwrap()],
+                ranges: vec![
+                    Self::create_range(Self::get_logical_pipeline_storage_key(&request.name), None)
+                        .unwrap(),
+                ],
             })
             .await
             .map_err(Self::convert_error)?;
@@ -753,11 +761,13 @@ where
         let response = self
             .storage_client
             .read(ReadRequest {
-                ranges: vec![Self::create_range(
-                    Self::get_logical_pipeline_storage_key(&request.logical_pipeline_name),
-                    None,
-                )
-                .unwrap()],
+                ranges: vec![
+                    Self::create_range(
+                        Self::get_logical_pipeline_storage_key(&request.logical_pipeline_name),
+                        None,
+                    )
+                    .unwrap(),
+                ],
             })
             .await
             .map_err(Self::convert_error)?;

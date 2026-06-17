@@ -15,27 +15,27 @@
 use anyhow::anyhow;
 use bssl_crypto::hpke;
 use coset::{
+    Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyOperation, KeyType, Label,
+    ProtectedHeader,
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, ClaimsSetBuilder},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1, Header, KeyOperation, KeyType, Label,
-    ProtectedHeader,
+    iana,
 };
 use googletest::prelude::*;
 use key_derivation::{
+    ACCESS_POLICY_SHA256_CLAIM, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM,
     derive_private_keys, derive_public_cwts, derive_public_keys, derive_signed_public_keys,
-    get_derived_key_id, ACCESS_POLICY_SHA256_CLAIM, HPKE_BASE_X25519_SHA256_AES128GCM,
-    PUBLIC_KEY_CLAIM,
+    get_derived_key_id,
 };
 use matchers::when_deserialized;
 use oak_proto_rust::oak::crypto::v1::Signature;
 use payload_signer::MockPayloadSigner;
 use payload_transparency_proto::{
     fcp::confidentialcompute::{
-        signed_payload,
+        SignedPayload, signed_payload,
         signed_payload::signature::{Headers, Signature::RawSignature},
-        SignedPayload,
     },
-    key_proto::fcp::confidentialcompute::{key, Key},
+    key_proto::fcp::confidentialcompute::{Key, key},
 };
 
 struct FakeSigner {}

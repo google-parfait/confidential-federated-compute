@@ -33,10 +33,10 @@ use std::sync::Arc;
 
 use assert_cmd::Command;
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse as _,
-    Router,
 };
 use insta::assert_snapshot;
 use messages_proto::oak::session::v1::EndorsedEvidence;
@@ -46,7 +46,7 @@ use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::Pi
 use tokio::task::JoinSet;
 use verification_record_proto::{
     fcp::confidentialcompute::AttestationVerificationRecord,
-    payload_transparency_proto::fcp::confidentialcompute::{signed_payload, SignedPayload},
+    payload_transparency_proto::fcp::confidentialcompute::{SignedPayload, signed_payload},
 };
 
 mod testdata;
@@ -213,7 +213,9 @@ async fn test_explain_record_with_ledger_evidence() -> anyhow::Result<()> {
     .await;
 
     assert!(result.is_err());
-    assert!(format!("{result:?}").contains("Oak Restricted Kernel evidence is no longer supported"));
+    assert!(
+        format!("{result:?}").contains("Oak Restricted Kernel evidence is no longer supported")
+    );
     Ok(())
 }
 

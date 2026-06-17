@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, ensure, Context};
-use hashbrown::{hash_map, HashMap};
+use anyhow::{Context, anyhow, ensure};
+use hashbrown::{HashMap, hash_map};
 use kms_proto::fcp::confidentialcompute::SessionResponseWithStatus;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{
@@ -23,18 +23,18 @@ use oak_proto_rust::oak::{
     session::v1::{PlaintextMessage, SessionRequestWithSessionId, SessionResponse},
 };
 use oak_session::{
-    config::SessionConfig, session_binding::SessionBinder, ProtocolEngine, ServerSession, Session,
+    ProtocolEngine, ServerSession, Session, config::SessionConfig, session_binding::SessionBinder,
 };
 use oak_time::{Clock, Instant, UNIX_EPOCH};
-use prost::{bytes::Bytes, Message};
+use prost::{Message, bytes::Bytes};
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
 use slog::{debug, error, warn};
 use storage::Storage;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, storage_event, storage_request, storage_response, update_request,
         ReadRequest, ReadResponse, StorageEvent, StorageRequest, StorageResponse, UpdateRequest,
+        read_request, storage_event, storage_request, storage_response, update_request,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,

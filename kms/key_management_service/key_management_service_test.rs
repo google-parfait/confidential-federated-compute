@@ -13,50 +13,50 @@
 // limitations under the License.
 
 use std::sync::{
-    atomic::{AtomicI64, Ordering},
     Arc,
+    atomic::{AtomicI64, Ordering},
 };
 
 use access_policy_proto::{
     any_proto::google::protobuf::Any,
     fcp::confidentialcompute::{
-        pipeline_variant_policy::Transform, ApplicationMatcher,
-        DataAccessPolicy as AuthorizedLogicalPipelinePolicies, LogicalPipelinePolicy,
-        PipelineVariantPolicy,
+        ApplicationMatcher, DataAccessPolicy as AuthorizedLogicalPipelinePolicies,
+        LogicalPipelinePolicy, PipelineVariantPolicy, pipeline_variant_policy::Transform,
     },
     reference_value_proto::oak::attestation::v1::ReferenceValues,
 };
 use anyhow::Context;
 use bssl_crypto::{digest::Sha256, ec, ecdsa, hpke};
 use coset::{
+    Algorithm, CborSerializable, CoseEncrypt0Builder, CoseKey, CoseSign1, CoseSign1Builder, Header,
+    HeaderBuilder, KeyOperation, KeyType, Label, ProtectedHeader,
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet, Timestamp as CwtTimestamp},
-    iana, Algorithm, CborSerializable, CoseEncrypt0Builder, CoseKey, CoseSign1, CoseSign1Builder,
-    Header, HeaderBuilder, KeyOperation, KeyType, Label, ProtectedHeader,
+    iana,
 };
 use googletest::prelude::*;
 use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
 use key_management_service::{
-    get_init_request, KeyManagementService, StorageKey, DST_NODE_IDS_CLAIM, INVOCATION_ID_CLAIM,
-    LOGICAL_PIPELINE_NAME_CLAIM, TRANSFORM_INDEX_CLAIM,
+    DST_NODE_IDS_CLAIM, INVOCATION_ID_CLAIM, KeyManagementService, LOGICAL_PIPELINE_NAME_CLAIM,
+    StorageKey, TRANSFORM_INDEX_CLAIM, get_init_request,
 };
 use kms_proto::fcp::confidentialcompute::{
-    authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
-    key_management_service_server::KeyManagementService as _,
-    keyset::Key,
-    release_results_request::ReleasableResult,
     AuthorizeConfidentialTransformRequest, AuthorizeConfidentialTransformResponse,
     DeriveKeysRequest, DeriveKeysResponse, GetClusterPublicKeyRequest, GetKeysetRequest,
     GetLogicalPipelineStateRequest, Keyset, LogicalPipelineState,
     RegisterPipelineInvocationRequest, RegisterPipelineInvocationResponse, ReleaseResultsRequest,
     ReleaseResultsResponse, RotateKeysetRequest, RotateKeysetResponse,
+    authorize_confidential_transform_response::{AssociatedData, ProtectedResponse},
+    key_management_service_server::KeyManagementService as _,
+    keyset::Key,
+    release_results_request::ReleasableResult,
 };
 use oak_crypto::{encryptor::ServerEncryptor, signer::Signer};
 use oak_proto_rust::oak::crypto::v1::Signature;
 use payload_signer::{MockPayloadSigner, PayloadSigner};
 use payload_transparency_proto::{
     fcp::confidentialcompute::SignedPayload,
-    key_proto::fcp::confidentialcompute::{key, Key as FcpKey},
+    key_proto::fcp::confidentialcompute::{Key as FcpKey, key},
 };
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
@@ -71,7 +71,7 @@ use storage::Storage;
 use storage_client::StorageClient;
 use storage_proto::{
     confidential_federated_compute::kms::{
-        update_request, ClusterKeyValue, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
+        ClusterKeyValue, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse, update_request,
     },
     duration_proto::google::protobuf::Duration,
     timestamp_proto::google::protobuf::Timestamp,
@@ -910,10 +910,9 @@ async fn authorize_confidential_transform_with_keyset_keys() {
 
         let request = DeriveKeysRequest {
             keyset_id,
-            authorized_logical_pipeline_policies_hashes: vec![Sha256::hash(
-                &logical_pipeline_policies,
-            )
-            .into()],
+            authorized_logical_pipeline_policies_hashes: vec![
+                Sha256::hash(&logical_pipeline_policies).into(),
+            ],
         };
         let response = kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
         let cwt =

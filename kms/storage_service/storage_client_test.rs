@@ -16,11 +16,11 @@ use std::{pin::Pin, sync::Arc};
 
 use googletest::prelude::*;
 use matchers::{code, has_context};
-use mockall::{predicate::eq as request_eq, PredicateBooleanExt};
+use mockall::{PredicateBooleanExt, predicate::eq as request_eq};
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
-use oak_session::{session_binding::SessionBinder, ProtocolEngine, ServerSession, Session};
-use oak_time::{clock::FixedClock, Clock, UNIX_EPOCH};
+use oak_session::{ProtocolEngine, ServerSession, Session, session_binding::SessionBinder};
+use oak_time::{Clock, UNIX_EPOCH, clock::FixedClock};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 use session_config::create_session_config;
@@ -37,8 +37,8 @@ use session_v1_service_proto::{
 use storage_client::{GrpcStorageClient, StorageClient};
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_request, storage_request, storage_response, update_request, ReadRequest, ReadResponse,
-        StorageRequest, StorageResponse, UpdateRequest, UpdateResponse,
+        ReadRequest, ReadResponse, StorageRequest, StorageResponse, UpdateRequest, UpdateResponse,
+        read_request, storage_request, storage_response, update_request,
     },
     status_proto::google::rpc::Status,
     timestamp_proto::google::protobuf::Timestamp,
@@ -46,11 +46,11 @@ use storage_proto::{
 use tokio::{
     net::TcpListener,
     sync::mpsc,
-    time::{timeout, Duration},
+    time::{Duration, timeout},
 };
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
 use tokio_util::task::AbortOnDropHandle;
-use tonic::transport::{server::TcpIncoming, Server};
+use tonic::transport::{Server, server::TcpIncoming};
 use tracing::debug;
 
 #[mockall::automock]
@@ -119,27 +119,28 @@ impl OakSessionV1Service for FakeServer {
                         .unwrap(),
                     )
                     .expect("failed to put incoming message");
-                if session.is_open() &&
-                     let Some(msg) = session.read().expect("failed to read from session") {
-                        let request = StorageRequest::decode(msg.plaintext.as_slice()).unwrap();
-                        debug!("Decoded StorageRequest: {:?}", request);
-                        match storage.call(request.kind.expect("no request kind")) {
-                            Ok(response) => {
-                                let response = StorageResponse {
-                                    correlation_id: request.correlation_id,
-                                    kind: Some(response),
-                                };
-                                debug!("Returning StorageResponse: {:?}", response);
-                                session
-                                    .write(PlaintextMessage { plaintext: response.encode_to_vec() })
-                                    .expect("failed to write to session");
-                            }
-                            Err(err) => {
-                                debug!("Returning error: {:?}", err);
-                                tx.send(Err(err)).await.expect("failed to send message");
-                                return;
-                            }
-                        };
+                if session.is_open()
+                    && let Some(msg) = session.read().expect("failed to read from session")
+                {
+                    let request = StorageRequest::decode(msg.plaintext.as_slice()).unwrap();
+                    debug!("Decoded StorageRequest: {:?}", request);
+                    match storage.call(request.kind.expect("no request kind")) {
+                        Ok(response) => {
+                            let response = StorageResponse {
+                                correlation_id: request.correlation_id,
+                                kind: Some(response),
+                            };
+                            debug!("Returning StorageResponse: {:?}", response);
+                            session
+                                .write(PlaintextMessage { plaintext: response.encode_to_vec() })
+                                .expect("failed to write to session");
+                        }
+                        Err(err) => {
+                            debug!("Returning error: {:?}", err);
+                            tx.send(Err(err)).await.expect("failed to send message");
+                            return;
+                        }
+                    };
                 }
 
                 while let Some(response) = session.get_outgoing_message().unwrap() {

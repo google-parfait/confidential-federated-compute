@@ -14,19 +14,19 @@
 
 use std::{
     cmp::Reverse,
-    collections::{btree_map, BTreeMap, BinaryHeap},
+    collections::{BTreeMap, BinaryHeap, btree_map},
     ops::Bound::Included,
     sync::{
-        atomic::{AtomicI64, Ordering},
         Arc,
+        atomic::{AtomicI64, Ordering},
     },
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use oak_time::{Clock, Instant};
 use storage_proto::{
     confidential_federated_compute::kms::{
-        read_response, update_request, ReadRequest, ReadResponse, UpdateRequest, UpdateResponse,
+        ReadRequest, ReadResponse, UpdateRequest, UpdateResponse, read_response, update_request,
     },
     timestamp_proto::google::protobuf::Timestamp,
 };

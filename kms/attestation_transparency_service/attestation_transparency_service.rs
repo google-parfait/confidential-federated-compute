@@ -14,20 +14,20 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{Context, anyhow, bail, ensure};
 use attestation_transparency_service_proto::{
     fcp::confidentialcompute::{
+        CreateSigningKeyRequest, CreateSigningKeyResponse, GetStatusRequest, GetStatusResponse,
         attestation_transparency_service_server, create_signing_key_request,
         create_signing_key_request::CommitKey, create_signing_key_response,
-        create_signing_key_response::UnpublishedKey, CreateSigningKeyRequest,
-        CreateSigningKeyResponse, GetStatusRequest, GetStatusResponse,
+        create_signing_key_response::UnpublishedKey,
     },
     payload_transparency_proto::{
         fcp::confidentialcompute::{
-            signed_payload::{signature, signature::Headers, Signature},
             SignedPayload,
+            signed_payload::{Signature, signature, signature::Headers},
         },
-        key_proto::fcp::confidentialcompute::{key, Key},
+        key_proto::fcp::confidentialcompute::{Key, key},
     },
     session_proto::oak::session::v1::{SessionRequest, SessionResponse},
 };
@@ -45,6 +45,7 @@ use oak_proto_rust::oak::{
 use oak_sdk_common::{StaticAttester, StaticEndorser};
 use oak_sdk_containers::Signer;
 use oak_session::{
+    ClientSession, ProtocolEngine, ServerSession, Session,
     aggregators::PassThrough,
     attestation::AttestationType,
     config::SessionConfig,
@@ -53,7 +54,6 @@ use oak_session::{
     key_extractor::DefaultBindingKeyExtractor,
     session_binding::{SessionBinder, SignatureBindingVerifierProvider},
     verifier::BoundAssertionVerifier,
-    ClientSession, ProtocolEngine, ServerSession, Session,
 };
 use oak_session_endorsed_evidence::{
     EndorsedEvidenceBindableAssertionGenerator, EndorsedEvidenceBoundAssertionVerifier,
@@ -62,7 +62,7 @@ use oak_time::Clock;
 use payload_signer::PayloadSigner;
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
-use serde::{de::Error as _, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error as _};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Code, Request, Response};

@@ -16,11 +16,10 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use access_policy_proto::fcp::confidentialcompute::{
-    pipeline_variant_policy::Transform,
     DataAccessPolicyWithSerializedVariants as AuthorizedLogicalPipelinePoliciesWithSerializedVariants,
-    PipelineVariantPolicy,
+    PipelineVariantPolicy, pipeline_variant_policy::Transform,
 };
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{Context, anyhow, bail, ensure};
 use kms_proto::{
     any_proto::google::protobuf::Any,
     endorsement_proto::oak::attestation::v1::Endorsements as KmsEndorsements,
@@ -28,18 +27,18 @@ use kms_proto::{
     timestamp_proto::google::protobuf::Timestamp,
 };
 use oak_attestation_verification::{
-    results::{unique_hybrid_encryption_public_key, unique_signing_public_key},
     AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, FirmwarePolicy,
     InsecureAttestationVerifier, IntelTdxAttestationVerifier, IntelTdxPolicy, KernelPolicy,
     SystemPolicy,
+    results::{unique_hybrid_encryption_public_key, unique_signing_public_key},
 };
 use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_proto_rust::oak::attestation::v1::{
-    attestation_results, reference_values, AmdSevReferenceValues, Endorsements, Evidence,
-    IntelTdxReferenceValues, OakContainersReferenceValues, ReferenceValues,
-    RootLayerReferenceValues,
+    AmdSevReferenceValues, Endorsements, Evidence, IntelTdxReferenceValues,
+    OakContainersReferenceValues, ReferenceValues, RootLayerReferenceValues, attestation_results,
+    reference_values,
 };
-use oak_time::{clock::FixedClock, Instant};
+use oak_time::{Instant, clock::FixedClock};
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
 

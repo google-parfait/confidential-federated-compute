@@ -16,16 +16,17 @@
 //! generating the transform signing key endorsement used to establish the
 //! provenance of a release token.
 
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{Context, anyhow, bail, ensure};
 use bssl_crypto::{ec, ecdsa, hpke};
 use coset::{
+    Algorithm, CborSerializable, CoseEncrypt0, CoseKey, CoseKeyBuilder, CoseSign1,
+    CoseSign1Builder, HeaderBuilder, KeyOperation, KeyType, Label,
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
-    iana, Algorithm, CborSerializable, CoseEncrypt0, CoseKey, CoseKeyBuilder, CoseSign1,
-    CoseSign1Builder, HeaderBuilder, KeyOperation, KeyType, Label,
+    iana,
 };
 use hashbrown::HashMap;
-use key_derivation::{derive_private_keys, HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM};
+use key_derivation::{HPKE_BASE_X25519_SHA256_AES128GCM, PUBLIC_KEY_CLAIM, derive_private_keys};
 use storage_proto::confidential_federated_compute::kms::PipelineInvocationStateValue;
 
 // Private COSE Header parameters; see

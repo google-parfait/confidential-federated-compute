@@ -14,11 +14,11 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use hashbrown::HashMap;
 use oak_attestation_types::{attester::Attester, endorser::Endorser};
 use oak_proto_rust::oak::{attestation::v1::ReferenceValues, session::v1::PlaintextMessage};
-use oak_session::{session_binding::SessionBinder, ClientSession, ProtocolEngine, Session};
+use oak_session::{ClientSession, ProtocolEngine, Session, session_binding::SessionBinder};
 use oak_time::Clock;
 use prost::Message;
 use prost_proto_conversion::ProstProtoConversionExt;
@@ -28,8 +28,8 @@ use session_v1_service_proto::{
     session_proto::oak::session::v1::SessionRequest,
 };
 use storage_proto::confidential_federated_compute::kms::{
-    storage_request, storage_response, ReadRequest, ReadResponse, StorageRequest, StorageResponse,
-    UpdateRequest, UpdateResponse,
+    ReadRequest, ReadResponse, StorageRequest, StorageResponse, UpdateRequest, UpdateResponse,
+    storage_request, storage_response,
 };
 use tokio::{
     select,

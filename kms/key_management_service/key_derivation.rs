@@ -14,20 +14,20 @@
 
 use std::cmp::min;
 
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{Context, anyhow, bail, ensure};
 use bssl_crypto::{hkdf, hpke};
 use coset::{
+    Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, KeyOperation, KeyType, Label,
     cbor::value::Value,
     cwt::{ClaimName, ClaimsSet},
-    iana, Algorithm, CborSerializable, CoseKey, CoseSign1Builder, Header, KeyOperation, KeyType,
-    Label,
+    iana,
 };
 use futures::stream::{FuturesOrdered, TryStreamExt};
 use oak_sdk_containers::Signer;
 use payload_signer::PayloadSigner;
 use payload_transparency_proto::{
-    fcp::confidentialcompute::{signed_payload::signature::Headers, SignedPayload},
-    key_proto::fcp::confidentialcompute::{key, Key},
+    fcp::confidentialcompute::{SignedPayload, signed_payload::signature::Headers},
+    key_proto::fcp::confidentialcompute::{Key, key},
 };
 use prost::Message;
 
