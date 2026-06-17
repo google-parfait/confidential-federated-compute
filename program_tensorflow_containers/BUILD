@@ -247,6 +247,7 @@ cc_binary(
         "@com_google_absl//absl/log:check",
         "@confidential-federated-compute-program//program_executor_tee:program_worker_server",
         "@confidential-federated-compute-program//program_executor_tee/program_context/cc:server_session_config",
+        "@federated_compute//fcp/protos/confidentialcompute:program_worker_tee_config_cc_proto",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
