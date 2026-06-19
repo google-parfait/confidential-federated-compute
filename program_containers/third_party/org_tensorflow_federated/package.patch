@@ -2,6 +2,8 @@
 #   * Adds the appropriate Python dependencies.
 #   * Removes the TensorFlow-related dependencies.
 #   * Removes the TensorFlow-related imports.
+#   * Do not automatically create an execution context when TFF is loaded.
+#   * Make local_cpp_executor_factory throw an error since it is unsupported when TensorFlow doesn't exist. 
 
 diff --git tensorflow_federated/BUILD tensorflow_federated/BUILD
 index 0704e191f..f7c2ba693 100644
@@ -65,4 +67,24 @@ index e3c73099f..00b1eb390 100644
  # Remove packages that are not part of the public API but are picked up due to
  # the directory structure. The python import statements above implicitly add
  # these to locals().
-(END)
+
+diff --git tensorflow_federated/python/core/impl/executor_stacks/BUILD tensorflow_federated/python/core/impl/executor_stacks/BUILD
+index e0657e2..a9a3b68 100644
+--- tensorflow_federated/python/core/impl/executor_stacks/BUILD
++++ tensorflow_federated/python/core/impl/executor_stacks/BUILD
+@@ -55,5 +55,4 @@
+     name = "executor_factory",
+     srcs = ["executor_factory.py"],
+-    data = ["//tensorflow_federated/data:worker_binary"],
+     tags = ["ignore_for_dep=third_party.py.IPython.get_ipython"],
+     deps = [
+
+diff --git tensorflow_federated/python/core/impl/executor_stacks/executor_factory.py tensorflow_federated/python/core/impl/executor_stacks/executor_factory.py
+--- tensorflow_federated/python/core/impl/executor_stacks/executor_factory.py
++++ tensorflow_federated/python/core/impl/executor_stacks/executor_factory.py
+@@ -61,2 +61,5 @@
+   """
++  raise NotImplementedError(
++      "local_cpp_executor_factory is not supported in this environment."
++  )
+ 

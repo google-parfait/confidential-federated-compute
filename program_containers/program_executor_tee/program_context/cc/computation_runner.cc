@@ -17,12 +17,12 @@
 #include <optional>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "cc/ffi/bytes_bindings.h"
 #include "cc/ffi/bytes_view.h"
 #include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/config.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
@@ -98,9 +98,9 @@ absl::StatusOr<std::shared_ptr<Executor>> CreateExecutor(
     int num_clients) {
   CardinalityMap cardinality_map;
   cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
-  FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_factory());
-  FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_factory());
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(auto server_child, leaf_executor_factory());
+  ABSL_ASSIGN_OR_RETURN(auto client_child, leaf_executor_factory());
+  ABSL_ASSIGN_OR_RETURN(
       auto federating_executor,
       CreateFederatingExecutor(server_child, client_child, cardinality_map));
   return CreateReferenceResolvingExecutor(federating_executor);
@@ -110,19 +110,19 @@ absl::StatusOr<std::shared_ptr<Executor>> CreateExecutor(
 absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
     std::shared_ptr<Executor> executor, tensorflow_federated::v0::Value comp,
     std::optional<tensorflow_federated::v0::Value> arg) {
-  FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId fn_handle,
-                       executor->CreateValue(comp));
+  ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId fn_handle,
+                        executor->CreateValue(comp));
   tensorflow_federated::v0::Value call_result;
   if (arg.has_value()) {
-    FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId arg_handle,
-                         executor->CreateValue(*arg));
-    FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
-                         executor->CreateCall(fn_handle, arg_handle));
-    FCP_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
+    ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId arg_handle,
+                          executor->CreateValue(*arg));
+    ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
+                          executor->CreateCall(fn_handle, arg_handle));
+    ABSL_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
   } else {
-    FCP_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
-                         executor->CreateCall(fn_handle, std::nullopt));
-    FCP_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
+    ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
+                          executor->CreateCall(fn_handle, std::nullopt));
+    ABSL_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
   }
   return call_result;
 }
@@ -189,7 +189,7 @@ ComputationRunner::CreateDistributedExecutor(
     remaining_clients -= clients_for_executor;
   }
 
-  FCP_ASSIGN_OR_RETURN(auto server_executor, leaf_executor_factory());
+  ABSL_ASSIGN_OR_RETURN(auto server_executor, leaf_executor_factory());
 
   return CreateReferenceResolvingExecutor(
       CreateComposingExecutor(server_executor, client_executors));
@@ -208,7 +208,7 @@ grpc::Status ComputationRunner::Execute(
 
   auto leaf_executor_fn =
       [this]() -> absl::StatusOr<std::shared_ptr<Executor>> {
-    FCP_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory_());
+    ABSL_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory_());
     return CreateReferenceResolvingExecutor(executor);
   };
 

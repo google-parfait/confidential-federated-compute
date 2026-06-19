@@ -15,6 +15,7 @@
 #include "program_executor_tee/program_context/cc/noise_leaf_executor.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "cc/ffi/bytes_view.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
@@ -124,12 +125,12 @@ class NoiseLeafExecutorTest : public Test {
 
   absl::StatusOr<std::unique_ptr<ClientSession>>
   CreateClientSessionAndDoHandshake() {
-    FCP_ASSIGN_OR_RETURN(auto client_session,
-                         ClientSession::Create(TestConfigAttestedNNClient()));
+    ABSL_ASSIGN_OR_RETURN(auto client_session,
+                          ClientSession::Create(TestConfigAttestedNNClient()));
 
     while (!client_session->IsOpen()) {
-      FCP_ASSIGN_OR_RETURN(auto init_request,
-                           client_session->GetOutgoingMessage());
+      ABSL_ASSIGN_OR_RETURN(auto init_request,
+                            client_session->GetOutgoingMessage());
       if (!init_request.has_value()) {
         return absl::InternalError("init_request doesn't have value.");
       }
@@ -149,7 +150,7 @@ class NoiseLeafExecutorTest : public Test {
           return absl::InternalError(
               "Failed to unpack response to init_response.");
         }
-        FCP_RETURN_IF_ERROR(client_session->PutIncomingMessage(init_response));
+        ABSL_RETURN_IF_ERROR(client_session->PutIncomingMessage(init_response));
       }
     }
 
@@ -162,23 +163,23 @@ class NoiseLeafExecutorTest : public Test {
                            ClientSession* client_session) {
     PlaintextMessage plaintext_comp_request;
     plaintext_comp_request.set_plaintext(request.SerializeAsString());
-    FCP_RETURN_IF_ERROR(client_session->Write(plaintext_comp_request));
-    FCP_ASSIGN_OR_RETURN(std::optional<SessionRequest> comp_session_request,
-                         client_session->GetOutgoingMessage());
+    ABSL_RETURN_IF_ERROR(client_session->Write(plaintext_comp_request));
+    ABSL_ASSIGN_OR_RETURN(std::optional<SessionRequest> comp_session_request,
+                          client_session->GetOutgoingMessage());
 
     ComputationRequest comp_request;
     comp_request.mutable_computation()->PackFrom(*comp_session_request);
     ComputationResponse comp_response;
-    FCP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         FromGrpcStatus(executor_->Execute(&comp_request, &comp_response)));
 
     SessionResponse comp_session_response;
     if (!comp_response.result().UnpackTo(&comp_session_response)) {
       return absl::InternalError("Failed to unpack to SessionResponse");
     }
-    FCP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         client_session->PutIncomingMessage(comp_session_response));
-    FCP_ASSIGN_OR_RETURN(auto decrypted_comp_response, client_session->Read());
+    ABSL_ASSIGN_OR_RETURN(auto decrypted_comp_response, client_session->Read());
     executor_wrapper::ExecutorGroupResponse response;
     if (!response.ParseFromString(decrypted_comp_response->plaintext())) {
       return absl::InternalError("Failed to parse into ExecutorGroupResponse");

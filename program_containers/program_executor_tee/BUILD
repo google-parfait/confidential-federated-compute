@@ -104,6 +104,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -140,6 +141,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@confidential-federated-compute//containers:crypto",
@@ -189,6 +191,7 @@ cc_test(
 cc_binary(
     name = "root_main_basic",
     srcs = ["root_main_basic.cc"],
+    linkstatic = True,
     local_defines = [
         "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
     ],
@@ -255,7 +258,7 @@ trusted_py_runtime(
         ":initialize_program_xla",
         "//program_executor_tee/program_context:program_runner",
         "@federated_language_jax//federated_language_jax",
-        "@pypi//jax_privacy",
+        "@jax_privacy//jax_privacy",
     ],
     source_repo_names = [
         "federated_language",
@@ -263,6 +266,7 @@ trusted_py_runtime(
         "federated-compute",
         "org_tensorflow_federated",
         "oak",
+        "jax_privacy",
     ],
 )
 
@@ -288,6 +292,7 @@ cc_test(
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
     },
+    linkstatic = True,
     tags = ["noasan"],
     toolchains = [":trusted_program_py_xla_runtime"],
     deps = [
@@ -308,6 +313,7 @@ cc_binary(
     data = [
         "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
     ],
+    linkstatic = True,
     local_defines = [
         "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",
     ],
@@ -369,6 +375,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_grpc",
         "@federated-compute//fcp/protos/confidentialcompute:program_worker_cc_proto",
@@ -392,8 +399,6 @@ cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@federated_language_jax//federated_language_jax/executor:xla_executor",
-        "@local_xla//xla/service:cpu_plugin",
-        "@local_xla//xla/stream_executor/host:host_platform",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
@@ -401,6 +406,8 @@ cc_binary(
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:oak_session_bindings",
         "@oak//proto/session:session_cc_proto",
+        "@xla//xla/service:cpu_plugin",
+        "@xla//xla/stream_executor/host:host_platform",
     ],
 )
 

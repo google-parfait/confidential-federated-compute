@@ -1,0 +1,12 @@
+# Remove grpc plugin_flags (incompatible with newer grpc).
+
+diff --git xla/tsl/platform/default/build_config.bzl xla/tsl/platform/default/build_config.bzl
+--- xla/tsl/platform/default/build_config.bzl
++++ xla/tsl/platform/default/build_config.bzl
+@@ -306,5 +306,4 @@ def tf_proto_library(
+             visibility = visibility,
+             compatible_with = compatible_with,
+             deps = [":{}".format(cc_proto_name)],
+-            plugin_flags = ["services_namespace=grpc"],
+             grpc_only = True,
+         )

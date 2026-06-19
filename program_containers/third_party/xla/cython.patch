@@ -1,0 +1,11 @@
+# Add explicit py_binary/py_library loads required by rules_python.
+
+diff --git third_party/cython.BUILD third_party/cython.BUILD
+--- third_party/cython.BUILD
++++ third_party/cython.BUILD
+@@ -2,2 +2,5 @@
+ 
++load("@rules_python//python:py_binary.bzl", "py_binary")
++load("@rules_python//python:py_library.bzl", "py_library")
++
+ py_library(

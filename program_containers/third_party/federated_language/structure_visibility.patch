@@ -1,8 +1,6 @@
-diff --git federated_language/common_libs/BUILD federated_language/common_libs/BUILD
-index b16a6df..d91ba00 100644
 --- federated_language/common_libs/BUILD
 +++ federated_language/common_libs/BUILD
-@@ -102,6 +102,7 @@ py_library(
+@@ -71,6 +71,7 @@
  py_library(
      name = "structure",
      srcs = ["structure.py"],

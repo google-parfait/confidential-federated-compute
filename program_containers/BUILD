@@ -23,8 +23,6 @@ compile_pip_requirements(
     timeout = "long",
     srcs = [
         "//:requirements.in",
-        "@federated_language//:requirements.in",
-        "@federated_language_jax//:requirements.in",
     ],
     extra_args = [
         "--no-annotate",

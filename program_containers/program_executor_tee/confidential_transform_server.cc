@@ -16,7 +16,6 @@
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
 
-#include <execution>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -28,6 +27,7 @@
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
@@ -186,7 +186,7 @@ ProgramExecutorTeeSession::Finalize(
   };
 
   // Submit the work to the python execution queue and wait for the result.
-  FCP_RETURN_IF_ERROR(PythonManager::GetInstance().ExecuteTask(python_task));
+  ABSL_RETURN_IF_ERROR(PythonManager::GetInstance().ExecuteTask(python_task));
 
   return fcp::confidentialcompute::FinalizeResponse();
 }
@@ -208,11 +208,11 @@ absl::Status ProgramExecutorTeeConfidentialTransform::InitializePrivateState() {
   if (size > 0) {
     std::string private_state(size, '\0');
     file.read(private_state.data(), size);
-    FCP_ASSIGN_OR_RETURN(private_state_, PrivateState::CreatePrivateState(
-                                             std::move(private_state)));
+    ABSL_ASSIGN_OR_RETURN(private_state_, PrivateState::CreatePrivateState(
+                                              std::move(private_state)));
   } else {
-    FCP_ASSIGN_OR_RETURN(private_state_,
-                         PrivateState::CreatePrivateState(std::nullopt));
+    ABSL_ASSIGN_OR_RETURN(private_state_,
+                          PrivateState::CreatePrivateState(std::nullopt));
   }
   return absl::OkStatus();
 }
@@ -269,15 +269,16 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
 
 absl::Status AppendBytesToTempFile(std::string& file_path,
                                    std::ios_base::openmode mode,
-                                   const char* data,
-                                   std::streamsize data_size) {
+                                   const absl::Cord& data) {
   // Write or append binary content to file depending on mode.
   std::ofstream temp_file(file_path, mode);
   if (!temp_file.is_open()) {
     return absl::DataLossError(
         absl::StrCat("Failed to open temp file for writing: ", file_path));
   }
-  temp_file.write(data, data_size);
+  for (absl::string_view chunk : data.Chunks()) {
+    temp_file.write(chunk.data(), chunk.size());
+  }
   temp_file.close();
   return absl::OkStatus();
 }
@@ -321,9 +322,8 @@ ProgramExecutorTeeConfidentialTransform::ReadWriteConfigurationRequest(
 
   auto& [current_file_path, current_total_size_bytes, commit] =
       write_configuration_map_[current_model_id_];
-  FCP_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
-                                            write_configuration.data().data(),
-                                            write_configuration.data().size()));
+  ABSL_RETURN_IF_ERROR(AppendBytesToTempFile(current_file_path, file_open_mode,
+                                             write_configuration.data()));
   // Update the commit status of the data blob in write_configuration_map_.
   commit = write_configuration.commit();
 
@@ -362,7 +362,7 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
     model_id_to_zip_file_[model_id] = config_metadata.file_path;
   }
 
-  FCP_ASSIGN_OR_RETURN(Decryptor * blob_decryptor, GetDecryptor());
+  ABSL_ASSIGN_OR_RETURN(Decryptor * blob_decryptor, GetDecryptor());
 
   auto get_program_initialize_fn =
       [this]() -> std::optional<pybind11::function> {

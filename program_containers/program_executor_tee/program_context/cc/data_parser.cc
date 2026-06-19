@@ -16,13 +16,13 @@
 
 #include <string>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "fcp/base/digest.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
@@ -99,27 +99,25 @@ absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
   ClientContext client_context;
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse combined_read_response;
-  std::string combined_data = "";
+  absl::Cord combined_data;
   ReadResponse response;
   while (reader->Read(&response)) {
     if (response.has_first_response_metadata()) {
       *combined_read_response.mutable_first_response_metadata() =
           std::move(response.first_response_metadata());
     }
-    combined_data += response.data();
+    combined_data.Append(response.data());
     if (response.finish_read()) {
-      combined_read_response.set_data(combined_data);
       combined_read_response.set_finish_read(true);
     }
   }
-  FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
+  ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
 
   if (combined_read_response.first_response_metadata().has_unencrypted()) {
     FederatedComputeCheckpointParserFactory parser_factory;
-    FCP_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
-                         parser_factory.Create(absl::Cord(std::move(
-                             *combined_read_response.mutable_data()))));
-    FCP_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
+                          parser_factory.Create(std::move(combined_data)));
+    ABSL_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
     return agg_tensor.ToProto();
   }
 
@@ -147,24 +145,23 @@ absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
         "KMS.");
   }
 
-  FCP_ASSIGN_OR_RETURN(
-      std::string fc_checkpoint,
-      blob_decryptor_->DecryptBlob(
-          combined_read_response.first_response_metadata(),
-          combined_read_response.data(), blob_header.key_id()));
+  ABSL_ASSIGN_OR_RETURN(std::string fc_checkpoint,
+                        blob_decryptor_->DecryptBlob(
+                            combined_read_response.first_response_metadata(),
+                            combined_data.Flatten(), blob_header.key_id()));
 
   FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
       parser_factory.Create(absl::Cord(std::move(fc_checkpoint))));
-  FCP_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
+  ABSL_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
   return agg_tensor.ToProto();
 }
 
 absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,
                                                     std::string key) {
   WriteRequest write_request;
-  FCP_RETURN_IF_ERROR(CreateWriteRequestForRelease(
+  ABSL_RETURN_IF_ERROR(CreateWriteRequestForRelease(
       &write_request, *signing_key_handle_,
       reencryption_keys_[kReleaseValueEncryptionKeyIndex], key, data,
       reencryption_policy_hash_, private_state_->GetState(),
@@ -214,7 +211,7 @@ absl::Status DataParser::SaveRecoveryInfo(
 
   WriteRequest write_request;
   std::string blob_id;
-  FCP_RETURN_IF_ERROR(CreateWriteRequestForEncryptedValue(
+  ABSL_RETURN_IF_ERROR(CreateWriteRequestForEncryptedValue(
       &write_request, &blob_id, *signing_key_handle_,
       reencryption_keys_[kRecoveryInfoEncryptionKeyIndex], recovery_key,
       recovery_info.SerializeAsString(), reencryption_policy_hash_));
@@ -237,7 +234,7 @@ absl::Status DataParser::SaveRecoveryInfo(
   private_state_->SetRecoveryBlobId(blob_id);
 
   for (const auto& [data, key] : release_queue) {
-    FCP_RETURN_IF_ERROR(ReleaseUnencryptedInternal(data, key));
+    ABSL_RETURN_IF_ERROR(ReleaseUnencryptedInternal(data, key));
   }
 
   return absl::OkStatus();
@@ -250,7 +247,7 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
   ClientContext client_context;
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse response;
-  std::string combined_data = "";
+  absl::Cord combined_data;
   fcp::confidentialcompute::BlobMetadata first_response_metadata;
   bool is_first = true;
   while (reader->Read(&response)) {
@@ -258,12 +255,12 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
       first_response_metadata = response.first_response_metadata();
       is_first = false;
     }
-    combined_data += response.data();
+    combined_data.Append(response.data());
     if (response.finish_read()) {
       break;
     }
   }
-  FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
+  ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
 
   // Parse the BlobHeader to get the access policy hash and key ID.
   BlobHeader blob_header;
@@ -281,16 +278,17 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
         "Failed to parse IntermediateResult from combined data.");
   }
 
-  FCP_ASSIGN_OR_RETURN(std::string decrypted_data,
-                       blob_decryptor_->DecryptBlob(first_response_metadata,
-                                                    intermediate_result.data(),
-                                                    blob_header.key_id()));
+  absl::Cord intermediate_data = intermediate_result.data();
+  ABSL_ASSIGN_OR_RETURN(std::string decrypted_data,
+                        blob_decryptor_->DecryptBlob(
+                            first_response_metadata,
+                            intermediate_data.Flatten(), blob_header.key_id()));
 
   // Hash the decrypted data before verification to match the signing side
   // (kms_helper.cc), which pre-hashes data before sending it to the Oak
   // orchestrator's Sign RPC to avoid exceeding the gRPC message size limit.
   std::string decrypted_data_digest = fcp::ComputeSHA256(decrypted_data);
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       BlobProvenance blob_provenance,
       VerifyBlobProvenance(decrypted_data_digest,
                            intermediate_result.signature(),

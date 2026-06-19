@@ -22,6 +22,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/digest.h"
@@ -124,9 +125,10 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
                                       .hpke_plus_aead_data()
                                       .kms_symmetric_key_associated_data()
                                       .record_header()));
+  absl::Cord read_response_data = read_response.data();
   EXPECT_THAT(input_blob_decryptor_->DecryptBlob(
-                  read_response.first_response_metadata(), read_response.data(),
-                  blob_header.key_id()),
+                  read_response.first_response_metadata(),
+                  read_response_data.Flatten(), blob_header.key_id()),
               message);
 
   // Check that the DataReadWrite service logged the blob_id.
@@ -350,8 +352,9 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
                                       .kms_symmetric_key_associated_data()
                                       .record_header()));
 
+  absl::Cord intermediate_result_data = intermediate_result.data();
   auto plaintext_result = blob_decryptor->DecryptBlob(
-      intermediate_result.metadata(), intermediate_result.data(),
+      intermediate_result.metadata(), intermediate_result_data.Flatten(),
       blob_header.key_id());
 
   ASSERT_TRUE(plaintext_result.ok());

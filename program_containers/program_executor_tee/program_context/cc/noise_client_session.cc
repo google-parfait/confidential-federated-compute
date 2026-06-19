@@ -20,9 +20,9 @@
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 
@@ -39,8 +39,8 @@ namespace confidential_federated_compute::program_executor_tee {
 
 absl::Status NoiseClientSession::OpenSession() {
   while (!client_session_->IsOpen()) {
-    FCP_ASSIGN_OR_RETURN(auto init_request,
-                         client_session_->GetOutgoingMessage());
+    ABSL_ASSIGN_OR_RETURN(auto init_request,
+                          client_session_->GetOutgoingMessage());
     if (!init_request.has_value()) {
       return absl::InternalError("init_request doesn't have value.");
     }
@@ -62,7 +62,7 @@ absl::Status NoiseClientSession::OpenSession() {
         return absl::InternalError(
             "Failed to unpack response to init_response.");
       }
-      FCP_RETURN_IF_ERROR(client_session_->PutIncomingMessage(init_response));
+      ABSL_RETURN_IF_ERROR(client_session_->PutIncomingMessage(init_response));
     }
   }
   return absl::OkStatus();
@@ -74,9 +74,10 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   // Open the session if it is not already open. This is needed before sending
   // any actual computation request.
   if (!client_session_->IsOpen()) {
-    FCP_RETURN_IF_ERROR(OpenSession());
+    ABSL_RETURN_IF_ERROR(OpenSession());
   }
-  FCP_ASSIGN_OR_RETURN(auto session_request, EncryptRequest(plaintext_request));
+  ABSL_ASSIGN_OR_RETURN(auto session_request,
+                        EncryptRequest(plaintext_request));
   ComputationRequest request;
   request.mutable_computation()->PackFrom(session_request);
   request.set_worker_bns(worker_bns_);
@@ -97,16 +98,16 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
     return absl::InternalError(
         "Failed to unpack response to session_response.");
   }
-  FCP_ASSIGN_OR_RETURN(auto plaintext_response,
-                       DecryptResponse(session_response));
+  ABSL_ASSIGN_OR_RETURN(auto plaintext_response,
+                        DecryptResponse(session_response));
   return plaintext_response;
 }
 
 absl::StatusOr<SessionRequest> NoiseClientSession::EncryptRequest(
     const PlaintextMessage& plaintext_request) {
-  FCP_RETURN_IF_ERROR(client_session_->Write(plaintext_request));
-  FCP_ASSIGN_OR_RETURN(auto session_request,
-                       client_session_->GetOutgoingMessage());
+  ABSL_RETURN_IF_ERROR(client_session_->Write(plaintext_request));
+  ABSL_ASSIGN_OR_RETURN(auto session_request,
+                        client_session_->GetOutgoingMessage());
   if (!session_request.has_value()) {
     return absl::InvalidArgumentError(
         "Could not generate SessionRequest for the plaintext request.");
@@ -116,8 +117,8 @@ absl::StatusOr<SessionRequest> NoiseClientSession::EncryptRequest(
 
 absl::StatusOr<PlaintextMessage> NoiseClientSession::DecryptResponse(
     const SessionResponse& session_response) {
-  FCP_RETURN_IF_ERROR(client_session_->PutIncomingMessage(session_response));
-  FCP_ASSIGN_OR_RETURN(auto plaintext_response, client_session_->Read());
+  ABSL_RETURN_IF_ERROR(client_session_->PutIncomingMessage(session_response));
+  ABSL_ASSIGN_OR_RETURN(auto plaintext_response, client_session_->Read());
   if (!plaintext_response.has_value()) {
     return absl::InvalidArgumentError(
         "Could not read plaintext message from the response.");

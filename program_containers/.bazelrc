@@ -12,18 +12,18 @@ build --@rules_rust//rust/toolchain/channel=nightly
 build --@rules_rust//rust/settings:rustfmt.toml=//:.rustfmt.toml
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --output_filter='^//'  # Suppress warnings from external dependencies.
-# Build TensorFlow and XLA with more optimizations to avoid linker OOM
-build --per_file_copt=external/local_xla/@-O2,-g0,-DNDEBUG
-build --per_file_copt=external/org_tensorflow/@-O2,-g0,-DNDEBUG
+# Build XLA with more optimizations to avoid linker OOM.
+build --per_file_copt=external/xla/@-O2,-g0,-DNDEBUG
 build --define xnn_enable_avx512fp16=false
 build --define xnn_enable_avx512amx=false
 build --define xnn_enable_avxvnni=false
 build --define xnn_enable_avxvnniint8=false
+build --define xnn_enable_x86_amxfp16=false
 build --@rules_python//python/config_settings:bootstrap_impl=script  # https://github.com/bazelbuild/rules_python/issues/691
 build --incompatible_default_to_explicit_init_py
 common --experimental_repo_remote_exec
 common --noenable_bzlmod
-common --repo_env=TF_PYTHON_VERSION=3.12
+common --repo_env=HERMETIC_PYTHON_VERSION=3.12
 
 # Enable Rust clippy checks when building with `--config=clippy`.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect

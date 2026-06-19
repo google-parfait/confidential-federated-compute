@@ -20,11 +20,11 @@
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
 #include "proto/session/session.pb.h"
@@ -49,8 +49,8 @@ class NoiseClientSession : public NoiseClientSessionInterface {
       oak::session::SessionConfig* session_config,
       fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
           stub) {
-    FCP_ASSIGN_OR_RETURN(auto client_session,
-                         oak::session::ClientSession::Create(session_config));
+    ABSL_ASSIGN_OR_RETURN(auto client_session,
+                          oak::session::ClientSession::Create(session_config));
     return std::shared_ptr<NoiseClientSession>(
         new NoiseClientSession(worker_bns, std::move(client_session), stub));
   }
