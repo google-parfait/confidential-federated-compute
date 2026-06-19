@@ -25,6 +25,7 @@ cc_library(
         "do_fn.cc",
         "fn_utils.cc",
         "map_fn.cc",
+        "pobject_map_fn.cc",
     ],
     hdrs = [
         "confidential_transform_server.h",
@@ -33,6 +34,7 @@ cc_library(
         "fn_factory.h",
         "fn_utils.h",
         "map_fn.h",
+        "pobject_map_fn.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -121,6 +123,23 @@ cc_test(
     srcs = ["fn_utils_test.cc"],
     deps = [
         ":fns",
+        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "pobject_map_fn_test",
+    srcs = ["pobject_map_fn_test.cc"],
+    deps = [
+        ":fns",
+        "//containers:session",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:any_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
