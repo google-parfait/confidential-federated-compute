@@ -1,0 +1,120 @@
+// Copyright 2026 The Trusted Computations Platform Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package secure_aggregation.willow;
+
+import "willow/proto/shell/ciphertexts.proto";
+import "willow/proto/willow/messages.proto";
+import "willow/proto/zk/proofs.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "ReputableDecryptorProto";
+
+// Request message for creating a setup contribution.
+message CreateSetupContributionRequest {
+  string key_id = 1;
+}
+
+// Response message containing the SetupContribution.
+message CreateSetupContributionResponse {
+  SetupContribution setup_contribution = 1;
+}
+
+// Request message to handle a partial decryption.
+message HandlePartialDecryptionRequest {
+  string key_id = 1;
+  PartialDecryptionRequest partial_decryption_request = 2;
+}
+
+// Response message containing the partial decryption response.
+message HandlePartialDecryptionResponse {
+  PartialDecryptionResponse partial_decryption_response = 1;
+}
+
+// Request message to verify and aggregate key contributions.
+message VerifyAndAggregateKeyContributionsRequest {
+  string key_id = 1;
+  VerifyKeyContributionsRequest verify_key_contributions_request = 2;
+}
+
+// Response message containing the aggregated public key.
+message VerifyAndAggregateKeyContributionsResponse {
+  ShellAhePublicKey public_key = 1;
+}
+
+// Error status.
+message ReputableDecryptorStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+// ReputableDecryptorRequest combines individual request messages and is used
+// by the replicated/wrapped implementation of the ReputableDecryptor.
+message ReputableDecryptorRequest {
+  oneof msg {
+    CreateSetupContributionRequest create_setup_contribution = 1;
+    HandlePartialDecryptionRequest handle_partial_decryption = 2;
+    VerifyAndAggregateKeyContributionsRequest
+        verify_and_aggregate_key_contributions = 3;
+  }
+}
+
+// ReputableDecryptorResponse combines individual response messages and is used
+// by the replicated/wrapped implementation of the ReputableDecryptor.
+message ReputableDecryptorResponse {
+  oneof msg {
+    CreateSetupContributionResponse create_setup_contribution = 1;
+    HandlePartialDecryptionResponse handle_partial_decryption = 2;
+    VerifyAndAggregateKeyContributionsResponse
+        verify_and_aggregate_key_contributions = 3;
+    ReputableDecryptorStatus error = 4;
+  }
+}
+
+message KeyStateSnapshot {
+  // The unique ID of the key being saved.
+  string key_id = 1;
+  
+  // The internal state of the decryptor.
+  bytes decryptor_state = 2;
+  
+  // The sequential order the key was created, relative to other keys.  Used for
+  // eviction purposes.
+  int64 sequential_order = 3;
+}
+
+// Snapshot format for the state of the Reputable Decryptor.
+message ReputableDecryptorSnapshot {
+  repeated KeyStateSnapshot key_states = 1;
+}
+
+message ReputableDecryptorEvent {
+  oneof event {
+    SetupEvent setup_event = 1;
+    DecryptionEvent decryption_event = 2;
+  }
+}
+
+message SetupEvent {
+  string key_id = 1;
+  bytes prng_seed = 2;
+}
+
+message DecryptionEvent {
+  string key_id = 1;
+  PartialDecryptionRequest partial_decryption_request = 2;
+}
+

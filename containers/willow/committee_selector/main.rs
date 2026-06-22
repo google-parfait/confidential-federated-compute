@@ -12,49 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, Context};
-use oak_proto_rust::oak::attestation::v1::{
-    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
-    BinaryReferenceValue, ContainerLayerReferenceValues, InsecureReferenceValues,
-    KernelBinaryReferenceValue, KernelLayerReferenceValues, OakContainersReferenceValues,
-    ReferenceValues, RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
-    TextReferenceValue,
-};
+use anyhow::{anyhow, bail, Context};
+use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_containers::OrchestratorClient;
+use prost::Message;
 use tcp_proto::runtime::endpoint::endpoint_service_server::EndpointServiceServer;
 use tcp_runtime::service::TonicApplicationService;
 use willow_committee_selector_service::actor::CommitteeSelectorActor;
 
-fn get_reference_values() -> ReferenceValues {
-    let skip = BinaryReferenceValue {
-        r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
-    };
-    ReferenceValues {
-        r#type: Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
-            root_layer: Some(RootLayerReferenceValues {
-                insecure: Some(InsecureReferenceValues::default()),
-                ..Default::default()
-            }),
-            kernel_layer: Some(KernelLayerReferenceValues {
-                kernel: Some(KernelBinaryReferenceValue {
-                    r#type: Some(kernel_binary_reference_value::Type::Skip(
-                        SkipVerification::default(),
-                    )),
-                }),
-                kernel_cmd_line_text: Some(TextReferenceValue {
-                    r#type: Some(text_reference_value::Type::Skip(SkipVerification::default())),
-                }),
-                init_ram_fs: Some(skip.clone()),
-                memory_map: Some(skip.clone()),
-                acpi: Some(skip.clone()),
-                ..Default::default()
-            }),
-            system_layer: Some(SystemLayerReferenceValues { system_image: Some(skip.clone()) }),
-            container_layer: Some(ContainerLayerReferenceValues {
-                binary: Some(skip.clone()),
-                configuration: Some(skip.clone()),
-            }),
-        })),
+fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> {
+    match evidence.root_layer.as_ref().map(|rl| rl.platform.try_into()) {
+        Some(Ok(TeePlatform::AmdSevSnp)) => {
+            ReferenceValues::decode(include_bytes!(env!("REFERENCE_VALUES")).as_slice())
+                .context("failed to decode ReferenceValues")
+        }
+        Some(Ok(TeePlatform::None)) => {
+            ReferenceValues::decode(include_bytes!(env!("INSECURE_REFERENCE_VALUES")).as_slice())
+                .context("failed to decode insecure ReferenceValues")
+        }
+        platform => bail!("platform {:?} is not supported", platform),
     }
 }
 
@@ -74,6 +50,8 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to get endorsed evidence")?
         .evidence
         .ok_or_else(|| anyhow!("EndorsedEvidence.evidence not set"))?;
+    let reference_values =
+        get_reference_values(&evidence).context("failed to get reference values")?;
     let max_committees = match std::env::var("MAX_NUMBER_OF_COMMITTEES") {
         Ok(val) => match val.parse::<usize>() {
             Ok(n) => n,
@@ -90,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let service =
         TonicApplicationService::new(channel, evidence, /* logger= */ None, move || {
             CommitteeSelectorActor::new_with_reference_values(
-                get_reference_values(),
+                reference_values.clone(),
                 max_committees,
             )
         });

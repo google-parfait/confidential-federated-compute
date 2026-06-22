@@ -1,0 +1,9 @@
+--- ffi_utils/BUILD
++++ ffi_utils/BUILD
+@@ -17,5 +17,5 @@
+ package(
+     default_applicable_licenses = [
+     ],
+-    default_visibility = ["//:internal"],
++    default_visibility = ["//visibility:public"],
+ )

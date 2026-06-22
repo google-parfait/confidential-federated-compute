@@ -29,6 +29,25 @@
     ```bash
     devcontainer exec --workspace-folder . bazel run @rules_rust//:rustfmt -- //committee_selector/...:all
     ```
+- To format/lint Bazel files (`BUILD`, `WORKSPACE`, `*.bzl`, `MODULE.bazel`), use the `buildifier` tool inside the devcontainer:
+    ```bash
+    # To format all Bazel files recursively:
+    devcontainer exec --workspace-folder . buildifier -r .
+
+    # To check if formatting matches style guide (lint):
+    devcontainer exec --workspace-folder . buildifier -mode=check -lint=warn -r .
+    ```
+- To sort keep-sorted blocks (like in `MODULE.bazel` or `BUILD` files), use the `keep-sorted` tool inside the devcontainer:
+    ```bash
+    # To sort a specific file:
+    devcontainer exec --workspace-folder . keep-sorted MODULE.bazel
+
+    # To sort all files recursively:
+    devcontainer exec --workspace-folder . find . -type f -not -path '*/.*' -exec keep-sorted {} +
+
+    # To check if all keep-sorted blocks are sorted recursively (lint):
+    devcontainer exec --workspace-folder . find . -type f -not -path '*/.*' -exec keep-sorted --mode=lint {} +
+    ```
 
 ## Reading Test Logs
 

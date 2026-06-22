@@ -12,21 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@confidential-federated-compute//:proto_data.bzl", "proto_data")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+proto_data(
+    name = "insecure_reference_values",
+    src = "insecure_reference_values.txtpb",
+    out = "insecure_reference_values.binarypb",
+    proto_deps = ["@oak//proto/attestation:reference_value_proto"],
+    proto_name = "oak.attestation.v1.ReferenceValues",
+)
+
 rust_binary(
     name = "main",
     srcs = ["main.rs"],
+    compile_data = [
+        ":insecure_reference_values",
+        "//committee_selector/reference_values",
+    ],
+    rustc_env = {
+        "INSECURE_REFERENCE_VALUES": "$(location :insecure_reference_values)",
+        "REFERENCE_VALUES": "$(location //committee_selector/reference_values)",
+    },
     deps = [
         ":willow_committee_selector_service",
         "@oak//oak_proto_rust",
         "@oak//oak_sdk/containers:oak_sdk_containers",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:log",
+        "@oak_crates_index//:prost",
         "@oak_crates_index//:tokio",
         "@oak_crates_index//:tonic",
         "@secure_aggregation//willow/protocol:willow_v1_decryptor",
