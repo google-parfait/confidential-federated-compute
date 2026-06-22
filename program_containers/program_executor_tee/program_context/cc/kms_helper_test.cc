@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "absl/strings/cord.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/digest.h"
@@ -43,8 +44,10 @@ TEST(KmsHelperTest, CreateWriteRequestForRelease) {
   auto blob_decryptor =
       std::make_unique<confidential_federated_compute::Decryptor>(
           std::vector<absl::string_view>({public_private_key_pair.second}));
-  auto plaintext_result = blob_decryptor->DecryptBlob(
-      write_request.first_request_metadata(), write_request.data(), kKeyId);
+  absl::Cord write_request_data = write_request.data();
+  auto plaintext_result =
+      blob_decryptor->DecryptBlob(write_request.first_request_metadata(),
+                                  write_request_data.Flatten(), kKeyId);
   ASSERT_TRUE(plaintext_result.ok());
   ASSERT_EQ(*plaintext_result, "my_data");
 
@@ -76,8 +79,10 @@ TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
   auto blob_decryptor =
       std::make_unique<confidential_federated_compute::Decryptor>(
           std::vector<absl::string_view>({public_private_key_pair.second}));
-  auto plaintext_result = blob_decryptor->DecryptBlob(
-      write_request.first_request_metadata(), write_request.data(), kKeyId);
+  absl::Cord write_request_data = write_request.data();
+  auto plaintext_result =
+      blob_decryptor->DecryptBlob(write_request.first_request_metadata(),
+                                  write_request_data.Flatten(), kKeyId);
   ASSERT_TRUE(plaintext_result.ok());
   ASSERT_EQ(*plaintext_result, "my_data");
 

@@ -18,6 +18,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
@@ -266,7 +267,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
       writer->Write(request);
     }
     CHECK(writer->WritesDone());
-    FCP_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(writer->Finish()));
+    ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(writer->Finish()));
 
     SessionRequest session_request;
     SessionResponse session_response;

@@ -15,6 +15,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "cc/oak_session/server_session.h"
 #include "fcp/protos/confidentialcompute/program_worker.grpc.pb.h"
@@ -38,7 +39,7 @@ absl::StatusOr<std::unique_ptr<ProgramWorkerTee>> ProgramWorkerTee::Create(
     std::function<
         absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>()>
         leaf_executor_factory) {
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto noise_leaf_executor,
       NoiseLeafExecutor::Create(session_config_fn, leaf_executor_factory));
   return absl::WrapUnique(new ProgramWorkerTee(std::move(noise_leaf_executor)));

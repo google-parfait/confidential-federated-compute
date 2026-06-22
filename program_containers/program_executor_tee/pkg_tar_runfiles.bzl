@@ -15,7 +15,7 @@
 """Define rule for packaging structured runfiles into a tar."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@rules_pkg//:providers.bzl", "PackageFilesInfo")
+load("@rules_pkg//pkg:providers.bzl", "PackageFilesInfo")
 
 def _pkg_runfiles_impl(ctx):
     """Implementation of pkg_tar_runfiles rule."""

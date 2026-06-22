@@ -1,0 +1,10 @@
+# Make absl/base:endian publicly visible (needed by XLA).
+
+--- absl/base/BUILD.bazel
++++ absl/base/BUILD.bazel
+@@ -598,4 +598,3 @@
+     visibility = [
+-        "//absl:__subpackages__",
+-        "//absl:friends",
++        "//visibility:public",
+     ],

@@ -1,9 +1,24 @@
-absl-py~=1.0
+absl-py>=2.0,<3
 googleapis-common-protos==1.70.0
-jax-privacy @ git+https://github.com/google-deepmind/jax_privacy@v1.0.0
 numpy~=2.0
 parameterized
 portpicker~=1.6
 
-# Additional dependencies required for com_google_fcp
-immutabledict==4.2.0
+# Additional dependencies for federated_language
+attrs>=23.1,<27.0
+dm-tree~=0.1.8
+ml_dtypes>=0.4.0,<0.6
+protobuf==6.33.1
+typing-extensions>=4.5.0
+
+# Additional dependencies for federated_language_jax
+cachetools~=5.3
+jax>=0.4.29,<=0.7.1
+jaxlib>=0.4.29,<=0.7.1
+
+# Additional dependencies for jax_privacy
+chex
+dp-accounting
+optax
+pydantic
+scipy

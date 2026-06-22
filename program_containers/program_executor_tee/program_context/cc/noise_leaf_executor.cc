@@ -14,6 +14,7 @@
 #include "program_executor_tee/program_context/cc/noise_leaf_executor.h"
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "fcp/base/status_converters.h"
 #include "program_executor_tee/proto/executor_wrapper.pb.h"
@@ -48,9 +49,9 @@ CreateLeafExecutorFactory(
         leaf_executor_factory) {
   return [leaf_executor_factory](const CardinalityMap& cardinality_map)
              -> absl::StatusOr<std::shared_ptr<Executor>> {
-    FCP_ASSIGN_OR_RETURN(auto server_child, leaf_executor_factory());
-    FCP_ASSIGN_OR_RETURN(auto client_child, leaf_executor_factory());
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(auto server_child, leaf_executor_factory());
+    ABSL_ASSIGN_OR_RETURN(auto client_child, leaf_executor_factory());
+    ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<Executor> federating_executor,
         CreateFederatingExecutor(CreateReferenceResolvingExecutor(server_child),
                                  CreateReferenceResolvingExecutor(client_child),
@@ -77,8 +78,8 @@ NoiseLeafExecutor::NoiseLeafExecutor(
 
 absl::StatusOr<PlaintextMessage> NoiseLeafExecutor::DecryptRequest(
     const SessionRequest& session_request) {
-  FCP_RETURN_IF_ERROR(server_session_->PutIncomingMessage(session_request));
-  FCP_ASSIGN_OR_RETURN(auto plaintext_request, server_session_->Read());
+  ABSL_RETURN_IF_ERROR(server_session_->PutIncomingMessage(session_request));
+  ABSL_ASSIGN_OR_RETURN(auto plaintext_request, server_session_->Read());
   if (!plaintext_request.has_value()) {
     return absl::InvalidArgumentError(
         "Could not read plaintext message from the request.");
@@ -88,9 +89,9 @@ absl::StatusOr<PlaintextMessage> NoiseLeafExecutor::DecryptRequest(
 
 absl::StatusOr<SessionResponse> NoiseLeafExecutor::EncryptResult(
     const PlaintextMessage& plaintext_response) {
-  FCP_RETURN_IF_ERROR(server_session_->Write(plaintext_response));
-  FCP_ASSIGN_OR_RETURN(auto session_response,
-                       server_session_->GetOutgoingMessage());
+  ABSL_RETURN_IF_ERROR(server_session_->Write(plaintext_response));
+  ABSL_ASSIGN_OR_RETURN(auto session_response,
+                        server_session_->GetOutgoingMessage());
   if (!session_response.has_value()) {
     return absl::InvalidArgumentError(
         "Could not generate SessionResponse for the request.");
@@ -112,8 +113,8 @@ NoiseLeafExecutor::HandleHandshakeRequest(
       return absl::InvalidArgumentError(
           "The session config function returned a null pointer.");
     }
-    FCP_ASSIGN_OR_RETURN(server_session_,
-                         oak::session::ServerSession::Create(session_config));
+    ABSL_ASSIGN_OR_RETURN(server_session_,
+                          oak::session::ServerSession::Create(session_config));
   }
 
   auto put_incoming_message_status =

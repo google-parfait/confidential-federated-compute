@@ -1,0 +1,37 @@
+diff --git BUILD BUILD
+new file mode 100644
+index 0000000..f3490d5
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,3 @@
++package(
++    default_visibility = ["//visibility:public"],
++)
+\ No newline at end of file
+diff --git jax_privacy/BUILD jax_privacy/BUILD
+new file mode 100644
+index 0000000..d67bcf3
+--- /dev/null
++++ jax_privacy/BUILD
+@@ -0,0 +1,21 @@
++load("@rules_python//python:defs.bzl", "py_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++)
++
++py_library(
++	name = "jax_privacy",
++	srcs = glob(["**/*.py"]),
++	deps = [
++		"@pypi//absl_py",
++		"@pypi//chex",
++		"@pypi//dp_accounting",
++		"@pypi//jax",
++		"@pypi//jaxlib",
++		"@pypi//numpy",
++		"@pypi//optax",
++		"@pypi//pydantic",
++		"@pypi//scipy",
++	]
++)

@@ -1,0 +1,9 @@
+# Add missing #include <string> for clang/gcc compatibility.
+
+--- xla/service/custom_call_status_internal.h
++++ xla/service/custom_call_status_internal.h
+@@ -18,3 +18,4 @@
+ #define XLA_SERVICE_CUSTOM_CALL_STATUS_INTERNAL_H_
+ 
++#include <string>
+ #include <optional>

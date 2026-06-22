@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 
+#include "absl/status/status_macros.h"
 #include "cc/ffi/bytes_view.h"
 #include "cc/oak_session/client_session.h"
 #include "cc/oak_session/config.h"
@@ -107,12 +108,12 @@ class FakeComputationDelegationServiceTest : public Test {
 
   absl::StatusOr<std::unique_ptr<ClientSession>>
   CreateClientSessionAndDoHandshake(std::string worker_bns) {
-    FCP_ASSIGN_OR_RETURN(auto client_session,
-                         ClientSession::Create(TestConfigAttestedNNClient()));
+    ABSL_ASSIGN_OR_RETURN(auto client_session,
+                          ClientSession::Create(TestConfigAttestedNNClient()));
 
     while (!client_session->IsOpen()) {
-      FCP_ASSIGN_OR_RETURN(auto init_request,
-                           client_session->GetOutgoingMessage());
+      ABSL_ASSIGN_OR_RETURN(auto init_request,
+                            client_session->GetOutgoingMessage());
       if (!init_request.has_value()) {
         return absl::InternalError("init_request doesn't have value.");
       }
@@ -133,7 +134,7 @@ class FakeComputationDelegationServiceTest : public Test {
           return absl::InternalError(
               "Failed to unpack response to init_response.");
         }
-        FCP_RETURN_IF_ERROR(client_session->PutIncomingMessage(init_response));
+        ABSL_RETURN_IF_ERROR(client_session->PutIncomingMessage(init_response));
       }
     }
 

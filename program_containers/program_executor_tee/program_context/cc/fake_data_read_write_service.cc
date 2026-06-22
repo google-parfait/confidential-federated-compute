@@ -20,10 +20,11 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "containers/crypto_test_utils.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -154,13 +155,14 @@ grpc::Status FakeDataReadWriteService::Write(
   // This is a request to write an unencrypted result. Decrypt it and store it
   // in the released_data_ map.
   BlobMetadata metadata = requests[0].first_request_metadata();
-  auto ciphertext = requests[0].data();
+  absl::Cord ciphertext = requests[0].data();
   BlobHeader blob_header;
   blob_header.ParseFromString(metadata.hpke_plus_aead_data()
                                   .kms_symmetric_key_associated_data()
                                   .record_header());
   absl::StatusOr<std::string> plaintext_message = message_decryptor_.Decrypt(
-      ciphertext, metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+      ciphertext.Flatten(),
+      metadata.hpke_plus_aead_data().ciphertext_associated_data(),
       metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
       metadata.hpke_plus_aead_data()
           .kms_symmetric_key_associated_data()
@@ -200,7 +202,7 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
   std::string associated_data = header.SerializeAsString();
 
   MessageEncryptor encryptor;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypt_result,
       encryptor.Encrypt(message, input_public_private_key_pair_.first,
                         associated_data));
@@ -219,7 +221,7 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
 
   ReadResponse response;
   *response.mutable_first_response_metadata() = std::move(metadata);
-  *response.mutable_data() = std::move(encrypt_result.ciphertext);
+  response.set_data(std::move(encrypt_result.ciphertext));
   response.set_finish_read(true);
 
   id_to_read_response_[std::string(blob_id)] = std::move(response);
