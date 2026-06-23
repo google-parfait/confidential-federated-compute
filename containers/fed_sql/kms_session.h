@@ -33,6 +33,7 @@
 #include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -154,6 +155,20 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // is at least min_agg_window_minutes_.
   absl::Status ValidateAggregationWindow(
       const RangeTracker& range_tracker) const;
+
+  // Checks budget constraints from the KmsAssociatedData and updates the range
+  // tracker.
+  // This method supports the below cases:
+  // 1. If associated_metadata contains a BlobHeader, checks the per-key
+  //    budget and adds the key to the range tracker.
+  // 2. If associated_metadata contains an AssociatedMetadata containing
+  //    SessionTimeWindowMetadata, checks the time-window budget and merges
+  //    the time window.
+  // 3. Otherwise, falls back to parsing the deprecated record_header field to
+  //    check the per-key budget and add the key to the range tracker.
+  absl::Status CheckBudgetAndUpdateRangeTracker(
+      const fcp::confidentialcompute::BlobMetadata::HpkePlusAeadMetadata::
+          KmsAssociatedData& kms_associated_data);
 
   // The aggregator used during the session to accumulate writes.
   std::unique_ptr<tensorflow_federated::aggregation::CheckpointAggregator>
