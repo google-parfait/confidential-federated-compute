@@ -22,7 +22,7 @@ package(features = ["layering_check"])
         name = src.removesuffix(".txtpb"),
         src = src,
         proto_deps = [
-            "@federated-compute//fcp/protos/confidentialcompute:access_policy_endorsement_options_proto",
+            "@federated_compute//fcp/protos/confidentialcompute:access_policy_endorsement_options_proto",
         ],
         proto_name = "fcp.confidentialcompute.AccessPolicyEndorsementOptions",
     )

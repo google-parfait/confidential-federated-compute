@@ -56,7 +56,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("scikit-learn"),
-        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_py_pb2",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_py_pb2",
     ],
 )
 
@@ -65,7 +65,7 @@ py_test(
     srcs = ["compute_mauve_score_lib_test.py"],
     deps = [
         ":compute_mauve_score_lib",
-        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_py_pb2",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_py_pb2",
     ],
 )
 
@@ -79,7 +79,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_riegeli//riegeli/bytes:fd_reader",
         "@com_google_riegeli//riegeli/records:record_reader",
-        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
     ],
 )
 
@@ -93,7 +93,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
         "@pybind11",
         "@rules_python//python/cc:current_py_cc_libs",
     ],
@@ -115,8 +115,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
-        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
     ],
 )
@@ -152,8 +152,8 @@ cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:any_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",

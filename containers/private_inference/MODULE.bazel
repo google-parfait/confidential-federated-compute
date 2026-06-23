@@ -105,7 +105,7 @@ archive_override(
 )
 
 bazel_dep(name = "boringssl", version = "0.20260211.0")
-bazel_dep(name = "federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
     integrity = "sha256-oak9bLZJ8qJkwVPo/0ufLHY2IEX48N7/DOPL7ce55JI=",

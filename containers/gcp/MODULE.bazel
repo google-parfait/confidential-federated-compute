@@ -223,7 +223,7 @@ archive_override(
     urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/e1df4d2d0b8dfb796c179fe5e33e7116ae34262a.zip"],
 )
 
-bazel_dep(name = "federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
     integrity = "sha256-Ss5xWqFubvQ/p2Ap/rFgVPl5NZCl/gqrGg5GNsx51o0=",

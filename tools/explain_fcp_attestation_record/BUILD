@@ -96,12 +96,12 @@ rust_test(
 
 rust_prost_library(
     name = "verification_record_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:verification_record_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:verification_record_proto",
 )
 
 rust_prost_library(
     name = "fed_sql_container_config_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:fed_sql_container_config_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:fed_sql_container_config_proto",
 )
 
 rust_prost_library(
@@ -111,5 +111,5 @@ rust_prost_library(
 
 rust_prost_library(
     name = "signed_endorsements_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:signed_endorsements_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:signed_endorsements_proto",
 )

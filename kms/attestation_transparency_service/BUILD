@@ -76,7 +76,7 @@ rust_test(
 
 rust_prost_library(
     name = "attestation_transparency_service_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:attestation_transparency_service_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:attestation_transparency_service_proto",
     visibility = ["//:__pkg__"],
 )
 

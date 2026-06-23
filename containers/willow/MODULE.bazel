@@ -23,7 +23,7 @@ bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_a
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "confidential-federated-compute")
-bazel_dep(name = "federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
 bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
@@ -64,7 +64,7 @@ python.toolchain(
     python_version = "3.11",
 )
 
-fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
 
 # Module overrides.

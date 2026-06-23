@@ -31,7 +31,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:cord",
         "@com_google_protobuf//:protobuf",
-        "@federated-compute//fcp/confidentialcompute:constants",
+        "@federated_compute//fcp/confidentialcompute:constants",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
@@ -48,7 +48,7 @@ cc_library(
     deps = [
         "//containers/common:input",
         "//containers/fed_sql:inference_model",
-        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@googletest//:gtest",
     ],
 )

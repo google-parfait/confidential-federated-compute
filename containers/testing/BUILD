@@ -27,6 +27,6 @@ cc_library(
     ],
     deps = [
         "//containers:session",
-        "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )

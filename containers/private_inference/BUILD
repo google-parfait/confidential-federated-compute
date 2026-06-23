@@ -52,7 +52,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@confidential-federated-compute//containers/batched_inference:batched_inference_engine",
-        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
     ],
 )
 
@@ -86,7 +86,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@oak//cc/oak_session:client_session",
         "@oak//cc/oak_session:config",
         "@oak//cc/oak_session:server_session",
@@ -125,7 +125,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
         "@oak//cc/ffi:error_bindings",
@@ -144,7 +144,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@federated-compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
     ],
 )
 

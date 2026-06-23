@@ -47,7 +47,7 @@ rust_test(
 
 rust_prost_library(
     name = "access_policy_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:access_policy_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:access_policy_proto",
     visibility = ["//:__subpackages__"],
 )
 
@@ -147,13 +147,13 @@ rust_test(
 
 rust_prost_library(
     name = "kms_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:kms_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:kms_proto",
     visibility = ["//:__subpackages__"],
 )
 
 rust_prost_library(
     name = "payload_transparency_prost_proto",
-    proto = "@federated-compute//fcp/protos/confidentialcompute:payload_transparency_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:payload_transparency_proto",
 )
 
 rust_library(

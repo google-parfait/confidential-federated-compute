@@ -32,7 +32,7 @@ archive_override(
     urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6.tar.gz"],
 )
 
-bazel_dep(name = "federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
     integrity = "sha256-ebc/RIdgTEG5dQJKjyM8ACFLJaLgeVUeD9tEK969JC0=",
@@ -67,7 +67,7 @@ archive_override(
     urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
 
-fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
 
 http_archive(
