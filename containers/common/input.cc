@@ -360,7 +360,6 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
 }
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
-    std::string metadata,
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name) {
   std::string column_prefix = absl::StrCat(on_device_query_name, "/");
@@ -409,8 +408,8 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
   std::vector<Tensor> system_columns;
   system_columns.reserve(1);
   system_columns.push_back(std::move(time_tensor));
-  return Input::CreateFromMessages(
-      std::move(messages), std::move(system_columns), std::move(metadata));
+  return Input::CreateFromMessages(std::move(messages),
+                                   std::move(system_columns));
 }
 
 absl::StatusOr<std::unique_ptr<MessageFactory>>

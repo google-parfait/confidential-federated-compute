@@ -768,8 +768,7 @@ TEST(CreateFromMessageCheckpointTest, Success) {
 
   InMemoryCheckpointParser parser(std::move(tensors));
 
-  auto input_result =
-      CreateFromMessageCheckpoint("key-id", &parser, factory, query_name);
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
 
   EXPECT_THAT(input_result, IsOk());
   EXPECT_EQ(input_result->GetRowCount(), 1);
@@ -790,8 +789,7 @@ TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {
   tensors.push_back(std::move(*time_tensor));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto input_result =
-      CreateFromMessageCheckpoint("key-id", &parser, factory, query_name);
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
 
   EXPECT_THAT(input_result.status(), StatusIs(absl::StatusCode::kNotFound));
 }
@@ -819,8 +817,7 @@ TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
   tensors.push_back(std::move(*time_tensor));
 
   InMemoryCheckpointParser parser(std::move(tensors));
-  auto input_result =
-      CreateFromMessageCheckpoint("key-id", &parser, factory, query_name);
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
 
   EXPECT_THAT(input_result.status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
