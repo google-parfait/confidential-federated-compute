@@ -1,0 +1,10 @@
+--- third_party/xla/xla/service/custom_call_status_internal.h.orig	2026-06-23 00:00:00.000000000 +0000
++++ third_party/xla/xla/service/custom_call_status_internal.h	2026-06-23 00:00:00.000000000 +0000
+@@ -17,6 +17,7 @@
+ #define XLA_SERVICE_CUSTOM_CALL_STATUS_INTERNAL_H_
+ 
+ #include <optional>
++#include <string>
+ 
+ #include "absl/strings/string_view.h"
+ #include "xla/service/custom_call_status.h"

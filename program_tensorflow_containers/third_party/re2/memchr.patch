@@ -1,0 +1,11 @@
+diff --git re2/prog.h re2/prog.h
+--- re2/prog.h
++++ re2/prog.h
+@@ -11,6 +11,7 @@
+ 
+ #include <stdint.h>
+ #include <functional>
++#include <cstring>
+ #include <string>
+ #include <vector>
+ #include <type_traits>

@@ -1,33 +1,22 @@
-# The dependency versions in this file are chosen to be as close as possible to
-# those in the corresponding repos.
+# Dependencies for the program runner as well as transitive dependencies for federated_language,
+# org_tensorflow_federated, and jax_privacy (best effort made at finding the intersection of the
+# allowed dependency versions).
 
 absl-py>=2.0,<3
-googleapis-common-protos==1.70.0
-numpy>=2.0.0,<2.2.0
-portpicker~=1.6
-
-# Additional dependencies required for org_tensorflow_federated.
 attrs~=23.1
 cachetools~=5.3
+chex
 dm-tree==0.1.9
-dp-accounting==0.6.0
-grpcio~=1.74
-keras~=3.12.0
-ml_dtypes>=0.5.0
-protobuf
-scipy~=1.16
+dp-accounting
+googleapis-common-protos==1.70.0
+jax==0.10.0
+jaxlib==0.10.0
+ml_dtypes>=0.5.0,<0.6
+numpy~=2.0
+optax
+portpicker~=1.6
+protobuf==6.33.1 # Match version of protobuf pulled in from source.
+pydantic
+scipy
 tensorflow-cpu>=2.21.0,==2.21.*
 tqdm>=4.64.0,==4.64.*
-typing-extensions>=4.6.0,==4.6.*
-wrapt>=1.14.2,<1.15
-
-# Additional dependencies required for com_google_fcp.
-immutabledict==4.2.0
-
-# JAX version upgraded to be compatible with TF 2.21.0 and NumPy 2.0.
-jax>=0.4.30
-jaxlib>=0.4.30
-
-# Additional dependencies required for jax_privacy.
-optax>=0.2.3
-chex
