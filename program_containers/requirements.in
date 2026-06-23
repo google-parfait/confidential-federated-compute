@@ -8,7 +8,7 @@ portpicker~=1.6
 attrs>=23.1,<27.0
 dm-tree~=0.1.8
 ml_dtypes>=0.4.0,<0.6
-protobuf==6.33.1
+protobuf==6.33.5
 typing-extensions>=4.5.0
 
 # Additional dependencies for federated_language_jax
