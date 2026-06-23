@@ -23,6 +23,7 @@
 #include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/config.h"
 #include "cc/oak_session/oak_session_bindings.h"
+#include "fcp/protos/confidentialcompute/program_worker_tee_config.pb.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
@@ -42,6 +43,7 @@ namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
 using ::confidential_federated_compute::program_executor_tee::ProgramWorkerTee;
+using ::fcp::confidentialcompute::ProgramWorkerTeeInitializeConfig;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::sdk::OrchestratorClient;
@@ -53,9 +55,14 @@ using ::oak::session::SessionConfigBuilder;
 // Increase gRPC message size limit to 2GB
 static constexpr int kChannelMaxMessageSize = 2 * 1000 * 1000 * 1000;
 
-absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
-CreateExecutor() {
-  return tensorflow_federated::CreateTensorFlowExecutor();
+absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> CreateExecutor(
+    int max_concurrent_computation_calls) {
+  if (max_concurrent_computation_calls > 0) {
+    LOG(INFO) << "Enforcing max_concurrent_computation_calls: "
+              << max_concurrent_computation_calls;
+  }
+  return tensorflow_federated::CreateTensorFlowExecutor(
+      max_concurrent_computation_calls);
 }
 
 void RunServer() {
@@ -63,8 +70,19 @@ void RunServer() {
 
   // Initialize the Rust runtime to create the session config.
   init_tokio_runtime();
-  auto service =
-      ProgramWorkerTee::Create(create_session_config, CreateExecutor);
+
+  absl::StatusOr<std::string> application_config =
+      OrchestratorClient().GetApplicationConfig();
+  CHECK_OK(application_config) << "Failed to get application config";
+
+  ProgramWorkerTeeInitializeConfig config;
+  CHECK(config.ParseFromString(*application_config))
+      << "Failed to parse ProgramWorkerTeeInitializeConfig from application "
+         "config";
+
+  auto service = ProgramWorkerTee::Create(create_session_config, [&config]() {
+    return CreateExecutor(config.max_concurrent_computation_calls());
+  });
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
 
