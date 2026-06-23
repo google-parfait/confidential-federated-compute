@@ -228,7 +228,6 @@ class Input {
 };
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
-    std::string metadata,
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name);
 
