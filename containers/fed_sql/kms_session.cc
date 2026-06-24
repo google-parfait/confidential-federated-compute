@@ -37,6 +37,8 @@
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -60,6 +62,7 @@ using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_ACCUMULATE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE;
 using ::fcp::confidentialcompute::AGGREGATION_TYPE_MERGE_PRIVATE_STATE;
+using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
@@ -84,6 +87,7 @@ using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
+using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::SqlQuery;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -98,6 +102,32 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::InMemoryCheckpointParser;
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
+
+// Attempts to unpack a BlobHeader from the kms_associated_data. Tries the
+// associated_metadata field first, then falls back to the deprecated
+// record_header field.
+bool UnpackAssociatedBlobHeader(
+    const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
+        kms_associated_data,
+    BlobHeader* blob_header) {
+  if (kms_associated_data.has_associated_metadata()) {
+    return kms_associated_data.associated_metadata().UnpackTo(blob_header);
+  }
+  // Fall back to the deprecated record_header field.
+  return blob_header->ParseFromString(kms_associated_data.record_header());
+}
+
+// Attempts to unpack an AssociatedMetadata from the kms_associated_data's
+// associated_metadata field.
+bool UnpackAssociatedMetadata(
+    const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
+        kms_associated_data,
+    AssociatedMetadata* associated_data) {
+  if (!kms_associated_data.has_associated_metadata()) {
+    return false;
+  }
+  return kms_associated_data.associated_metadata().UnpackTo(associated_data);
+}
 
 }  // namespace
 
@@ -174,6 +204,53 @@ absl::Status PrependMessage(T message, const absl::Status& status) {
   return absl::Status(status.code(), absl::StrCat(message, status.message()));
 }
 
+absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
+    const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
+        kms_associated_data) {
+  // Try to unpack associated_metadata as AssociatedMetadata containing
+  // SessionTimeWindowMetadata for time-window budget checking.
+  AssociatedMetadata associated_metadata;
+  if (UnpackAssociatedMetadata(kms_associated_data, &associated_metadata)) {
+    for (const auto& metadata_entry : associated_metadata.metadata()) {
+      SessionTimeWindowMetadata time_window_metadata;
+      if (metadata_entry.UnpackTo(&time_window_metadata)) {
+        Interval<uint64_t> time_window(
+            time_window_metadata.session_window_start().seconds(),
+            time_window_metadata.session_window_end().seconds());
+        if (!private_state_->budget.HasRemainingBudget(time_window)) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("No time-window budget remaining for interval: [",
+                           time_window.start(), ", ", time_window.end(), ")"));
+        }
+        range_tracker_.MergeAggWindow(time_window);
+        return absl::OkStatus();
+      }
+    }
+    return absl::InvalidArgumentError(
+        "No SessionTimeWindowMetadata found in "
+        "kms_associated_data.associated_metadata");
+  }
+
+  // Try to unpack as a BlobHeader from either associated_metadata or the
+  // deprecated record_header field for per-key budget checking.
+  BlobHeader header;
+  if (UnpackAssociatedBlobHeader(kms_associated_data, &header)) {
+    auto blob_id = LoadBigEndian<absl::uint128>(header.blob_id());
+    uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
+    if (!private_state_->budget.HasRemainingBudget(header.key_id(),
+                                                   blob_id_high64)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("No budget remaining for key id: ", header.key_id()));
+    }
+    range_tracker_.AddKey(header.key_id());
+    return absl::OkStatus();
+  }
+
+  return absl::InvalidArgumentError(
+      "Failed to parse kms_associated_data: could not unpack as "
+      "AssociatedMetadata or BlobHeader");
+}
+
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
 KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                              std::string unencrypted_data) {
@@ -181,8 +258,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   // https://github.com/google-parfait/federated-compute/blob/main/fcp/base/scheduler.h
   // to asynchronously handle deserializing the checkpoint when it is
   // initially written to the session.
-  BlobHeader blob_header;
-  // The metadata is expected to has encryption with KMS.
+  // The metadata is expected to have encryption with KMS.
   if (!metadata.has_hpke_plus_aead_data() ||
       !metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
     // Not having this indicates a problem with the configuration, which means
@@ -191,25 +267,18 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         "Unexpected blob metadata: must have encryption with KMS.");
   }
 
-  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
-    return ToWriteFinishedResponse(
-        absl::InvalidArgumentError("Failed to parse blob header"));
+  const auto& kms_associated_data =
+      metadata.hpke_plus_aead_data().kms_symmetric_key_associated_data();
+  absl::Status budget_status =
+      CheckBudgetAndUpdateRangeTracker(kms_associated_data);
+  if (!budget_status.ok()) {
+    return ToWriteFinishedResponse(budget_status);
   }
 
-  // Check if there is a budget for the bucket associated with the
-  // blob key.
-  auto blob_id = LoadBigEndian<absl::uint128>(blob_header.blob_id());
-  uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
-  if (!private_state_->budget.HasRemainingBudget(blob_header.key_id(),
-                                                 blob_id_high64)) {
-    return ToWriteFinishedResponse(
-        absl::FailedPreconditionError("No budget remaining."));
-  }
-
-  range_tracker_.AddKey(blob_header.key_id());
-
+  // TODO: Switch to privacy id instead of blob id after
+  // sessionization is complete.
+  auto blob_id =
+      LoadBigEndian<absl::uint128>(metadata.hpke_plus_aead_data().blob_id());
   // Save the data size before moving it out so that it can be reported
   // back in metrics.
   size_t unencrypted_data_size = unencrypted_data.size();

@@ -568,6 +568,11 @@ class FedSqlServerTest : public Test {
     encryption_metadata->mutable_kms_symmetric_key_associated_data()
         ->set_record_header(associated_data);
 
+    BlobHeader blob_header;
+    if (blob_header.ParseFromString(associated_data)) {
+      encryption_metadata->set_blob_id(blob_header.blob_id());
+    }
+
     return {metadata, encrypt_result.value().ciphertext};
   }
 
