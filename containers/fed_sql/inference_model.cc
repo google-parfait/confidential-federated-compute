@@ -77,8 +77,8 @@ constexpr size_t kMaxPromptSize = 8192;
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
 constexpr size_t kNumTokensPerBatch = 2048;
-// Maximum number of rows to process in a single GenerateBatch call.
-constexpr size_t kMaxBatchSize = 64;
+// Default maximum number of rows to process in a single GenerateBatch call.
+constexpr size_t kDefaultMaxBatchSize = 1;
 
 }  // namespace
 
@@ -237,7 +237,7 @@ InferenceModel::RunGemmaCppInference(
 
   size_t max_batch_size = inference_runtime_config.max_batch_size() > 0
                               ? inference_runtime_config.max_batch_size()
-                              : kMaxBatchSize;
+                              : kDefaultMaxBatchSize;
 
   // Process rows in batches of max_batch_size.
   for (size_t batch_start = 0; batch_start < row_count;
