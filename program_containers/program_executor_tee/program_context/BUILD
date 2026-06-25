@@ -22,9 +22,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
-        "@federated-compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
-        "@federated-compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
@@ -55,7 +55,7 @@ py_library(
     srcs = ["program_runner.py"],
     visibility = ["//visibility:public"],
     deps = [
-        "@federated-compute//fcp/confidentialcompute/python:external_service_handle",
+        "@federated_compute//fcp/confidentialcompute/python:external_service_handle",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_py_pb2",
     ],
 )
