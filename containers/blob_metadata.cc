@@ -36,6 +36,14 @@ absl::StatusOr<std::string> GetKeyIdFromMetadata(
         "kms_symmetric_key_associated_data is not present.");
   }
 
+  // Try to get the key id from `metadata.hpke_plus_aead_data()`.
+  if (!metadata.hpke_plus_aead_data().key_id().empty()) {
+    return metadata.hpke_plus_aead_data().key_id();
+  }
+
+  // If the above key_id was not present, fallback to parsing the
+  // `kms_symmetric_key_associated_data.record_header()`. This would be the
+  // case for legacy blobs.
   fcp::confidentialcompute::BlobHeader blob_header;
   if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
                                        .kms_symmetric_key_associated_data()
