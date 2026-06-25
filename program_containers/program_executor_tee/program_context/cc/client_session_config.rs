@@ -14,15 +14,16 @@
 
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use oak_attestation_verification::{
     AmdSevSnpDiceAttestationVerifier, AmdSevSnpPolicy, ContainerPolicy, FirmwarePolicy,
-    InsecureAttestationVerifier, KernelPolicy, SystemPolicy,
+    InsecureAttestationVerifier, IntelTdxAttestationVerifier, IntelTdxPolicy, KernelPolicy,
+    SystemPolicy,
 };
 use oak_attestation_verification_types::verifier::AttestationVerifier;
 use oak_proto_rust::oak::attestation::v1::{
-    reference_values, AmdSevReferenceValues, OakContainersReferenceValues, ReferenceValues,
-    RootLayerReferenceValues,
+    AmdSevReferenceValues, IntelTdxReferenceValues, OakContainersReferenceValues, ReferenceValues,
+    RootLayerReferenceValues, reference_values,
 };
 use oak_session::{
     aggregators::PassThrough, attestation::AttestationType, config::SessionConfig,
@@ -71,6 +72,34 @@ fn create_session_config_internal(reference_values: ReferenceValues) -> Result<S
             container_layer: Some(container_ref_vals),
         })) => Box::new(AmdSevSnpDiceAttestationVerifier::new(
             AmdSevSnpPolicy::new(amd_sev_ref_vals),
+            Box::new(FirmwarePolicy::new(stage0_ref_vals)),
+            vec![
+                Box::new(KernelPolicy::new(kernel_ref_vals)),
+                Box::new(SystemPolicy::new(system_ref_vals)),
+                Box::new(ContainerPolicy::new(container_ref_vals)),
+            ],
+            Arc::new(SystemTimeClock {}),
+        )),
+
+        // Oak Containers (Intel TDX)
+        Some(reference_values::Type::OakContainers(OakContainersReferenceValues {
+            root_layer:
+                Some(RootLayerReferenceValues {
+                    intel_tdx:
+                        Some(
+                            intel_tdx_ref_vals @ IntelTdxReferenceValues {
+                                stage0: Some(stage0_ref_vals),
+                                ..
+                            },
+                        ),
+                    insecure: None,
+                    ..
+                }),
+            kernel_layer: Some(kernel_ref_vals),
+            system_layer: Some(system_ref_vals),
+            container_layer: Some(container_ref_vals),
+        })) => Box::new(IntelTdxAttestationVerifier::new(
+            IntelTdxPolicy::new(intel_tdx_ref_vals),
             Box::new(FirmwarePolicy::new(stage0_ref_vals)),
             vec![
                 Box::new(KernelPolicy::new(kernel_ref_vals)),
