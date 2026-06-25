@@ -94,23 +94,17 @@ http_archive(
 )
 
 http_archive(
-    name = "confidential-federated-compute",
-    integrity = "sha256-tfUeMHUG74hduiquepcUjhi0dVpDpg3mkeLo7g3KYnM=",
-    repo_mapping = {
-        "@federated-compute": "@federated_compute",
-    },
-    strip_prefix = "confidential-federated-compute-29fb9250ab3210b3543ddc6060c27450586a1122",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/29fb9250ab3210b3543ddc6060c27450586a1122.tar.gz",
+    name = "confidential_federated_compute",
+    integrity = "sha256-5qg/ClAMJxo8SyxGBo7sjyk43Q5gsI5RbZBSC+iqs4g=",
+    strip_prefix = "confidential-federated-compute-cf6389b18237a091a4cf31e8e7509663be5d0c5e",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/cf6389b18237a091a4cf31e8e7509663be5d0c5e.tar.gz",
 )
 
 http_archive(
-    name = "confidential-federated-compute-program",
-    integrity = "sha256-tfUeMHUG74hduiquepcUjhi0dVpDpg3mkeLo7g3KYnM=",
-    repo_mapping = {
-        "@federated-compute": "@federated_compute",
-    },
-    strip_prefix = "confidential-federated-compute-29fb9250ab3210b3543ddc6060c27450586a1122/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/29fb9250ab3210b3543ddc6060c27450586a1122.tar.gz",
+    name = "confidential_federated_compute_program",
+    integrity = "sha256-5qg/ClAMJxo8SyxGBo7sjyk43Q5gsI5RbZBSC+iqs4g=",
+    strip_prefix = "confidential-federated-compute-cf6389b18237a091a4cf31e8e7509663be5d0c5e/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/cf6389b18237a091a4cf31e8e7509663be5d0c5e.tar.gz",
 )
 
 http_archive(
@@ -129,8 +123,8 @@ http_archive(
     name = "federated_language",
     patches = [
         "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
-        "@confidential-federated-compute-program//third_party/federated_language:structure_visibility.patch",
-        "@confidential-federated-compute-program//third_party/federated_language:python_toolchain.patch",
+        "@confidential_federated_compute_program//third_party/federated_language:structure_visibility.patch",
+        "@confidential_federated_compute_program//third_party/federated_language:python_toolchain.patch",
     ],
     repo_mapping = {
         "@federated_language_pypi": "@pypi",
@@ -152,7 +146,7 @@ http_archive(
     name = "jax_privacy",
     integrity = "sha256-zjVOFalwAsN7TWeW27wAtfAkMbU8Lk+cqwb6iwUrFCA=",
     patches = [
-        "@confidential-federated-compute-program//third_party/jax_privacy:package.patch",
+        "@confidential_federated_compute_program//third_party/jax_privacy:package.patch",
     ],
     strip_prefix = "jax_privacy-03f69a78171369361df19230274979b59b3c4f36",
     url = "https://github.com/google-deepmind/jax_privacy/archive/03f69a78171369361df19230274979b59b3c4f36.tar.gz",
@@ -289,7 +283,7 @@ http_archive(
 # Stubbed out dependencies
 ################################################################################
 
-load("@confidential-federated-compute-program//:stub_repo.bzl", "stub_repo")
+load("@confidential_federated_compute_program//:stub_repo.bzl", "stub_repo")
 
 stub_repo(
     name = "com_github_grpc_grpc_kotlin",

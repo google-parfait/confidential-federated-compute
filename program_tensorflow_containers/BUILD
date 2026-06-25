@@ -13,8 +13,8 @@
 # limitations under the License.
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@confidential-federated-compute-program//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
-load("@confidential-federated-compute-program//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
+load("@confidential_federated_compute_program//program_executor_tee:pkg_tar_runfiles.bzl", "pkg_tar_runfiles")
+load("@confidential_federated_compute_program//program_executor_tee:python_runtime.bzl", "trusted_py_runtime")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
@@ -72,7 +72,7 @@ cc_binary(
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:computation_runner",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:computation_runner",
         "@oak//proto/attestation:reference_value_cc_proto",
         "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
         "@org_tensorflow//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
@@ -85,9 +85,9 @@ pybind_extension(
     name = "fake_service_bindings_tensorflow",
     srcs = ["fake_service_bindings_tensorflow.cc"],
     deps = [
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_computation_delegation_service",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_server",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:fake_computation_delegation_service",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:fake_server",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
@@ -101,7 +101,7 @@ py_test(
     deps = [
         ":compilers",
         ":fake_service_bindings_tensorflow",
-        "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
+        "@confidential_federated_compute_program//program_executor_tee/program_context:execution_context",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
@@ -115,7 +115,7 @@ py_library(
     srcs = ["initialize_program_tensorflow.py"],
     deps = [
         ":compilers",
-        "@confidential-federated-compute-program//program_executor_tee/program_context:execution_context",
+        "@confidential_federated_compute_program//program_executor_tee/program_context:execution_context",
         "@jax_privacy//jax_privacy",
     ],
 )
@@ -123,7 +123,7 @@ py_library(
 trusted_py_runtime(
     name = "trusted_program_py_runtime",
     py_deps = [
-        "@confidential-federated-compute-program//program_executor_tee/program_context:program_runner",
+        "@confidential_federated_compute_program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
         "@federated_compute//fcp/confidentialcompute/python:accounting",
         "@federated_compute//fcp/confidentialcompute/python:dp_mf_aggregator",
@@ -133,7 +133,7 @@ trusted_py_runtime(
         "@pypi//optax",
     ],
     source_repo_names = [
-        "confidential-federated-compute-program",
+        "confidential_federated_compute_program",
         "federated_language",
         "federated_compute",
         "jax_privacy",
@@ -152,7 +152,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/strings",
-        "@confidential-federated-compute-program//program_executor_tee:confidential_transform_server",
+        "@confidential_federated_compute_program//program_executor_tee:confidential_transform_server",
         "@oak//cc/crypto:signing_key",
         "@pybind11",
     ],
@@ -179,9 +179,9 @@ cc_test(
     toolchains = [":trusted_program_py_runtime"],
     deps = [
         ":confidential_transform_server",
-        "@confidential-federated-compute-program//program_executor_tee:testing_base",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:fake_data_read_write_service",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:generate_checkpoint",
+        "@confidential_federated_compute_program//program_executor_tee:testing_base",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:fake_data_read_write_service",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:generate_checkpoint",
         "@federated_compute//fcp/base:random_token",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",
@@ -230,7 +230,7 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@confidential-federated-compute-program//program_executor_tee:python_manager",
+        "@confidential_federated_compute_program//program_executor_tee:python_manager",
         "@oak//cc/containers/sdk:encryption_key_handle",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/containers/sdk:signing_key_handle",
@@ -245,8 +245,8 @@ cc_binary(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@confidential-federated-compute-program//program_executor_tee:program_worker_server",
-        "@confidential-federated-compute-program//program_executor_tee/program_context/cc:server_session_config",
+        "@confidential_federated_compute_program//program_executor_tee:program_worker_server",
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:server_session_config",
         "@federated_compute//fcp/protos/confidentialcompute:program_worker_tee_config_cc_proto",
         "@oak//cc/containers/sdk:orchestrator_client",
         "@oak//cc/ffi:bytes_bindings",
