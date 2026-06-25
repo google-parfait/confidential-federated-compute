@@ -113,6 +113,9 @@ archive_override(
     urls = ["https://github.com/google-parfait/federated-compute/archive/e31c7a718fbe5de54a9919ea2cbec6ef5f848c94.tar.gz"],
 )
 
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
+
 bazel_dep(name = "gemma", version = "0.0.1")
 archive_override(
     module_name = "gemma",
