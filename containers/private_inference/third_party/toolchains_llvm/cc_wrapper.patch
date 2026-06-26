@@ -1,0 +1,33 @@
+--- toolchain/cc_wrapper.sh.tpl
++++ toolchain/cc_wrapper.sh.tpl
+@@ -119,4 +119,5 @@
+ cmd=()
++sysroot_path=""
+ for ((i = 0; i <= $#; i++)); do
+   if [[ ${!i} == @* && -r "${!i:1}" ]]; then
+     # Create a new, sanitized file.
+@@ -129,4 +130,7 @@
+       )"
++      if [[ "${opt}" == --sysroot=* ]]; then
++        sysroot_path="${opt#--sysroot=}"
++      fi
+       parse_option "${opt}"
+       echo "${opt}" >>"${tmpfile}"
+     done <"${!i:1}"
+@@ -138,4 +142,7 @@
+     )"
++    if [[ "${opt}" == --sysroot=* ]]; then
++      sysroot_path="${opt#--sysroot=}"
++    fi
+     parse_option "${opt}"
+     cmd+=("${opt}")
+   fi
+@@ -143,4 +150,8 @@
+ done
+ 
++if [[ -n "${sysroot_path}" ]]; then
++  export LD_LIBRARY_PATH="${sysroot_path}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
++fi
++
+ # Call the C++ compiler.
+ "${cmd[@]}"
