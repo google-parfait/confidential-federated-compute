@@ -31,6 +31,16 @@ TEST(GetKeyIdFromMetadata, SuccessUnencrypted) {
 }
 
 TEST(GetKeyIdFromMetadata, SuccessEncrypted) {
+  BlobMetadata metadata;
+  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  encryption_metadata->mutable_kms_symmetric_key_associated_data();
+  encryption_metadata->set_key_id("key_id");
+
+  EXPECT_EQ(GetKeyIdFromMetadata(metadata).value(), "key_id");
+}
+
+TEST(GetKeyIdFromMetadata, SuccessEncryptedWithKeyIdInRecordHeader) {
   BlobHeader header;
   header.set_blob_id("blob_id");
   header.set_key_id("key_id");

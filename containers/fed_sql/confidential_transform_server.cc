@@ -673,38 +673,4 @@ FedSqlConfidentialTransform::CreateSession() {
                                             *decryptor, session_config_);
 }
 
-absl::StatusOr<std::string> FedSqlConfidentialTransform::GetKeyId(
-    const BlobMetadata& metadata) {
-  // For unencrypted payloads, the key_id is not used, so we
-  // return an empty string.
-  if (metadata.has_unencrypted()) {
-    return "";
-  }
-
-  if (!metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data is not present.");
-  }
-
-  // Parse the BlobHeader to get the access policy hash and key ID.
-  BlobHeader blob_header;
-  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data.record_header() cannot be "
-        "parsed to BlobHeader.");
-  }
-
-  // Verify that the access policy hash matches one of the authorized
-  // logical pipeline policy hashes returned by KMS before returning the key ID.
-  if (!GetAuthorizedLogicalPipelinePoliciesHashes().contains(
-          blob_header.access_policy_sha256())) {
-    return absl::InvalidArgumentError(
-        "BlobHeader.access_policy_sha256 does not match any "
-        "authorized_logical_pipeline_policies_hashes returned by KMS.");
-  }
-  return blob_header.key_id();
-}
-
 }  // namespace confidential_federated_compute::fed_sql

@@ -63,9 +63,6 @@ class FnConfidentialTransform final
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() override;
 
-  absl::StatusOr<std::string> GetKeyId(
-      const fcp::confidentialcompute::BlobMetadata& metadata) override;
-
   absl::Status ReadWriteConfigurationRequest(
       const fcp::confidentialcompute::WriteConfigurationRequest&
           write_configuration) override;

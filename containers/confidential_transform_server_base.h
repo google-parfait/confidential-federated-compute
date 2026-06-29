@@ -25,6 +25,7 @@
 #include "absl/synchronization/mutex.h"
 #include "cc/crypto/encryption_key.h"
 #include "cc/crypto/signing_key.h"
+#include "containers/blob_metadata.h"
 #include "containers/crypto.h"
 #include "containers/kms_encryptor.h"
 #include "containers/session.h"
@@ -79,9 +80,13 @@ class ConfidentialTransformBase
       std::unique_ptr<confidential_federated_compute::Session>>
   CreateSession() = 0;
 
-  // Retrieves the key_id from the BlobMetadata.
+  // Retrieves the key_id from the BlobMetadata. By default, this is implemented
+  // by calling `GetKeyIdFromMetadata()`, but can be overridden by a subclass
+  // if the subclass wants to handle the key_id differently.
   virtual absl::StatusOr<std::string> GetKeyId(
-      const fcp::confidentialcompute::BlobMetadata& metadata) = 0;
+      const fcp::confidentialcompute::BlobMetadata& metadata) {
+    return GetKeyIdFromMetadata(metadata);
+  }
 
   // Returns the authorized logical policy hashes for this container.
   absl::flat_hash_set<std::string>&

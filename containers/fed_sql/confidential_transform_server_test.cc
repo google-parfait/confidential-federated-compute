@@ -1957,25 +1957,6 @@ TEST_F(FedSqlServerTest, SessionWriteRequestInvalidKmsAssociatedData) {
       << response.write().status().message();
 }
 
-TEST_F(FedSqlServerTest, SessionWriteRequestInvalidPolicyHash) {
-  InitializeTransform();
-  grpc::ClientContext context;
-  auto stream = ConfigureDefaultSession(&context);
-
-  BlobHeader header;
-  header.set_blob_id("blob_id");
-  header.set_key_id(key_id_);
-  header.set_access_policy_sha256("invalid_policy_hash");
-  SessionRequest request = CreateDefaultEncryptedWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}),
-      header.SerializeAsString());
-  SessionResponse response;
-  ASSERT_TRUE(stream->Write(request));
-  ASSERT_TRUE(stream->Read(&response));
-  ASSERT_EQ(response.write().status().code(), Code::INVALID_ARGUMENT)
-      << response.write().status().message();
-}
-
 TEST_F(FedSqlServerTest, SessionWriteWithMetadataMessagesSuccess) {
   // Initialize the session.
   FedSqlContainerInitializeConfiguration init_config =

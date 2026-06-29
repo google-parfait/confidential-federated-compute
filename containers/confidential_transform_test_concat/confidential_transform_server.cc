@@ -94,10 +94,5 @@ TestConcatConfidentialTransform::CreateSession() {
           TestConcatSession>();
 };
 
-absl::StatusOr<std::string> TestConcatConfidentialTransform::GetKeyId(
-    const fcp::confidentialcompute::BlobMetadata& metadata) {
-  return GetKeyIdFromMetadata(metadata);
-}
-
 }  // namespace
    // confidential_federated_compute::confidential_transform_test_concat
