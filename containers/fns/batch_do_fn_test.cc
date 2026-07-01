@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fns/pobject_map_fn.h"
+#include "containers/fns/batch_do_fn.h"
 
 #include <cstdint>
 #include <optional>
@@ -57,14 +57,14 @@ class MockContext : public Session::Context {
   MOCK_METHOD(Counters&, GetCounters, (), (override));
 };
 
-// A concrete subclass for testing. Records the inputs received by Map()
+// A concrete subclass for testing. Records the inputs received by Do()
 // and can be configured to emit specific outputs or return errors.
-class TestPObjectMapFn : public PObjectMapFn {
+class TestBatchDoFn : public BatchDoFn {
  public:
-  absl::Status Map(Any config, std::vector<Session::KV> accumulated_inputs,
-                   Context& context) override {
-    if (map_error_.has_value()) {
-      return *map_error_;
+  absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
+                  Context& context) override {
+    if (do_error_.has_value()) {
+      return *do_error_;
     }
 
     // Emit a summary: concatenate all input data, keys, and blob_ids.
@@ -89,21 +89,21 @@ class TestPObjectMapFn : public PObjectMapFn {
     return absl::OkStatus();
   }
 
-  // Configure Map() to return an error.
-  void SetMapError(absl::Status error) { map_error_ = std::move(error); }
+  // Configure Do() to return an error.
+  void SetDoError(absl::Status error) { do_error_ = std::move(error); }
 
  private:
-  std::optional<absl::Status> map_error_;
+  std::optional<absl::Status> do_error_;
 };
 
-class PObjectMapFnTest : public testing::Test {
+class BatchDoFnTest : public testing::Test {
  protected:
-  TestPObjectMapFn fn_;
+  TestBatchDoFn fn_;
   StrictMock<MockContext> context_;
   Counters counters_;
 };
 
-TEST_F(PObjectMapFnTest, WriteAccumulatesData) {
+TEST_F(BatchDoFnTest, WriteAccumulatesData) {
   WriteRequest request;
   auto result = fn_.Write(request, "data_1", context_);
   ASSERT_THAT(result, IsOk());
@@ -114,7 +114,7 @@ TEST_F(PObjectMapFnTest, WriteAccumulatesData) {
   EXPECT_EQ(result2->committed_size_bytes(), 6);
 }
 
-TEST_F(PObjectMapFnTest, WritePreservesKeyAndBlobId) {
+TEST_F(BatchDoFnTest, WritePreservesKeyAndBlobId) {
   WriteRequest request;
   Any key;
   key.set_type_url("test_type");
@@ -144,13 +144,13 @@ TEST_F(PObjectMapFnTest, WritePreservesKeyAndBlobId) {
   ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
 }
 
-TEST_F(PObjectMapFnTest, CommitCallsMapWithAllInputs) {
+TEST_F(BatchDoFnTest, CommitCallsDoWithAllInputs) {
   WriteRequest request;
   ASSERT_THAT(fn_.Write(request, "chunk_a", context_), IsOk());
   ASSERT_THAT(fn_.Write(request, "chunk_b", context_), IsOk());
   ASSERT_THAT(fn_.Write(request, "chunk_c", context_), IsOk());
 
-  // Verify Map() received all 3 inputs by checking the emitted output.
+  // Verify Do() received all 3 inputs by checking the emitted output.
   // 1 summary emission + 3 per-input emissions.
   EXPECT_CALL(context_, EmitUnencrypted(_))
       .WillOnce([](Session::KV kv) {
@@ -167,7 +167,7 @@ TEST_F(PObjectMapFnTest, CommitCallsMapWithAllInputs) {
   EXPECT_EQ(commit_response->stats().num_inputs_committed(), 3);
 }
 
-TEST_F(PObjectMapFnTest, CommitForwardsConfig) {
+TEST_F(BatchDoFnTest, CommitForwardsConfig) {
   WriteRequest request;
   ASSERT_THAT(fn_.Write(request, "data", context_), IsOk());
 
@@ -188,8 +188,8 @@ TEST_F(PObjectMapFnTest, CommitForwardsConfig) {
   ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
 }
 
-TEST_F(PObjectMapFnTest, CommitWithNoWriteCallsMapWithEmptyList) {
-  // Map() is still called — it's up to the subclass to decide if empty
+TEST_F(BatchDoFnTest, CommitWithNoWriteCallsDoWithEmptyList) {
+  // Do() is still called — it's up to the subclass to decide if empty
   // input is an error.
   EXPECT_CALL(context_, EmitUnencrypted(_)).WillOnce([](Session::KV kv) {
     EXPECT_EQ(kv.data, "");
@@ -200,17 +200,17 @@ TEST_F(PObjectMapFnTest, CommitWithNoWriteCallsMapWithEmptyList) {
   ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
 }
 
-TEST_F(PObjectMapFnTest, CommitReturnsMapError) {
+TEST_F(BatchDoFnTest, CommitReturnsDoError) {
   WriteRequest request;
   ASSERT_THAT(fn_.Write(request, "data", context_), IsOk());
 
-  fn_.SetMapError(absl::InternalError("computation failed"));
+  fn_.SetDoError(absl::InternalError("computation failed"));
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn_.Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST_F(PObjectMapFnTest, FullLifecycleViaConfigure) {
+TEST_F(BatchDoFnTest, FullLifecycleViaConfigure) {
   // Test through the Fn::Configure → Write → Commit → Finalize path.
   fcp::confidentialcompute::ConfigureRequest configure_request;
   auto configure_result = fn_.Configure(configure_request, context_);

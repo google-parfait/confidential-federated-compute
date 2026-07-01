@@ -21,20 +21,20 @@ package(
 cc_library(
     name = "fns",
     srcs = [
+        "batch_do_fn.cc",
         "confidential_transform_server.cc",
         "do_fn.cc",
         "fn_utils.cc",
         "map_fn.cc",
-        "pobject_map_fn.cc",
     ],
     hdrs = [
+        "batch_do_fn.h",
         "confidential_transform_server.h",
         "do_fn.h",
         "fn.h",
         "fn_factory.h",
         "fn_utils.h",
         "map_fn.h",
-        "pobject_map_fn.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -130,8 +130,8 @@ cc_test(
 )
 
 cc_test(
-    name = "pobject_map_fn_test",
-    srcs = ["pobject_map_fn_test.cc"],
+    name = "batch_do_fn_test",
+    srcs = ["batch_do_fn_test.cc"],
     deps = [
         ":fns",
         "//containers:session",

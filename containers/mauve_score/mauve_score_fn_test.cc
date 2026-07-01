@@ -216,16 +216,16 @@ TEST_F(MauveScoreFnTest, WriteAccumulatesData) {
   WriteRequest request;
   auto result = fn_->Write(request, ckpt, context_);
   ASSERT_THAT(result, IsOk());
-  // PObjectMapFn returns raw checkpoint size, not parsed tensor size.
+  // BatchDoFn returns raw checkpoint size, not parsed tensor size.
   EXPECT_GT(result->committed_size_bytes(), 0);
 }
 
 TEST_F(MauveScoreFnTest, CommitRejectsInvalidData) {
-  // Write() now just buffers raw bytes — validation happens in Map().
+  // Write() now just buffers raw bytes — validation happens in Do().
   auto write_result = fn_->Write(WriteRequest(), "garbage", context_);
   ASSERT_THAT(write_result, IsOk());  // Write succeeds (just buffering)
 
-  // Commit should fail when Map() tries to parse the garbage data.
+  // Commit should fail when Do() tries to parse the garbage data.
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn_->Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -247,7 +247,7 @@ TEST_F(MauveScoreFnTest, CommitRejectsWrongTensorDims) {
   auto write_result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
   ASSERT_THAT(write_result, IsOk());
 
-  // Commit should fail when Map() finds wrong tensor dimensions.
+  // Commit should fail when Do() finds wrong tensor dimensions.
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn_->Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -265,7 +265,7 @@ TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   WriteRequest request;
   ASSERT_THAT(fn_->Write(request, ckpt, context_), IsOk());
 
-  // Set up expectations for Commit (which calls Map()).
+  // Set up expectations for Commit (which calls Do()).
   EXPECT_CALL(context_, EmitUnencrypted(_)).WillOnce(Return(true));
   EXPECT_CALL(context_, GetCounters())
       .WillRepeatedly(::testing::ReturnRef(counters_));

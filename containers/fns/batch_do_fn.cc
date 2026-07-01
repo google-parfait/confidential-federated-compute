@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "containers/fns/pobject_map_fn.h"
+#include "containers/fns/batch_do_fn.h"
 
 #include <string>
 #include <utility>
@@ -28,8 +28,8 @@
 namespace confidential_federated_compute::fns {
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
-PObjectMapFn::Write(fcp::confidentialcompute::WriteRequest write_request,
-                    std::string unencrypted_data, Context& context) {
+BatchDoFn::Write(fcp::confidentialcompute::WriteRequest write_request,
+                 std::string unencrypted_data, Context& context) {
   size_t data_size = unencrypted_data.size();
   Session::KV input;
   input.data = std::move(unencrypted_data);
@@ -42,15 +42,15 @@ PObjectMapFn::Write(fcp::confidentialcompute::WriteRequest write_request,
   return response;
 }
 
-absl::StatusOr<fcp::confidentialcompute::CommitResponse> PObjectMapFn::Commit(
+absl::StatusOr<fcp::confidentialcompute::CommitResponse> BatchDoFn::Commit(
     fcp::confidentialcompute::CommitRequest commit_request, Context& context) {
   // Move accumulated data out and clear defensively. This ensures clean state
-  // even if Map() returns an error and the Fn is somehow reused.
+  // even if Do() returns an error and the Fn is somehow reused.
   auto inputs = std::move(accumulated_inputs_);
   accumulated_inputs_.clear();
   int32_t num_inputs = inputs.size();
-  ABSL_RETURN_IF_ERROR(Map(std::move(*commit_request.mutable_configuration()),
-                           std::move(inputs), context));
+  ABSL_RETURN_IF_ERROR(Do(std::move(*commit_request.mutable_configuration()),
+                          std::move(inputs), context));
   fcp::confidentialcompute::CommitResponse response;
   response.mutable_stats()->set_num_inputs_committed(num_inputs);
   return response;

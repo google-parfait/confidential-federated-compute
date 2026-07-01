@@ -21,7 +21,7 @@
 namespace confidential_federated_compute::fns {
 
 // Returns the blob ID from the BlobMetadata if it exists, otherwise returns an
-// empty string. Shared by DoFn and PObjectMapFn.
+// empty string. Shared by DoFn and BatchDoFn.
 std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata);
 
 }  // namespace confidential_federated_compute::fns

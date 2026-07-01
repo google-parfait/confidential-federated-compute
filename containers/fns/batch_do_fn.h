@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_POBJECT_MAP_FN_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_POBJECT_MAP_FN_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_BATCH_DO_FN_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_BATCH_DO_FN_H_
 
 #include <string>
 #include <vector>
@@ -27,18 +27,17 @@
 namespace confidential_federated_compute::fns {
 
 // Base class for Fn implementations that accumulate all Write() inputs
-// and process them together in a single Map() call during Commit.
+// and process them together in a single Do() call during Commit.
 //
-// This is the container-side counterpart of the Flume PObjectMapFn concept:
-// instead of processing each input independently (like DoFn), PObjectMapFn
+// Instead of processing each input independently (like DoFn), BatchDoFn
 // buffers all inputs and processes them as a batch.
 //
-// Usage: subclass PObjectMapFn and implement Map().
+// Usage: subclass BatchDoFn and implement Do().
 //
 // Memory note: all unencrypted Write() data is buffered in memory as
 // Session::KV objects until Commit(). Subclasses processing large
 // datasets should be aware of this memory profile.
-class PObjectMapFn : public Fn {
+class BatchDoFn : public Fn {
  public:
   // Called once with ALL accumulated inputs from Write() calls and the
   // commit configuration. Implementations should process the inputs
@@ -47,9 +46,9 @@ class PObjectMapFn : public Fn {
   // Returns an error status if an error occurred and the Fn should be
   // aborted. Metrics about ignorable errors can be recorded using the
   // Counters returned by Context::GetCounters.
-  virtual absl::Status Map(google::protobuf::Any config,
-                           std::vector<Session::KV> accumulated_inputs,
-                           Context& context) = 0;
+  virtual absl::Status Do(google::protobuf::Any config,
+                          std::vector<Session::KV> accumulated_inputs,
+                          Context& context) = 0;
 
   // final: accumulates unencrypted_data into internal buffer, preserving
   // key and blob_id from the WriteRequest.
@@ -57,8 +56,8 @@ class PObjectMapFn : public Fn {
       fcp::confidentialcompute::WriteRequest write_request,
       std::string unencrypted_data, Context& context) override final;
 
-  // final: calls Map() with all accumulated inputs. The buffer is moved
-  // out and cleared before calling Map() for defensive cleanup.
+  // final: calls Do() with all accumulated inputs. The buffer is moved
+  // out and cleared before calling Do() for defensive cleanup.
   absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
       fcp::confidentialcompute::CommitRequest commit_request,
       Context& context) override final;
@@ -69,4 +68,4 @@ class PObjectMapFn : public Fn {
 
 }  // namespace confidential_federated_compute::fns
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_POBJECT_MAP_FN_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_BATCH_DO_FN_H_

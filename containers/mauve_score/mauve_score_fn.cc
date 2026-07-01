@@ -23,8 +23,8 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "containers/fns/batch_do_fn.h"
 #include "containers/fns/fn_factory.h"
-#include "containers/fns/pobject_map_fn.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "google/protobuf/any.h"
@@ -41,9 +41,9 @@ namespace {
 
 constexpr absl::string_view kDataTensorName = "data";
 
+using ::confidential_federated_compute::fns::BatchDoFn;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
-using ::confidential_federated_compute::fns::PObjectMapFn;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
@@ -54,22 +54,22 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 
-// MauveScoreFn extends PObjectMapFn to compute the MAUVE score over
+// MauveScoreFn extends BatchDoFn to compute the MAUVE score over
 // accumulated real embeddings.
 //
 // Data flow:
 //   stream_init: Synthetic embeddings loaded via WriteConfigurationMap
 //                → held by factory → passed to constructor
-//   Write() (PObjectMapFn): Accumulates raw checkpoint blobs
-//   Commit() (PObjectMapFn): Calls Map() with all accumulated blobs
-//   Map(): Parses all checkpoints → computes MAUVE → emits result
-class MauveScoreFn : public PObjectMapFn {
+//   Write() (BatchDoFn): Accumulates raw checkpoint blobs
+//   Commit() (BatchDoFn): Calls Do() with all accumulated blobs
+//   Do(): Parses all checkpoints → computes MAUVE → emits result
+class MauveScoreFn : public BatchDoFn {
  public:
   explicit MauveScoreFn(const std::vector<Embedding>& synthetic_data_embeddings)
       : synthetic_data_embeddings_(synthetic_data_embeddings) {}
 
-  absl::Status Map(Any config, std::vector<Session::KV> accumulated_inputs,
-                   Context& context) override;
+  absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
+                  Context& context) override;
 
  private:
   const std::vector<Embedding>& synthetic_data_embeddings_;
@@ -88,9 +88,9 @@ class MauveScoreFnFactory : public FnFactory {
   const std::vector<Embedding> synthetic_data_embeddings_;
 };
 
-absl::Status MauveScoreFn::Map(Any config,
-                               std::vector<Session::KV> accumulated_inputs,
-                               Context& context) {
+absl::Status MauveScoreFn::Do(Any config,
+                              std::vector<Session::KV> accumulated_inputs,
+                              Context& context) {
   // Phase 1: Parse all accumulated checkpoint blobs into flat float vectors.
   std::vector<std::vector<float>> real_embeddings;
   for (auto& kv : accumulated_inputs) {

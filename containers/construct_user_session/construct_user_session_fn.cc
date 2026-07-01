@@ -31,9 +31,9 @@
 #include "absl/time/time.h"
 #include "containers/construct_user_session/checkpoint.h"
 #include "containers/construct_user_session/row_gather.h"
+#include "containers/fns/batch_do_fn.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
-#include "containers/fns/pobject_map_fn.h"
 #include "containers/session.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
@@ -87,7 +87,7 @@ struct IngestionResult {
 // output checkpoint, filtering out any rows that are outside the session
 // window [window_start, window_end). Input tensors with the same name are
 // concatenated into a single output tensor and thus must have the same dtype.
-class ConstructUserSessionFn final : public fns::PObjectMapFn {
+class ConstructUserSessionFn final : public fns::BatchDoFn {
  public:
   explicit ConstructUserSessionFn(absl::Time window_start,
                                   absl::Time window_end,
@@ -98,9 +98,9 @@ class ConstructUserSessionFn final : public fns::PObjectMapFn {
         event_time_tensor_name_(
             absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName)) {}
 
-  absl::Status Map(google::protobuf::Any config,
-                   std::vector<Session::KV> accumulated_inputs,
-                   Context& context) override;
+  absl::Status Do(google::protobuf::Any config,
+                  std::vector<Session::KV> accumulated_inputs,
+                  Context& context) override;
 
  private:
   // Parses, deduplicates, validates dtypes, and groups checkpoints by
@@ -124,7 +124,7 @@ class ConstructUserSessionFn final : public fns::PObjectMapFn {
   const std::string event_time_tensor_name_;
 };
 
-absl::Status ConstructUserSessionFn::Map(
+absl::Status ConstructUserSessionFn::Do(
     google::protobuf::Any config, std::vector<Session::KV> accumulated_inputs,
     Context& context) {
   IngestionResult ingestion_result =
