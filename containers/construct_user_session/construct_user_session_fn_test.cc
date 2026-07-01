@@ -118,9 +118,9 @@ Any MakeValidConfig(
     absl::Time window_start = Hours(0), absl::Time window_end = Hours(24),
     const std::string& on_device_query_name = std::string(kQueryName)) {
   ConstructUserSessionInitConfig config;
-  *config.mutable_session_window_start() =
+  *config.mutable_time_window_metadata()->mutable_session_window_start() =
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_start));
-  *config.mutable_session_window_end() =
+  *config.mutable_time_window_metadata()->mutable_session_window_end() =
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_end));
   config.set_on_device_query_name(on_device_query_name);
   Any any;
@@ -163,7 +163,7 @@ TEST_F(ConstructUserSessionFnFactoryTest, FailsWithMissingWindowStart) {
   ConstructUserSessionInitConfig config;
   Timestamp ts_end;
   CHECK(TimeUtil::FromString("2026-01-02T00:00:00Z", &ts_end));
-  *config.mutable_session_window_end() = ts_end;
+  *config.mutable_time_window_metadata()->mutable_session_window_end() = ts_end;
   config.set_on_device_query_name("test_query");
   Any any;
   any.PackFrom(config);
@@ -178,7 +178,8 @@ TEST_F(ConstructUserSessionFnFactoryTest, FailsWithMissingWindowEnd) {
   ConstructUserSessionInitConfig config;
   Timestamp ts_start;
   CHECK(TimeUtil::FromString("2026-01-01T00:00:00Z", &ts_start));
-  *config.mutable_session_window_start() = ts_start;
+  *config.mutable_time_window_metadata()->mutable_session_window_start() =
+      ts_start;
   config.set_on_device_query_name("test_query");
   Any any;
   any.PackFrom(config);
@@ -210,8 +211,9 @@ TEST_F(ConstructUserSessionFnFactoryTest, FailsWithEmptyOnDeviceQueryName) {
   Timestamp ts_start, ts_end;
   CHECK(TimeUtil::FromString("2026-01-01T00:00:00Z", &ts_start));
   CHECK(TimeUtil::FromString("2026-01-02T00:00:00Z", &ts_end));
-  *config.mutable_session_window_start() = ts_start;
-  *config.mutable_session_window_end() = ts_end;
+  *config.mutable_time_window_metadata()->mutable_session_window_start() =
+      ts_start;
+  *config.mutable_time_window_metadata()->mutable_session_window_end() = ts_end;
   // on_device_query_name left empty.
   Any any;
   any.PackFrom(config);

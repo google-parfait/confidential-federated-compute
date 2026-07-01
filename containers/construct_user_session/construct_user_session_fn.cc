@@ -269,22 +269,22 @@ CreateConstructUserSessionFnFactoryProvider(
         "ConstructUserSessionInitConfig cannot be unpacked.");
   }
 
-  // TODO: update this to use the SessionTimeWindowMetadata message once the
-  // config proto is updated. Both session_window_start and session_window_end
+  // Both session_window_start and session_window_end
   // must be explicitly set.
-  if (!config.has_session_window_start()) {
+  if (!config.time_window_metadata().has_session_window_start()) {
     return absl::InvalidArgumentError(
         "session_window_start must be explicitly provided.");
   }
-  if (!config.has_session_window_end()) {
+  if (!config.time_window_metadata().has_session_window_end()) {
     return absl::InvalidArgumentError(
         "session_window_end must be explicitly provided.");
   }
 
-  absl::Time window_start = absl::FromUnixNanos(
-      TimeUtil::TimestampToNanoseconds(config.session_window_start()));
-  absl::Time window_end = absl::FromUnixNanos(
-      TimeUtil::TimestampToNanoseconds(config.session_window_end()));
+  absl::Time window_start =
+      absl::FromUnixNanos(TimeUtil::TimestampToNanoseconds(
+          config.time_window_metadata().session_window_start()));
+  absl::Time window_end = absl::FromUnixNanos(TimeUtil::TimestampToNanoseconds(
+      config.time_window_metadata().session_window_end()));
 
   if (window_start >= window_end) {
     return absl::InvalidArgumentError(
