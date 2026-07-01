@@ -12,18 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_INGESTION_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_INGESTION_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_CHECKPOINT_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_CHECKPOINT_H_
 
-#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
-#include "containers/common/row_set.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
@@ -82,18 +78,6 @@ class Checkpoint {
       column_tensors_;
 };
 
-// Filters event times against the session window [window_start, window_end)
-// and returns RowLocation metadata for the surviving rows.
-//
-// Each valid event time in `event_times` that falls within the window is
-// represented in the result with the specified `group_key`, `input_index`,
-// and its row index within `event_times`. Malformed timestamps are logged
-// and excluded from the result.
-std::vector<RowLocation> FilterForSessionWindow(
-    const tensorflow_federated::aggregation::Tensor& event_times,
-    uint64_t group_key, uint32_t input_index, absl::Time window_start,
-    absl::Time window_end);
-
 }  // namespace confidential_federated_compute::construct_user_session
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_INGESTION_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_CONSTRUCT_USER_SESSION_CHECKPOINT_H_

@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/construct_user_session/ingestion.h"
+#include "containers/construct_user_session/checkpoint.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -27,9 +25,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
-#include "absl/types/span.h"
-#include "containers/common/row_set.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
@@ -121,37 +116,5 @@ Checkpoint::Checkpoint(Tensor privacy_id_tensor,
                        absl::flat_hash_map<std::string, Tensor> column_tensors)
     : privacy_id_tensor_(std::move(privacy_id_tensor)),
       column_tensors_(std::move(column_tensors)) {}
-
-std::vector<RowLocation> FilterForSessionWindow(const Tensor& event_times,
-                                                uint64_t group_key,
-                                                uint32_t input_index,
-                                                absl::Time window_start,
-                                                absl::Time window_end) {
-  const size_t num_rows = event_times.num_elements();
-  std::vector<RowLocation> row_locations;
-  row_locations.reserve(num_rows);
-
-  absl::Span<const absl::string_view> event_times_span =
-      event_times.AsSpan<absl::string_view>();
-  for (size_t row_index = 0; row_index < num_rows; ++row_index) {
-    absl::Time t;
-    std::string err;
-    if (!absl::ParseTime(absl::RFC3339_full, event_times_span[row_index], &t,
-                         &err)) {
-      LOG(WARNING) << "Failed to parse event time: " << err
-                   << ". Excluding from session.";
-      continue;
-    }
-    // Half-open interval: [window_start, window_end).
-    if (t >= window_start && t < window_end) {
-      row_locations.push_back(
-          RowLocation{.group_key = group_key,
-                      .input_index = input_index,
-                      .row_index = static_cast<uint32_t>(row_index)});
-    }
-  }
-
-  return row_locations;
-}
 
 }  // namespace confidential_federated_compute::construct_user_session

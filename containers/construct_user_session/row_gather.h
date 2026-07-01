@@ -19,25 +19,31 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "containers/common/row_set.h"
-#include "containers/construct_user_session/ingestion.h"
+#include "containers/construct_user_session/checkpoint.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 
 namespace confidential_federated_compute::construct_user_session {
 
-// Gathers all surviving rows for a group of row locations (typically
-// corresponding to a single privacy ID), returning column tensors
-// in a single map. `group` must be sorted.
+// Filters and gathers rows from a group of Checkpoints. For each checkpoint,
+// event times are filtered against the session window [window_start,
+// window_end). Surviving rows are gathered across all checkpoints and
+// concatenated into output tensors.
 //
-// IMPORTANT: `inputs` must outlive the returned tensors.
+// Returns a map of column name to merged tensor. Columns that are empty are
+// omitted from the result.
+//
+// IMPORTANT: `checkpoints` must outlive the returned tensors (the output
+// may contain string_view references into the source checkpoint tensors).
 absl::flat_hash_map<std::string, tensorflow_federated::aggregation::Tensor>
-GatherSurvivingRows(
-    absl::Span<const RowLocation> group, absl::Span<const Checkpoint> inputs,
-    const absl::flat_hash_map<std::string,
-                              tensorflow_federated::aggregation::DataType>&
-        column_dtypes);
+GatherSessionRows(absl::Span<const Checkpoint> checkpoints,
+                  absl::string_view event_time_tensor_name,
+                  absl::Time window_start, absl::Time window_end,
+                  const absl::flat_hash_map<
+                      std::string, tensorflow_federated::aggregation::DataType>&
+                      column_dtypes);
 
 }  // namespace confidential_federated_compute::construct_user_session
 

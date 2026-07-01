@@ -23,8 +23,8 @@
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "containers/common/row_set.h"
-#include "containers/construct_user_session/ingestion.h"
+#include "absl/time/time.h"
+#include "containers/construct_user_session/checkpoint.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -44,6 +44,15 @@ using ::testing::SizeIs;
 
 const std::string kEventTime = absl::StrCat(
     "test_query/", fcp::confidential_compute::kEventTimeColumnName);
+
+// Returns an absl::Time that is n hours after the Unix epoch.
+absl::Time Hours(int n) { return absl::UnixEpoch() + absl::Hours(n); }
+
+// Formats an absl::Time as an RFC3339 string for use as an event time.
+// Pairs naturally with Hours(), e.g. EventTimeAt(Hours(5)).
+std::string EventTimeAt(absl::Time t) {
+  return absl::FormatTime(absl::RFC3339_full, t, absl::UTCTimeZone());
+}
 
 Checkpoint MakeCheckpoint(
     std::string privacy_id, std::vector<std::string> event_times,
@@ -74,32 +83,28 @@ void VerifyEventTimes(const absl::flat_hash_map<std::string, Tensor>& result,
   EXPECT_THAT(actual, ElementsAreArray(expected_strings));
 }
 
-TEST(ColumnGatherTest, SingleInputAllRows) {
+TEST(GatherSessionRowsTest, SingleCheckpointAllRows) {
+  // Three events at Hours(5), Hours(10), Hours(15) — all inside the
+  // window [Hours(0), Hours(24)).
   absl::flat_hash_map<std::string, Tensor> data_tensors;
   data_tensors.emplace("colA", Tensor(std::vector<int32_t>{1, 2, 3}, "colA"));
   data_tensors.emplace("colB",
                        Tensor(std::vector<float>{1.5f, 2.5f, 3.5f}, "colB"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(
-      MakeCheckpoint("user1",
-                     {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00",
-                      "2026-06-01T11:00:00+00:00"},
-                     std::move(data_tensors)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(MakeCheckpoint(
+      "user1",
+      {EventTimeAt(Hours(5)), EventTimeAt(Hours(10)), EventTimeAt(Hours(15))},
+      std::move(data_tensors)));
 
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 1},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 2},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
       {"colA", DataType::DT_INT32},
       {"colB", DataType::DT_FLOAT},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
   EXPECT_THAT(result, SizeIs(3));
   ASSERT_TRUE(result.contains("colA"));
@@ -108,51 +113,95 @@ TEST(ColumnGatherTest, SingleInputAllRows) {
   ASSERT_TRUE(result.contains("colB"));
   EXPECT_THAT(result.at("colB").AsSpan<float>(), ElementsAre(1.5f, 2.5f, 3.5f));
 
-  VerifyEventTimes(result, kEventTime,
-                   {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00",
-                    "2026-06-01T11:00:00+00:00"});
+  VerifyEventTimes(
+      result, kEventTime,
+      {EventTimeAt(Hours(5)), EventTimeAt(Hours(10)), EventTimeAt(Hours(15))});
 }
 
-TEST(ColumnGatherTest, MultipleInputsAllRows) {
+TEST(GatherSessionRowsTest, MultipleCheckpointsAllRows) {
+  // Two checkpoints, all events inside the window.
   absl::flat_hash_map<std::string, Tensor> data_tensors1;
   data_tensors1.emplace("colA", Tensor(std::vector<int32_t>{10, 20}, "colA"));
 
   absl::flat_hash_map<std::string, Tensor> data_tensors2;
   data_tensors2.emplace("colA", Tensor(std::vector<int32_t>{30}, "colA"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint(
-      "user1", {"2026-06-01T09:00:00+00:00", "2027-06-01T10:00:00+00:00"},
-      std::move(data_tensors1)));
-  inputs.push_back(MakeCheckpoint("user1", {"2028-06-01T11:00:00+00:00"},
-                                  std::move(data_tensors2)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(
+      MakeCheckpoint("user1", {EventTimeAt(Hours(5)), EventTimeAt(Hours(10))},
+                     std::move(data_tensors1)));
+  checkpoints.push_back(MakeCheckpoint("user1", {EventTimeAt(Hours(15))},
+                                       std::move(data_tensors2)));
 
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 1, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 1},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
       {"colA", DataType::DT_INT32},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
   EXPECT_THAT(result, SizeIs(2));
   ASSERT_TRUE(result.contains("colA"));
-  EXPECT_THAT(result.at("colA").AsSpan<int32_t>(), ElementsAre(30, 10, 20));
-
-  VerifyEventTimes(result, kEventTime,
-                   {
-                       "2028-06-01T11:00:00+00:00",
-                       "2026-06-01T09:00:00+00:00",
-                       "2027-06-01T10:00:00+00:00",
-                   });
+  EXPECT_THAT(result.at("colA").AsSpan<int32_t>(), ElementsAre(10, 20, 30));
+  VerifyEventTimes(
+      result, kEventTime,
+      {EventTimeAt(Hours(5)), EventTimeAt(Hours(10)), EventTimeAt(Hours(15))});
 }
 
-TEST(ColumnGatherTest, HeterogeneousTensorSets) {
+TEST(GatherSessionRowsTest, TimeWindowFiltersRows) {
+  // Window: [Hours(10), Hours(20)).
+  // Two events inside the window (Hours(12) and Hours(15)) and two outside
+  // (Hours(5) and Hours(25)).
+  absl::flat_hash_map<std::string, Tensor> data_tensors;
+  data_tensors.emplace("colA",
+                       Tensor(std::vector<int32_t>{10, 20, 30, 40}, "colA"));
+
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(
+      MakeCheckpoint("user1",
+                     {EventTimeAt(Hours(12)),   // in window
+                      EventTimeAt(Hours(5)),    // before window
+                      EventTimeAt(Hours(15)),   // in window
+                      EventTimeAt(Hours(25))},  // after window
+                     std::move(data_tensors)));
+
+  absl::flat_hash_map<std::string, DataType> column_types = {
+      {kEventTime, DataType::DT_STRING},
+      {"colA", DataType::DT_INT32},
+  };
+
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(10), Hours(20),
+                                  column_types);
+
+  EXPECT_THAT(result, SizeIs(2));
+  ASSERT_TRUE(result.contains("colA"));
+  // Only rows 0 and 2 survive (values 10 and 30).
+  EXPECT_THAT(result.at("colA").AsSpan<int32_t>(), ElementsAre(10, 30));
+}
+
+TEST(GatherSessionRowsTest, AllRowsFilteredReturnsEmpty) {
+  // Window: [Hours(10), Hours(20)). Both events are before the window.
+  absl::flat_hash_map<std::string, Tensor> data_tensors;
+  data_tensors.emplace("colA", Tensor(std::vector<int32_t>{1, 2}, "colA"));
+
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(
+      MakeCheckpoint("user1", {EventTimeAt(Hours(2)), EventTimeAt(Hours(5))},
+                     std::move(data_tensors)));
+
+  absl::flat_hash_map<std::string, DataType> column_types = {
+      {kEventTime, DataType::DT_STRING},
+      {"colA", DataType::DT_INT32},
+  };
+
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(10), Hours(20),
+                                  column_types);
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
+TEST(GatherSessionRowsTest, HeterogeneousTensorSets) {
   absl::flat_hash_map<std::string, Tensor> data_tensors1;
   data_tensors1.emplace("foo", Tensor(std::vector<int32_t>{1}, "foo"));
   data_tensors1.emplace("bar", Tensor(std::vector<int32_t>{10}, "bar"));
@@ -161,102 +210,65 @@ TEST(ColumnGatherTest, HeterogeneousTensorSets) {
   data_tensors2.emplace("foo", Tensor(std::vector<int32_t>{2}, "foo"));
   data_tensors2.emplace("baz", Tensor(std::vector<int32_t>{20}, "baz"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint("user1", {"2026-06-01T09:00:00+00:00"},
-                                  std::move(data_tensors1)));
-  inputs.push_back(MakeCheckpoint("user1", {"2026-06-01T10:00:00+00:00"},
-                                  std::move(data_tensors2)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(MakeCheckpoint("user1", {EventTimeAt(Hours(5))},
+                                       std::move(data_tensors1)));
+  checkpoints.push_back(MakeCheckpoint("user1", {EventTimeAt(Hours(10))},
+                                       std::move(data_tensors2)));
 
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 1, .row_index = 0},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
       {"foo", DataType::DT_INT32},
       {"bar", DataType::DT_INT32},
       {"baz", DataType::DT_INT32},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
   EXPECT_THAT(result, SizeIs(4));
-  ASSERT_TRUE(result.contains("foo"));
   EXPECT_THAT(result.at("foo").AsSpan<int32_t>(), ElementsAre(1, 2));
-
-  // "bar" is only present in input 0, so only has a single value.
-  ASSERT_TRUE(result.contains("bar"));
   EXPECT_THAT(result.at("bar").AsSpan<int32_t>(), ElementsAre(10));
-
-  // "baz" is only present in input 1, so only has a single value.
-  ASSERT_TRUE(result.contains("baz"));
   EXPECT_THAT(result.at("baz").AsSpan<int32_t>(), ElementsAre(20));
-
-  VerifyEventTimes(result, kEventTime,
-                   {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00"});
 }
 
-TEST(ColumnGatherTest, AbsentTensorSkipsColumn) {
+TEST(GatherSessionRowsTest, AbsentTensorSkipsColumn) {
   absl::flat_hash_map<std::string, Tensor> data_tensors;
   data_tensors.emplace("foo", Tensor(std::vector<int32_t>{1}, "foo"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint("user1", {"2026-06-01T09:00:00+00:00"},
-                                  std::move(data_tensors)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(MakeCheckpoint("user1", {EventTimeAt(Hours(5))},
+                                       std::move(data_tensors)));
 
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
       {"foo", DataType::DT_INT32},
       {"absent", DataType::DT_INT32},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
   EXPECT_THAT(result, SizeIs(2));
   ASSERT_TRUE(result.contains("foo"));
-  // "absent" isn't present in any input, so it is ignored.
   EXPECT_FALSE(result.contains("absent"));
-
-  VerifyEventTimes(result, kEventTime, {"2026-06-01T09:00:00+00:00"});
 }
 
-TEST(ColumnGatherTest, StringType) {
-  absl::flat_hash_map<std::string, Tensor> data_tensors;
-  data_tensors.emplace(
-      "colStr", Tensor(std::vector<std::string>{"hello", "world"}, "colStr"));
+TEST(GatherSessionRowsTest, EmptyCheckpoints) {
+  std::vector<Checkpoint> checkpoints;  // empty
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint(
-      "user1", {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00"},
-      std::move(data_tensors)));
-
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 1},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
-      {"colStr", DataType::DT_STRING},
+      {"colA", DataType::DT_INT32},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
-  EXPECT_THAT(result, SizeIs(2));
-  ASSERT_TRUE(result.contains("colStr"));
-  EXPECT_THAT(result.at("colStr").ToStringVector(),
-              ElementsAre("hello", "world"));
-
-  VerifyEventTimes(result, kEventTime,
-                   {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00"});
+  EXPECT_THAT(result, IsEmpty());
 }
 
-TEST(ColumnGatherTest, MixedTypes) {
+TEST(GatherSessionRowsTest, MixedTypes) {
   absl::flat_hash_map<std::string, Tensor> data_tensors;
   data_tensors.emplace("colInt32", Tensor(std::vector<int32_t>{1}, "colInt32"));
   data_tensors.emplace("colInt64", Tensor(std::vector<int64_t>{2}, "colInt64"));
@@ -269,22 +281,19 @@ TEST(ColumnGatherTest, MixedTypes) {
   data_tensors.emplace("colString",
                        Tensor(std::vector<std::string>{"mixed"}, "colString"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint("user1", {"2026-06-01T09:00:00+00:00"},
-                                  std::move(data_tensors)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(MakeCheckpoint("user1", {EventTimeAt(Hours(5))},
+                                       std::move(data_tensors)));
 
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},  {"colInt32", DataType::DT_INT32},
       {"colInt64", DataType::DT_INT64},   {"colUint64", DataType::DT_UINT64},
       {"colFloat", DataType::DT_FLOAT},   {"colDouble", DataType::DT_DOUBLE},
       {"colString", DataType::DT_STRING},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
   EXPECT_THAT(result, SizeIs(7));
   EXPECT_THAT(result.at("colInt32").AsSpan<int32_t>(), ElementsAre(1));
@@ -293,62 +302,32 @@ TEST(ColumnGatherTest, MixedTypes) {
   EXPECT_THAT(result.at("colFloat").AsSpan<float>(), ElementsAre(4.5f));
   EXPECT_THAT(result.at("colDouble").AsSpan<double>(), ElementsAre(5.5));
   EXPECT_THAT(result.at("colString").ToStringVector(), ElementsAre("mixed"));
-
-  VerifyEventTimes(result, kEventTime, {"2026-06-01T09:00:00+00:00"});
 }
 
-TEST(ColumnGatherTest, EmptyGroup) {
-  absl::flat_hash_map<std::string, Tensor> data_tensors;
-  data_tensors.emplace("colA", Tensor(std::vector<int32_t>{1, 2}, "colA"));
-
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(MakeCheckpoint(
-      "user1", {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00"},
-      std::move(data_tensors)));
-
-  std::vector<RowLocation> empty_group;
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
-      {kEventTime, DataType::DT_STRING},
-      {"colA", DataType::DT_INT32},
-  };
-
-  auto result = GatherSurvivingRows(empty_group, inputs, dtype_registry);
-
-  EXPECT_THAT(result, IsEmpty());
-}
-
-TEST(ColumnGatherTest, RowSubsetSelection) {
+TEST(GatherSessionRowsTest, MalformedTimestampsExcluded) {
   absl::flat_hash_map<std::string, Tensor> data_tensors;
   data_tensors.emplace("colA",
-                       Tensor(std::vector<int32_t>{10, 20, 30, 40}, "colA"));
+                       Tensor(std::vector<int32_t>{10, 20, 30}, "colA"));
 
-  std::vector<Checkpoint> inputs;
-  inputs.push_back(
-      MakeCheckpoint("user1",
-                     {"2026-06-01T09:00:00+00:00", "2026-06-01T10:00:00+00:00",
-                      "2026-06-01T11:00:00+00:00", "2026-06-01T12:00:00+00:00"},
-                     std::move(data_tensors)));
+  std::vector<Checkpoint> checkpoints;
+  checkpoints.push_back(MakeCheckpoint("user1",
+                                       {"not-a-timestamp",      // malformed
+                                        EventTimeAt(Hours(5)),  // valid
+                                        "also-invalid"},        // malformed
+                                       std::move(data_tensors)));
 
-  // Only select rows 0 and 2 (skipping rows 1 and 3).
-  std::vector<RowLocation> group = {
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 0},
-      RowLocation{.group_key = 1, .input_index = 0, .row_index = 2},
-  };
-
-  absl::flat_hash_map<std::string, DataType> dtype_registry = {
+  absl::flat_hash_map<std::string, DataType> column_types = {
       {kEventTime, DataType::DT_STRING},
       {"colA", DataType::DT_INT32},
   };
 
-  auto result = GatherSurvivingRows(group, inputs, dtype_registry);
+  auto result = GatherSessionRows(checkpoints, kEventTime, Hours(0), Hours(24),
+                                  column_types);
 
+  // Only the valid timestamp's row survives.
   EXPECT_THAT(result, SizeIs(2));
   ASSERT_TRUE(result.contains("colA"));
-  EXPECT_THAT(result.at("colA").AsSpan<int32_t>(), ElementsAre(10, 30));
-
-  VerifyEventTimes(result, kEventTime,
-                   {"2026-06-01T09:00:00+00:00", "2026-06-01T11:00:00+00:00"});
+  EXPECT_THAT(result.at("colA").AsSpan<int32_t>(), ElementsAre(20));
 }
 
 }  // namespace
