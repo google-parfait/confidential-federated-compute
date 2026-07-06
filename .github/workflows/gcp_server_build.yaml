@@ -36,6 +36,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
 
     steps:
       - name: Checkout
@@ -62,6 +63,7 @@ jobs:
         run: gcloud auth configure-docker us-docker.pkg.dev --quiet
 
       - name: Build and push server image
+        id: build_and_push
         working-directory: containers/gcp
         run: |
           ALTS_FLAG=""
@@ -74,18 +76,13 @@ jobs:
           ./build_and_push_server_image.sh \
             --model=${{ matrix.model }} \
             --attestation=${{ matrix.attestation }} \
+            --no-update_registry \
             ${ALTS_FLAG}
 
-      - name: Commit registry update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add containers/gcp/server_image_registry.json
-          if git diff --cached --quiet; then
-            echo "No changes to server_image_registry.json — skipping commit."
-          else
-            git commit -m "ci: update server_image_registry.json (${{ matrix.model }}/${{ matrix.attestation }})"
-            # Pull with rebase to handle concurrent pushes from other matrix jobs.
-            git pull --rebase origin main
-            git push origin main
-          fi
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: us-docker.pkg.dev/private-inference/offloading/batched_inference
+          subject-digest: sha256:${{ steps.build_and_push.outputs.digest }}
+
+

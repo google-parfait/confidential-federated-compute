@@ -166,6 +166,10 @@ if [[ -z "$DIGEST" ]]; then
   DIGEST="UNKNOWN"
 fi
 
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "digest=${DIGEST#sha256:}" >> "$GITHUB_OUTPUT"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════════════"
