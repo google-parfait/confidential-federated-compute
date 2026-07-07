@@ -115,6 +115,27 @@ def fetch_and_verify(digest):
         finally:
             os.remove(tf_name)
 
+    print(f"\n[*] STEP 2.5/3: Independent Rekor Transparency Log Cross-Check...")
+    rekor_url = "https://rekor.sigstore.dev/api/v1/index/retrieve"
+    rekor_req = urllib.request.Request(
+        rekor_url,
+        data=json.dumps({"hash": f"sha256:{digest}"}).encode(),
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(rekor_req, timeout=10) as resp:
+            rekor_entries = json.loads(resp.read().decode())
+        if rekor_entries:
+            print(f"  -> Rekor confirms {len(rekor_entries)} transparency log entry/entries for this digest.")
+            for entry_id in rekor_entries:
+                print(f"     https://search.sigstore.dev/?logIndex={entry_id}")
+        else:
+            fail("Rekor returned no entries. Transparency log cross-check failed.")
+    except Exception as e:
+        fail(f"Rekor cross-check failed or is unavailable: {e}")
+
     print(f"\n[*] STEP 3/3: Extracting Provenance & Metadata...")
     unique_commits = set()
     workflows = []
