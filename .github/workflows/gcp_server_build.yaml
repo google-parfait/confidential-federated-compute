@@ -85,4 +85,16 @@ jobs:
           subject-name: us-docker.pkg.dev/private-inference/offloading/batched_inference
           subject-digest: sha256:${{ steps.build_and_push.outputs.digest }}
 
+      - name: Attest Custom Build Metadata
+        uses: actions/attest@v1
+        with:
+          subject-name: us-docker.pkg.dev/private-inference/offloading/batched_inference
+          subject-digest: sha256:${{ steps.build_and_push.outputs.digest }}
+          predicate-type: 'https://batched-inference.google.com/server-metadata/v1'
+          predicate: |
+            {
+              "model": "${{ matrix.model }}",
+              "alts": ${{ matrix.alts }},
+              "attestation": "${{ matrix.attestation }}"
+            }
 
