@@ -51,8 +51,8 @@ fn main() -> Result<()> {
         &[Path::new("proto"), secure_aggregation_dir, shell_encryption_dir],
         micro_rpc_build::CompileOptions {
             bytes: vec![
-                ".secure_aggregation.willow.ReputableDecryptorSnapshot".to_string(),
-                ".secure_aggregation.willow.KeyStateSnapshot".to_string(),
+                ".apps.willow.reputable_decryptor.service.ReputableDecryptorSnapshot".to_string(),
+                ".apps.willow.reputable_decryptor.service.KeyStateSnapshot".to_string(),
             ],
             ..Default::default()
         },

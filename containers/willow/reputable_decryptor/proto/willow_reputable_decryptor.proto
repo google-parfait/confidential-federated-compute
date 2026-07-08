@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package secure_aggregation.willow;
+package apps.willow.reputable_decryptor.service;
 
 import "willow/proto/shell/ciphertexts.proto";
 import "willow/proto/willow/messages.proto";
@@ -30,29 +30,29 @@ message CreateSetupContributionRequest {
 
 // Response message containing the SetupContribution.
 message CreateSetupContributionResponse {
-  SetupContribution setup_contribution = 1;
+  secure_aggregation.willow.SetupContribution setup_contribution = 1;
 }
 
 // Request message to handle a partial decryption.
 message HandlePartialDecryptionRequest {
   string key_id = 1;
-  PartialDecryptionRequest partial_decryption_request = 2;
+  secure_aggregation.willow.PartialDecryptionRequest partial_decryption_request = 2;
 }
 
 // Response message containing the partial decryption response.
 message HandlePartialDecryptionResponse {
-  PartialDecryptionResponse partial_decryption_response = 1;
+  secure_aggregation.willow.PartialDecryptionResponse partial_decryption_response = 1;
 }
 
 // Request message to verify and aggregate key contributions.
 message VerifyAndAggregateKeyContributionsRequest {
   string key_id = 1;
-  VerifyKeyContributionsRequest verify_key_contributions_request = 2;
+  secure_aggregation.willow.VerifyKeyContributionsRequest verify_key_contributions_request = 2;
 }
 
 // Response message containing the aggregated public key.
 message VerifyAndAggregateKeyContributionsResponse {
-  ShellAhePublicKey public_key = 1;
+  secure_aggregation.willow.ShellAhePublicKey public_key = 1;
 }
 
 // Error status.
@@ -115,7 +115,7 @@ message SetupEvent {
 
 message DecryptionEvent {
   string key_id = 1;
-  PartialDecryptionRequest partial_decryption_request = 2;
+  secure_aggregation.willow.PartialDecryptionRequest partial_decryption_request = 2;
 }
 
 message ReputableDecryptorConfig {

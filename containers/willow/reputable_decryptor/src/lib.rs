@@ -20,6 +20,16 @@ extern crate prost;
 extern crate slog;
 extern crate tcp_runtime;
 
+pub mod apps {
+    pub mod willow {
+        pub mod reputable_decryptor {
+            pub mod service {
+                include!(concat!(env!("OUT_DIR"), "/apps.willow.reputable_decryptor.service.rs"));
+            }
+        }
+    }
+}
+
 pub mod secure_aggregation {
     pub mod willow {
         include!(concat!(env!("OUT_DIR"), "/secure_aggregation.willow.rs"));
