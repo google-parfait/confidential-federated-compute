@@ -14,11 +14,11 @@
 
 use crate::apps::willow::committee_selector::service::{
     committee_selector_event, committee_selector_request, committee_selector_response,
-    CheckCommitteeStatusRequest, CheckCommitteeStatusResponse, CommitteeSelectorEvent,
-    CommitteeSelectorRequest, CommitteeSelectorResponse, CommitteeSelectorSnapshot,
-    CommitteeSelectorStatus, CreateCommitteeEvent, CreateCommitteeRequest, CreateCommitteeResponse,
-    EndorsementStatus, SampleCommitteeEvent, SampleCommitteeRequest,
-    VolunteerBatchForCommitteeEvent, VolunteerBatchForCommitteeRequest,
+    CheckCommitteeStatusRequest, CheckCommitteeStatusResponse, CommitteeSelectorConfig,
+    CommitteeSelectorEvent, CommitteeSelectorRequest, CommitteeSelectorResponse,
+    CommitteeSelectorSnapshot, CommitteeSelectorStatus, CreateCommitteeEvent,
+    CreateCommitteeRequest, CreateCommitteeResponse, EndorsementStatus, SampleCommitteeEvent,
+    SampleCommitteeRequest, VolunteerBatchForCommitteeEvent, VolunteerBatchForCommitteeRequest,
     VolunteerBatchForCommitteeResponse,
 };
 use crate::selector::{fingerprint, CommitteeSelector};
@@ -53,53 +53,47 @@ pub struct CommitteeSelectorActor {
 }
 
 impl CommitteeSelectorActor {
-    pub fn new(max_number_of_committees: usize) -> Self {
+    pub fn new() -> Self {
         let skip = BinaryReferenceValue {
             r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
         };
-        Self::new_with_reference_values(
-            ReferenceValues {
-                r#type: Some(reference_values::Type::OakRestrictedKernel(
-                    OakRestrictedKernelReferenceValues {
-                        root_layer: Some(RootLayerReferenceValues {
-                            insecure: Some(InsecureReferenceValues::default()),
-                            ..Default::default()
+        Self::new_with_reference_values(ReferenceValues {
+            r#type: Some(reference_values::Type::OakRestrictedKernel(
+                OakRestrictedKernelReferenceValues {
+                    root_layer: Some(RootLayerReferenceValues {
+                        insecure: Some(InsecureReferenceValues::default()),
+                        ..Default::default()
+                    }),
+                    kernel_layer: Some(KernelLayerReferenceValues {
+                        kernel: Some(KernelBinaryReferenceValue {
+                            r#type: Some(kernel_binary_reference_value::Type::Skip(
+                                SkipVerification::default(),
+                            )),
                         }),
-                        kernel_layer: Some(KernelLayerReferenceValues {
-                            kernel: Some(KernelBinaryReferenceValue {
-                                r#type: Some(kernel_binary_reference_value::Type::Skip(
-                                    SkipVerification::default(),
-                                )),
-                            }),
-                            kernel_cmd_line_text: Some(TextReferenceValue {
-                                r#type: Some(text_reference_value::Type::Skip(
-                                    SkipVerification::default(),
-                                )),
-                            }),
-                            init_ram_fs: Some(skip.clone()),
-                            memory_map: Some(skip.clone()),
-                            acpi: Some(skip.clone()),
-                            ..Default::default()
+                        kernel_cmd_line_text: Some(TextReferenceValue {
+                            r#type: Some(text_reference_value::Type::Skip(
+                                SkipVerification::default(),
+                            )),
                         }),
-                        application_layer: Some(ApplicationLayerReferenceValues {
-                            binary: Some(skip.clone()),
-                            configuration: Some(skip.clone()),
-                        }),
-                    },
-                )),
-            },
-            max_number_of_committees,
-        )
+                        init_ram_fs: Some(skip.clone()),
+                        memory_map: Some(skip.clone()),
+                        acpi: Some(skip.clone()),
+                        ..Default::default()
+                    }),
+                    application_layer: Some(ApplicationLayerReferenceValues {
+                        binary: Some(skip.clone()),
+                        configuration: Some(skip.clone()),
+                    }),
+                },
+            )),
+        })
     }
 
-    pub fn new_with_reference_values(
-        reference_values: ReferenceValues,
-        max_number_of_committees: usize,
-    ) -> Self {
+    pub fn new_with_reference_values(reference_values: ReferenceValues) -> Self {
         CommitteeSelectorActor {
             reference_values,
             context: None,
-            selector: CommitteeSelector::new(max_number_of_committees),
+            selector: CommitteeSelector::new(0),
         }
     }
 
@@ -353,6 +347,9 @@ impl CommitteeSelectorActor {
 impl Actor for CommitteeSelectorActor {
     fn on_init(&mut self, context: Box<dyn ActorContext>) -> Result<(), ActorError> {
         self.context = Some(context);
+        let config = CommitteeSelectorConfig::decode(self.get_context().config().as_ref())
+            .map_err(|_| ActorError::ConfigLoading)?;
+        self.selector.max_number_of_committees = config.max_number_of_committees as usize;
         Ok(())
     }
 

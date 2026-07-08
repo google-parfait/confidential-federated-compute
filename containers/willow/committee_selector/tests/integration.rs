@@ -25,9 +25,9 @@ mod test {
     use willow_committee_selector_service::actor::CommitteeSelectorActor;
     use willow_committee_selector_service::apps::willow::committee_selector::service::{
         committee_selector_request, committee_selector_response, CheckCommitteeStatusRequest,
-        CommitteeSelectorRequest, CommitteeSelectorResponse, CommitteeStatus,
-        CreateCommitteeRequest, SampleCommitteeRequest, VolunteerBatchForCommitteeRequest,
-        VolunteerForCommitteeRequest,
+        CommitteeSelectorConfig, CommitteeSelectorRequest, CommitteeSelectorResponse,
+        CommitteeStatus, CreateCommitteeRequest, SampleCommitteeRequest,
+        VolunteerBatchForCommitteeRequest, VolunteerForCommitteeRequest,
     };
 
     const DEFAULT_MAX_NUMBER_OF_COMMITTEES: usize = 128;
@@ -51,11 +51,18 @@ mod test {
         committee_selector_response.unwrap()
     }
 
+    fn new_test_cluster(limit: usize) -> FakeCluster<CommitteeSelectorActor> {
+        let config = CommitteeSelectorConfig { max_number_of_committees: limit as i32 };
+        let mut config_bytes = Vec::new();
+        config.encode(&mut config_bytes).unwrap();
+        FakeCluster::new(config_bytes.into())
+    }
+
     #[test]
     fn test_create_committee() {
-        let mut cluster = FakeCluster::new(Bytes::new());
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
 
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
         assert!(cluster.leader_id() == 1);
 
@@ -81,8 +88,8 @@ mod test {
 
     #[test]
     fn test_create_committee_idempotency() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -105,8 +112,8 @@ mod test {
 
     #[test]
     fn test_create_committee_replaces_oldest() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        let actor = CommitteeSelectorActor::new(32);
+        let mut cluster = new_test_cluster(32);
+        let actor = CommitteeSelectorActor::new();
         cluster.start_node(1, true, actor);
         cluster.advance_until_elected_leader(None);
 
@@ -149,8 +156,8 @@ mod test {
 
     #[test]
     fn test_volunteer_batch_for_committee() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -192,8 +199,8 @@ mod test {
 
     #[test]
     fn test_volunteer_without_committee() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let vol_req = CommitteeSelectorRequest {
@@ -225,8 +232,8 @@ mod test {
 
     #[test]
     fn test_sample_committee_unknown() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -247,8 +254,8 @@ mod test {
 
     #[test]
     fn test_sample_committee_not_enough_volunteers() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -300,8 +307,8 @@ mod test {
 
     #[test]
     fn test_sample_committee_success() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -377,8 +384,8 @@ mod test {
 
     #[test]
     fn test_check_committee_status_success() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest {
@@ -412,8 +419,8 @@ mod test {
 
     #[test]
     fn test_unknown_request() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster.start_node(1, true, CommitteeSelectorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let req = CommitteeSelectorRequest { msg: None };
@@ -446,8 +453,8 @@ mod test {
         };
 
         // Run 1
-        let mut cluster1 = FakeCluster::new(Bytes::new());
-        cluster1.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster1 = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster1.start_node(1, true, CommitteeSelectorActor::new());
         cluster1.advance_until_elected_leader(None);
 
         let req1 = CommitteeSelectorRequest {
@@ -490,8 +497,8 @@ mod test {
         };
 
         // Run 2
-        let mut cluster2 = FakeCluster::new(Bytes::new());
-        cluster2.start_node(1, true, CommitteeSelectorActor::new(DEFAULT_MAX_NUMBER_OF_COMMITTEES));
+        let mut cluster2 = new_test_cluster(DEFAULT_MAX_NUMBER_OF_COMMITTEES);
+        cluster2.start_node(1, true, CommitteeSelectorActor::new());
         cluster2.advance_until_elected_leader(None);
 
         let req2 = CommitteeSelectorRequest {

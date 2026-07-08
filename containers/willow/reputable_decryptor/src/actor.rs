@@ -16,10 +16,10 @@ use crate::decryptor::{convert_from_prost, convert_to_prost, ReputableDecryptorS
 use crate::secure_aggregation::willow::{
     reputable_decryptor_event, reputable_decryptor_request, reputable_decryptor_response,
     CreateSetupContributionRequest, CreateSetupContributionResponse, DecryptionEvent,
-    HandlePartialDecryptionRequest, HandlePartialDecryptionResponse, ReputableDecryptorEvent,
-    ReputableDecryptorRequest, ReputableDecryptorResponse, ReputableDecryptorSnapshot,
-    ReputableDecryptorStatus, SetupEvent, VerifyAndAggregateKeyContributionsRequest,
-    VerifyAndAggregateKeyContributionsResponse,
+    HandlePartialDecryptionRequest, HandlePartialDecryptionResponse, ReputableDecryptorConfig,
+    ReputableDecryptorEvent, ReputableDecryptorRequest, ReputableDecryptorResponse,
+    ReputableDecryptorSnapshot, ReputableDecryptorStatus, SetupEvent,
+    VerifyAndAggregateKeyContributionsRequest, VerifyAndAggregateKeyContributionsResponse,
 };
 use ahe_traits::AheBase;
 use alloc::boxed::Box;
@@ -57,55 +57,49 @@ pub struct ReputableDecryptorActor {
 }
 
 impl ReputableDecryptorActor {
-    pub fn new(max_number_of_decryptors: usize, max_number_of_decryptor_states: usize) -> Self {
+    pub fn new() -> Self {
         let skip = BinaryReferenceValue {
             r#type: Some(binary_reference_value::Type::Skip(SkipVerification::default())),
         };
-        Self::new_with_reference_values(
-            ReferenceValues {
-                r#type: Some(reference_values::Type::OakRestrictedKernel(
-                    OakRestrictedKernelReferenceValues {
-                        root_layer: Some(RootLayerReferenceValues {
-                            insecure: Some(InsecureReferenceValues::default()),
-                            ..Default::default()
+        Self::new_with_reference_values(ReferenceValues {
+            r#type: Some(reference_values::Type::OakRestrictedKernel(
+                OakRestrictedKernelReferenceValues {
+                    root_layer: Some(RootLayerReferenceValues {
+                        insecure: Some(InsecureReferenceValues::default()),
+                        ..Default::default()
+                    }),
+                    kernel_layer: Some(KernelLayerReferenceValues {
+                        kernel: Some(KernelBinaryReferenceValue {
+                            r#type: Some(kernel_binary_reference_value::Type::Skip(
+                                SkipVerification::default(),
+                            )),
                         }),
-                        kernel_layer: Some(KernelLayerReferenceValues {
-                            kernel: Some(KernelBinaryReferenceValue {
-                                r#type: Some(kernel_binary_reference_value::Type::Skip(
-                                    SkipVerification::default(),
-                                )),
-                            }),
-                            kernel_cmd_line_text: Some(TextReferenceValue {
-                                r#type: Some(text_reference_value::Type::Skip(
-                                    SkipVerification::default(),
-                                )),
-                            }),
-                            init_ram_fs: Some(skip.clone()),
-                            memory_map: Some(skip.clone()),
-                            acpi: Some(skip.clone()),
-                            ..Default::default()
+                        kernel_cmd_line_text: Some(TextReferenceValue {
+                            r#type: Some(text_reference_value::Type::Skip(
+                                SkipVerification::default(),
+                            )),
                         }),
-                        application_layer: Some(ApplicationLayerReferenceValues {
-                            binary: Some(skip.clone()),
-                            configuration: Some(skip.clone()),
-                        }),
-                    },
-                )),
-            },
-            max_number_of_decryptors,
-            max_number_of_decryptor_states,
-        )
+                        init_ram_fs: Some(skip.clone()),
+                        memory_map: Some(skip.clone()),
+                        acpi: Some(skip.clone()),
+                        ..Default::default()
+                    }),
+                    application_layer: Some(ApplicationLayerReferenceValues {
+                        binary: Some(skip.clone()),
+                        configuration: Some(skip.clone()),
+                    }),
+                },
+            )),
+        })
     }
 
-    pub fn new_with_reference_values(
-        reference_values: ReferenceValues,
-        max_number_of_decryptors: usize,
-        max_number_of_decryptor_states: usize,
-    ) -> Self {
-        let mut state = ReputableDecryptorState::default();
-        state.max_number_of_decryptor_states = max_number_of_decryptor_states;
-
-        ReputableDecryptorActor { reference_values, context: None, max_number_of_decryptors, state }
+    pub fn new_with_reference_values(reference_values: ReferenceValues) -> Self {
+        ReputableDecryptorActor {
+            reference_values,
+            context: None,
+            max_number_of_decryptors: 0,
+            state: ReputableDecryptorState::default(),
+        }
     }
 
     fn get_context(&mut self) -> &mut dyn ActorContext {
@@ -495,6 +489,10 @@ impl ReputableDecryptorActor {
 impl Actor for ReputableDecryptorActor {
     fn on_init(&mut self, context: Box<dyn ActorContext>) -> Result<(), ActorError> {
         self.context = Some(context);
+        let config = ReputableDecryptorConfig::decode(self.get_context().config().as_ref())
+            .map_err(|_| ActorError::ConfigLoading)?;
+        self.max_number_of_decryptors = config.max_number_of_decryptors as usize;
+        self.state.max_number_of_decryptor_states = config.max_number_of_keys as usize;
         Ok(())
     }
 

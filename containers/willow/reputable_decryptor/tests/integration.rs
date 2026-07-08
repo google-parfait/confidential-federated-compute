@@ -27,7 +27,7 @@ mod test {
     use willow_reputable_decryptor_service::secure_aggregation::willow::{
         reputable_decryptor_request, reputable_decryptor_response, CreateSetupContributionRequest,
         HandlePartialDecryptionRequest, KeyContribution, PartialDecryptionRequest,
-        ReputableDecryptorRequest, ReputableDecryptorResponse,
+        ReputableDecryptorConfig, ReputableDecryptorRequest, ReputableDecryptorResponse,
         VerifyAndAggregateKeyContributionsRequest, VerifyKeyContributionsRequest,
     };
 
@@ -63,17 +63,24 @@ mod test {
         reputable_decryptor_response.unwrap()
     }
 
+    fn new_test_cluster(
+        max_decryptors: usize,
+        max_keys: usize,
+    ) -> FakeCluster<ReputableDecryptorActor> {
+        let config = ReputableDecryptorConfig {
+            max_number_of_decryptors: max_decryptors as i32,
+            max_number_of_keys: max_keys as i32,
+        };
+        let mut config_bytes = Vec::new();
+        config.encode(&mut config_bytes).unwrap();
+        FakeCluster::new(config_bytes.into())
+    }
+
     #[test]
     fn test_key_setup_and_aggregation_lifecycle() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(
-                DEFAULT_MAX_NUMBER_OF_DECRYPTORS,
-                DEFAULT_MAX_NUMBER_OF_KEYS,
-            ),
-        );
+        let mut cluster =
+            new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, DEFAULT_MAX_NUMBER_OF_KEYS);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
         assert_eq!(cluster.leader_id(), 1);
 
@@ -160,15 +167,9 @@ mod test {
 
     #[test]
     fn test_decryption_and_cache_cleanup_lifecycle() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(
-                DEFAULT_MAX_NUMBER_OF_DECRYPTORS,
-                DEFAULT_MAX_NUMBER_OF_KEYS,
-            ),
-        );
+        let mut cluster =
+            new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, DEFAULT_MAX_NUMBER_OF_KEYS);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
         assert_eq!(cluster.leader_id(), 1);
 
@@ -306,12 +307,8 @@ mod test {
 
     #[test]
     fn test_eviction_lifecycle() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, 1),
-        );
+        let mut cluster = new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, 1);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
 
         // 1. Create setup contribution for key_1
@@ -428,15 +425,9 @@ mod test {
 
     #[test]
     fn test_invalid_inputs_integration() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(
-                DEFAULT_MAX_NUMBER_OF_DECRYPTORS,
-                DEFAULT_MAX_NUMBER_OF_KEYS,
-            ),
-        );
+        let mut cluster =
+            new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, DEFAULT_MAX_NUMBER_OF_KEYS);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
 
         // 0. Initialize a valid key first to test subsequent commands
@@ -601,15 +592,9 @@ mod test {
 
     #[test]
     fn test_decryption_consumes_key_so_cannot_decrypt_twice() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(
-                DEFAULT_MAX_NUMBER_OF_DECRYPTORS,
-                DEFAULT_MAX_NUMBER_OF_KEYS,
-            ),
-        );
+        let mut cluster =
+            new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, DEFAULT_MAX_NUMBER_OF_KEYS);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
 
         // 1. Create setup contribution for key_1
@@ -744,15 +729,9 @@ mod test {
 
     #[test]
     fn test_concurrent_key_setup_idempotency() {
-        let mut cluster = FakeCluster::new(Bytes::new());
-        cluster.start_node(
-            1,
-            true,
-            ReputableDecryptorActor::new(
-                DEFAULT_MAX_NUMBER_OF_DECRYPTORS,
-                DEFAULT_MAX_NUMBER_OF_KEYS,
-            ),
-        );
+        let mut cluster =
+            new_test_cluster(DEFAULT_MAX_NUMBER_OF_DECRYPTORS, DEFAULT_MAX_NUMBER_OF_KEYS);
+        cluster.start_node(1, true, ReputableDecryptorActor::new());
         cluster.advance_until_elected_leader(None);
 
         let setup_req = ReputableDecryptorRequest {
