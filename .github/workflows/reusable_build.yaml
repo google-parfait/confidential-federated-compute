@@ -100,6 +100,17 @@ jobs:
         uses: actions/attest-build-provenance@v1
         with:
           subject-path: ${{ matrix.binary }}
+      - name: Derive metadata path
+        id: metadata
+        if: startsWith(matrix.binary, 'batched_inference_gcp_') && endsWith(matrix.binary, '/container.tar')
+        run: echo "client_metadata_path=$(dirname ${{ matrix.binary }})/client_metadata.json" >> "$GITHUB_OUTPUT"
+      - name: Attest Custom Client Metadata
+        if: startsWith(matrix.binary, 'batched_inference_gcp_') && endsWith(matrix.binary, '/container.tar')
+        uses: actions/attest@v1
+        with:
+          subject-path: ${{ matrix.binary }}
+          predicate-type: 'https://batched-inference.google.com/client-metadata/v1'
+          predicate-path: ${{ steps.metadata.outputs.client_metadata_path }}
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:

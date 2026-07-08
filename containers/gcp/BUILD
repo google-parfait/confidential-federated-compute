@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_oci//oci:defs.bzl", "oci_image")
@@ -20,6 +21,7 @@ load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 load(":build_defs.bzl", "generate_policy", "image_digest_flag", "int_flag")
 load(":model_targets.bzl", "gcp_model_targets")
@@ -33,6 +35,17 @@ proto_library(
 cc_proto_library(
     name = "attestation_policy_cc_proto",
     deps = [":attestation_policy_proto"],
+)
+
+py_proto_library(
+    name = "attestation_policy_py_proto",
+    deps = [":attestation_policy_proto"],
+)
+
+py_binary(
+    name = "generate_client_metadata",
+    srcs = ["generate_client_metadata.py"],
+    deps = [":attestation_policy_py_proto"],
 )
 
 cc_proto_library(
@@ -441,6 +454,22 @@ pkg_tar(
     remap_paths = {"policy_gca.textproto": "policy.textproto"},
 )
 
+genrule(
+    name = "gen_metadata_ita",
+    srcs = [":gen_policy_ita"],
+    outs = ["client_metadata_ita.json"],
+    cmd = "$(location :generate_client_metadata) --policy_file=$(location :gen_policy_ita) --alts_enabled=true --jwks_endpoint=https://portal.trustauthority.intel.com/certs --out=$@",
+    tools = [":generate_client_metadata"],
+)
+
+genrule(
+    name = "gen_metadata_gca",
+    srcs = [":gen_policy_gca"],
+    outs = ["client_metadata_gca.json"],
+    cmd = "$(location :generate_client_metadata) --policy_file=$(location :gen_policy_gca) --alts_enabled=true --jwks_endpoint=https://www.googleapis.com/service_accounts/v1/metadata/jwk/signer@confidentialspace-sign.iam.gserviceaccount.com --out=$@",
+    tools = [":generate_client_metadata"],
+)
+
 pkg_tar(
     name = "batched_inference_oak_tar",
     srcs = [":batched_inference_oak_main"],
@@ -496,6 +525,8 @@ _RELEASE_BINARIES = {
     # keep-sorted start
     ":batched_inference_oak_gca_oci_runtime_bundle.tar": "batched_inference_gcp_gca/container.tar",
     ":batched_inference_oak_ita_oci_runtime_bundle.tar": "batched_inference_gcp_ita/container.tar",
+    ":gen_metadata_gca": "batched_inference_gcp_gca/client_metadata.json",
+    ":gen_metadata_ita": "batched_inference_gcp_ita/client_metadata.json",
     # keep-sorted end
 }
 
