@@ -118,3 +118,9 @@ message DecryptionEvent {
   PartialDecryptionRequest partial_decryption_request = 2;
 }
 
+message ReputableDecryptorConfig {
+  int32 max_number_of_decryptors = 1;
+  int32 max_number_of_keys = 2;
+}
+
+

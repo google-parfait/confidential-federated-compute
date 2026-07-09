@@ -52,25 +52,9 @@ async fn main() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow!("EndorsedEvidence.evidence not set"))?;
     let reference_values =
         get_reference_values(&evidence).context("failed to get reference values")?;
-    let max_committees = match std::env::var("MAX_NUMBER_OF_COMMITTEES") {
-        Ok(val) => match val.parse::<usize>() {
-            Ok(n) => n,
-            Err(_) => {
-                log::warn!(
-                    "Invalid MAX_NUMBER_OF_COMMITTEES value: '{}', falling back to 128",
-                    val
-                );
-                128
-            }
-        },
-        Err(_) => 128,
-    };
     let service =
         TonicApplicationService::new(channel, evidence, /* logger= */ None, move || {
-            CommitteeSelectorActor::new_with_reference_values(
-                reference_values.clone(),
-                max_committees,
-            )
+            CommitteeSelectorActor::new_with_reference_values(reference_values.clone())
         });
 
     orchestrator_client.notify_app_ready().await.context("failed to notify that app is ready")?;

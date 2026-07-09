@@ -54,38 +54,9 @@ async fn main() -> anyhow::Result<()> {
     let reference_values =
         get_reference_values(&evidence).context("failed to get reference values")?;
 
-    let max_decryptors = match std::env::var("MAX_NUMBER_OF_DECRYPTORS") {
-        Ok(val) => match val.parse::<usize>() {
-            Ok(n) => n,
-            Err(_) => {
-                log::warn!(
-                    "Invalid MAX_NUMBER_OF_DECRYPTORS value: '{}', falling back to 128",
-                    val
-                );
-                128
-            }
-        },
-        Err(_) => 128,
-    };
-
-    let max_keys = match std::env::var("MAX_NUMBER_OF_KEYS") {
-        Ok(val) => match val.parse::<usize>() {
-            Ok(n) => n,
-            Err(_) => {
-                log::warn!("Invalid MAX_NUMBER_OF_KEYS value: '{}', falling back to 100", val);
-                100
-            }
-        },
-        Err(_) => 100,
-    };
-
     let service =
         TonicApplicationService::new(channel, evidence, /* logger= */ None, move || {
-            ReputableDecryptorActor::new_with_reference_values(
-                reference_values.clone(),
-                max_decryptors,
-                max_keys,
-            )
+            ReputableDecryptorActor::new_with_reference_values(reference_values.clone())
         });
 
     orchestrator_client.notify_app_ready().await.context("failed to notify that app is ready")?;

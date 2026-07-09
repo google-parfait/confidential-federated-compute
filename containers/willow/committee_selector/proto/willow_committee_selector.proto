@@ -150,3 +150,8 @@ message CommitteeSelectorResponse {
     CommitteeSelectorStatus error = 4;
   }
 }
+
+message CommitteeSelectorConfig {
+  int32 max_number_of_committees = 1;
+}
+
