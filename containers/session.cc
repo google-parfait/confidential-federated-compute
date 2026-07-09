@@ -15,6 +15,7 @@
 
 #include <filesystem>
 
+#include "absl/log/log.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "grpcpp/support/status.h"
@@ -65,6 +66,9 @@ absl::Status SessionTracker::RemoveSession() {
 
 WriteFinishedResponse ToWriteFinishedResponse(absl::Status status,
                                               long committed_size_bytes) {
+  if (!status.ok()) {
+    LOG(ERROR) << "Write failed with error: " << status.message();
+  }
   grpc::Status grpc_status = ToGrpcStatus(std::move(status));
   WriteFinishedResponse response;
   response.mutable_status()->set_code(grpc_status.error_code());

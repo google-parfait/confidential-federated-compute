@@ -240,7 +240,8 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
     if (!private_state_->budget.HasRemainingBudget(header.key_id(),
                                                    blob_id_high64)) {
       return absl::FailedPreconditionError(
-          absl::StrCat("No budget remaining for key id: ", header.key_id()));
+          absl::StrCat("No budget remaining for key id: ",
+                       absl::BytesToHexString(header.key_id())));
     }
     range_tracker_.AddKey(header.key_id());
     return absl::OkStatus();
