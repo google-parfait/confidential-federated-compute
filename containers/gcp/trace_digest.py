@@ -44,5 +44,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    subject_name, subject_digest, commits, custom_metadata, workflows = provenance_lib.fetch_and_verify(args.digest)
+    (subject_name, subject_digest, commits, custom_metadata, workflows), _ = provenance_lib.fetch_and_verify(args.digest)
     provenance_lib.success(commits, custom_metadata, workflows)

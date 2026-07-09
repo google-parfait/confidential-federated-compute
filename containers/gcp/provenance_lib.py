@@ -797,4 +797,4 @@ def fetch_and_verify(digest):
 
     # ---- STEP 4: Extract provenance metadata ----
     print(f"\n[*] STEP 4/4: Extracting Provenance & Metadata...")
-    return extract_provenance_metadata(attestations, digest_clean)
+    return extract_provenance_metadata(attestations, digest_clean), attestations
