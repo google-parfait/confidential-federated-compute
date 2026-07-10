@@ -43,6 +43,11 @@ class TestConcatSession final : public confidential_federated_compute::Session {
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest request,
       std::string unencrypted_data, Context& context) override {
+    // Failure injection point.
+    if (unencrypted_data == "<error>") {
+      return absl::InvalidArgumentError("Injected error");
+    }
+
     absl::StrAppend(&state_, unencrypted_data);
     return confidential_federated_compute::ToWriteFinishedResponse(
         absl::OkStatus(), request.first_request_metadata().total_size_bytes());
