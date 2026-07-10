@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@oak//oak_containers/app_base:defs.bzl", "app_bundle")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(
     default_visibility = ["//:__subpackages__"],
@@ -153,4 +154,25 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
     ],
+)
+
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":construct_user_session_fn",
+        "//containers/fns",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@oak//cc/containers/sdk:encryption_key_handle",
+        "@oak//cc/containers/sdk:orchestrator_client",
+        "@oak//cc/containers/sdk:signing_key_handle",
+    ],
+)
+
+app_bundle(
+    name = "app_bundle",
+    binary = ":main",
+    visibility = ["//:__pkg__"],
 )
