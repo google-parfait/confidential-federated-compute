@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::decryptor::{convert_from_prost, convert_to_prost, ReputableDecryptorState};
-use crate::secure_aggregation::willow::{
+use crate::apps::willow::reputable_decryptor::service::{
     reputable_decryptor_event, reputable_decryptor_request, reputable_decryptor_response,
     CreateSetupContributionRequest, CreateSetupContributionResponse, DecryptionEvent,
     HandlePartialDecryptionRequest, HandlePartialDecryptionResponse, ReputableDecryptorConfig,
@@ -21,6 +20,7 @@ use crate::secure_aggregation::willow::{
     ReputableDecryptorSnapshot, ReputableDecryptorStatus, SetupEvent,
     VerifyAndAggregateKeyContributionsRequest, VerifyAndAggregateKeyContributionsResponse,
 };
+use crate::decryptor::{convert_from_prost, convert_to_prost, ReputableDecryptorState};
 use ahe_traits::AheBase;
 use alloc::boxed::Box;
 use alloc::format;

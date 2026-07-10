@@ -23,12 +23,14 @@ mod test {
     use tcp_integration::harness::*;
     use tcp_proto::runtime::endpoint::out_message;
     use willow_reputable_decryptor_service::actor::ReputableDecryptorActor;
+    use willow_reputable_decryptor_service::apps::willow::reputable_decryptor::service::{
+        reputable_decryptor_request, reputable_decryptor_response, CreateSetupContributionRequest,
+        HandlePartialDecryptionRequest, ReputableDecryptorConfig, ReputableDecryptorRequest,
+        ReputableDecryptorResponse, VerifyAndAggregateKeyContributionsRequest,
+    };
     use willow_reputable_decryptor_service::secure_aggregation::willow::ShellAhePartialDecCiphertext as ProstShellAhePartialDecCiphertext;
     use willow_reputable_decryptor_service::secure_aggregation::willow::{
-        reputable_decryptor_request, reputable_decryptor_response, CreateSetupContributionRequest,
-        HandlePartialDecryptionRequest, KeyContribution, PartialDecryptionRequest,
-        ReputableDecryptorConfig, ReputableDecryptorRequest, ReputableDecryptorResponse,
-        VerifyAndAggregateKeyContributionsRequest, VerifyKeyContributionsRequest,
+        KeyContribution, PartialDecryptionRequest, VerifyKeyContributionsRequest,
     };
 
     // Cryptographic top level test imports
