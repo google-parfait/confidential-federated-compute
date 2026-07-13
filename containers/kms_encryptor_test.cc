@@ -38,7 +38,6 @@ TEST(KmsEncryptorTest, EncryptIntermediateResult) {
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash",
       std::make_unique<NiceMock<MockSigningKeyHandle>>());
 
   Decryptor decryptor({key_pair_1.second, key_pair_2.second});
@@ -59,7 +58,6 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultInvalidReencryptionIndex) {
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_pair_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash",
       std::make_unique<NiceMock<MockSigningKeyHandle>>());
   EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo"),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -75,7 +73,7 @@ TEST(KmsEncryptorTest, EncryptReleasableResult) {
       .WillOnce(Return(oak::crypto::v1::Signature::default_instance()));
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash", std::move(signing_key_handle));
+      std::move(signing_key_handle));
 
   Decryptor decryptor({key_pair_1.second, key_pair_2.second});
 
@@ -96,7 +94,6 @@ TEST(KmsEncryptorTest, EncryptReleasableResultInvalidReencryptionIndex) {
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_pair_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash",
       std::make_unique<NiceMock<MockSigningKeyHandle>>());
   EXPECT_THAT(
       encryptor.EncryptReleasableResult(3, "plaintext", "foo", "src", "dst"),

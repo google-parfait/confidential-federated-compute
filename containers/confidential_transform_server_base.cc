@@ -238,13 +238,10 @@ absl::Status ConfidentialTransformBase::HandleInitialize(
 
   active_key_ids_include_all_keysets_ =
       associated_data.omitted_decryption_key_ids_include_all_keysets();
-  // Pick any of the authorized_logical_pipeline_policies_hashes as the
-  // reencryption_policy_hash. For convenience, we pick the first one.
   kms_encryptor_.emplace(
       std::vector<std::string>(
           protected_response.result_encryption_keys().begin(),
           protected_response.result_encryption_keys().end()),
-      associated_data.authorized_logical_pipeline_policies_hashes(0),
       oak_signing_key_handle_);
   for (const auto& policy_hash :
        associated_data.authorized_logical_pipeline_policies_hashes()) {
