@@ -42,10 +42,8 @@ class KmsEncryptor {
 
   KmsEncryptor(
       std::vector<std::string> reencryption_keys,
-      std::string reencryption_policy_hash,
       std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
       : reencryption_keys_(std::move(reencryption_keys)),
-        reencryption_policy_hash_(std::move(reencryption_policy_hash)),
         signing_key_handle_(std::move(signing_key_handle)) {}
 
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
@@ -61,10 +59,6 @@ class KmsEncryptor {
   const std::vector<std::string>& reencryption_keys() const {
     return reencryption_keys_;
   }
-  // The policy hash used to re-encrypt the intermediate and final blobs with.
-  const std::string& reencryption_policy_hash() const {
-    return reencryption_policy_hash_;
-  }
 
  private:
   absl::StatusOr<absl::string_view> GetReencryptionKey(
@@ -76,7 +70,6 @@ class KmsEncryptor {
       absl::string_view blob_id, absl::string_view associated_data) const;
 
   std::vector<std::string> reencryption_keys_;
-  std::string reencryption_policy_hash_;
   const fcp::confidential_compute::MessageEncryptor message_encryptor_;
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
 };

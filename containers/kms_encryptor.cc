@@ -50,7 +50,6 @@ absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
   BlobHeader header;
   header.set_blob_id(blob_id);
   header.set_key_id(okp_key.key_id);
-  header.set_access_policy_sha256(reencryption_policy_hash_);
   return header.SerializeAsString();
 }
 
