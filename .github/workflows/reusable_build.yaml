@@ -120,6 +120,7 @@ jobs:
         with:
           skip_install: true
       - name: Upload provenance
+        if: endsWith(matrix.binary, '.tar')
         run: |
           set -euxo pipefail
 
