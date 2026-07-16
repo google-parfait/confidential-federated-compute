@@ -205,6 +205,9 @@ inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
     return reflection->GetEnumValue(msg, field);
   }
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_BOOL) {
+    return static_cast<int32_t>(reflection->GetBool(msg, field));
+  }
   CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT32)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int32";

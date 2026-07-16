@@ -170,6 +170,7 @@ class MessageRowViewTest : public ::testing::Test {
           type_name: "TestEnum"
           label: LABEL_OPTIONAL
         }
+        field { name: "col7" number: 7 type: TYPE_BOOL label: LABEL_OPTIONAL }
       }
     )pb");
     pool_ = std::make_unique<DescriptorPool>();
@@ -198,6 +199,8 @@ class MessageRowViewTest : public ::testing::Test {
                           "bar");
     reflection->SetEnumValue(message_.get(),
                              descriptor->FindFieldByName("col6"), 88);
+    reflection->SetBool(message_.get(), descriptor->FindFieldByName("col7"),
+                        true);
     absl::StatusOr<Tensor> t1 = Tensor::Create(
         DataType::DT_STRING, TensorShape({2}),
         CreateTestData<absl::string_view>({"baz", "qux"}), "system_col1");
@@ -238,8 +241,10 @@ TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("baz"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(123));
+  // col7 is TYPE_BOOL; true maps to int32_t value 1.
+  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(1));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(7), Eq("baz"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(8), Eq(123));
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
@@ -253,15 +258,17 @@ TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("qux"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(456));
+  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(1));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(7), Eq("qux"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(8), Eq(456));
 }
 
 TEST_F(MessageRowViewTest, GetColumnCount) {
   absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
       message_.get(), system_columns_, 0, &field_paths_);
   ASSERT_THAT(row_view, IsOk());
-  EXPECT_THAT(row_view->GetColumnCount(), Eq(8));
+  // 7 message fields + 2 system columns = 9
+  EXPECT_THAT(row_view->GetColumnCount(), Eq(9));
 }
 
 TEST_F(MessageRowViewTest, GetColumnType) {
@@ -274,8 +281,10 @@ TEST_F(MessageRowViewTest, GetColumnType) {
   EXPECT_THAT(row_view->GetColumnType(3), Eq(DataType::DT_DOUBLE));
   EXPECT_THAT(row_view->GetColumnType(4), Eq(DataType::DT_STRING));
   EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_INT32));
-  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_STRING));
-  EXPECT_THAT(row_view->GetColumnType(7), Eq(DataType::DT_INT32));
+  // col7 is TYPE_BOOL; maps to DT_INT32 (SQLite INTEGER).
+  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_INT32));
+  EXPECT_THAT(row_view->GetColumnType(7), Eq(DataType::DT_STRING));
+  EXPECT_THAT(row_view->GetColumnType(8), Eq(DataType::DT_INT32));
 }
 
 TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {
