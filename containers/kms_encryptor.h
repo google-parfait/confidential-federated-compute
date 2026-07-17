@@ -24,6 +24,7 @@
 #include "cc/crypto/signing_key.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -52,6 +53,19 @@ class KmsEncryptor {
       int reencryption_key_index, absl::string_view plaintext,
       absl::string_view blob_id) const;
 
+  // Encrypts an intermediate result using AssociatedMetadata as the AEAD
+  // associated data. The AssociatedMetadata is serialized for use as AAD and
+  // packed into a google.protobuf.Any on KmsAssociatedData.associated_metadata.
+  // The deprecated record_header field is left empty.
+  //
+  // This overload is intended for TEE-to-TEE intermediate outputs where
+  // BlobHeader is not applicable.
+  absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
+      int reencryption_key_index, absl::string_view plaintext,
+      absl::string_view blob_id,
+      const fcp::confidentialcompute::AssociatedMetadata& associated_metadata)
+      const;
+
   absl::StatusOr<EncryptedResult> EncryptReleasableResult(
       int reencryption_key_index, absl::string_view plaintext,
       absl::string_view blob_id, std::optional<absl::string_view> src_state,
@@ -69,11 +83,24 @@ class KmsEncryptor {
  private:
   absl::StatusOr<absl::string_view> GetReencryptionKey(
       int reencryption_key_index) const;
-  absl::StatusOr<std::string> CreateAssociatedData(
+  absl::StatusOr<std::string> CreateSerializedBlobHeader(
       absl::string_view reencryption_key, absl::string_view blob_id) const;
-  fcp::confidentialcompute::BlobMetadata CreateMetadata(
+
+  // Creates BlobMetadata for the existing BlobHeader path. The blob_header
+  // is a serialized BlobHeader stored in kms_associated_data.record_header;
+  // key_id is already embedded in the serialized BlobHeader.
+  fcp::confidentialcompute::BlobMetadata CreateMetadataWithBlobHeader(
       const fcp::confidential_compute::EncryptMessageResult& encrypted_message,
-      absl::string_view blob_id, absl::string_view associated_data) const;
+      absl::string_view blob_id, absl::string_view blob_header) const;
+
+  // Creates BlobMetadata with the Any associated_metadata.
+  // KmsAssociatedData.associated_metadata is set to the provided
+  // associated_metadata; the deprecated record_header is
+  // left empty. key_id is set directly on HpkePlusAeadMetadata.
+  fcp::confidentialcompute::BlobMetadata CreateMetadataWithAssociatedMetadata(
+      const fcp::confidential_compute::EncryptMessageResult& encrypted_message,
+      absl::string_view blob_id, absl::string_view key_id,
+      google::protobuf::Any associated_metadata) const;
 
   std::vector<std::string> reencryption_keys_;
   std::string reencryption_policy_hash_;

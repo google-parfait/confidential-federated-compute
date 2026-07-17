@@ -19,6 +19,7 @@
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -29,6 +30,8 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
+using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobMetadata;
 using ::testing::_;
 using ::testing::NiceMock;
 using ::testing::Return;
@@ -64,6 +67,96 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultInvalidReencryptionIndex) {
   EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo"),
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(encryptor.EncryptIntermediateResult(-1, "plaintext", "bar"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(KmsEncryptorTest, EncryptIntermediateResultWithAssociatedMetadata) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
+  auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
+  KmsEncryptor encryptor(
+      std::vector<std::string>{key_pair_1.first, key_pair_2.first},
+      "reencryption_policy_hash",
+      std::make_unique<NiceMock<MockSigningKeyHandle>>());
+
+  Decryptor decryptor({key_pair_1.second, key_pair_2.second});
+
+  // Build AssociatedMetadata with an Any entry.
+  AssociatedMetadata associated_metadata;
+  google::protobuf::Any* entry = associated_metadata.add_metadata();
+  entry->set_type_url("type.googleapis.com/test.Metadata");
+  entry->set_value("test_metadata_value");
+
+  // Encrypt using the first key with AssociatedMetadata
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor.EncryptIntermediateResult(0, "plaintext", "foo",
+                                          associated_metadata);
+  ASSERT_THAT(encrypted_result, IsOk());
+
+  // Decrypt using the same key — round-trip must succeed
+  EXPECT_THAT(decryptor.DecryptBlob(encrypted_result->metadata,
+                                    encrypted_result->ciphertext, "key_1"),
+              IsOkAndHolds("plaintext"));
+}
+
+TEST(KmsEncryptorTest,
+     EncryptIntermediateResultWithAssociatedMetadataGeneratesCorrectMetadata) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
+  KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
+                         "reencryption_policy_hash",
+                         std::make_unique<NiceMock<MockSigningKeyHandle>>());
+
+  AssociatedMetadata associated_metadata;
+  google::protobuf::Any* entry = associated_metadata.add_metadata();
+  entry->set_type_url("type.googleapis.com/test.Metadata");
+  entry->set_value("test_metadata_value");
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor.EncryptIntermediateResult(0, "plaintext", "foo",
+                                          associated_metadata);
+  ASSERT_THAT(encrypted_result, IsOk());
+
+  const BlobMetadata& metadata = encrypted_result->metadata;
+
+  // key_id should be set directly on HpkePlusAeadMetadata.
+  EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
+
+  // record_header should be empty (deprecated for new path).
+  EXPECT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .record_header()
+                  .empty());
+
+  // associated_metadata Any should be set and contain AssociatedMetadata.
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .has_associated_metadata());
+  AssociatedMetadata unpacked;
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .associated_metadata()
+                  .UnpackTo(&unpacked));
+  ASSERT_EQ(unpacked.metadata_size(), 1);
+  EXPECT_EQ(unpacked.metadata(0).type_url(),
+            "type.googleapis.com/test.Metadata");
+  EXPECT_EQ(unpacked.metadata(0).value(), "test_metadata_value");
+
+  // ciphertext_associated_data should be the serialized AssociatedMetadata.
+  EXPECT_EQ(metadata.hpke_plus_aead_data().ciphertext_associated_data(),
+            associated_metadata.SerializeAsString());
+}
+
+TEST(KmsEncryptorTest,
+     EncryptIntermediateResultWithAssociatedMetadataInvalidIndex) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_pair_1");
+  KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
+                         "reencryption_policy_hash",
+                         std::make_unique<NiceMock<MockSigningKeyHandle>>());
+  AssociatedMetadata associated_metadata;
+  EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo",
+                                                  associated_metadata),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(encryptor.EncryptIntermediateResult(-1, "plaintext", "bar",
+                                                  associated_metadata),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

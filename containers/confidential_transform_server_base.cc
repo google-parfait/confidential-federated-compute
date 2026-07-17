@@ -137,8 +137,12 @@ bool SessionContextImpl::EmitEncrypted(int reencryption_key_index,
   }
 
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
-      encryptor_->EncryptIntermediateResult(reencryption_key_index, kv.data,
-                                            kv.blob_id);
+      kv.associated_metadata.has_value()
+          ? encryptor_->EncryptIntermediateResult(reencryption_key_index,
+                                                  kv.data, kv.blob_id,
+                                                  *kv.associated_metadata)
+          : encryptor_->EncryptIntermediateResult(reencryption_key_index,
+                                                  kv.data, kv.blob_id);
   if (!encrypted_result.ok()) {
     LOG(ERROR) << "Failed to encrypt intermediate result: "
                << encrypted_result.status();

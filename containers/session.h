@@ -86,6 +86,15 @@ class Session {
     std::string data;
     // Blob ID associated with the data, if available; otherwise empty.
     std::string blob_id;
+    // Optional metadata to cryptographically bind as AEAD associated data
+    // when encrypting. When set, the AssociatedMetadata is serialized for
+    // use as AAD and packed into a google.protobuf.Any on
+    // KmsAssociatedData.associated_metadata. The deprecated record_header
+    // field is left empty.
+    //
+    // When not set, encryption falls back to the BlobHeader-based AAD path.
+    std::optional<fcp::confidentialcompute::AssociatedMetadata>
+        associated_metadata;
 
     // Implicit constructor that constructs KV from data.
     // This allows passing a string or literal in place of KV, for example
@@ -127,6 +136,11 @@ class Session {
     // reencryption key. This methods is appropriate only for temporary
     // encryption, for blobs that will be consumed by other parts of the
     // pipeline. Use `EmitReleasable` for emitting the final releasable result.
+    //
+    // If kv.associated_metadata is set, the AssociatedMetadata is serialized
+    // for use as AEAD associated data and packed into a google.protobuf.Any
+    // on KmsAssociatedData.associated_metadata. Otherwise, falls back to the
+    // BlobHeader-based AAD path.
     virtual bool EmitEncrypted(int reencryption_key_index, KV kv) = 0;
 
     // Encrypts and emits the releasable result using the provided key/value and
