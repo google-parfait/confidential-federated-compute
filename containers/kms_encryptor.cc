@@ -24,6 +24,7 @@
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -32,6 +33,32 @@ using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::OkpKey;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
+using ::google::protobuf::Any;
+
+namespace {
+
+// Builds BlobMetadata with the common HpkePlusAeadMetadata fields shared by
+// both metadata creation paths.
+BlobMetadata BuildCommonMetadata(const EncryptMessageResult& encrypted_message,
+                                 absl::string_view blob_id,
+                                 absl::string_view ciphertext_associated_data) {
+  BlobMetadata metadata;
+  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
+  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+
+  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
+      metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_metadata->set_ciphertext_associated_data(
+      ciphertext_associated_data);
+  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
+      encrypted_message.encrypted_symmetric_key);
+  hpke_plus_aead_metadata->set_encapsulated_public_key(
+      encrypted_message.encapped_key);
+  hpke_plus_aead_metadata->set_blob_id(blob_id);
+  return metadata;
+}
+
+}  // namespace
 
 absl::StatusOr<absl::string_view> KmsEncryptor::GetReencryptionKey(
     int reencryption_key_index) const {
@@ -43,7 +70,7 @@ absl::StatusOr<absl::string_view> KmsEncryptor::GetReencryptionKey(
   return reencryption_keys_[reencryption_key_index];
 }
 
-absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
+absl::StatusOr<std::string> KmsEncryptor::CreateSerializedBlobHeader(
     absl::string_view reencryption_key, absl::string_view blob_id) const {
   ABSL_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
 
@@ -53,23 +80,36 @@ absl::StatusOr<std::string> KmsEncryptor::CreateAssociatedData(
   return header.SerializeAsString();
 }
 
-BlobMetadata KmsEncryptor::CreateMetadata(
+// TODO: Remove the legacy codepath that uses record_header once we've verified
+// that this won't break any containers.
+BlobMetadata KmsEncryptor::CreateMetadataWithBlobHeader(
     const EncryptMessageResult& encrypted_message, absl::string_view blob_id,
-    absl::string_view associated_data) const {
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
+    absl::string_view blob_header) const {
+  BlobMetadata metadata =
+      BuildCommonMetadata(encrypted_message, blob_id, blob_header);
 
-  BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  hpke_plus_aead_metadata->set_ciphertext_associated_data(associated_data);
-  hpke_plus_aead_metadata->set_encrypted_symmetric_key(
-      encrypted_message.encrypted_symmetric_key);
-  hpke_plus_aead_metadata->set_encapsulated_public_key(
-      encrypted_message.encapped_key);
-  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
-  hpke_plus_aead_metadata->set_blob_id(blob_id);
+  // blob_header is a serialized BlobHeader which contains key_id inside it.
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->set_record_header(blob_header);
+
+  return metadata;
+}
+
+BlobMetadata KmsEncryptor::CreateMetadataWithAssociatedMetadata(
+    const EncryptMessageResult& encrypted_message, absl::string_view blob_id,
+    absl::string_view key_id, Any associated_metadata) const {
+  BlobMetadata metadata = BuildCommonMetadata(encrypted_message, blob_id,
+                                              associated_metadata.value());
+
+  // Pack AssociatedMetadata into KmsAssociatedData.associated_metadata. The
+  // deprecated record_header field is intentionally left empty.
+  *metadata.mutable_hpke_plus_aead_data()
+       ->mutable_kms_symmetric_key_associated_data()
+       ->mutable_associated_metadata() = std::move(associated_metadata);
+  // Set key_id directly on HpkePlusAeadMetadata.
+  metadata.mutable_hpke_plus_aead_data()->set_key_id(key_id);
+
   return metadata;
 }
 
@@ -80,13 +120,36 @@ KmsEncryptor::EncryptIntermediateResult(int reencryption_key_index,
   ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
                         GetReencryptionKey(reencryption_key_index));
   ABSL_ASSIGN_OR_RETURN(std::string associated_data,
-                        CreateAssociatedData(reencryption_key, blob_id));
+                        CreateSerializedBlobHeader(reencryption_key, blob_id));
   ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor_.Encrypt(plaintext, reencryption_key, associated_data));
 
   BlobMetadata metadata =
-      CreateMetadata(encrypted_message, blob_id, associated_data);
+      CreateMetadataWithBlobHeader(encrypted_message, blob_id, associated_data);
+  return EncryptedResult{.ciphertext = std::move(encrypted_message.ciphertext),
+                         .metadata = std::move(metadata)};
+}
+
+absl::StatusOr<KmsEncryptor::EncryptedResult>
+KmsEncryptor::EncryptIntermediateResult(
+    int reencryption_key_index, absl::string_view plaintext,
+    absl::string_view blob_id,
+    const fcp::confidentialcompute::AssociatedMetadata& associated_metadata)
+    const {
+  ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
+                        GetReencryptionKey(reencryption_key_index));
+  ABSL_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
+  Any associated_metadata_any;
+  associated_metadata_any.PackFrom(associated_metadata);
+  ABSL_ASSIGN_OR_RETURN(
+      EncryptMessageResult encrypted_message,
+      message_encryptor_.Encrypt(plaintext, reencryption_key,
+                                 associated_metadata_any.value()));
+
+  BlobMetadata metadata = CreateMetadataWithAssociatedMetadata(
+      encrypted_message, blob_id, okp_key.key_id,
+      std::move(associated_metadata_any));
   return EncryptedResult{.ciphertext = std::move(encrypted_message.ciphertext),
                          .metadata = std::move(metadata)};
 }
@@ -99,8 +162,7 @@ KmsEncryptor::EncryptReleasableResult(
   ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
                         GetReencryptionKey(reencryption_key_index));
   ABSL_ASSIGN_OR_RETURN(std::string associated_data,
-                        CreateAssociatedData(reencryption_key, blob_id));
-  MessageEncryptor message_encryptor;
+                        CreateSerializedBlobHeader(reencryption_key, blob_id));
   ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor_.EncryptForRelease(
@@ -112,7 +174,7 @@ KmsEncryptor::EncryptReleasableResult(
           }));
 
   BlobMetadata metadata =
-      CreateMetadata(encrypted_message, blob_id, associated_data);
+      CreateMetadataWithBlobHeader(encrypted_message, blob_id, associated_data);
 
   return EncryptedResult{
       .ciphertext = std::move(encrypted_message.ciphertext),
