@@ -1,0 +1,25 @@
+diff --git BUILD BUILD
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,19 @@
++load("@rules_python//python:defs.bzl", "py_library")
++
++package(default_visibility = ["//visibility:public"])
++
++py_library(
++    name = "mbi",
++    srcs = glob(["src/mbi/**/*.py"]),
++    imports = ["src"],
++    deps = [
++        "@pypi//attrs",
++        "@pypi//chex",
++        "@pypi//jax",
++        "@pypi//jaxlib",
++        "@pypi//networkx",
++        "@pypi//numpy",
++        "@pypi//optax",
++        "@pypi//scipy",
++    ],
++)

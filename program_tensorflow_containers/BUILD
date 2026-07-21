@@ -125,6 +125,7 @@ trusted_py_runtime(
     py_deps = [
         "@confidential_federated_compute_program//program_executor_tee/program_context:program_runner",
         ":initialize_program_tensorflow",
+        "@dpsynth//dpsynth",
         "@federated_compute//fcp/confidentialcompute/python:accounting",
         "@federated_compute//fcp/confidentialcompute/python:dp_mf_aggregator",
         "@federated_compute//fcp/confidentialcompute/python:min_sep_data_source",
@@ -134,6 +135,7 @@ trusted_py_runtime(
     ],
     source_repo_names = [
         "confidential_federated_compute_program",
+        "dpsynth",
         "federated_language",
         "federated_compute",
         "jax_privacy",
