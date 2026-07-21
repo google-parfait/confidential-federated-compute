@@ -318,6 +318,62 @@ def trusted_program(external_handle):
   ASSERT_TRUE(session_response.has_finalize());
 }
 
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDpSynth) {
+  this->CreateSession(R"(
+import numpy as np
+import pandas as pd
+
+from dpsynth import data_generation_v3
+from dpsynth import discrete_mechanisms
+from dpsynth import domain
+
+def trusted_program(external_handle):
+
+  dataframe = pd.DataFrame({
+      "age": [25, 38, 47, 52, 31, 42, 23, 60],
+      "income": [
+          "<=50K", ">50K", ">50K", "<=50K", "<=50K", ">50K", "<=50K", ">50K"
+      ],
+  })
+
+  domains = {
+      "age": domain.NumericalAttribute(
+          min_value=17, max_value=90, dtype="int", clip_to_range=True
+      ),
+      "income": domain.CategoricalAttribute(
+          possible_values=["<=50K", ">50K"], out_of_domain_index=0
+      ),
+  }
+
+  synthesizer = data_generation_v3.TabularSynthesizer(
+      domains=domains,
+      discrete_mechanism=discrete_mechanisms.IndependentMechanism(),
+  )
+  calibrated = synthesizer.configure(zcdp_rho=1.0)
+  rng = np.random.default_rng(0)
+  result = calibrated(rng, dataframe)
+
+  csv_bytes = result.synthetic_data.to_csv(index=False).encode("utf-8")
+  external_handle.release_unencrypted(csv_bytes, b"synthetic_csv")
+  )");
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  const std::string& synthetic_csv = released_data["synthetic_csv"];
+  ASSERT_FALSE(synthetic_csv.empty());
+  // The released blob is a CSV whose header mirrors the input schema.
+  EXPECT_THAT(synthetic_csv, ::testing::HasSubstr("age"));
+  EXPECT_THAT(synthetic_csv, ::testing::HasSubstr("income"));
+
+  ASSERT_TRUE(session_response.has_finalize());
+}
+
 TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDpmf) {
   this->CreateSession(R"(
 import functools

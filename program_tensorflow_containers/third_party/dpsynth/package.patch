@@ -1,0 +1,41 @@
+diff --git BUILD BUILD
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,3 @@
++package(
++    default_visibility = ["//visibility:public"],
++)
+diff --git dpsynth/BUILD dpsynth/BUILD
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ dpsynth/BUILD
+@@ -0,0 +1,26 @@
++load("@rules_python//python:defs.bzl", "py_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++)
++
++py_library(
++    name = "dpsynth",
++    srcs = glob(["**/*.py"]),
++    deps = [
++        "@mbi//:mbi",
++        "@pypi//absl_py",
++        "@pypi//attrs",
++        "@pypi//dp_accounting",
++        "@pypi//jax",
++        "@pypi//jaxlib",
++        "@pypi//more_itertools",
++        "@pypi//networkx",
++        "@pypi//numpy",
++        "@pypi//pandas",
++        "@pypi//pydantic",
++        "@pypi//pyyaml",
++        "@pypi//scipy",
++        "@pypi//tqdm",
++    ],
++)

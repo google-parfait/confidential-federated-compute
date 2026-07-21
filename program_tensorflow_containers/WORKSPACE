@@ -108,6 +108,16 @@ http_archive(
 )
 
 http_archive(
+    name = "dpsynth",
+    integrity = "sha256-5Zzs+0MWPymn5/NQWpiBk9Go81A6lege7vQ6B7QBn/g=",
+    patches = [
+        "//third_party/dpsynth:package.patch",
+    ],
+    strip_prefix = "dpsynth-369cedbee7adc32947b6f78bbfa6881044dfc5d2",
+    url = "https://github.com/google/dpsynth/archive/369cedbee7adc32947b6f78bbfa6881044dfc5d2.tar.gz",
+)
+
+http_archive(
     name = "federated_compute",
     integrity = "sha256-dQ41bouZrA2ws9FZ7T6de32S2CWWOv4Bc6QAjqwZX/o=",
     patch_cmds = [
@@ -158,6 +168,16 @@ git_repository(
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
     patches = ["//third_party/libcppbor:libcppbor.patch"],
     remote = "https://android.googlesource.com/platform/external/libcppbor",
+)
+
+http_archive(
+    name = "mbi",
+    integrity = "sha256-kTl8z2T8+BV359574IsL0j/m39n19Sf4QWxlNlLTIPY=",
+    patches = [
+        "//third_party/mbi:package.patch",
+    ],
+    strip_prefix = "mbi-5c06b59b85de151f846c1641193c90427be07b55",
+    url = "https://github.com/ryan112358/mbi/archive/5c06b59b85de151f846c1641193c90427be07b55.tar.gz",
 )
 
 http_archive(
