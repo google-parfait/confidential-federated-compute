@@ -224,11 +224,21 @@ std::string ConstructUserSessionFn::BuildSessionOutput(
 
 absl::Status ConstructUserSessionFn::EmitSessionOutput(std::string output_data,
                                                        Context& context) {
+  // Create the associated metadata with the session window timestamps.
+  fcp::confidentialcompute::SessionTimeWindowMetadata time_window_metadata;
+  *time_window_metadata.mutable_session_window_start() =
+      TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_start_));
+  *time_window_metadata.mutable_session_window_end() =
+      TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_end_));
+
+  fcp::confidentialcompute::AssociatedMetadata associated_metadata;
+  associated_metadata.add_metadata()->PackFrom(time_window_metadata);
+
+  Session::KV kv(std::move(output_data));
+  kv.associated_metadata = std::move(associated_metadata);
+
   // Emit the session output encrypted.
-  // TODO: Create the associated metadata with the session window once we
-  // update the encryption logic to handle it.
-  if (!context.EmitEncrypted(
-          /*reencryption_key_index=*/0, Session::KV(std::move(output_data)))) {
+  if (!context.EmitEncrypted(/*reencryption_key_index=*/0, std::move(kv))) {
     return absl::InternalError("Failed to emit encrypted session output");
   }
   return absl::OkStatus();

@@ -49,8 +49,10 @@ using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
+using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConstructUserSessionInitConfig;
+using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -474,6 +476,39 @@ TEST_F(ConstructUserSessionFnTest, EmptyCommitEmitsNothing) {
   auto commit_result = fn_->Commit(CommitRequest(), context_);
   ASSERT_THAT(commit_result, IsOk());
   // No EmitEncrypted calls expected (StrictMock would catch any).
+}
+
+TEST_F(ConstructUserSessionFnTest, EmittedKvHasTimeWindowMetadata) {
+  std::string checkpoint = BuildCheckpoint("user_1", {EventTimeAt(Hours(12))},
+                                           kQueryName, {{"score", {42}}});
+
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint), IsOk());
+
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
+      .WillOnce([&emitted_kv](int, Session::KV kv) {
+        emitted_kv = std::move(kv);
+        return true;
+      });
+
+  ASSERT_THAT(fn_->Commit(CommitRequest(), context_), IsOk());
+
+  // The emitted KV should have associated_metadata set.
+  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
+
+  // The associated_metadata should contain exactly one entry.
+  ASSERT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
+
+  // Unpack the SessionTimeWindowMetadata and verify the window times.
+  SessionTimeWindowMetadata time_window;
+  ASSERT_TRUE(
+      emitted_kv.associated_metadata->metadata(0).UnpackTo(&time_window));
+
+  // Default config uses Hours(0) to Hours(24) (see MakeValidConfig).
+  EXPECT_EQ(time_window.session_window_start(),
+            TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(0))));
+  EXPECT_EQ(time_window.session_window_end(),
+            TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(24))));
 }
 
 }  // namespace
