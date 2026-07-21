@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_MAP_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_MAP_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_MAP_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_MAP_H_
 
 #include <initializer_list>
 #include <optional>
@@ -24,10 +24,10 @@
 
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/interval_set.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/intervals/interval_set.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 // An ordered map from non-overlapping intervals to values.
 //
@@ -289,6 +289,6 @@ class IntervalMap {
   InnerMap map_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_MAP_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_MAP_H_

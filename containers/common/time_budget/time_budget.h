@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_TIME_BUDGET_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_TIME_BUDGET_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_TIME_BUDGET_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_TIME_BUDGET_H_
 
 #include <cstdint>
 #include <optional>
 #include <string>
 
 #include "absl/status/status.h"
-#include "containers/fed_sql/budget.pb.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/time_budget/budget_interval_map.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/time_budget/budget.pb.h"
+#include "containers/common/time_budget/budget_interval_map.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 // Time-based budget tracking implementation using minute-level granularity
 // buckets.
@@ -82,6 +82,6 @@ class TimeBudget {
   std::optional<BudgetIntervalMap> budget_map_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_TIME_BUDGET_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_TIME_BUDGET_H_

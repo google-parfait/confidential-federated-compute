@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/interval_set.h"
+#include "containers/common/intervals/interval_set.h"
 
 #include <initializer_list>
 #include <limits>
@@ -20,7 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::testing::ElementsAre;
@@ -231,4 +231,4 @@ TEST(IntervalSetTest, NotEquals) {
   EXPECT_TRUE(set_1 != set_2);
 }
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

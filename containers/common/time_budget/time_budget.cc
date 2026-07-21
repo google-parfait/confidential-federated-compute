@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/time_budget/time_budget.h"
+#include "containers/common/time_budget/time_budget.h"
 
 #include <cstdint>
 #include <iterator>
@@ -21,11 +21,11 @@
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "containers/fed_sql/budget.pb.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/time_budget/budget_interval_map.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/time_budget/budget.pb.h"
+#include "containers/common/time_budget/budget_interval_map.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
 constexpr uint64_t kDefaultTtlMinutes = 90 * 24 * 60;  // 90 days
@@ -164,4 +164,4 @@ absl::Status TimeBudget::UpdateBudget(Interval<uint64_t> time_window) {
   return absl::OkStatus();
 }
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

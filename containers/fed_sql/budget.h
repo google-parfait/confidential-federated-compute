@@ -22,9 +22,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "containers/fed_sql/budget.pb.h"
+#include "containers/common/time_budget/budget.pb.h"
+#include "containers/common/time_budget/time_budget.h"
 #include "containers/fed_sql/range_tracker.h"
-#include "containers/fed_sql/time_budget/time_budget.h"
 
 namespace confidential_federated_compute::fed_sql {
 

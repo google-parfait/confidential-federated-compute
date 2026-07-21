@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
 
 #include <cstdint>
 
 #include "absl/log/check.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/interval_map.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/intervals/interval_map.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 // An interval-based budget tracker backed by an IntervalMap<uint64_t,
 // uint64_t>.
@@ -97,6 +97,6 @@ class BudgetIntervalMap {
   uint64_t default_budget_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_TIME_BUDGET_BUDGET_INTERVAL_MAP_H_

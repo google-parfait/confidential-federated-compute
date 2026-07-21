@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_SET_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_SET_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_SET_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_SET_H_
 
 #include <algorithm>
 #include <initializer_list>
@@ -23,9 +23,9 @@
 
 #include "absl/container/btree_set.h"
 #include "absl/log/check.h"
-#include "containers/fed_sql/interval.h"
+#include "containers/common/intervals/interval.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 // Ordered set of non-overlapping, non-adjacent intervals.
 // This invariant is maintained when adding new intervals or joining with
@@ -221,6 +221,6 @@ class IntervalSet {
   InnerSet set_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INTERVAL_SET_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INTERVALS_INTERVAL_SET_H_

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/time_budget/budget_interval_map.h"
+#include "containers/common/time_budget/budget_interval_map.h"
 
 #include <cstdint>
 
 #include "gtest/gtest.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
 TEST(BudgetIntervalMapTest, EmptyMap) {
@@ -147,4 +147,4 @@ TEST(BudgetIntervalMapTest, CleanupStaleIntervalsRemovesExpired) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

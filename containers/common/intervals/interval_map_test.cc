@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/interval_map.h"
+#include "containers/common/intervals/interval_map.h"
 
 #include <cstdint>
 #include <utility>
@@ -20,7 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::testing::ElementsAre;
@@ -258,4 +258,4 @@ TEST(IntervalMapTest, EraseIfByIntervalEnd) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

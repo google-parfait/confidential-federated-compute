@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/time_budget/time_budget.h"
+#include "containers/common/time_budget/time_budget.h"
 
 #include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "containers/fed_sql/budget.pb.h"
-#include "containers/fed_sql/interval.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/time_budget/budget.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
 using ::absl_testing::IsOk;
@@ -237,4 +237,4 @@ TEST(TimeBudgetTest, CleanupStaleIntervals) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

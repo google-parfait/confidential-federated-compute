@@ -17,7 +17,7 @@
 #include <string>
 
 #include "absl/strings/cord.h"
-#include "containers/fed_sql/budget.pb.h"
+#include "containers/common/time_budget/budget.pb.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

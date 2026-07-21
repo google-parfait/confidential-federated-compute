@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/interval_set.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/intervals/interval_set.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 
 namespace confidential_federated_compute::fed_sql {

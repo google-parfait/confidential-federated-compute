@@ -19,7 +19,7 @@
 #include <string>
 
 #include "absl/status/status_macros.h"
-#include "containers/fed_sql/budget.pb.h"
+#include "containers/common/time_budget/budget.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
 

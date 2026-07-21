@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/time_budget/budget_interval_map.h"
+#include "containers/common/time_budget/budget_interval_map.h"
 
 #include <cstdint>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "containers/fed_sql/interval.h"
-#include "containers/fed_sql/interval_map.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/intervals/interval_map.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 bool BudgetIntervalMap::HasBudget(Interval<uint64_t> interval) {
   return map_.ForEachValue(interval, [](uint64_t& v) { return v > 0; });
@@ -66,4 +66,4 @@ void BudgetIntervalMap::CleanupStaleIntervals(uint64_t ttl_mins) {
   });
 }
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

@@ -194,13 +194,13 @@ cc_test(
     size = "small",
     srcs = ["confidential_transform_server_test.cc"],
     deps = [
-        ":budget_cc_proto",
         ":confidential_transform_server",
         ":inference_model",
         ":range_tracker",
         "//containers:big_endian",
         "//containers:crypto",
         "//containers:crypto_test_utils",
+        "//containers/common/time_budget:budget_cc_proto",
         "//containers/fed_sql/testing:mocks",
         "//containers/fed_sql/testing:test_utils",
         "//testing:matchers",
@@ -281,10 +281,10 @@ cc_library(
     srcs = ["dp_unit.cc"],
     hdrs = ["dp_unit.h"],
     deps = [
-        ":interval_set",
         ":session_utils",
         "//containers/common:row_set",
         "//containers/common:sqlite_adapter",
+        "//containers/common/intervals:interval_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -386,7 +386,6 @@ cc_test(
     srcs = ["kms_session_test.cc"],
     deps = [
         ":any_bundle",
-        ":budget_cc_proto",
         ":inference_model",
         ":kms_session",
         ":partition_private_state_cc_proto",
@@ -395,6 +394,7 @@ cc_test(
         "//containers:big_endian",
         "//containers:crypto",
         "//containers:crypto_test_utils",
+        "//containers/common/time_budget:budget_cc_proto",
         "//containers/fed_sql/testing:mocks",
         "//containers/fed_sql/testing:test_utils",
         "//containers/testing",
@@ -427,60 +427,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "interval",
-    hdrs = ["interval.h"],
-    visibility = ["//containers/fed_sql:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_library(
-    name = "interval_set",
-    hdrs = ["interval_set.h"],
-    deps = [
-        ":interval",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_test(
-    name = "interval_set_test",
-    size = "small",
-    srcs = ["interval_set_test.cc"],
-    deps = [
-        ":interval_set",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "interval_map",
-    hdrs = ["interval_map.h"],
-    visibility = ["//containers/fed_sql:__subpackages__"],
-    deps = [
-        ":interval",
-        ":interval_set",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_test(
-    name = "interval_map_test",
-    size = "small",
-    srcs = ["interval_map_test.cc"],
-    deps = [
-        ":interval",
-        ":interval_map",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-    ],
-)
-
 proto_library(
     name = "range_tracker_proto",
     srcs = ["range_tracker.proto"],
@@ -508,8 +454,8 @@ cc_library(
     hdrs = ["range_tracker.h"],
     deps = [
         ":any_bundle",
-        ":interval_set",
         ":range_tracker_cc_proto",
+        "//containers/common/intervals:interval_set",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -535,8 +481,8 @@ cc_test(
     srcs = ["any_bundle_test.cc"],
     deps = [
         ":any_bundle",
-        ":budget_cc_proto",
         ":range_tracker_cc_proto",
+        "//containers/common/time_budget:budget_cc_proto",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@googletest//:gtest",
@@ -544,25 +490,14 @@ cc_test(
     ],
 )
 
-proto_library(
-    name = "budget_proto",
-    srcs = ["budget.proto"],
-)
-
-cc_proto_library(
-    name = "budget_cc_proto",
-    visibility = ["//containers/fed_sql:__subpackages__"],
-    deps = [":budget_proto"],
-)
-
 cc_library(
     name = "budget",
     srcs = ["budget.cc"],
     hdrs = ["budget.h"],
     deps = [
-        ":budget_cc_proto",
         ":range_tracker",
-        "//containers/fed_sql/time_budget",
+        "//containers/common/time_budget",
+        "//containers/common/time_budget:budget_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",

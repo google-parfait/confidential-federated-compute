@@ -20,7 +20,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "containers/fed_sql/interval.h"
+#include "containers/common/intervals/interval.h"
 #include "containers/fed_sql/partition_private_state.pb.h"
 #include "containers/fed_sql/range_tracker.h"
 

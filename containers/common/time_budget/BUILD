@@ -12,17 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//containers:__subpackages__"])
+
+proto_library(
+    name = "budget_proto",
+    srcs = ["budget.proto"],
+)
+
+cc_proto_library(
+    name = "budget_cc_proto",
+    visibility = ["//containers:__subpackages__"],
+    deps = [":budget_proto"],
+)
 
 cc_library(
     name = "budget_interval_map",
     srcs = ["budget_interval_map.cc"],
     hdrs = ["budget_interval_map.h"],
     deps = [
-        "//containers/fed_sql:interval",
-        "//containers/fed_sql:interval_map",
+        "//containers/common/intervals:interval",
+        "//containers/common/intervals:interval_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
     ],
@@ -34,7 +47,7 @@ cc_test(
     srcs = ["budget_interval_map_test.cc"],
     deps = [
         ":budget_interval_map",
-        "//containers/fed_sql:interval",
+        "//containers/common/intervals:interval",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
@@ -45,9 +58,9 @@ cc_library(
     srcs = ["time_budget.cc"],
     hdrs = ["time_budget.h"],
     deps = [
+        ":budget_cc_proto",
         ":budget_interval_map",
-        "//containers/fed_sql:budget_cc_proto",
-        "//containers/fed_sql:interval",
+        "//containers/common/intervals:interval",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
     ],
@@ -57,9 +70,9 @@ cc_test(
     name = "time_budget_test",
     srcs = ["time_budget_test.cc"],
     deps = [
+        ":budget_cc_proto",
         ":time_budget",
-        "//containers/fed_sql:budget_cc_proto",
-        "//containers/fed_sql:interval",
+        "//containers/common/intervals:interval",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@googletest//:gtest",
