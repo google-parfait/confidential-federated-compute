@@ -73,7 +73,6 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultWithAssociatedMetadata) {
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
   KmsEncryptor encryptor(
       std::vector<std::string>{key_pair_1.first, key_pair_2.first},
-      "reencryption_policy_hash",
       std::make_unique<NiceMock<MockSigningKeyHandle>>());
 
   Decryptor decryptor({key_pair_1.second, key_pair_2.second});
@@ -100,7 +99,6 @@ TEST(KmsEncryptorTest,
      EncryptIntermediateResultWithAssociatedMetadataGeneratesCorrectMetadata) {
   auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
   KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
-                         "reencryption_policy_hash",
                          std::make_unique<NiceMock<MockSigningKeyHandle>>());
 
   AssociatedMetadata associated_metadata;
@@ -147,7 +145,6 @@ TEST(KmsEncryptorTest,
      EncryptIntermediateResultWithAssociatedMetadataInvalidIndex) {
   auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_pair_1");
   KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
-                         "reencryption_policy_hash",
                          std::make_unique<NiceMock<MockSigningKeyHandle>>());
   AssociatedMetadata associated_metadata;
   EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo",
