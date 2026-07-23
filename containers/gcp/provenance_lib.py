@@ -247,61 +247,6 @@ def extract_cert_metadata(entry):
 
     return github_sha, workflow_uri
 
-def fetch_oak_bundle_by_sha(github_sha, target_digest):
-    """
-    Given a GITHUB_SHA, enumerate the Oak GCS bucket for all packages built at that commit,
-    download their attestation bundles, and return the one matching the target digest.
-    """
-    if target_digest.startswith("sha256:"):
-        target_digest = target_digest[7:]
-
-    # GCS JSON API endpoint to list objects with a specific prefix
-    list_url = f"https://storage.googleapis.com/storage/v1/b/oak-bins/o?prefix=provenance/{github_sha}/"
-    req = urllib.request.Request(list_url, headers={"Accept": "application/json"})
-
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None # Bucket or prefix not found
-        raise Exception(f"HTTP Error querying Oak bucket: {e.code} {e.reason}")
-
-    items = data.get("items", [])
-    if not items:
-        return None
-
-    for item in items:
-        if not item["name"].endswith("attestation.jsonl"):
-            continue
-
-        # Download the bundle
-        dl_url = item["mediaLink"]
-        try:
-            with urllib.request.urlopen(dl_url, timeout=10) as res:
-                bundle = json.loads(res.read().decode())
-
-            # Extract DSSE payload and find subject digest
-            dsse = bundle.get("dsseEnvelope", {})
-            payload_b64 = dsse.get("payload", "")
-            if not payload_b64:
-                continue
-
-            payload = json.loads(base64.b64decode(payload_b64).decode('utf-8'))
-            # NOTE: Takes only the FIRST subject (index [0]) from the in-toto statement.
-            # SLSA provenance bundles for container images have exactly one subject
-            # (the container digest). This is safe for our use case.
-            subject = payload.get("subject", [{}])[0]
-            subject_digest = subject.get("digest", {}).get("sha256", "")
-
-            if subject_digest == target_digest:
-                return bundle
-        except Exception as e:
-            print(f"Warning: Failed to fetch or parse {item['name']}: {e}")
-            continue
-
-    return None
-
 def fetch_rekor_payload_hashes(digest):
     """
     Queries the Rekor transparency log and returns a set of valid payload hashes.
@@ -549,129 +494,10 @@ def extract_provenance_metadata(attestations, digest):
 
     return subject_name, subject_digest, list(unique_commits), custom_metadata, workflows
 
-def _compare_single_bundle(gh_bundle, oak_bundle):
-    """Compare two SLSA bundles field-by-field. Raises VerificationError on mismatch.
-
-    Checks ALL of the following fields — none are skipped:
-      1. dsseEnvelope.payload (byte-identical base64 content)
-      2. dsseEnvelope.payloadType
-      3. dsseEnvelope.signatures (count AND each sig's bytes)
-      4. verificationMaterial (normalized: empty strings/lists/dicts stripped)
-      5. mediaType
-    If ANY check fails, raises VerificationError immediately with a specific message.
-    If ALL pass, returns normally (implicit success).
-    """
-    def _strip_empty_defaults(obj):
-        """Recursively remove keys whose values are or become empty strings, lists, or dicts."""
-        if isinstance(obj, dict):
-            stripped = {}
-            for k, v in obj.items():
-                sv = _strip_empty_defaults(v)
-                if sv != "" and sv != [] and sv != {}:
-                    stripped[k] = sv
-            return stripped
-        if isinstance(obj, list):
-            return [_strip_empty_defaults(item) for item in obj]
-        return obj
-
-    gh_dsse = gh_bundle.get("dsseEnvelope", {})
-    oak_dsse = oak_bundle.get("dsseEnvelope", {})
-
-    # 1. Payloads must be byte-identical (the actual in-toto statement)
-    if gh_dsse.get("payload") != oak_dsse.get("payload"):
-        raise VerificationError("GitHub and Oak SLSA attestation payloads differ. Possible tampering.")
-
-    # 2. Payload type must match
-    if gh_dsse.get("payloadType") != oak_dsse.get("payloadType"):
-        raise VerificationError("GitHub and Oak SLSA attestation payloadType differs.")
-
-    # 3. Signature bytes must match (ignore empty optional fields like keyid)
-    gh_sigs = gh_dsse.get("signatures", [])
-    oak_sigs = oak_dsse.get("signatures", [])
-    if len(gh_sigs) != len(oak_sigs):
-        raise VerificationError(f"GitHub has {len(gh_sigs)} signature(s) but Oak has {len(oak_sigs)}.")
-    for sig_idx in range(len(gh_sigs)):
-        if gh_sigs[sig_idx].get("sig") != oak_sigs[sig_idx].get("sig"):
-            raise VerificationError(f"GitHub and Oak SLSA signature[{sig_idx}] bytes differ. Possible tampering.")
-
-    # 4. Verification material must match (normalized to strip empty defaults)
-    gh_vm = _strip_empty_defaults(gh_bundle.get("verificationMaterial", {}))
-    oak_vm = _strip_empty_defaults(oak_bundle.get("verificationMaterial", {}))
-    if gh_vm != oak_vm:
-        raise VerificationError("GitHub and Oak SLSA verification material differs. Possible tampering.")
-
-    # 5. Media type
-    if gh_bundle.get("mediaType") != oak_bundle.get("mediaType"):
-        raise VerificationError("GitHub and Oak SLSA bundle mediaType differs.")
-
-def _compare_attestation_sources(github_attestations, oak_attestations):
-    """
-    Verify that the Oak bucket SLSA provenance bundle is a complete, identical
-    copy of the corresponding GitHub SLSA provenance bundle. This validates that
-    if GitHub becomes unavailable, the Oak bundle is a 100% reliable fallback.
-
-    The Oak bucket only contains the SLSA provenance attestation (custom metadata
-    is GitHub-only and supplementary — not required for provenance verification).
-    """
-    # NOTE: We only compare ONE Oak bundle (index [0]). The caller (fetch_and_verify)
-    # stops at the first Oak bundle it finds (via break), so oak_attestations always
-    # has exactly one entry. This single Oak bundle is compared against ALL GitHub
-    # SLSA provenance bundles to find its match — it must match at least one.
-    oak_bundle = oak_attestations[0].get("bundle")
-    if not oak_bundle or not isinstance(oak_bundle, dict):
-        fail("Oak attestation is missing a valid 'bundle' object for comparison.")
-
-    mismatch_reasons = []
-    # Iterate through ALL GitHub attestations, filtering for SLSA provenance type.
-    # Non-SLSA attestations (e.g. custom metadata) are skipped via continue.
-    # Each SLSA provenance bundle is compared against the single Oak bundle.
-    # On the FIRST match, we return success. If NO match is found after checking
-    # all SLSA bundles, we hard-fail with the accumulated mismatch reasons.
-    for idx, att in enumerate(github_attestations):
-        gh_bundle = att.get("bundle")
-        if not gh_bundle or not isinstance(gh_bundle, dict):
-            continue
-
-        dsse = gh_bundle.get("dsseEnvelope", {})
-        payload_b64 = dsse.get("payload", "")
-        if not payload_b64:
-            continue
-
-        try:
-            payload = json.loads(base64.b64decode(payload_b64).decode('utf-8'))
-            predicate_type = payload.get("predicateType", "")
-        except Exception:
-            continue
-
-        if "slsa.dev/provenance" not in predicate_type:
-            continue
-
-        # Found a SLSA provenance from GitHub. Compare content field-by-field.
-        try:
-            _compare_single_bundle(gh_bundle, oak_bundle)
-            gh_sigs = gh_bundle.get("dsseEnvelope", {}).get("signatures", [])
-            print(f"  -> DSSE payload: identical.")
-            print(f"  -> DSSE payloadType: identical.")
-            print(f"  -> DSSE signatures ({len(gh_sigs)}): identical.")
-            print(f"  -> Verification material: identical.")
-            print(f"  -> SLSA provenance bundle: GitHub and Oak content fully verified as identical.")
-            return
-        except VerificationError as e:
-            mismatch_reasons.append(str(e))
-
-    if not mismatch_reasons:
-        fail("GitHub attestations do not contain an SLSA provenance bundle for comparison with Oak.")
-    else:
-        fail(f"CRITICAL: Oak bundle did not match any of the {len(mismatch_reasons)} GitHub SLSA provenance bundles. Mismatches: {mismatch_reasons}")
-
 def fetch_and_verify(digest):
     """
     Main entrypoint: orchestrates fetching, signature verification, Rekor
     cross-checking, and metadata extraction.
-
-    For client containers, both GitHub and Oak sources are queried and compared.
-    If one source is unavailable, the other is used with a warning.
-    For server containers, only GitHub is queried (Oak fallback not yet implemented).
 
     Args:
         digest (str): The target digest (can optionally include 'sha256:' prefix).
@@ -735,54 +561,13 @@ def fetch_and_verify(digest):
     except Exception as e:
         print(f"  -> WARNING: GitHub API unavailable: {e}")
 
-    # For client containers, also try Oak bucket.
-    # We iterate through unique SHAs from Rekor and stop at the FIRST one that
-    # has a matching bundle in the Oak bucket (break on first success). This is
-    # intentional: we only need ONE Oak bundle to cross-check against GitHub.
-    # The Oak bundle is later verified field-by-field in _compare_attestation_sources,
-    # and independently verified by Sigstore (Step 3) and Rekor (Step 3.5).
-    oak_attestations = None
-    if is_client:
-        seen_shas = set()
-        for sha, uri in valid_cert_metadata:
-            if sha in seen_shas:
-                continue
-            seen_shas.add(sha)
-            try:
-                bundle = fetch_oak_bundle_by_sha(sha, digest_clean)
-                if bundle:
-                    oak_attestations = [{"bundle": bundle}]
-                    print(f"  -> Found 1 attestation bundle in Oak bucket (via SHA {sha}).")
-                    break
-            except Exception as e:
-                print(f"  -> WARNING: Oak bucket fetch failed for SHA {sha}: {e}")
-        if not oak_attestations:
-            print(f"  -> WARNING: No matching bundle found in Oak bucket for any of the {len(seen_shas)} unique SHA(s).")
-
     # Decision: which source(s) to use
     is_offline = False
-    if github_attestations and oak_attestations:
-        # Both available — compare full SLSA bundle content
-        print(f"  -> Both sources available. Cross-checking SLSA bundle consistency...")
-        _compare_attestation_sources(github_attestations, oak_attestations)
-        attestations = github_attestations  # Use GitHub as primary (has custom metadata too)
-        print()
-    elif github_attestations:
-        if is_client:
-            print(f"  -> WARNING: Only GitHub source available for client container (Oak bucket unavailable).")
+    if github_attestations:
         attestations = github_attestations
         print()
-    elif oak_attestations:
-        print(f"  -> WARNING: Only Oak bucket source available (GitHub API unavailable).")
-        print(f"  -> Note: Custom metadata attestation is GitHub-only and will not be available.")
-        attestations = oak_attestations
-        is_offline = True
-        print()
     else:
-        if is_client:
-            fail("Neither GitHub API nor Oak bucket returned valid attestations. Cannot proceed.")
-        else:
-            fail("GitHub API unavailable and no alternative source exists for server containers yet.")
+        fail("GitHub API unavailable. Cannot proceed.")
 
     # ---- STEP 3: Cryptographic verification ----
     print(f"[*] STEP 3/4: Cryptographic Verification via Sigstore...")
