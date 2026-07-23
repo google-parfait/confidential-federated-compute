@@ -95,6 +95,22 @@ http_archive(
 )
 
 http_archive(
+    name = "dp_accounting",
+    integrity = "sha256-wqHt4iVgYlaeELJ+Yr6WOgsI/H5FUfl+mkCYDz1bW58=",
+    patch_cmds = [
+        # The upstream repo ships BUILD.bazel files (which take precedence over
+        # BUILD) that reference repos not present here (@accounting_py_pip_deps).
+        # Delete them so package.patch's overlay BUILD defines the py_library.
+        "find . -name 'BUILD.bazel' -delete",
+    ],
+    patches = [
+        "//third_party/dp_accounting:package.patch",
+    ],
+    strip_prefix = "differential-privacy-07da5442d9fa374822a5d32f4ca50aa16ae57f6f/python/dp_accounting",
+    url = "https://github.com/google/differential-privacy/archive/07da5442d9fa374822a5d32f4ca50aa16ae57f6f.tar.gz",
+)
+
+http_archive(
     name = "federated_compute",
     integrity = "sha256-AfmE/T6YQjsAvqPfjMqU/fqBt+vtD/wR6bFJHT+o0TI=",
     patches = [

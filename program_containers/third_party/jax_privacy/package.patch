@@ -26,7 +26,7 @@ index 0000000..d67bcf3
 +	deps = [
 +		"@pypi//absl_py",
 +		"@pypi//chex",
-+		"@pypi//dp_accounting",
++		"@dp_accounting//dp_accounting",
 +		"@pypi//jax",
 +		"@pypi//jaxlib",
 +		"@pypi//numpy",

@@ -108,6 +108,22 @@ http_archive(
 )
 
 http_archive(
+    name = "dp_accounting",
+    integrity = "sha256-wqHt4iVgYlaeELJ+Yr6WOgsI/H5FUfl+mkCYDz1bW58=",
+    patch_cmds = [
+        # The upstream repo ships BUILD.bazel files (which take precedence over
+        # BUILD) that reference repos not present here (@accounting_py_pip_deps).
+        # Delete them so package.patch's overlay BUILD defines the py_library.
+        "find . -name 'BUILD.bazel' -delete",
+    ],
+    patches = [
+        "//third_party/dp_accounting:package.patch",
+    ],
+    strip_prefix = "differential-privacy-07da5442d9fa374822a5d32f4ca50aa16ae57f6f/python/dp_accounting",
+    url = "https://github.com/google/differential-privacy/archive/07da5442d9fa374822a5d32f4ca50aa16ae57f6f.tar.gz",
+)
+
+http_archive(
     name = "dpsynth",
     integrity = "sha256-5Zzs+0MWPymn5/NQWpiBk9Go81A6lege7vQ6B7QBn/g=",
     patches = [
@@ -123,6 +139,7 @@ http_archive(
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
+        "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
     strip_prefix = "federated-compute-fd4b5acfdd6600a017b8eda3476f167ff6735e62",
@@ -155,6 +172,9 @@ http_archive(
 http_archive(
     name = "jax_privacy",
     integrity = "sha256-zjVOFalwAsN7TWeW27wAtfAkMbU8Lk+cqwb6iwUrFCA=",
+    patch_cmds = [
+        "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' jax_privacy/BUILD",
+    ],
     patches = [
         "@confidential_federated_compute_program//third_party/jax_privacy:package.patch",
     ],
