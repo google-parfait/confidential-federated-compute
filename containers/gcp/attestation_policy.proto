@@ -64,6 +64,13 @@ message AttestationPolicy {
   // Populated from server_image_registry.json at build time.
   repeated string expected_image_digest = 9;
 
+  // --- Confidential Space Image Version ---
+
+  // Minimum required Confidential Space image version (e.g., "260500").
+  // The token's `swversion` claim must be >= this value (lexicographic comparison).
+  // Leave empty to skip enforcement.
+  string min_swversion = 15;
+
   // --- RETIRED FIELDS ---
   // We reserve these numbers and names to prevent accidental reuse or 
   // wire-format collisions with older clients/configs.

@@ -43,6 +43,8 @@ def main():
                         help="Maximum software TCB age in days.")
     parser.add_argument("--max_hw_tcb_age_days", type=int, required=True,
                         help="Maximum hardware TCB age in days.")
+    parser.add_argument("--min_swversion", default="",
+                        help="Minimum Confidential Space image version.")
     args = parser.parse_args()
 
     with open(args.registry) as f:
@@ -77,6 +79,7 @@ def main():
         f.write(f'min_hw_tcb_date: "{args.min_hw_tcb_date}"\n')
         f.write('expected_project_id: ""\n')
         f.write('expected_service_account: ""\n')
+        f.write(f'min_swversion: "{args.min_swversion}"\n')
         for d in digests:
             f.write(f'expected_image_digest: "{d}"\n')
 

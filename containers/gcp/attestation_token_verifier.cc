@@ -70,6 +70,14 @@ constexpr char kHwTcbStatus[] = "attester_tcb_status";
 constexpr char kHwTcbDate[] = "attester_tcb_date";
 constexpr char kSubmodConfidentialSpace[] = "confidential_space";
 constexpr char kSupportAttributes[] = "support_attributes";
+constexpr char kMonitoringEnabled[] = "monitoring_enabled";
+constexpr char kMonitoringMemory[] = "memory";
+constexpr char kSwNameAttributeName[] = "swname";
+constexpr char kCvmComplianceStatus[] = "cvm_compliance_status";
+
+// Hard-coded invariant values for production Confidential Space.
+constexpr char kExpectedSwName[] = "CONFIDENTIAL_SPACE";
+constexpr char kExpectedCvmComplianceStatus[] = "gcp_compliant_cvm";
 
 /**
  * @brief Implements policy-based attestation verification for Confidential
@@ -147,6 +155,15 @@ class AttestationTokenVerifierImpl : public AttestationTokenVerifier {
 
     // Confidential Space operational attributes (e.g., DEBUG/EXPERIMENTAL).
     std::vector<std::string> cs_support_attributes;
+
+    // Confidential Space identity claims (hard-coded invariants).
+    absl::StatusOr<std::string> swname = absl::InternalError("Uninitialized");
+    absl::StatusOr<std::string> cvm_compliance_status =
+        absl::InternalError("Uninitialized");
+    std::optional<bool> monitoring_memory_enabled;
+
+    // Confidential Space version (parameterized via policy).
+    std::vector<std::string> swversion;
   };
 
   // Verifies signature and standard claims (issuer, audience, expiry).
@@ -459,6 +476,49 @@ AttestationTokenVerifierImpl::ExtractAndLogClaims(
                     ? "[None Found]"
                     : nlohmann::json(claims.cs_support_attributes).dump());
 
+  // 6. Confidential Space Identity Claims (hard-coded invariants)
+  claims.swname = GetStringClaimFromPath(payload_json, {kSwNameAttributeName});
+  log_parsed_claim(kSwNameAttributeName, claims.swname);
+
+  claims.cvm_compliance_status =
+      GetStringClaimFromPath(payload_json, {kTdx, kCvmComplianceStatus});
+  log_parsed_claim("tdx.cvm_compliance_status", claims.cvm_compliance_status);
+
+  // Memory monitoring: submods.confidential_space.monitoring_enabled.memory
+  if (payload_json.contains(kJwtSubmodsAttributeName) &&
+      payload_json[kJwtSubmodsAttributeName].contains(
+          kSubmodConfidentialSpace) &&
+      payload_json[kJwtSubmodsAttributeName][kSubmodConfidentialSpace].contains(
+          kMonitoringEnabled) &&
+      payload_json[kJwtSubmodsAttributeName][kSubmodConfidentialSpace]
+                  [kMonitoringEnabled]
+                      .contains(kMonitoringMemory)) {
+    const auto& mem_val =
+        payload_json[kJwtSubmodsAttributeName][kSubmodConfidentialSpace]
+                    [kMonitoringEnabled][kMonitoringMemory];
+    if (mem_val.is_boolean()) {
+      claims.monitoring_memory_enabled = mem_val.get<bool>();
+      LOG(INFO) << "  monitoring_enabled.memory: "
+                << (*claims.monitoring_memory_enabled ? "true" : "false");
+    }
+  } else {
+    LOG(WARNING) << "  monitoring_enabled.memory: Claim not found.";
+  }
+
+  // 7. Confidential Space version (parameterized)
+  auto swversion_or =
+      GetStringListClaimFromPath(payload_json, {kSwVersionAttributeName});
+  if (swversion_or.ok()) {
+    claims.swversion = *swversion_or;
+  } else {
+    LOG(WARNING) << "Failed to parse swversion as string list: "
+                 << swversion_or.status();
+  }
+  LOG(INFO) << "  swversion: "
+            << (claims.swversion.empty()
+                    ? "[None Found]"
+                    : nlohmann::json(claims.swversion).dump());
+
   auto iat_or = verified_jwt.GetIssuedAt();
   if (iat_or.ok()) {
     claims.token_issuance_time = *iat_or;
@@ -680,6 +740,58 @@ absl::Status AttestationTokenVerifierImpl::EnforcePolicy(
               << policy_.expected_image_digest_size() << " approved digest(s).";
   } else {
     LOG(INFO) << "  [INFO] Image digest check skipped by policy.";
+  }
+
+  // 7. Confidential Space Identity: Hard-coded invariants.
+  // These are not parameterized — a valid production CS VM always has these.
+  status =
+      CheckStringMatch(claims.swname, kExpectedSwName, kSwNameAttributeName);
+  if (!status.ok()) return status;
+  LOG(INFO) << "  [PASS] swname matches '" << kExpectedSwName << "'";
+
+  status = CheckStringMatch(claims.cvm_compliance_status,
+                            kExpectedCvmComplianceStatus,
+                            "tdx.cvm_compliance_status");
+  if (!status.ok()) return status;
+  LOG(INFO) << "  [PASS] cvm_compliance_status matches '"
+            << kExpectedCvmComplianceStatus << "'";
+
+  // 8. Memory monitoring must be disabled.
+  if (claims.monitoring_memory_enabled.has_value() &&
+      *claims.monitoring_memory_enabled) {
+    return absl::PermissionDeniedError(
+        "Policy violation: Memory monitoring is enabled "
+        "(submods.confidential_space.monitoring_enabled.memory = true). "
+        "This must be disabled for production workloads.");
+  }
+  LOG(INFO) << "  [PASS] Memory monitoring is disabled.";
+
+  // 9. Confidential Space version: Parameterized minimum.
+  if (!policy_.min_swversion().empty()) {
+    if (claims.swversion.empty()) {
+      return absl::PermissionDeniedError(
+          "Policy violation: swversion claim not found in token, "
+          "but min_swversion is configured in policy.");
+    }
+    // swversion is a list; check that at least one entry meets the minimum.
+    bool version_ok = false;
+    for (const auto& v : claims.swversion) {
+      if (v >= policy_.min_swversion()) {
+        version_ok = true;
+        break;
+      }
+    }
+    if (!version_ok) {
+      return absl::PermissionDeniedError(
+          absl::StrCat("Policy violation: swversion ",
+                       nlohmann::json(claims.swversion).dump(),
+                       " does not meet minimum required version '",
+                       policy_.min_swversion(), "'."));
+    }
+    LOG(INFO) << "  [PASS] swversion meets minimum '" << policy_.min_swversion()
+              << "'.";
+  } else {
+    LOG(INFO) << "  [INFO] swversion check skipped by policy.";
   }
 
   LOG(INFO) << "Attestation policy checks passed.";

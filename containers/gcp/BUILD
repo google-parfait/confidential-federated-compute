@@ -408,6 +408,11 @@ int_flag(
     build_setting_default = 540,
 )
 
+image_digest_flag(
+    name = "min_swversion",
+    build_setting_default = "260500",
+)
+
 generate_policy(
     name = "gen_policy_ita",
     out = "policy_ita.textproto",
@@ -416,6 +421,7 @@ generate_policy(
     max_sw_tcb_age_days = ":max_sw_tcb_age_days",
     min_hw_tcb_date = ":min_hw_tcb_date",
     min_sw_tcb_date = ":min_sw_tcb_date",
+    min_swversion = ":min_swversion",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
     server_max_age_days = ":server_max_age_days",
@@ -439,6 +445,7 @@ generate_policy(
     max_sw_tcb_age_days = ":max_sw_tcb_age_days",
     min_hw_tcb_date = ":min_hw_tcb_date",
     min_sw_tcb_date = ":min_sw_tcb_date",
+    min_swversion = ":min_swversion",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
     server_max_age_days = ":server_max_age_days",

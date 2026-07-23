@@ -21,6 +21,7 @@ MIN_SW_TCB_DATE=""
 MIN_HW_TCB_DATE=""
 MAX_SW_TCB_AGE_DAYS=540
 MAX_HW_TCB_AGE_DAYS=540
+MIN_SWVERSION="260500"
 EXTRA_BAZEL_ARGS=""
 
 # ─── Parse flags ─────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ for arg in "$@"; do
     --min_hw_tcb_date=*) MIN_HW_TCB_DATE="${arg#*=}" ;;
     --max_sw_tcb_age_days=*) MAX_SW_TCB_AGE_DAYS="${arg#*=}" ;;
     --max_hw_tcb_age_days=*) MAX_HW_TCB_AGE_DAYS="${arg#*=}" ;;
+    --min_swversion=*) MIN_SWVERSION="${arg#*=}" ;;
     --server_digest=*) EXTRA_BAZEL_ARGS="--//:server_digest=${arg#*=}" ;;
     --help|-h)
       echo "Usage: $0 --model=<model_name> [--attestation=ita|gca] [--alts|--no-alts]"
@@ -49,6 +51,7 @@ for arg in "$@"; do
       echo "  --min_hw_tcb_date Minimum hardware TCB date (RFC3339 timestamp)"
       echo "  --max_sw_tcb_age_days Maximum software TCB age in days (default: 540)"
       echo "  --max_hw_tcb_age_days Maximum hardware TCB age in days (default: 540)"
+      echo "  --min_swversion  Minimum Confidential Space image version"
       echo "  --server_digest  Manual override: bypass registry, use this single digest"
       exit 0
       ;;
@@ -97,6 +100,7 @@ echo "  Min SW TCB date:    $MIN_SW_TCB_DATE"
 echo "  Min HW TCB date:    $MIN_HW_TCB_DATE"
 echo "  Max SW TCB age:     $MAX_SW_TCB_AGE_DAYS days"
 echo "  Max HW TCB age:     $MAX_HW_TCB_AGE_DAYS days"
+echo "  Min SW version:     $MIN_SWVERSION"
 echo "  Bazel target:       $CLIENT_TARGET"
 if [[ -n "$EXTRA_BAZEL_ARGS" ]]; then
   echo "  Manual override:    $EXTRA_BAZEL_ARGS"
@@ -112,6 +116,7 @@ BAZEL_CMD=(
   "--//:min_hw_tcb_date=$MIN_HW_TCB_DATE"
   "--//:max_sw_tcb_age_days=$MAX_SW_TCB_AGE_DAYS"
   "--//:max_hw_tcb_age_days=$MAX_HW_TCB_AGE_DAYS"
+  "--//:min_swversion=$MIN_SWVERSION"
 )
 
 if [[ -n "$MODEL" ]]; then

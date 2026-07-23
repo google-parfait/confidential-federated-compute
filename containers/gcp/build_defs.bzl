@@ -32,6 +32,7 @@ def _generate_policy_impl(ctx):
     out = ctx.actions.declare_file(ctx.attr.out)
     min_sw_date = ctx.attr.min_sw_tcb_date[BuildSettingInfo].value if ctx.attr.min_sw_tcb_date else ""
     min_hw_date = ctx.attr.min_hw_tcb_date[BuildSettingInfo].value if ctx.attr.min_hw_tcb_date else ""
+    min_swversion = ctx.attr.min_swversion[BuildSettingInfo].value if ctx.attr.min_swversion else ""
     max_sw_age = ctx.attr.max_sw_tcb_age_days[IntSettingInfo].value if ctx.attr.max_sw_tcb_age_days else 0
     max_hw_age = ctx.attr.max_hw_tcb_age_days[IntSettingInfo].value if ctx.attr.max_hw_tcb_age_days else 0
 
@@ -51,6 +52,7 @@ min_sw_tcb_date: "{min_sw_date}"
 min_hw_tcb_date: "{min_hw_date}"
 expected_project_id: ""
 expected_service_account: ""
+min_swversion: "{min_swversion}"
 expected_image_digest: "{digest}"
 """.format(
             type = ctx.attr.verifier_type,
@@ -59,6 +61,7 @@ expected_image_digest: "{digest}"
             min_hw_date = min_hw_date,
             max_sw_age = max_sw_age,
             max_hw_age = max_hw_age,
+            min_swversion = min_swversion,
         )
 
         # buildifier: disable=print
@@ -85,7 +88,8 @@ expected_image_digest: "{digest}"
                 " --min_sw_tcb_date='{min_sw_date}'" +
                 " --min_hw_tcb_date='{min_hw_date}'" +
                 " --max_sw_tcb_age_days={max_sw_age}" +
-                " --max_hw_tcb_age_days={max_hw_age}"
+                " --max_hw_tcb_age_days={max_hw_age}" +
+                " --min_swversion='{min_swversion}'"
             ).format(
                 script = ctx.file._generate_policy_script.path,
                 registry = ctx.file.registry_file.path,
@@ -98,6 +102,7 @@ expected_image_digest: "{digest}"
                 min_hw_date = min_hw_date,
                 max_sw_age = max_sw_age,
                 max_hw_age = max_hw_age,
+                min_swversion = min_swversion,
             ),
         )
     else:
@@ -111,12 +116,14 @@ min_sw_tcb_date: "{min_sw_date}"
 min_hw_tcb_date: "{min_hw_date}"
 expected_project_id: ""
 expected_service_account: ""
+min_swversion: "{min_swversion}"
 """.format(
             type = ctx.attr.verifier_type,
             min_sw_date = min_sw_date,
             min_hw_date = min_hw_date,
             max_sw_age = max_sw_age,
             max_hw_age = max_hw_age,
+            min_swversion = min_swversion,
         )
 
         # buildifier: disable=print
@@ -158,6 +165,9 @@ generate_policy = rule(
         "max_hw_tcb_age_days": attr.label(
             mandatory = True,
             doc = "Build flag: maximum hardware TCB age in days.",
+        ),
+        "min_swversion": attr.label(
+            doc = "Build flag: minimum Confidential Space image version.",
         ),
         "_generate_policy_script": attr.label(
             default = ":generate_policy.py",
