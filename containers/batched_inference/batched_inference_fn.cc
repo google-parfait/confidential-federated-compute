@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <queue>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -26,7 +27,6 @@
 #include "containers/common/input.h"
 #include "containers/common/row_set.h"
 #include "containers/fed_sql/inference_model_helper.h"
-#include "containers/fed_sql/session_utils.h"
 #include "containers/fns/do_fn.h"
 #include "containers/fns/fn.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
@@ -61,13 +61,11 @@ namespace {
 //
 // - ...
 
-using ::confidential_federated_compute::fed_sql::Deserialize;
 using ::confidential_federated_compute::fed_sql::InferenceOutputProcessor;
 using ::confidential_federated_compute::fed_sql::InferencePromptProcessor;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceTask;
-using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::CheckpointBuilder;
 using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::DataType;
@@ -163,20 +161,6 @@ absl::Status UnpackTasksForBlob(const InferenceConfiguration& inference_config,
     blob_item->task_items.push_back(std::move(task_item));
   }
   return absl::OkStatus();
-}
-
-TableSchema CreateSchemaFromTasks(const BlobLevelWorkItem& blob_item) {
-  absl::flat_hash_set<std::string> columns;
-  for (const auto& task_item : blob_item.task_items) {
-    if (!task_item->output_column_name.empty()) {
-      columns.insert(task_item->output_column_name);
-    }
-  }
-  TableSchema schema;
-  for (const std::string& col_name : columns) {
-    schema.add_column()->set_name(col_name);
-  }
-  return schema;
 }
 
 absl::Status UnpackCallsForTask(const Input& input, size_t max_prompt_size,
@@ -451,15 +435,36 @@ absl::Status BatchedInferenceFn::Do(Session::KV kv, Context& context) {
     return absl::InternalError(absl::StrCat(
         "Failed to construct a checkpoint parser: ", parser.status()));
   }
-  TableSchema table_schema = CreateSchemaFromTasks(*blob_item);
-  absl::StatusOr<std::vector<Tensor>> tensors_or =
-      Deserialize(table_schema, parser->get(), inference_config_);
-  if (!tensors_or.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to deserialize tensors from checkpoint: ",
-                     tensors_or.status()));
+  absl::flat_hash_set<std::string> output_columns;
+  for (const auto& task_item : blob_item->task_items) {
+    if (!task_item->output_column_name.empty()) {
+      output_columns.insert(task_item->output_column_name);
+    }
   }
-  auto input_or = Input::CreateFromTensors(std::move(*tensors_or));
+
+  absl::StatusOr<absl::flat_hash_map<std::string, Tensor>> name_to_tensor_or =
+      parser->get()->LoadAllTensors();
+  if (!name_to_tensor_or.ok()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to load all tensors from checkpoint: ",
+                     name_to_tensor_or.status()));
+  }
+  std::vector<Tensor> tensors;
+  tensors.reserve(name_to_tensor_or->size());
+  std::optional<size_t> num_rows;
+  for (auto& [name, tensor] : *name_to_tensor_or) {
+    if (output_columns.contains(name)) {
+      continue;
+    }
+    if (!num_rows.has_value()) {
+      num_rows.emplace(tensor.num_elements());
+    } else if (num_rows.value() != tensor.num_elements()) {
+      return absl::InvalidArgumentError(
+          "Checkpoint has columns with differing numbers of rows.");
+    }
+    tensors.push_back(std::move(tensor));
+  }
+  auto input_or = Input::CreateFromTensors(std::move(tensors));
   if (!input_or.ok()) {
     return absl::InternalError(absl::StrCat(
         "Failed to create input from tensors: ", input_or.status()));
