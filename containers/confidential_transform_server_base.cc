@@ -381,14 +381,6 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
     return session_request.status();
   }
 
-  // Create the session.
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<confidential_federated_compute::Session> session,
-      CreateSession());
-  // This provides the context for encryption and writing of ReadResponse
-  // messages.
-  SessionContextImpl context(stream, kms_encryptor_);
-
   // If the first request is ConfigureRequest, it is used to configure the
   // session; otherwise a default ConfigureRequest is used to configure the
   // session.
@@ -396,6 +388,14 @@ absl::Status ConfidentialTransformBase::SessionImpl(SessionStream* stream) {
   if (session_request->has_configure()) {
     configure_request = std::move(*session_request->mutable_configure());
   }
+
+  // Create the session.
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<confidential_federated_compute::Session> session,
+      CreateSession(configure_request.configuration()));
+  // This provides the context for encryption and writing of ReadResponse
+  // messages.
+  SessionContextImpl context(stream, kms_encryptor_);
 
   // ConfigureResponse is used further below in the loop to write the response.
   // The response is wrapped in std::optional to verify that only the first

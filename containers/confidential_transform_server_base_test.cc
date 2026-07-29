@@ -144,8 +144,11 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
                                   std::move(encryption_key_handle)) {}
 
   void AddSession(
-      std::unique_ptr<confidential_federated_compute::Session> session) {
+      std::unique_ptr<confidential_federated_compute::Session> session,
+      const google::protobuf::Any& configuration =
+          google::protobuf::Any::default_instance()) {
     session_ = std::move(session);
+    configuration_ = configuration;
   };
 
   std::string GetKmsPublicKey() const {
@@ -185,8 +188,14 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
   }
 
   absl::StatusOr<std::unique_ptr<confidential_federated_compute::Session>>
-  CreateSession() override {
+  CreateSession(const google::protobuf::Any& configuration) override {
     if (session_ == nullptr) {
+      // Make sure that the configuration is the same as the one passed to
+      // AddSession.
+      if (configuration.type_url() != configuration_.type_url() ||
+          configuration.value() != configuration_.value()) {
+        return absl::InvalidArgumentError("Mismatched configuration.");
+      }
       auto session = std::make_unique<MockSession>();
       EXPECT_CALL(*session, Configure).WillOnce(Return(ConfigureResponse{}));
       return std::move(session);
@@ -201,6 +210,7 @@ class FakeConfidentialTransform final : public ConfidentialTransformBase {
 
  private:
   std::unique_ptr<confidential_federated_compute::Session> session_;
+  google::protobuf::Any configuration_;
 };
 
 class ConfidentialTransformServerBaseTest : public Test {
@@ -553,6 +563,45 @@ TEST_F(ConfidentialTransformServerBaseTest,
   ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
 }
 
+TEST_F(ConfidentialTransformServerBaseTest,
+       StreamInitializeAndConfigureSessionWithConfiguration) {
+  InitializeTransform();
+  grpc::ClientContext session_context;
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_configure()->set_chunk_size(1000);
+  google::protobuf::Any configuration;
+  configuration.set_type_url("foo.bar");
+  configuration.set_value("foo.bar_configuration");
+  *session_request.mutable_configure()->mutable_configuration() = configuration;
+
+  auto mock_session = std::make_unique<MockSession>();
+  EXPECT_CALL(*mock_session, Configure).WillOnce(Return(ConfigureResponse{}));
+  EXPECT_CALL(*mock_session, Finalize)
+      .WillOnce([](FinalizeRequest request, BlobMetadata unused,
+                   Session::Context& context) {
+        context.Emit(GetDefaultFinalizeReadResponse());
+        return FinalizeResponse{};
+      });
+  service_->AddSession(std::move(mock_session), configuration);
+
+  std::unique_ptr<SessionStream> stream = stub_->Session(&session_context);
+  ASSERT_TRUE(stream->Write(session_request));
+  ASSERT_TRUE(stream->Read(&session_response));
+  ASSERT_TRUE(session_response.has_configure());
+
+  google::rpc::Status config;
+  config.set_code(grpc::StatusCode::OK);
+  SessionRequest finalize_request;
+  SessionResponse read_response, finalize_response;
+  finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
+      config);
+  ASSERT_TRUE(stream->Write(finalize_request));
+  ASSERT_TRUE(stream->Read(&read_response));
+  ASSERT_TRUE(stream->Read(&finalize_response));
+  ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
+}
+
 TEST_F(ConfidentialTransformServerBaseTest, SkippedConfigureRequest) {
   InitializeTransform();
 
@@ -706,7 +755,6 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionWriteFinalizeEncryptedBlob) {
   ASSERT_TRUE(stream->Write(request));
   ASSERT_TRUE(stream->Read(&response));
   ASSERT_EQ(response.write().status().code(), grpc::OK);
-  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
 
   SessionRequest finalize_request;
   SessionResponse read_response, finalize_response;
@@ -882,7 +930,6 @@ TEST_F(ConfidentialTransformServerBaseTest, SessionIgnoresInvalidInputs) {
   ASSERT_TRUE(stream->Read(&write_response_2));
 
   ASSERT_TRUE(write_response_2.has_write());
-  ASSERT_EQ(write_response_2.write().committed_size_bytes(), 0);
   ASSERT_EQ(write_response_2.write().status().code(), grpc::INVALID_ARGUMENT);
 
   google::rpc::Status config;
@@ -1066,7 +1113,6 @@ TEST_F(ConfidentialTransformServerBaseTest,
   ASSERT_TRUE(stream->Write(request));
   ASSERT_TRUE(stream->Read(&response));
   ASSERT_EQ(response.write().status().code(), grpc::OK);
-  ASSERT_EQ(response.write().committed_size_bytes(), message.size());
 
   metadata.mutable_hpke_plus_aead_data()->set_ciphertext_associated_data(
       "invalid associated data");

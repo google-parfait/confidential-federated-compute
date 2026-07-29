@@ -76,9 +76,24 @@ class ConfidentialTransformBase
           write_configuration) = 0;
 
   // Creates a new Session instance.
+  // Either this function or the overload below must be implemented by a
+  // subclass.
   virtual absl::StatusOr<
       std::unique_ptr<confidential_federated_compute::Session>>
-  CreateSession() = 0;
+  CreateSession() {
+    return absl::UnimplementedError("CreateSession is not implemented.");
+  }
+
+  // An overload of CreateSession that takes in the session configuration.
+  // This is provided so that subclasses can create Session objects that are
+  // tailored to the specific configuration.
+  // If this overload is not overridden by a subclass, the default
+  // implementation of CreateSession with no arguments is used.
+  virtual absl::StatusOr<
+      std::unique_ptr<confidential_federated_compute::Session>>
+  CreateSession(const google::protobuf::Any& configuration) {
+    return CreateSession();
+  }
 
   // Retrieves the key_id from the BlobMetadata. By default, this is implemented
   // by calling `GetKeyIdFromMetadata()`, but can be overridden by a subclass
