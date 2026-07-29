@@ -28,8 +28,8 @@ py_library(
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
-        "@pypi//googleapis_common_protos",
-        "@pypi//portpicker",
+        "@pypi//googleapis_common_protos:pkg",
+        "@pypi//portpicker:pkg",
     ],
 )
 
@@ -57,6 +57,7 @@ py_library(
     deps = [
         "@federated_compute//fcp/confidentialcompute/python:external_service_handle",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_py_pb2",
+        "@pypi//numpy:pkg",
     ],
 )
 
@@ -69,7 +70,7 @@ py_test(
         ":program_runner",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//absl_py",
-        "@pypi//numpy",
+        "@pypi//absl_py:pkg",
+        "@pypi//numpy:pkg",
     ],
 )

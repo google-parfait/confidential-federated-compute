@@ -75,4 +75,20 @@ std::string BuildClientCheckpointFromStrings(
   return BuildClientCheckpointFromTensor(std::move(*t), tensor_name);
 }
 
+std::string BuildMultiTensorCheckpoint(
+    std::map<std::string, std::vector<int>> tensors) {
+  FederatedComputeCheckpointBuilderFactory builder_factory;
+  std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
+  for (auto& [name, values] : tensors) {
+    absl::StatusOr<Tensor> t = Tensor::Create(
+        DataType::DT_INT32, TensorShape({static_cast<int32_t>(values.size())}),
+        std::make_unique<MutableVectorData<int32_t>>(values.begin(),
+                                                     values.end()));
+    CHECK_OK(t);
+    CHECK_OK(ckpt_builder->Add(name, *t));
+  }
+  auto checkpoint = ckpt_builder->Build();
+  return std::string(*checkpoint);
+}
+
 }  // namespace confidential_federated_compute::program_executor_tee

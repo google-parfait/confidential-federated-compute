@@ -26,7 +26,6 @@ from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 
-
 XLA_COMPUTATION_RUNNER_BINARY_PATH = (
     "program_executor_tee/program_context/cc/computation_runner_binary_xla"
 )
@@ -82,6 +81,7 @@ def build_federated_sum_comp() -> federated_language.Computation:
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   def setUp(self):
+    self.context = None
     self.untrusted_root_port = portpicker.pick_unused_port()
     self.assertIsNotNone(
         self.untrusted_root_port, "Failed to pick an unused port."
@@ -111,6 +111,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   def tearDown(self):
     self.server.stop()
+    if self.context:
+      self.context.close()
 
   async def test_execution_context_no_arg(self):
     with federated_language.framework.get_context_stack().install(self.context):

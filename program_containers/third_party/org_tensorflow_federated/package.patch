@@ -87,4 +87,4 @@ diff --git tensorflow_federated/python/core/impl/executor_stacks/executor_factor
 +  raise NotImplementedError(
 +      "local_cpp_executor_factory is not supported in this environment."
 +  )
- 
+

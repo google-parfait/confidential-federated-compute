@@ -20,12 +20,11 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "fcp/base/digest.h"
 #include "fcp/base/status_converters.h"
-#include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
-#include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -50,6 +49,75 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorProto;
+
+namespace {
+
+absl::StatusOr<std::unique_ptr<CheckpointParser>> GetCheckpointParser(
+    fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface* stub,
+    Decryptor* blob_decryptor,
+    const std::set<std::string>& authorized_logical_pipeline_policies_hashes,
+    std::string blob_id) {
+  ReadRequest read_request;
+  read_request.set_blob_id(blob_id);
+
+  ClientContext client_context;
+  auto reader = stub->Read(&client_context, read_request);
+  ReadResponse combined_read_response;
+  absl::Cord combined_data;
+  ReadResponse response;
+  while (reader->Read(&response)) {
+    if (response.has_first_response_metadata()) {
+      *combined_read_response.mutable_first_response_metadata() =
+          std::move(response.first_response_metadata());
+    }
+    combined_data.Append(response.data());
+    if (response.finish_read()) {
+      combined_read_response.set_finish_read(true);
+    }
+  }
+  ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
+
+  absl::Cord checkpoint_cord;
+  if (combined_read_response.first_response_metadata().has_unencrypted()) {
+    checkpoint_cord = combined_data;
+  } else {
+    // Parse the BlobHeader to get the access policy hash and key ID.
+    BlobHeader blob_header;
+    if (!blob_header.ParseFromString(
+            combined_read_response.first_response_metadata()
+                .hpke_plus_aead_data()
+                .kms_symmetric_key_associated_data()
+                .record_header())) {
+      return absl::InvalidArgumentError(
+          "kms_symmetric_key_associated_data.record_header() cannot be "
+          "parsed to BlobHeader.");
+    }
+
+    // Verify that the access policy hash matches one of the authorized
+    // logical pipeline policy hashes returned by KMS before returning
+    // the key ID.
+    if (authorized_logical_pipeline_policies_hashes.find(
+            blob_header.access_policy_sha256()) ==
+        authorized_logical_pipeline_policies_hashes.end()) {
+      return absl::InvalidArgumentError(
+          "BlobHeader.access_policy_sha256 does not match any "
+          "authorized_logical_pipeline_policies_hashes returned by "
+          "KMS.");
+    }
+
+    ABSL_ASSIGN_OR_RETURN(std::string fc_checkpoint,
+                          blob_decryptor->DecryptBlob(
+                              combined_read_response.first_response_metadata(),
+                              combined_data.Flatten(), blob_header.key_id()));
+
+    checkpoint_cord = absl::Cord(std::move(fc_checkpoint));
+  }
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  return parser_factory.Create(std::move(checkpoint_cord));
+}
+
+}  // namespace
 
 DataParser::DataParser(
     confidential_federated_compute::Decryptor* blob_decryptor,
@@ -93,69 +161,24 @@ DataParser::DataParser(
 
 absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
     std::string blob_id, std::string key) {
-  ReadRequest read_request;
-  read_request.set_blob_id(blob_id);
-
-  ClientContext client_context;
-  auto reader = stub_->Read(&client_context, read_request);
-  ReadResponse combined_read_response;
-  absl::Cord combined_data;
-  ReadResponse response;
-  while (reader->Read(&response)) {
-    if (response.has_first_response_metadata()) {
-      *combined_read_response.mutable_first_response_metadata() =
-          std::move(response.first_response_metadata());
-    }
-    combined_data.Append(response.data());
-    if (response.finish_read()) {
-      combined_read_response.set_finish_read(true);
-    }
-  }
-  ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
-
-  if (combined_read_response.first_response_metadata().has_unencrypted()) {
-    FederatedComputeCheckpointParserFactory parser_factory;
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CheckpointParser> parser,
-                          parser_factory.Create(std::move(combined_data)));
-    ABSL_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
-    return agg_tensor.ToProto();
-  }
-
-  // Parse the BlobHeader to get the access policy hash and key ID.
-  BlobHeader blob_header;
-  if (!blob_header.ParseFromString(
-          combined_read_response.first_response_metadata()
-              .hpke_plus_aead_data()
-              .kms_symmetric_key_associated_data()
-              .record_header())) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data.record_header() cannot be "
-        "parsed to BlobHeader.");
-  }
-
-  // Verify that the access policy hash matches one of the authorized
-  // logical pipeline policy hashes returned by KMS before returning
-  // the key ID.
-  if (authorized_logical_pipeline_policies_hashes_.find(
-          blob_header.access_policy_sha256()) ==
-      authorized_logical_pipeline_policies_hashes_.end()) {
-    return absl::InvalidArgumentError(
-        "BlobHeader.access_policy_sha256 does not match any "
-        "authorized_logical_pipeline_policies_hashes returned by "
-        "KMS.");
-  }
-
-  ABSL_ASSIGN_OR_RETURN(std::string fc_checkpoint,
-                        blob_decryptor_->DecryptBlob(
-                            combined_read_response.first_response_metadata(),
-                            combined_data.Flatten(), blob_header.key_id()));
-
-  FederatedComputeCheckpointParserFactory parser_factory;
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
-      parser_factory.Create(absl::Cord(std::move(fc_checkpoint))));
+      GetCheckpointParser(stub_.get(), blob_decryptor_,
+                          authorized_logical_pipeline_policies_hashes_,
+                          blob_id));
   ABSL_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
   return agg_tensor.ToProto();
+}
+
+absl::StatusOr<
+    absl::flat_hash_map<std::string, tensorflow_federated::aggregation::Tensor>>
+DataParser::ResolveBlobIdToDict(std::string blob_id) {
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<CheckpointParser> parser,
+      GetCheckpointParser(stub_.get(), blob_decryptor_,
+                          authorized_logical_pipeline_policies_hashes_,
+                          blob_id));
+  return parser->LoadAllTensors();
 }
 
 absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,

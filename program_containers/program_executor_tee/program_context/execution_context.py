@@ -30,7 +30,6 @@ import portpicker
 import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
-
 # Increase gRPC message size limit to 2GB
 _MAX_GPRC_MESSAGE_SIZE = 2 * 1000 * 1000 * 1000
 
@@ -111,6 +110,15 @@ class TrustedContext(federated_language.program.FederatedContext):
     self._computation_runner_stub = (
         computation_delegation_pb2_grpc.ComputationDelegationStub(channel)
     )
+
+  def close(self):
+    if self._process is not None:
+      self._process.terminate()
+      self._process.wait()
+      self._process = None
+
+  def __del__(self):
+    self.close()
 
   def invoke(self, comp: object, arg: Optional[object]) -> object:
     """Executes comp(arg).

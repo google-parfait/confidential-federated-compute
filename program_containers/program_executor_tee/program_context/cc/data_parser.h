@@ -16,6 +16,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_DATA_PARSER_H_
 
 #include <functional>
+#include <map>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,6 +27,7 @@
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "program_executor_tee/private_state.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -55,6 +57,12 @@ class DataParser {
   // FcCheckpoint key.
   absl::StatusOr<tensorflow_federated::aggregation::TensorProto>
   ResolveBlobIdToTensor(std::string blob_id, std::string key);
+
+  // Retrieves all Tensors stored in the FcCheckpoint described by the
+  // provided blob id.
+  absl::StatusOr<absl::flat_hash_map<std::string,
+                                     tensorflow_federated::aggregation::Tensor>>
+  ResolveBlobIdToDict(std::string blob_id);
 
   // Wraps the data in a release token and sends it to untrusted space.
   absl::Status ReleaseUnencrypted(std::string data, std::string key);

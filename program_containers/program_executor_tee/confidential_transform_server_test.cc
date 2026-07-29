@@ -466,6 +466,76 @@ def trusted_program(external_handle):
   ASSERT_EQ(result, 100);
 }
 
+TYPED_TEST(ProgramExecutorTeeSessionTest,
+           ValidFinalizeSessionWithNumpyDictAndSqlite) {
+  // Generate random 16-byte blob IDs.
+  std::string blob_id_1 = fcp::RandomToken::Generate().ToString();
+  std::string blob_id_2 = fcp::RandomToken::Generate().ToString();
+
+  // Each checkpoint contains two tensors: "age" and "score".
+  using InputData = std::tuple<std::string, std::string>;
+  InputData input_1{blob_id_1,
+                    BuildMultiTensorCheckpoint(
+                        {{"age", {25, 30, 35}}, {"score", {80, 90, 70}}})};
+  InputData input_2{blob_id_2,
+                    BuildMultiTensorCheckpoint(
+                        {{"age", {20, 40, 25}}, {"score", {95, 60, 85}}})};
+
+  for (auto [blob_id, data] : {input_1, input_2}) {
+    CHECK_OK(this->fake_data_read_write_service_.StoreEncryptedMessageForKms(
+        blob_id, data));
+  }
+
+  ASSERT_TRUE(this->CreateSession(
+                      R"(
+import sqlite3
+import struct
+
+FORMAT_STRING = '<i'
+
+def trusted_program(external_handle):
+  total = 0
+  for blob_id in external_handle.blob_ids:
+    conn = sqlite3.connect(':memory:')
+    cursor = conn.cursor()
+    cursor.execute('CREATE TABLE data (age INTEGER, score INTEGER)')
+
+    arrays = external_handle.resolve_blob_id_to_numpy_dict(blob_id)
+    cursor.executemany('INSERT INTO data VALUES (?, ?)',
+                       zip(arrays['age'].tolist(), arrays['score'].tolist()))
+
+    cursor.execute('SELECT AVG(score) FROM data WHERE age >= 30')
+    row = cursor.fetchone()
+    if row[0] is not None:
+      total += int(row[0])
+    conn.close()
+
+  external_handle.release_unencrypted(
+      struct.pack(FORMAT_STRING, total), b"result")
+  )",
+                      /*kms_private_state=*/"",
+                      /*blob_ids=*/
+                      {blob_id_1, blob_id_2})
+                  .ok());
+
+  SessionRequest session_request;
+  SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+
+  // Each checkpoint is queried independently with AVG(score) WHERE age >= 30:
+  //   Checkpoint 1: rows (30, 90), (35, 70) => AVG = 80
+  //   Checkpoint 2: rows (40, 60), ages 20 and 25 filtered out => AVG = 60
+  //   Total: 140
+  int32_t result;
+  std::memcpy(&result, released_data["result"].data(), sizeof(int32_t));
+  ASSERT_EQ(result, 140);
+}
+
 TYPED_TEST(ProgramExecutorTeeSessionTest, ValidFinalizeSessionWithRecovery) {
   std::string program = R"(
 def trusted_program(external_handle):
