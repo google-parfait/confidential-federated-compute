@@ -111,9 +111,9 @@ use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_
 bazel_dep(name = "confidential-federated-compute")
 archive_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-r0DSblmX1gtazd9BhywnJdZFJSHp+TkiHuhjjhXhFIE=",
-    strip_prefix = "confidential-federated-compute-498fa6c9e0e22be7e38fb9ac494db8483282fa18",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/498fa6c9e0e22be7e38fb9ac494db8483282fa18.zip"],
+    integrity = "sha256-V522ImXtdXdDWnmN+nytJnuS7UKXq36o3eVHl7OX0eA=",
+    strip_prefix = "confidential-federated-compute-6edcd4dec1457d1a33dbda5df3b958951f478039",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/6edcd4dec1457d1a33dbda5df3b958951f478039.tar.gz"],
 )
 
 bazel_dep(name = "oak")
@@ -128,9 +128,9 @@ bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-oak9bLZJ8qJkwVPo/0ufLHY2IEX48N7/DOPL7ce55JI=",
-    strip_prefix = "federated-compute-e31c7a718fbe5de54a9919ea2cbec6ef5f848c94",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/e31c7a718fbe5de54a9919ea2cbec6ef5f848c94.tar.gz"],
+    integrity = "sha256-Hq+2YuRqukDgE53zdY43Bubsi10ttjWNTKQNOhvTzCI=",
+    strip_prefix = "federated-compute-a416480b3438fbb5d079913b24a4e00eb79914b1",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/a416480b3438fbb5d079913b24a4e00eb79914b1.tar.gz"],
 )
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
