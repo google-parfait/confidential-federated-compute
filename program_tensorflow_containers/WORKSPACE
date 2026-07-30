@@ -95,16 +95,16 @@ http_archive(
 
 http_archive(
     name = "confidential_federated_compute",
-    integrity = "sha256-5qg/ClAMJxo8SyxGBo7sjyk43Q5gsI5RbZBSC+iqs4g=",
-    strip_prefix = "confidential-federated-compute-cf6389b18237a091a4cf31e8e7509663be5d0c5e",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/cf6389b18237a091a4cf31e8e7509663be5d0c5e.tar.gz",
+    integrity = "sha256-rWWp8/j0t2HCAaStBE5eqvbbcYxxtixV/zoZPbt3g/E=",
+    strip_prefix = "confidential-federated-compute-77e2ac5cd8c3a5b0807c00604c9f17774d7dd2e9",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/77e2ac5cd8c3a5b0807c00604c9f17774d7dd2e9.tar.gz",
 )
 
 http_archive(
     name = "confidential_federated_compute_program",
-    integrity = "sha256-5qg/ClAMJxo8SyxGBo7sjyk43Q5gsI5RbZBSC+iqs4g=",
-    strip_prefix = "confidential-federated-compute-cf6389b18237a091a4cf31e8e7509663be5d0c5e/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/cf6389b18237a091a4cf31e8e7509663be5d0c5e.tar.gz",
+    integrity = "sha256-rWWp8/j0t2HCAaStBE5eqvbbcYxxtixV/zoZPbt3g/E=",
+    strip_prefix = "confidential-federated-compute-77e2ac5cd8c3a5b0807c00604c9f17774d7dd2e9/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/77e2ac5cd8c3a5b0807c00604c9f17774d7dd2e9.tar.gz",
 )
 
 http_archive(
@@ -119,14 +119,14 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-dQ41bouZrA2ws9FZ7T6de32S2CWWOv4Bc6QAjqwZX/o=",
+    integrity = "sha256-AfmE/T6YQjsAvqPfjMqU/fqBt+vtD/wR6bFJHT+o0TI=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-7c7cd41d5038da2637ae9b0ec7f7875fbfe9cafc",
-    url = "https://github.com/google/federated-compute/archive/7c7cd41d5038da2637ae9b0ec7f7875fbfe9cafc.tar.gz",
+    strip_prefix = "federated-compute-fd4b5acfdd6600a017b8eda3476f167ff6735e62",
+    url = "https://github.com/google/federated-compute/archive/fd4b5acfdd6600a017b8eda3476f167ff6735e62.tar.gz",
 )
 
 http_archive(
