@@ -349,7 +349,7 @@ def trusted_program(external_handle):
 
   synthesizer = data_generation_v3.TabularSynthesizer(
       domains=domains,
-      discrete_mechanism=discrete_mechanisms.IndependentMechanism(),
+      discrete_mechanism=discrete_mechanisms.MSTMechanism(),
   )
   calibrated = synthesizer.calibrate(epsilon=math.log(3), delta=1e-6)
   rng = np.random.default_rng(0)
