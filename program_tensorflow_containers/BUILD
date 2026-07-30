@@ -135,6 +135,7 @@ trusted_py_runtime(
     ],
     source_repo_names = [
         "confidential_federated_compute_program",
+        "dp_accounting",
         "dpsynth",
         "federated_language",
         "federated_compute",

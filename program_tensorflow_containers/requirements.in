@@ -7,7 +7,6 @@ attrs~=23.2
 cachetools~=5.3
 chex
 dm-tree==0.1.9
-dp-accounting
 googleapis-common-protos==1.70.0
 jax==0.10.0
 jaxlib==0.10.0

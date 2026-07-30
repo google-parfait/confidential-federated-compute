@@ -320,6 +320,8 @@ def trusted_program(external_handle):
 
 TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithDpSynth) {
   this->CreateSession(R"(
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -349,7 +351,7 @@ def trusted_program(external_handle):
       domains=domains,
       discrete_mechanism=discrete_mechanisms.IndependentMechanism(),
   )
-  calibrated = synthesizer.configure(zcdp_rho=1.0)
+  calibrated = synthesizer.calibrate(epsilon=math.log(3), delta=1e-6)
   rng = np.random.default_rng(0)
   result = calibrated(rng, dataframe)
 

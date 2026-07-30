@@ -7,12 +7,12 @@ index 0000000..1111111
 +package(
 +    default_visibility = ["//visibility:public"],
 +)
-diff --git dpsynth/BUILD dpsynth/BUILD
+diff --git dp_accounting/BUILD dp_accounting/BUILD
 new file mode 100644
 index 0000000..2222222
 --- /dev/null
-+++ dpsynth/BUILD
-@@ -0,0 +1,26 @@
++++ dp_accounting/BUILD
+@@ -0,0 +1,16 @@
 +load("@rules_python//python:defs.bzl", "py_library")
 +
 +package(
@@ -20,22 +20,12 @@ index 0000000..2222222
 +)
 +
 +py_library(
-+    name = "dpsynth",
-+    srcs = glob(["**/*.py"]),
++    name = "dp_accounting",
++    srcs = glob(["**/*.py"], exclude = ["**/*_test.py"]),
 +    deps = [
-+        "@mbi//:mbi",
 +        "@pypi//absl_py",
 +        "@pypi//attrs",
-+        "@dp_accounting//dp_accounting",
-+        "@pypi//jax",
-+        "@pypi//jaxlib",
-+        "@pypi//more_itertools",
-+        "@pypi//networkx",
 +        "@pypi//numpy",
-+        "@pypi//pandas",
-+        "@pypi//pydantic",
-+        "@pypi//pyyaml",
 +        "@pypi//scipy",
-+        "@pypi//tqdm",
 +    ],
 +)

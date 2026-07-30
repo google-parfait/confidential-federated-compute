@@ -267,6 +267,7 @@ trusted_py_runtime(
         "org_tensorflow_federated",
         "oak",
         "jax_privacy",
+        "dp_accounting",
     ],
 )
 

@@ -6,7 +6,6 @@ absl-py>=2.0,<3
 attrs~=23.1
 cachetools~=5.3
 chex
-dp-accounting
 dm-tree==0.1.9
 googleapis-common-protos==1.70.0
 jax>=0.4.29,<=0.7.1
