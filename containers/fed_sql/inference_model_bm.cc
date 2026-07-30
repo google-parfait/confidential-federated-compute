@@ -77,9 +77,13 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
     std::string tokenizer_path = absl::GetFlag(FLAGS_tokenizer_path);
     std::string model_weight_path = absl::GetFlag(FLAGS_model_path);
 
+    int batch_size = state.range(0);
     int max_generated_tokens = state.range(1);
 
     SessionInferenceConfiguration inference_configuration;
+    inference_configuration.initialize_configuration.mutable_inference_config()
+        ->mutable_runtime_config()
+        ->set_max_batch_size(batch_size);
     inference_configuration.initialize_configuration.mutable_inference_config()
         ->mutable_runtime_config()
         ->set_max_generated_tokens(max_generated_tokens);
@@ -93,6 +97,8 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
 
     // Match the exact prompt template from inference_config_gemma_cpp.textproto
     inference_task->mutable_prompt()->set_prompt_template(kPromptTemplate);
+    inference_task->mutable_prompt()->set_parser(
+        fcp::confidentialcompute::Prompt::PARSER_AUTO);
 
     inference_configuration.initialize_configuration
         .mutable_gemma_init_config()
@@ -123,21 +129,21 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
 
 BENCHMARK_DEFINE_F(GemmaInferenceBenchmark,
                    BM_GemmaInference)(benchmark::State& state) {
-  int batch_size = state.range(0);
-  std::vector<std::string> prompt_inputs(batch_size);
-  for (int i = 0; i < batch_size; ++i) {
+  constexpr int kInputSize = 16;
+  std::vector<std::string> prompt_inputs(kInputSize);
+  for (int i = 0; i < prompt_inputs.size(); ++i) {
     prompt_inputs[i] = kSyntheticTranscripts[i % kSyntheticTranscripts.size()];
   }
   std::vector<Tensor> columns;
   columns.push_back(Tensor(std::move(prompt_inputs), "transcript"));
-  auto input_or = Input::CreateFromTensors(std::move(columns));
-  if (!input_or.ok()) {
+  auto input = Input::CreateFromTensors(std::move(columns));
+  if (!input.ok()) {
     state.SkipWithError("Failed to create input tensors.");
     return;
   }
 
   for (auto _ : state) {
-    auto inference_status = model()->RunInference(*input_or);
+    auto inference_status = model()->RunInference(*input);
     if (!inference_status.ok()) {
       state.SkipWithError(
           (std::string("Inference failed: ") + inference_status.ToString())
@@ -146,7 +152,7 @@ BENCHMARK_DEFINE_F(GemmaInferenceBenchmark,
     }
   }
 
-  state.SetItemsProcessed(batch_size * state.iterations());
+  state.SetItemsProcessed(kInputSize * state.iterations());
 }
 
 // The first parameter is the batch size.
