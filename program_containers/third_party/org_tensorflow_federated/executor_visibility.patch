@@ -3,19 +3,17 @@
 diff --git tensorflow_federated/python/core/impl/executors/BUILD tensorflow_federated/python/core/impl/executors/BUILD
 --- tensorflow_federated/python/core/impl/executors/BUILD
 +++ tensorflow_federated/python/core/impl/executors/BUILD
-@@ -50,6 +50,7 @@ py_library(
-     tags = [
-         "nokokoro",  # b/193543632: C++ execution is not fully supported in OSS.
-     ],
+@@ -56,3 +56,4 @@
+ py_library(
+     name = "cpp_to_python_executor",
 +    visibility = ["//visibility:public"],
-     deps = [
-         ":executor_bindings",
-         ":executors_errors",
+     srcs = ["cpp_to_python_executor.py"],
 
 diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
 --- tensorflow_federated/cc/core/impl/executors/BUILD
 +++ tensorflow_federated/cc/core/impl/executors/BUILD
-@@ -366,6 +366,7 @@ cc_library(
+@@ -306,6 +306,7 @@
+ cc_library(
      name = "executor_service",
      srcs = ["executor_service.cc"],
      hdrs = ["executor_service.h"],
@@ -23,9 +21,3 @@ diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federate
      deps = [
          ":cardinalities",
          ":executor",
-@@ -799,4 +799,5 @@ cc_library(
-     name = "streaming_remote_executor",
-     srcs = ["streaming_remote_executor.cc"],
-     hdrs = ["streaming_remote_executor.h"],
-+    visibility = ["//visibility:public"],
-     deps = [

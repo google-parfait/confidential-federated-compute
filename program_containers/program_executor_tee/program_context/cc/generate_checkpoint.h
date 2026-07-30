@@ -15,6 +15,7 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_GENERATE_CHECKPOINT_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_GENERATE_CHECKPOINT_H_
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,11 @@ std::string BuildClientCheckpointFromInts(std::vector<int> input_values,
 // the provided string input_values at the key tensor_name.
 std::string BuildClientCheckpointFromStrings(
     std::vector<std::string> input_values, std::string tensor_name);
+
+// Returns an unencrypted federated compute checkpoint that stores multiple
+// tensors, each with the provided integer values at the given tensor names.
+std::string BuildMultiTensorCheckpoint(
+    std::map<std::string, std::vector<int>> tensors);
 
 }  // namespace confidential_federated_compute::program_executor_tee
 

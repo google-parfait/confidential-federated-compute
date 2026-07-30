@@ -14,6 +14,7 @@
 #include "program_executor_tee/confidential_transform_server.h"
 
 #include <pybind11/embed.h>
+#include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
 #include <filesystem>
@@ -49,6 +50,7 @@
 #include "pybind11_protobuf/native_proto_caster.h"
 
 namespace confidential_federated_compute::program_executor_tee {
+
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -57,6 +59,49 @@ using ::fcp::confidentialcompute::ProgramExecutorTeeInitializeConfig;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteRequest;
+
+namespace {
+
+pybind11::array TensorToPyArray(
+    const tensorflow_federated::aggregation::Tensor& tensor) {
+  std::vector<ssize_t> shape(tensor.shape().dim_sizes().begin(),
+                             tensor.shape().dim_sizes().end());
+  switch (tensor.dtype()) {
+    case tensorflow_federated::aggregation::DT_INT32: {
+      auto data = tensor.AsSpan<int32_t>();
+      return pybind11::array_t<int32_t>(shape, data.data());
+    }
+    case tensorflow_federated::aggregation::DT_INT64: {
+      auto data = tensor.AsSpan<int64_t>();
+      return pybind11::array_t<int64_t>(shape, data.data());
+    }
+    case tensorflow_federated::aggregation::DT_FLOAT: {
+      auto data = tensor.AsSpan<float>();
+      return pybind11::array_t<float>(shape, data.data());
+    }
+    case tensorflow_federated::aggregation::DT_DOUBLE: {
+      auto data = tensor.AsSpan<double>();
+      return pybind11::array_t<double>(shape, data.data());
+    }
+    case tensorflow_federated::aggregation::DT_UINT64: {
+      auto data = tensor.AsSpan<uint64_t>();
+      return pybind11::array_t<uint64_t>(shape, data.data());
+    }
+    case tensorflow_federated::aggregation::DT_STRING: {
+      auto data = tensor.AsSpan<absl::string_view>();
+      pybind11::list list;
+      for (const auto& sv : data) {
+        list.append(pybind11::bytes(sv.data(), sv.size()));
+      }
+      return pybind11::array(list).reshape(shape);
+    }
+    default:
+      throw std::runtime_error(
+          "Unsupported Tensor DataType for numpy conversion");
+  }
+}
+
+}  // namespace
 
 PYBIND11_EMBEDDED_MODULE(data_parser, m) {
   pybind11_protobuf::ImportNativeProtoCasters();
@@ -84,6 +129,26 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
              }
              return *tensor;
            })
+      .def(
+          "resolve_blob_id_to_numpy_dict",
+          [](DataParser& self, const std::string& blob_id) {
+            absl::StatusOr<absl::flat_hash_map<
+                std::string, tensorflow_federated::aggregation::Tensor>>
+                dict_or;
+            {
+              pybind11::gil_scoped_release release;
+              dict_or = self.ResolveBlobIdToDict(blob_id);
+            }
+            if (!dict_or.ok()) {
+              throw std::runtime_error("Failed to fetch numpy dict: " +
+                                       std::string(dict_or.status().message()));
+            }
+            pybind11::dict result;
+            for (const auto& [name, tensor] : *dict_or) {
+              result[pybind11::str(name)] = TensorToPyArray(tensor);
+            }
+            return result;
+          })
       .def("release_unencrypted",
            [](DataParser& self, std::string& data, std::string& key) {
              auto result = self.ReleaseUnencrypted(data, key);
@@ -180,6 +245,7 @@ ProgramExecutorTeeSession::Finalize(
                 model_id_to_zip_file_,
                 initialize_config_.outgoing_server_address(),
                 data_parser_instance.attr("resolve_blob_id_to_tensor"),
+                data_parser_instance.attr("resolve_blob_id_to_numpy_dict"),
                 data_parser_instance.attr("release_unencrypted"),
                 data_parser_instance.attr("save_recovery_info"),
                 data_parser_instance.attr("restore_recovery_info"));

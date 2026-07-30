@@ -13,10 +13,11 @@
 # limitations under the License.
 
 import base64
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Optional
 
 from fcp.confidentialcompute.python import external_service_handle
+import numpy as np
 from tensorflow_federated.cc.core.impl.aggregation.core import tensor_pb2
 
 # The name of the function in the customer-provided python code that wraps the
@@ -32,6 +33,9 @@ def run_program(
     outgoing_server_address: str,
     resolve_blob_id_to_tensor_fn: Callable[
         [bytes, str], tensor_pb2.TensorProto
+    ],
+    resolve_blob_id_to_numpy_dict_fn: Callable[
+        [bytes], Mapping[str, np.ndarray]
     ],
     release_unencrypted_fn: Callable[[bytes, str], None],
     save_recovery_info_fn: Callable[
@@ -56,6 +60,8 @@ def run_program(
       requests.
     resolve_blob_id_to_tensor_fn: A function that resolves pointers to data.
       Expects two args (the uri and the key) and returns the resolved tensor.
+    resolve_blob_id_to_numpy_dict_fn: A function that resolves pointers to data
+      as a mapping of all key names to NumPy arrays.
     release_unencrypted_fn: A function that releases unencrypted values to the
       external service. Expects two args (the data and the key).
     save_recovery_info_fn: A function that saves recovery information. Expects
@@ -91,10 +97,11 @@ def run_program(
           outgoing_server_address,
           blob_ids,
           model_id_to_zip_file,
-          resolve_blob_id_to_tensor_fn = resolve_blob_id_to_tensor_fn,
-          release_unencrypted_fn = release_unencrypted_fn,
-          save_recovery_info_fn = save_recovery_info_fn,
-          restore_recovery_info_fn = restore_recovery_info_fn,
+          resolve_blob_id_to_tensor_fn=resolve_blob_id_to_tensor_fn,
+          resolve_blob_id_to_numpy_dict_fn=resolve_blob_id_to_numpy_dict_fn,
+          release_unencrypted_fn=release_unencrypted_fn,
+          save_recovery_info_fn=save_recovery_info_fn,
+          restore_recovery_info_fn=restore_recovery_info_fn,
       )
   )
   trusted_program(initialized_external_service_handle)

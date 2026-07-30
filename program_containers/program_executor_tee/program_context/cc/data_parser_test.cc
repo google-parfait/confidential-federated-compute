@@ -166,6 +166,23 @@ TEST_F(DataParserTest, ResolveBlobIdToTensor_EncryptedIntCheckpoint) {
               ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
 }
 
+TEST_F(DataParserTest, ResolveBlobIdToDict_EncryptedCheckpoint) {
+  InitDataParser();
+  std::string tensor_name = "tensor_name";
+  std::string checkpoint =
+      BuildClientCheckpointFromInts({4, 5, 6}, tensor_name);
+  std::string blob_id = "test_blob_id";
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      blob_id, checkpoint));
+  auto dict_or = data_parser_->ResolveBlobIdToDict(blob_id);
+  ASSERT_TRUE(dict_or.ok()) << dict_or.status();
+  auto& dict = *dict_or;
+  auto it = dict.find(tensor_name);
+  ASSERT_NE(it, dict.end());
+  EXPECT_THAT(it->second.AsAggVector<int>(),
+              ElementsAre(Pair<int>{0, 4}, Pair<int>{1, 5}, Pair<int>{2, 6}));
+}
+
 TEST_F(DataParserTest, ResolveBlobIdToTensor_EncryptedStringCheckpoint) {
   InitDataParser();
   std::string tensor_name = "tensor_name";

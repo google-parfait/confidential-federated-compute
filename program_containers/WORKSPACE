@@ -96,15 +96,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-dQ41bouZrA2ws9FZ7T6de32S2CWWOv4Bc6QAjqwZX/o=",
+    integrity = "sha256-AfmE/T6YQjsAvqPfjMqU/fqBt+vtD/wR6bFJHT+o0TI=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    strip_prefix = "federated-compute-7c7cd41d5038da2637ae9b0ec7f7875fbfe9cafc",
-    url = "https://github.com/google/federated-compute/archive/7c7cd41d5038da2637ae9b0ec7f7875fbfe9cafc.tar.gz",
+    strip_prefix = "federated-compute-fd4b5acfdd6600a017b8eda3476f167ff6735e62",
+    url = "https://github.com/google/federated-compute/archive/fd4b5acfdd6600a017b8eda3476f167ff6735e62.tar.gz",
 )
 
 http_archive(
@@ -194,14 +194,18 @@ http_archive(
            's|@org_tensorflow//tensorflow/tsl/|@tsl//tsl/|g' {} +""",
         # Fix the Eigen dependency label in all BUILD files.
         r"""find . -name BUILD -exec sed -i 's|"@eigen"|"@eigen_archive//:eigen3"|g' {} +""",
+        # Fix the grpcio dependency label in all BUILD files.
+        r"""find . -name BUILD -exec sed -i 's|@pypi//grpcio|@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio|g' {} +""",
+        # Fix @pypi dependency labels in BUILD files to use the :pkg format.
+        r"""find . -name BUILD -exec sed -i 's|@pypi//\([a-zA-Z0-9_]*\)|@pypi//\1:pkg|g' {} +""",
     ],
     patches = [
         "//third_party/org_tensorflow_federated:executor_visibility.patch",
         "//third_party/org_tensorflow_federated:package.patch",
     ],
-    sha256 = "eed2e0ad5cd565c238fa1e0ddeb73bcdfeb627c7813c3f2cf3f8d40fcbcfa25b",
-    strip_prefix = "tensorflow-federated-126f6c7fd4695fa5cee77bd34efe77f78330fb26",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/126f6c7fd4695fa5cee77bd34efe77f78330fb26.tar.gz",
+    sha256 = "f3c446c694fc0aa808bcc59d502dab36b33e86336d71c13245a303ff2cd191d3",
+    strip_prefix = "tensorflow-federated-c603fa47ebebf9d5e28f5369be3dc2c2f3de721f",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/c603fa47ebebf9d5e28f5369be3dc2c2f3de721f.tar.gz",
 )
 
 http_archive(
