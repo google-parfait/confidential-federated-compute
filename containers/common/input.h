@@ -14,12 +14,42 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INPUT_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INPUT_H_
 
+// Overview
+// --------
+// The table abstraction stack is organized into four layers across row_view.h,
+// input.h, and row_set.h:
+//
+// Column Schema (see row_view.h)
+//   MessageColumnSchema (std::vector<ColumnDescriptor>) describes column names,
+//   types, and read-routing (proto field path vs system column index) in a
+//   unified order.
+//
+// Single-Row Cursor (see row_view.h)
+//   RowView is a lightweight, non-owning view over a single row, providing
+//   cell-level access (GetValue) into either Tensor arrays or Message rows.
+//
+// Table Storage (this file)
+//   Input owns all data for a single table and provides a uniform interface
+//   (GetRow, GetColumnNames, GetRowCount, AddColumn, MoveToTensors) regardless
+//   of underlying storage format:
+//   - TensorContents: data arrived as checkpoint Tensors (flat column-major
+//   arrays).
+//   - MessageContents: data arrived as serialized protobuf Messages alongside
+//     system column Tensors (e.g. event_time). MessageColumnSchema stitches
+//     both storages together into a single logical table.
+//
+// Cross-Table View (see row_set.h)
+//   RowSet combines multiple Input tables sharing the same schema alongside an
+//   ordered list of (input_index, row_index) location pairs to present a flat,
+//   re-ordered sequence of rows across tables without copying underlying data.
+
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -121,7 +151,16 @@ class Input {
   absl::Status AddColumn(
       tensorflow_federated::aggregation::Tensor&& new_column);
 
-  absl::Span<const std::string> GetColumnNames() const;
+  // Returns the names of all columns, in order.
+  // The returned span is valid for the lifetime of this Input.
+  absl::Span<const std::string> GetColumnNames() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return absl::visit(
+        [](const auto& data) -> absl::Span<const std::string> {
+          return data.GetColumnNames();
+        },
+        contents_);
+  }
 
   // Returns a view of the row at the specified index.
   //
@@ -148,7 +187,8 @@ class Input {
   struct has_input_contents_interface<
       T, std::void_t<decltype(std::declval<const T&>().GetRowCount()),
                      decltype(std::declval<const T&>().GetRow(0)),
-                     decltype(std::declval<T&&>().MoveToTensors({})),
+                     decltype(std::declval<const T&>().GetColumnNames()),
+                     decltype(std::declval<T&&>().MoveToTensors()),
                      decltype(std::declval<T&&>().AddColumn(
                          tensorflow_federated::aggregation::Tensor()))>>
       : std::true_type {};
@@ -156,16 +196,16 @@ class Input {
   // Input contents backed by Tensors.
   class TensorContents {
    public:
-    TensorContents(
-        std::vector<tensorflow_federated::aggregation::Tensor> contents)
-        : contents_(std::move(contents)) {}
+    explicit TensorContents(
+        std::vector<tensorflow_federated::aggregation::Tensor> contents);
 
     void AddColumn(tensorflow_federated::aggregation::Tensor&& column) {
+      column_names_.push_back(column.name());
       contents_.push_back(std::move(column));
     }
 
     absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
-    MoveToTensors(absl::Span<const std::string> column_names) && {
+    MoveToTensors() && {
       return std::move(contents_);
     }
 
@@ -175,41 +215,55 @@ class Input {
 
     size_t GetRowCount() const;
 
+    const std::vector<std::string>& GetColumnNames() const
+        ABSL_ATTRIBUTE_LIFETIME_BOUND {
+      return column_names_;
+    }
+
    private:
     std::vector<tensorflow_federated::aggregation::Tensor> contents_;
+    std::vector<std::string> column_names_;
   };
 
   static_assert(has_input_contents_interface<TensorContents>::value,
                 "TensorContents does not conform to the input interface.");
 
-  // Input contents backed by Message rows and Tensor system columns.
+  // Input contents backed by Message rows and a unified MessageColumnSchema.
+  //
+  // The schema covers both proto columns (non-empty proto_path, navigated via
+  // reflection) and system columns (empty proto_path, backed by a Tensor in
+  // system_columns_ at system_tensor_index). It is shared by pointer with
+  // every RowView this Input produces.
   class MessageContents {
    public:
     MessageContents(
         std::vector<std::unique_ptr<google::protobuf::Message>> messages,
         std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
-        FieldPathList field_paths)
-        : messages_(std::move(messages)),
-          system_columns_(std::move(system_columns)),
-          field_paths_(std::move(field_paths)) {}
+        MessageColumnSchema schema);
 
-    void AddColumn(tensorflow_federated::aggregation::Tensor&& column) {
-      system_columns_.push_back(std::move(column));
-    }
+    void AddColumn(tensorflow_federated::aggregation::Tensor&& column);
 
     // Unfortunately, this method copies the underlying Message data, since the
     // reflection API doesn't support moving the data out of a Message.
     absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
-    MoveToTensors(absl::Span<const std::string> column_names) &&;
+    MoveToTensors() &&;
 
     absl::StatusOr<RowView> GetRow(uint32_t row_index) const;
 
-    size_t GetRowCount() const { return messages_.size(); };
+    size_t GetRowCount() const { return messages_.size(); }
+
+    const std::vector<std::string>& GetColumnNames() const
+        ABSL_ATTRIBUTE_LIFETIME_BOUND {
+      return column_names_;
+    }
 
    private:
     std::vector<std::unique_ptr<google::protobuf::Message>> messages_;
+    // Tensor storage for system columns, indexed by
+    // ColumnDescriptor::system_column_index in schema_.
     std::vector<tensorflow_federated::aggregation::Tensor> system_columns_;
-    FieldPathList field_paths_;
+    MessageColumnSchema schema_;
+    std::vector<std::string> column_names_;
   };
 
   static_assert(has_input_contents_interface<MessageContents>::value,
@@ -217,13 +271,11 @@ class Input {
 
   using ContentsVariant = absl::variant<TensorContents, MessageContents>;
 
-  Input(ContentsVariant contents, std::string metadata,
-        std::vector<std::string> column_names,
-        std::optional<std::string> privacy_id);
+  explicit Input(ContentsVariant contents, std::string metadata,
+                 std::optional<std::string> privacy_id);
 
   ContentsVariant contents_;
   std::string metadata_;
-  std::vector<std::string> column_names_;
   std::optional<std::string> privacy_id_;
 };
 

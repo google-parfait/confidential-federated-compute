@@ -145,6 +145,32 @@ TEST_F(RowViewTest, RowIndexOutOfBounds) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+// ---------------------------------------------------------------------------
+// MessageRowView tests
+//
+// The test proto has 7 fields:
+//   col1 INT32, col2 INT64, col3 FLOAT, col4 DOUBLE, col5 STRING,
+//   col6 ENUM (TestEnum), col7 BOOL
+//
+// Because col6 is an enum, GetFlattenedSchema would produce TWO ColumnSpecs
+// for it: one with column_type=DT_INT32 (the integer value) and one with
+// column_type=DT_STRING (the enum name).  We replicate that layout in
+// column_specs_ so these tests exercise the exact same structure that
+// Input::CreateFromMessages builds at runtime.
+//
+// Column index layout (message columns only, before system columns):
+//   0  col1      DT_INT32
+//   1  col2      DT_INT64
+//   2  col3      DT_FLOAT
+//   3  col4      DT_DOUBLE
+//   4  col5      DT_STRING
+//   5  col6      DT_INT32   (enum integer value)
+//   6  col6_str  DT_STRING  (enum name — same path as col6)
+//   7  col7      DT_INT32   (bool stored as int32)
+// System columns:
+//   8  system_col1  DT_STRING
+//   9  system_col2  DT_INT32
+// ---------------------------------------------------------------------------
 class MessageRowViewTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -201,6 +227,7 @@ class MessageRowViewTest : public ::testing::Test {
                              descriptor->FindFieldByName("col6"), 88);
     reflection->SetBool(message_.get(), descriptor->FindFieldByName("col7"),
                         true);
+
     absl::StatusOr<Tensor> t1 = Tensor::Create(
         DataType::DT_STRING, TensorShape({2}),
         CreateTestData<absl::string_view>({"baz", "qux"}), "system_col1");
@@ -212,12 +239,50 @@ class MessageRowViewTest : public ::testing::Test {
     CHECK_OK(t2);
     system_columns_.push_back(*std::move(t2));
 
+    // Build MessageColumnSchema mirroring what
+    // GetFlattenedSchema+CreateFromMessages produces. Non-enum fields: one
+    // descriptor per field. Enum field (col6): two descriptors — same
+    // proto_path, DT_INT32 then DT_STRING. System columns are appended with
+    // empty proto_path and system_tensor_index.
     for (int i = 0; i < descriptor->field_count(); ++i) {
-      field_paths_.push_back({descriptor->field(i)});
+      const google::protobuf::FieldDescriptor* field = descriptor->field(i);
+      FieldPath path = {field};
+      std::string name(field->name());
+      if (field->cpp_type() ==
+          google::protobuf::FieldDescriptor::CPPTYPE_BOOL) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_INT32, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_INT32, path});
+        schema_.push_back(ColumnDescriptor{absl::StrCat(name, "_as_str"),
+                                           DataType::DT_STRING, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_INT32) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_INT32, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_INT64) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_INT64, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_FLOAT) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_FLOAT, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_DOUBLE, path});
+      } else if (field->cpp_type() ==
+                 google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+        schema_.push_back(ColumnDescriptor{name, DataType::DT_STRING, path});
+      }
+    }
+    // Append system tensor column descriptors (empty proto_path).
+    for (size_t i = 0; i < system_columns_.size(); ++i) {
+      schema_.push_back(ColumnDescriptor{system_columns_[i].name(),
+                                         system_columns_[i].dtype(),
+                                         /*proto_path=*/{},
+                                         /*system_tensor_index=*/i});
     }
   }
 
-  FieldPathList field_paths_;
+  MessageColumnSchema schema_;
   std::unique_ptr<DescriptorPool> pool_;
   std::unique_ptr<DynamicMessageFactory> factory_;
   std::unique_ptr<Message> message_;
@@ -225,31 +290,34 @@ class MessageRowViewTest : public ::testing::Test {
 };
 
 TEST_F(MessageRowViewTest, CreateFromMessageSuccess) {
-  ASSERT_THAT(RowView::CreateFromMessage(message_.get(), system_columns_, 0,
-                                         &field_paths_),
-              IsOk());
+  ASSERT_THAT(
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0, &schema_),
+      IsOk());
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexZero) {
-  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
-      message_.get(), system_columns_, 0, &field_paths_);
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0, &schema_);
   ASSERT_THAT(row_view, IsOk());
+  // col1..col5
   EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
   EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
   EXPECT_THAT(row_view->GetValue<float>(2), Eq(2.2f));
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
+  // col6 integer column (index 5) and col6 string column (index 6)
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
-  // col7 is TYPE_BOOL; true maps to int32_t value 1.
-  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(1));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(7), Eq("baz"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(8), Eq(123));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("TEST_VAL"));
+  // col7 bool (index 7): true → int32 1
+  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(1));
+  // system columns
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(8), Eq("baz"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(9), Eq(123));
 }
 
 TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
-  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
-      message_.get(), system_columns_, 1, &field_paths_);
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 1, &schema_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_THAT(row_view->GetValue<int32_t>(0), Eq(2));
   EXPECT_THAT(row_view->GetValue<int64_t>(1), Eq(5));
@@ -257,39 +325,41 @@ TEST_F(MessageRowViewTest, GetValueRowIndexOne) {
   EXPECT_THAT(row_view->GetValue<double>(3), Eq(5.5));
   EXPECT_THAT(row_view->GetValue<absl::string_view>(4), Eq("bar"));
   EXPECT_THAT(row_view->GetValue<int32_t>(5), Eq(88));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(5), Eq("TEST_VAL"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(6), Eq(1));
-  EXPECT_THAT(row_view->GetValue<absl::string_view>(7), Eq("qux"));
-  EXPECT_THAT(row_view->GetValue<int32_t>(8), Eq(456));
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(6), Eq("TEST_VAL"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(7), Eq(1));
+  // system columns row 1
+  EXPECT_THAT(row_view->GetValue<absl::string_view>(8), Eq("qux"));
+  EXPECT_THAT(row_view->GetValue<int32_t>(9), Eq(456));
 }
 
 TEST_F(MessageRowViewTest, GetColumnCount) {
-  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
-      message_.get(), system_columns_, 0, &field_paths_);
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0, &schema_);
   ASSERT_THAT(row_view, IsOk());
-  // 7 message fields + 2 system columns = 9
-  EXPECT_THAT(row_view->GetColumnCount(), Eq(9));
+  // 8 message column specs (col1..col5 + col6_int + col6_str + col7)
+  // + 2 system columns = 10
+  EXPECT_THAT(row_view->GetColumnCount(), Eq(10));
 }
 
 TEST_F(MessageRowViewTest, GetColumnType) {
-  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
-      message_.get(), system_columns_, 0, &field_paths_);
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0, &schema_);
   ASSERT_THAT(row_view, IsOk());
-  EXPECT_THAT(row_view->GetColumnType(0), Eq(DataType::DT_INT32));
-  EXPECT_THAT(row_view->GetColumnType(1), Eq(DataType::DT_INT64));
-  EXPECT_THAT(row_view->GetColumnType(2), Eq(DataType::DT_FLOAT));
-  EXPECT_THAT(row_view->GetColumnType(3), Eq(DataType::DT_DOUBLE));
-  EXPECT_THAT(row_view->GetColumnType(4), Eq(DataType::DT_STRING));
-  EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_INT32));
-  // col7 is TYPE_BOOL; maps to DT_INT32 (SQLite INTEGER).
-  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_INT32));
-  EXPECT_THAT(row_view->GetColumnType(7), Eq(DataType::DT_STRING));
-  EXPECT_THAT(row_view->GetColumnType(8), Eq(DataType::DT_INT32));
+  EXPECT_THAT(row_view->GetColumnType(0), Eq(DataType::DT_INT32));   // col1
+  EXPECT_THAT(row_view->GetColumnType(1), Eq(DataType::DT_INT64));   // col2
+  EXPECT_THAT(row_view->GetColumnType(2), Eq(DataType::DT_FLOAT));   // col3
+  EXPECT_THAT(row_view->GetColumnType(3), Eq(DataType::DT_DOUBLE));  // col4
+  EXPECT_THAT(row_view->GetColumnType(4), Eq(DataType::DT_STRING));  // col5
+  EXPECT_THAT(row_view->GetColumnType(5), Eq(DataType::DT_INT32));   // col6 int
+  EXPECT_THAT(row_view->GetColumnType(6), Eq(DataType::DT_STRING));  // col6 str
+  EXPECT_THAT(row_view->GetColumnType(7), Eq(DataType::DT_INT32));  // col7 bool
+  EXPECT_THAT(row_view->GetColumnType(8), Eq(DataType::DT_STRING));  // sys col1
+  EXPECT_THAT(row_view->GetColumnType(9), Eq(DataType::DT_INT32));   // sys col2
 }
 
 TEST_F(MessageRowViewTest, MismatchedTypeDeathTest) {
-  absl::StatusOr<RowView> row_view = RowView::CreateFromMessage(
-      message_.get(), system_columns_, 0, &field_paths_);
+  absl::StatusOr<RowView> row_view =
+      RowView::CreateFromMessage(message_.get(), system_columns_, 0, &schema_);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_DEATH(row_view->GetValue<absl::string_view>(0), "but expected string");
 }
@@ -322,10 +392,11 @@ TEST_F(MessageRowViewTest, CordCtype) {
   const Reflection* reflection = message->GetReflection();
   reflection->SetString(
       message.get(), descriptor->FindFieldByName("cord_field"), "some value");
-  FieldPathList local_field_paths;
-  local_field_paths.push_back({descriptor->field(0)});
+  MessageColumnSchema local_schema;
+  local_schema.push_back(ColumnDescriptor{
+      "cord_field", DataType::DT_STRING, {descriptor->field(0)}});
   absl::StatusOr<RowView> row_view =
-      RowView::CreateFromMessage(message.get(), {}, 0, &local_field_paths);
+      RowView::CreateFromMessage(message.get(), {}, 0, &local_schema);
   ASSERT_THAT(row_view, IsOk());
   EXPECT_EQ(row_view->GetValue<absl::string_view>(0), "some value");
 }

@@ -118,7 +118,7 @@ absl::StatusOr<uint64_t> DpUnitProcessor::ComputeDPUnitHash(
 
 absl::StatusOr<int> FindColumnIndex(const Input& input,
                                     absl::string_view column_name) {
-  const auto& column_names = input.GetColumnNames();
+  absl::Span<const std::string> column_names = input.GetColumnNames();
   auto it = std::find(column_names.begin(), column_names.end(), column_name);
   if (it == column_names.end()) {
     return absl::InvalidArgumentError(

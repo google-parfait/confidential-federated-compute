@@ -22,17 +22,13 @@
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "containers/common/row_view.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
 namespace confidential_federated_compute {
@@ -43,13 +39,12 @@ using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
 using ::google::protobuf::FileDescriptorSet;
 using ::google::protobuf::Message;
-using ::tensorflow_federated::aggregation::MutableStringData;
-using ::tensorflow_federated::aggregation::MutableVectorData;
+using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
-using ::tensorflow_federated::aggregation::TensorData;
-using ::tensorflow_federated::aggregation::TensorShape;
 
-// Suffix appended to enum fields in schema to hold string representation
+// Suffix appended to enum column names to produce the string-valued column.
+// Used only for naming; the type itself is encoded in
+// ColumnDescriptor::column_type.
 constexpr char kEnumAsStringSuffix[] = "_as_str";
 
 absl::Status ValidateMessageRows(
@@ -103,27 +98,53 @@ absl::Status ValidateNewColumn(const Tensor& new_column,
 }
 
 template <typename T>
-std::unique_ptr<TensorData> CreateVectorTensorData(
-    size_t num_rows, absl::Span<const RowView> row_views, size_t column_index) {
-  auto builder = std::make_unique<MutableVectorData<T>>();
-  builder->reserve(num_rows);
+std::vector<T> CreateColumnValues(absl::Span<const RowView> row_views,
+                                  size_t column_index) {
+  std::vector<T> values;
+  values.reserve(row_views.size());
   for (const auto& row_view : row_views) {
-    builder->push_back(row_view.GetValue<T>(column_index));
+    values.push_back(row_view.GetValue<T>(column_index));
   }
-  return builder;
+  return values;
 }
 
-// Recursively flattens a nested protobuf schema into flat table columns.
+// Maps a proto field's cpp_type to the DataType used for its SQLite column.
+// Enum fields map to DT_INT32 (their integer representation).
+// Called once at schema-build time; the result is stored in ColumnDescriptor.
+DataType GetSQLiteColumnType(const google::protobuf::FieldDescriptor* field) {
+  switch (field->cpp_type()) {
+    case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+    case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+    case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+      return DataType::DT_INT32;
+    case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+    case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+      return DataType::DT_INT64;
+    case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+      return DataType::DT_FLOAT;
+    case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+      return DataType::DT_DOUBLE;
+    case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+      return DataType::DT_STRING;
+    default:
+      LOG(FATAL) << "Unsupported field type " << field->cpp_type_name();
+  }
+}
+
+// Recursively flattens a nested protobuf schema into ColumnDescriptor entries.
 //
-// For each scalar field, produces a column name based on the traversed path
-// and pushes the sequence of FieldDescriptor pointers that can locate the
-// field value within messages into `field_paths`. This computation happens
-// once during table initialization, avoiding repeating path calculations per
-// row.
+// For each scalar field, appends one ColumnDescriptor to `schema` whose name
+// is derived from the traversal path.  For enum fields, appends TWO entries
+// with the same proto_path but different names and column_types:
+//   [0] column_type = DT_INT32  → the integer value  (e.g. "event_type")
+//   [1] column_type = DT_STRING → the enum name       (e.g.
+//   "event_type_as_str")
+//
+// All entries produced here are proto columns (non-empty proto_path).
+// System tensor columns are appended by CreateFromMessages after this call.
 void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
-                        FieldPath& current_path,
-                        std::vector<std::string>& column_names,
-                        FieldPathList& field_paths) {
+                        FieldPath& current_path, MessageColumnSchema& schema) {
   for (int i = 0; i < descriptor->field_count(); ++i) {
     const google::protobuf::FieldDescriptor* field = descriptor->field(i);
     if (field->is_repeated()) {
@@ -138,18 +159,23 @@ void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
       // identifier quoting issues in SQLite.
       GetFlattenedSchema(field->message_type(),
                          absl::StrCat(prefix, field->name(), "__"),
-                         current_path, column_names, field_paths);
+                         current_path, schema);
     } else {
-      column_names.push_back(absl::StrCat(prefix, field->name()));
-      field_paths.push_back(current_path);
+      // SQLite column — name and type determined once here.
+      schema.push_back({absl::StrCat(prefix, field->name()),
+                        GetSQLiteColumnType(field), current_path});
+
       // For enum fields, we create a second column that maps to the same
-      // descriptor to store string representation. This allows consumers to
-      // read enum descriptions instead of codes.
+      // descriptor to store stringified enum names. This allows us to
+      // perform aggregation on the enum field by either its integer or
+      // string representation, whichever is more convenient for the user.
       if (field->cpp_type() ==
           google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
-        column_names.push_back(
-            absl::StrCat(prefix, field->name(), kEnumAsStringSuffix));
-        field_paths.push_back(current_path);
+        // String-representation column: same path, explicit DT_STRING type,
+        // distinct name with the "_as_str" suffix.
+        schema.push_back(
+            {absl::StrCat(prefix, field->name(), kEnumAsStringSuffix),
+             DataType::DT_STRING, current_path});
       }
     }
     current_path.pop_back();
@@ -157,12 +183,19 @@ void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
 }
 
 }  // namespace
+
+Input::TensorContents::TensorContents(std::vector<Tensor> contents)
+    : contents_(std::move(contents)) {
+  column_names_.reserve(contents_.size());
+  for (const auto& col : contents_) {
+    column_names_.push_back(col.name());
+  }
+}
+
 Input::Input(ContentsVariant contents, std::string metadata,
-             std::vector<std::string> column_names,
              std::optional<std::string> privacy_id)
     : contents_(std::move(contents)),
       metadata_(std::move(metadata)),
-      column_names_(std::move(column_names)),
       privacy_id_(std::move(privacy_id)) {}
 
 absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
@@ -194,9 +227,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(
   }
 
   size_t num_rows = contents[0].shape().dim_sizes()[0];
-  std::vector<std::string> column_names;
   for (const auto& column : contents) {
-    column_names.push_back(column.name());
     if (column.shape().dim_sizes().empty()) {
       return absl::InvalidArgumentError("Column has no rows.");
     }
@@ -209,11 +240,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(
     }
   }
   return Input(TensorContents(std::move(contents)), std::move(metadata),
-               std::move(column_names), std::move(privacy_id_string));
-}
-
-absl::Span<const std::string> Input::GetColumnNames() const {
-  return column_names_;
+               std::move(privacy_id_string));
 }
 
 absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
@@ -224,8 +251,7 @@ absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
 
 absl::Status Input::AddColumn(Tensor&& new_column) {
   ABSL_RETURN_IF_ERROR(
-      ValidateNewColumn(new_column, column_names_, GetRowCount()));
-  column_names_.push_back(new_column.name());
+      ValidateNewColumn(new_column, GetColumnNames(), GetRowCount()));
   absl::visit(
       [new_column = std::move(new_column)](auto& data) mutable {
         data.AddColumn(std::move(new_column));
@@ -241,8 +267,8 @@ size_t Input::GetRowCount() const {
 
 absl::StatusOr<std::vector<Tensor>> Input::MoveToTensors() && {
   return absl::visit(
-      [this](auto&& data) -> absl::StatusOr<std::vector<Tensor>> {
-        return std::move(data).MoveToTensors(column_names_);
+      [](auto&& data) -> absl::StatusOr<std::vector<Tensor>> {
+        return std::move(data).MoveToTensors();
       },
       std::move(contents_));
 }
@@ -254,6 +280,26 @@ size_t Input::TensorContents::GetRowCount() const {
   return contents_[0].shape().dim_sizes()[0];
 }
 
+Input::MessageContents::MessageContents(
+    std::vector<std::unique_ptr<Message>> messages,
+    std::vector<Tensor> system_columns, MessageColumnSchema schema)
+    : messages_(std::move(messages)),
+      system_columns_(std::move(system_columns)),
+      schema_(std::move(schema)) {
+  column_names_.reserve(schema_.size());
+  for (const auto& desc : schema_) {
+    column_names_.push_back(desc.name);
+  }
+}
+
+void Input::MessageContents::AddColumn(Tensor&& column) {
+  size_t tensor_index = system_columns_.size();
+  schema_.push_back(
+      {column.name(), column.dtype(), /*proto_path=*/{}, tensor_index});
+  column_names_.push_back(column.name());
+  system_columns_.push_back(std::move(column));
+}
+
 absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<Message>> messages,
     std::vector<Tensor> system_columns, std::string metadata,
@@ -261,18 +307,24 @@ absl::StatusOr<Input> Input::CreateFromMessages(
   ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
                         ExtractPrivacyIdAndValidate(privacy_id));
   ABSL_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
-  std::vector<std::string> column_names;
+
+  // Build schema for proto columns.
   FieldPath current_path;
-  FieldPathList field_paths;
-  GetFlattenedSchema(messages[0]->GetDescriptor(), "", current_path,
-                     column_names, field_paths);
-  for (const auto& system_column : system_columns) {
-    column_names.push_back(system_column.name());
+  MessageColumnSchema schema;
+  GetFlattenedSchema(messages[0]->GetDescriptor(), "", current_path, schema);
+
+  // Append system tensor columns to the schema. Each gets a ColumnDescriptor
+  // with an empty proto_path and a system_tensor_index pointing into the
+  // system_columns vector inside MessageContents.
+  for (size_t i = 0; i < system_columns.size(); ++i) {
+    schema.push_back({system_columns[i].name(), system_columns[i].dtype(),
+                      /*proto_path=*/{},
+                      /*system_tensor_index=*/i});
   }
+
   return Input(MessageContents(std::move(messages), std::move(system_columns),
-                               std::move(field_paths)),
-               std::move(metadata), std::move(column_names),
-               std::move(privacy_id_string));
+                               std::move(schema)),
+               std::move(metadata), std::move(privacy_id_string));
 }
 
 absl::StatusOr<RowView> Input::MessageContents::GetRow(
@@ -281,11 +333,10 @@ absl::StatusOr<RowView> Input::MessageContents::GetRow(
     return absl::InvalidArgumentError("Row index is out of bounds.");
   }
   return RowView::CreateFromMessage(messages_[row_index].get(), system_columns_,
-                                    row_index, &field_paths_);
+                                    row_index, &schema_);
 }
 
-absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
-    absl::Span<const std::string> column_names) && {
+absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors() && {
   if (messages_.empty()) {
     return std::vector<Tensor>{};
   }
@@ -296,64 +347,57 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors(
   std::vector<RowView> row_views;
   row_views.reserve(num_rows);
   for (size_t i = 0; i < num_rows; ++i) {
-    ABSL_ASSIGN_OR_RETURN(
-        RowView row_view,
-        RowView::CreateFromMessage(messages_[i].get(), system_columns_, i,
-                                   &field_paths_));
+    ABSL_ASSIGN_OR_RETURN(RowView row_view, RowView::CreateFromMessage(
+                                                messages_[i].get(),
+                                                system_columns_, i, &schema_));
     row_views.push_back(row_view);
   }
-  size_t num_message_columns =
-      row_views[0].GetColumnCount() - system_columns_.size();
 
   std::vector<Tensor> tensors;
   tensors.reserve(row_views[0].GetColumnCount());
-  TensorShape shape({static_cast<int64_t>(num_rows)});
 
-  // Create a tensor for each Message-based column by creating a TensorData,
-  // populating it, and then creating the tensor.
-  for (size_t i = 0; i < num_message_columns; ++i) {
-    auto dtype = row_views[0].GetColumnType(i);
-    const google::protobuf::FieldDescriptor* field = field_paths_[i].back();
-    // We add a string mapping here so that when we parse the string and the
-    // type is enum we use the enum name() instead of mapped integer codes.
-    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM &&
-        absl::EndsWith(column_names[i], kEnumAsStringSuffix)) {
-      dtype = tensorflow_federated::aggregation::DataType::DT_STRING;
-    }
-    std::unique_ptr<TensorData> tensor_data;
-    switch (dtype) {
-      case tensorflow_federated::aggregation::DT_INT32:
-        tensor_data = CreateVectorTensorData<int32_t>(num_rows, row_views, i);
-        break;
-      case tensorflow_federated::aggregation::DT_INT64:
-        tensor_data = CreateVectorTensorData<int64_t>(num_rows, row_views, i);
-        break;
-      case tensorflow_federated::aggregation::DT_FLOAT:
-        tensor_data = CreateVectorTensorData<float>(num_rows, row_views, i);
-        break;
-      case tensorflow_federated::aggregation::DT_DOUBLE:
-        tensor_data = CreateVectorTensorData<double>(num_rows, row_views, i);
-        break;
-      case tensorflow_federated::aggregation::DT_STRING: {
-        auto builder = std::make_unique<MutableStringData>(num_rows);
-        for (const auto& row_view : row_views) {
-          builder->Add(std::string(row_view.GetValue<absl::string_view>(i)));
+  // Iterate the unified schema: proto columns first, then system tensor
+  // columns. GetColumnType(i) reads ColumnDescriptor::column_type directly —
+  // no special-casing for enum-as-string or system columns needed here.
+  for (size_t i = 0; i < schema_.size(); ++i) {
+    const ColumnDescriptor& desc = schema_[i];
+
+    if (!desc.proto_path.empty()) {
+      // Proto column: serialize values row-by-row via RowView using the
+      // Tensor 1D constructor.
+      auto dtype = row_views[0].GetColumnType(i);
+      Tensor tensor;
+      switch (dtype) {
+        case tensorflow_federated::aggregation::DT_INT32:
+          tensor = Tensor(CreateColumnValues<int32_t>(row_views, i), desc.name);
+          break;
+        case tensorflow_federated::aggregation::DT_INT64:
+          tensor = Tensor(CreateColumnValues<int64_t>(row_views, i), desc.name);
+          break;
+        case tensorflow_federated::aggregation::DT_FLOAT:
+          tensor = Tensor(CreateColumnValues<float>(row_views, i), desc.name);
+          break;
+        case tensorflow_federated::aggregation::DT_DOUBLE:
+          tensor = Tensor(CreateColumnValues<double>(row_views, i), desc.name);
+          break;
+        case tensorflow_federated::aggregation::DT_STRING: {
+          std::vector<std::string> values;
+          values.reserve(row_views.size());
+          for (const auto& row_view : row_views) {
+            values.push_back(
+                std::string(row_view.GetValue<absl::string_view>(i)));
+          }
+          tensor = Tensor(std::move(values), desc.name);
+          break;
         }
-        tensor_data = std::move(builder);
-        break;
+        default:
+          return absl::InvalidArgumentError("Unsupported column type.");
       }
-      default:
-        return absl::InvalidArgumentError("Unsupported column type.");
+      tensors.push_back(std::move(tensor));
+    } else {
+      // System tensor column: move the tensor directly.
+      tensors.push_back(std::move(system_columns_[desc.system_tensor_index]));
     }
-    ABSL_ASSIGN_OR_RETURN(
-        Tensor tensor,
-        Tensor::Create(dtype, shape, std::move(tensor_data), column_names[i]));
-    tensors.push_back(std::move(tensor));
-  }
-
-  // Move the system columns to the end of the tensor list.
-  for (size_t i = 0; i < system_columns_.size(); ++i) {
-    tensors.push_back(std::move(system_columns_[i]));
   }
 
   return tensors;
