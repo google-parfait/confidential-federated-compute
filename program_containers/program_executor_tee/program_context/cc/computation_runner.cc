@@ -29,6 +29,7 @@
 #include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
+#include "program_executor_tee/program_context/cc/elastic_composing_executor.h"
 #include "program_executor_tee/program_context/cc/noise_executor_stub.h"
 #include "tensorflow_federated/cc/core/impl/executors/composing_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
@@ -134,8 +135,10 @@ ComputationRunner::ComputationRunner(
         leaf_executor_factory,
     std::vector<std::string> worker_bns,
     std::string serialized_reference_values,
-    std::string outgoing_server_address)
-    : leaf_executor_factory_(leaf_executor_factory), worker_bns_(worker_bns) {
+    std::string outgoing_server_address, bool use_elastic_composing_executor)
+    : leaf_executor_factory_(leaf_executor_factory),
+      worker_bns_(worker_bns),
+      use_elastic_composing_executor_(use_elastic_composing_executor) {
   if (!worker_bns_.empty()) {
     grpc::ChannelArguments args;
     args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
@@ -173,26 +176,47 @@ ComputationRunner::CreateDistributedExecutor(
   }
 
   std::vector<ComposingChild> client_executors;
-  int remaining_clients = num_clients;
-  int num_clients_values_per_executor =
-      std::ceil(static_cast<float>(num_clients) / (worker_bns_.size()));
-  for (int i = 0; i < worker_bns_.size(); i++) {
-    int clients_for_executor =
-        std::min(num_clients_values_per_executor, remaining_clients);
-    CardinalityMap cardinality_map;
-    cardinality_map[tensorflow_federated::kClientsUri] = clients_for_executor;
-    client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
-        CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
-                                          noise_client_sessions_[i].get()),
-                                      cardinality_map),
-        cardinality_map)));
-    remaining_clients -= clients_for_executor;
+  if (use_elastic_composing_executor_) {
+    // ElasticComposingExecutor distributes client work dynamically across
+    // workers, so child executors are created with a cardinality of 0.
+    // The actual client count is passed to ElasticComposingExecutor, which
+    // manages batching and load balancing internally.
+    for (int i = 0; i < worker_bns_.size(); i++) {
+      CardinalityMap cardinality_map;
+      cardinality_map[tensorflow_federated::kClientsUri] = 0;
+      client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
+          CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
+                                            noise_client_sessions_[i].get()),
+                                        cardinality_map),
+          cardinality_map)));
+    }
+  } else {
+    int remaining_clients = num_clients;
+    int num_clients_values_per_executor =
+        std::ceil(static_cast<float>(num_clients) / (worker_bns_.size()));
+    for (int i = 0; i < worker_bns_.size(); i++) {
+      int clients_for_executor =
+          std::min(num_clients_values_per_executor, remaining_clients);
+      CardinalityMap cardinality_map;
+      cardinality_map[tensorflow_federated::kClientsUri] = clients_for_executor;
+      client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
+          CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
+                                            noise_client_sessions_[i].get()),
+                                        cardinality_map),
+          cardinality_map)));
+      remaining_clients -= clients_for_executor;
+    }
   }
 
   ABSL_ASSIGN_OR_RETURN(auto server_executor, leaf_executor_factory());
 
-  return CreateReferenceResolvingExecutor(
-      CreateComposingExecutor(server_executor, client_executors));
+  if (use_elastic_composing_executor_) {
+    return CreateReferenceResolvingExecutor(CreateElasticComposingExecutor(
+        server_executor, client_executors, num_clients));
+  } else {
+    return CreateReferenceResolvingExecutor(
+        CreateComposingExecutor(server_executor, client_executors));
+  }
 }
 
 grpc::Status ComputationRunner::Execute(

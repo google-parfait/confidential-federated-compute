@@ -1,0 +1,259 @@
+# Patch description:
+# 
+# 1. BUILD: Adds textual_hdrs for composing_executor.cc (so
+#    ElasticComposingExecutor can #include it for internal types like
+#    ExecutorValue, UnplacedInner, etc.) and makes the following targets
+#    publicly visible (needed by elastic_composing_executor and its tests):
+#    composing_executor, computations, executor_service,
+#    federated_intrinsics, value_validation.
+# 2. composing_executor.cc:
+#    - Adds ClientsData/CentralClients types so that the elastic executor
+#      can store per-client data centrally rather than distributing it to
+#      children at creation time, enabling dynamic redistribution on failure.
+#    - Makes overridable methods virtual and protected so that
+#      ElasticComposingExecutor can override federated intrinsic handling.
+#    - Makes data members protected for subclass access.
+#    - Gates factory function with #ifndef to avoid ODR violations when the
+#      .cc file is textually included.
+# 3. federating_executor.cc: MAP loop uses data.clients()->size() instead
+#    of num_clients_ to support variable client counts.
+# 4. value_validation.cc: Removes strict client count check so that
+#    ElasticComposingExecutor can pass batches with fewer clients than
+#    the configured total.
+# 5. Python BUILD: Makes executor_bindings and cpp_to_python_executor
+#    targets publicly visible.
+diff --git tensorflow_federated/cc/core/impl/executors/BUILD tensorflow_federated/cc/core/impl/executors/BUILD
+--- tensorflow_federated/cc/core/impl/executors/BUILD
++++ tensorflow_federated/cc/core/impl/executors/BUILD
+@@ -68,6 +68,7 @@
+     name = "composing_executor",
+     srcs = ["composing_executor.cc"],
+     hdrs = ["composing_executor.h"],
++    textual_hdrs = ["composing_executor.cc"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":cardinalities",
+@@ -117,6 +118,7 @@
+ 
+ cc_library(
+     name = "computations",
++    visibility = ["//visibility:public"],
+     hdrs = ["computations.h"],
+     deps = ["@federated_language//federated_language/proto:computation_cc_proto"],
+ )
+@@ -305,6 +307,7 @@
+ 
+ cc_library(
+     name = "executor_service",
++    visibility = ["//visibility:public"],
+     srcs = ["executor_service.cc"],
+     hdrs = ["executor_service.h"],
+     deps = [
+@@ -374,6 +377,7 @@
+ 
+ cc_library(
+     name = "federated_intrinsics",
++    visibility = ["//visibility:public"],
+     srcs = ["federated_intrinsics.cc"],
+     hdrs = ["federated_intrinsics.h"],
+     deps = [
+@@ -1083,6 +1087,7 @@
+ 
+ cc_library(
+     name = "value_validation",
++    visibility = ["//visibility:public"],
+     srcs = ["value_validation.cc"],
+     hdrs = ["value_validation.h"],
+     deps = [
+diff --git tensorflow_federated/cc/core/impl/executors/composing_executor.cc tensorflow_federated/cc/core/impl/executors/composing_executor.cc
+index 446fe20d1..45cecc062 100644
+--- tensorflow_federated/cc/core/impl/executors/composing_executor.cc
++++ tensorflow_federated/cc/core/impl/executors/composing_executor.cc
+@@ -185,8 +185,14 @@ struct TypedFederatedIntrinsic {
+   // The type signature of the FederatedIntrinsic.
+   federated_language::FunctionType type_signature;
+ };
++// Central storage for per-client data (used by ElasticComposingExecutor).
++struct ClientsData {
++  bool all_equal = false;
++  std::vector<v0::Value> values;
++};
++using CentralClients = std::shared_ptr<ClientsData>;
+ using ValueVariant =
+-    std::variant<Unplaced, Server, Clients, Structure, TypedFederatedIntrinsic>;
++    std::variant<Unplaced, Server, Clients, CentralClients, Structure, TypedFederatedIntrinsic>;
+ 
+ inline Clients NewClients(int32_t num_clients) {
+   auto v = std::make_shared<std::vector<std::shared_ptr<OwnedValueId>>>();
+@@ -346,6 +352,17 @@ class ExecutorValue {
+     }
+   }
+ 
++  // Central clients support (for ElasticComposingExecutor).
++  inline bool is_clients_central() const {
++    return std::holds_alternative<CentralClients>(value_);
++  }
++  inline const CentralClients& clients_central() const {
++    return std::get<CentralClients>(value_);
++  }
++  inline static ExecutorValue CreateClientsPlaced(CentralClients data) {
++    return ExecutorValue(std::move(data), ValueType::CLIENTS);
++  }
++
+   inline ValueType type() const { return type_; }
+ 
+   ExecutorValue(ValueVariant value, ValueType type)
+@@ -384,7 +401,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+   }
+ 
+  protected:
+-  absl::string_view ExecutorName() final {
++  virtual absl::string_view ExecutorName() {
+     static constexpr absl::string_view kExecutorName = "ComposingExecutor";
+     return kExecutorName;
+   }
+@@ -499,12 +516,12 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     return absl::OkStatus();
+   }
+ 
+- private:
++ protected:
+   Clients NewClients() const {
+     return ::tensorflow_federated::NewClients(children_.size());
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CreateFederatedValue(
++  virtual absl::StatusOr<ExecutorValue> CreateFederatedValue(
+       FederatedKind kind, const v0::Value_Federated& federated) {
+     switch (kind) {
+       case FederatedKind::SERVER: {
+@@ -560,7 +577,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     return ExecutorValue::CreateClientsPlaced(std::move(clients));
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicValueAtClients(
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicValueAtClients(
+       ExecutorValue&& arg) {
+     auto traceme = Trace("CallIntrinsicValueAtClients");
+     if (arg.type() != ExecutorValue::ValueType::UNPLACED) {
+@@ -589,7 +606,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+         TFF_TRY(server_->CreateCall(embedded->ref(), std::nullopt))));
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicEvalAtClients(
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicEvalAtClients(
+       ExecutorValue&& arg, const federated_language::FunctionType& type_pb) {
+     auto traceme = Trace("CallIntrinsicEvalAtClients");
+     auto fn_to_eval =
+@@ -612,7 +629,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     return ExecutorValue::CreateClientsPlaced(std::move(clients));
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicAggregate(
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicAggregate(
+       ExecutorValue&& arg, const federated_language::FunctionType& type_pb) {
+     auto traceme = Trace("CallIntrinsicAggregate");
+     TFF_TRY(arg.CheckLenForUseAsArgument("federated_aggregate", 5));
+@@ -711,7 +728,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     return ExecutorValue::CreateServerPlaced(ShareValueId(std::move(result)));
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicBroadcast(ExecutorValue&& arg) {
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicBroadcast(ExecutorValue&& arg) {
+     auto traceme = Trace("CallIntrinsicBroadcast");
+     if (arg.type() != ExecutorValue::ValueType::SERVER) {
+       return absl::InvalidArgumentError(
+@@ -723,7 +740,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     return AllEqualToAll(value);
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicMap(
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicMap(
+       ExecutorValue&& arg, const federated_language::FunctionType& type_pb) {
+     auto traceme = Trace("CallIntrinsicMap");
+     TFF_TRY(arg.CheckLenForUseAsArgument("federated_map", 2));
+@@ -847,7 +864,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     }
+   }
+ 
+-  absl::StatusOr<ExecutorValue> CallIntrinsicZipAtClients(
++  virtual absl::StatusOr<ExecutorValue> CallIntrinsicZipAtClients(
+       ExecutorValue&& arg, const federated_language::FunctionType& type_pb) {
+     auto traceme = Trace("CallIntrinsicZipAtClients");
+     v0::Value zip_at_clients;
+@@ -990,7 +1007,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     });
+   }
+ 
+-  absl::Status MaterializeValue(const ExecutorValue& value, v0::Value* value_pb,
++  virtual absl::Status MaterializeValue(const ExecutorValue& value, v0::Value* value_pb,
+                                 ParallelTasks& tasks) const {
+     switch (value.type()) {
+       case ExecutorValue::ValueType::CLIENTS: {
+@@ -1063,6 +1080,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+     }
+   }
+ 
++ protected:
+   std::shared_ptr<Executor> server_;
+   std::vector<ComposingChild> children_;
+   int32_t total_clients_;
+@@ -1077,6 +1095,7 @@ class ComposingExecutor : public ExecutorBase<ValueFuture> {
+ 
+ }  // namespace
+ 
++#ifndef COMPOSING_EXECUTOR_INCLUDED_AS_HEADER
+ std::shared_ptr<Executor> CreateComposingExecutor(
+     std::shared_ptr<Executor> server, std::vector<ComposingChild> children) {
+   int32_t total_clients = 0;
+@@ -1086,5 +1105,6 @@ std::shared_ptr<Executor> CreateComposingExecutor(
+   return std::make_shared<ComposingExecutor>(
+       std::move(server), std::move(children), total_clients);
+ }
++#endif  // COMPOSING_EXECUTOR_INCLUDED_AS_HEADER
+ 
+ }  // namespace tensorflow_federated
+diff --git tensorflow_federated/cc/core/impl/executors/federating_executor.cc tensorflow_federated/cc/core/impl/executors/federating_executor.cc
+index 56d5edfd2..88427757c 100644
+--- tensorflow_federated/cc/core/impl/executors/federating_executor.cc
++++ tensorflow_federated/cc/core/impl/executors/federating_executor.cc
+@@ -594,7 +594,7 @@ class FederatingExecutor : public ExecutorBase<ExecutorValue> {
+           auto child_fn = TFF_TRY(
+               client_child_->CreateValue(*(child_fn_val.value()->get())));
+           Clients results = NewClients();
+-          for (int i = 0; i < num_clients_; i++) {
++          for (int i = 0; i < data.clients()->size(); i++) {
+             auto client_arg = data.clients()->at(i)->ref();
+             auto result =
+                 TFF_TRY(client_child_->CreateCall(child_fn, client_arg));
+diff --git tensorflow_federated/cc/core/impl/executors/value_validation.cc tensorflow_federated/cc/core/impl/executors/value_validation.cc
+index fe62d5f38..b1c59d559 100644
+--- tensorflow_federated/cc/core/impl/executors/value_validation.cc
++++ tensorflow_federated/cc/core/impl/executors/value_validation.cc
+@@ -52,15 +52,6 @@ absl::StatusOr<FederatedKind> ValidateFederated(
+     if (all_equal) {
+       return FederatedKind::CLIENTS_ALL_EQUAL;
+     } else {
+-      if (federated.value_size() != num_clients) {
+-        return absl::InvalidArgumentError(absl::StrCat(
+-            "Expected non-all_equal federated value of type ",
+-            federated.type().DebugString(),
+-            " to have a value for each client. The executor was configured "
+-            "for ",
+-            num_clients, " clients, but ", federated.value().size(),
+-            " values were provided."));
+-      }
+       return FederatedKind::CLIENTS;
+     }
+   } else {
+diff --git tensorflow_federated/python/core/impl/executors/BUILD tensorflow_federated/python/core/impl/executors/BUILD
+--- tensorflow_federated/python/core/impl/executors/BUILD
++++ tensorflow_federated/python/core/impl/executors/BUILD
+@@ -49,6 +49,7 @@
+ 
+ py_library(
+     name = "cpp_to_python_executor",
++    visibility = ["//visibility:public"],
+     srcs = ["cpp_to_python_executor.py"],
+     deps = [
+         ":executor_bindings",

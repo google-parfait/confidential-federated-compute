@@ -106,11 +106,19 @@ FakeComputationDelegationService::FakeComputationDelegationService(
   }
 }
 
+void FakeComputationDelegationService::SetWorkerFailing(
+    const std::string& worker_bns) {
+  failing_workers_.insert(worker_bns);
+}
+
 Status FakeComputationDelegationService::Execute(
     ServerContext* context,
     const fcp::confidentialcompute::outgoing::ComputationRequest* request,
     fcp::confidentialcompute::outgoing::ComputationResponse* response) {
   absl::MutexLock lock(&mutex_);
+  if (failing_workers_.contains(request->worker_bns())) {
+    return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Worker offline");
+  }
   fcp::confidentialcompute::ComputationRequest worker_request;
   *worker_request.mutable_computation() = request->computation();
   fcp::confidentialcompute::ComputationResponse worker_response;

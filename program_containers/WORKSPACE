@@ -112,15 +112,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-AfmE/T6YQjsAvqPfjMqU/fqBt+vtD/wR6bFJHT+o0TI=",
+    integrity = "sha256-7abEZe3UmhqygYL+yKB5U2/Q24yCHoVcbiDACXQEw+c=",
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    strip_prefix = "federated-compute-fd4b5acfdd6600a017b8eda3476f167ff6735e62",
-    url = "https://github.com/google/federated-compute/archive/fd4b5acfdd6600a017b8eda3476f167ff6735e62.tar.gz",
+    strip_prefix = "federated-compute-35de67b19a3e9bc5483f0a73c7677d25a50fdd62",
+    url = "https://github.com/google/federated-compute/archive/35de67b19a3e9bc5483f0a73c7677d25a50fdd62.tar.gz",
 )
 
 http_archive(
@@ -216,9 +216,12 @@ http_archive(
         r"""find . -name BUILD -exec sed -i 's|@pypi//\([a-zA-Z0-9_]*\)|@pypi//\1:pkg|g' {} +""",
     ],
     patches = [
-        "//third_party/org_tensorflow_federated:executor_visibility.patch",
+        "//third_party/org_tensorflow_federated:executor.patch",
         "//third_party/org_tensorflow_federated:package.patch",
     ],
+    repo_mapping = {
+        "@com_google_googletest": "@googletest",
+    },
     sha256 = "f3c446c694fc0aa808bcc59d502dab36b33e86336d71c13245a303ff2cd191d3",
     strip_prefix = "tensorflow-federated-c603fa47ebebf9d5e28f5369be3dc2c2f3de721f",
     url = "https://github.com/google-parfait/tensorflow-federated/archive/c603fa47ebebf9d5e28f5369be3dc2c2f3de721f.tar.gz",

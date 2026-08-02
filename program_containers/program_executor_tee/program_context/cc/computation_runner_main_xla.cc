@@ -36,6 +36,9 @@ ABSL_FLAG(std::string, serialized_reference_values, "",
 ABSL_FLAG(int32_t, max_concurrent_computation_calls, -1,
           "The number of calls that can be handled in parallel by the leaf "
           "executors. Non-positive values indicate no maximum.");
+ABSL_FLAG(
+    bool, use_elastic_composing_executor, false,
+    "Whether to use ElasticComposingExecutor instead of ComposingExecutor.");
 
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
@@ -79,7 +82,8 @@ int main(int argc, char* argv[]) {
       confidential_federated_compute::program_executor_tee::ComputationRunner>(
       CreateExecutor, absl::GetFlag(FLAGS_worker_bns),
       reference_values.SerializeAsString(),
-      absl::GetFlag(FLAGS_outgoing_server_address));
+      absl::GetFlag(FLAGS_outgoing_server_address),
+      absl::GetFlag(FLAGS_use_elastic_composing_executor));
 
   builder.RegisterService(computation_runner_service.get());
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());

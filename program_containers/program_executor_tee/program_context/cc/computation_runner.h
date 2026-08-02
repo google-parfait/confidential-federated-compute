@@ -41,7 +41,7 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
           leaf_executor_factory,
       std::vector<std::string> worker_bns,
       std::string serialized_reference_values,
-      std::string outgoing_server_address);
+      std::string outgoing_server_address, bool use_elastic_composing_executor);
 
   // Executes the TFF computation represented in the request message using a C++
   // execution stack. Returns a tensorflow_federated::v0::Value in the response
@@ -69,6 +69,8 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
   // Addresses of worker machines running the program_worker binary that can be
   // used to execute computations in a distributed manner.
   std::vector<std::string> worker_bns_;
+  // Whether to use the ElasticComposingExecutor or ComposingExecutor.
+  bool use_elastic_composing_executor_;
   // ComputationDelegation service stub for communication with workers. This is
   // only initialized if worker_bns_ is non-empty.
   std::unique_ptr<

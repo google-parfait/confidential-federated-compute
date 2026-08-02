@@ -62,6 +62,9 @@ PYBIND11_MODULE(fake_service_bindings_jax, m) {
              return new FakeComputationDelegationService(worker_bns,
                                                          CreateExecutor);
            }),
+           py::arg("worker_bns"))
+      .def("set_worker_failing",
+           &FakeComputationDelegationService::SetWorkerFailing,
            py::arg("worker_bns"));
 
   py::class_<FakeServer>(m, "FakeServer")
