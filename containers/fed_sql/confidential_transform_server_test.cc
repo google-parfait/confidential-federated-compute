@@ -28,6 +28,7 @@
 #include "cc/crypto/client_encryptor.h"
 #include "cc/crypto/encryption_key.h"
 #include "containers/big_endian.h"
+#include "containers/blob_metadata.h"
 #include "containers/common/time_budget/budget.pb.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -82,7 +83,6 @@ using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
-using ::fcp::confidential_compute::MessageDecryptor;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidential_compute::ReleaseToken;
 using ::fcp::confidentialcompute::AggCoreAggregationType;
@@ -482,9 +482,8 @@ class FedSqlServerTest : public Test {
         key_pair.has_value() ? *key_pair
                              : crypto_test_utils::GenerateKeyPair(key_id_);
     public_key_ = public_private_key_pair.first;
-    message_decryptor_ =
-        std::make_unique<MessageDecryptor>(std::vector<absl::string_view>(
-            {public_private_key_pair.second, public_private_key_pair.second}));
+    decryptor_ = std::make_unique<Decryptor>(std::vector<absl::string_view>(
+        {public_private_key_pair.second, public_private_key_pair.second}));
 
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
@@ -577,21 +576,12 @@ class FedSqlServerTest : public Test {
   }
 
   std::string Decrypt(BlobMetadata metadata, const absl::Cord& ciphertext) {
-    BlobHeader blob_header;
-    blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                    .kms_symmetric_key_associated_data()
-                                    .record_header());
-    auto decrypted = message_decryptor_->Decrypt(
-        std::string(ciphertext),
-        metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-        metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-        metadata.hpke_plus_aead_data()
-            .kms_symmetric_key_associated_data()
-            .record_header(),
-        metadata.hpke_plus_aead_data().encapsulated_public_key(),
-        blob_header.key_id());
+    auto key_id = GetKeyIdFromMetadata(metadata);
+    CHECK_OK(key_id.status());
+    auto decrypted =
+        decryptor_->DecryptBlob(metadata, std::string(ciphertext), *key_id);
     CHECK_OK(decrypted.status());
-    return decrypted.value();
+    return *decrypted;
   }
 
   std::unique_ptr<grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
@@ -616,7 +606,7 @@ class FedSqlServerTest : public Test {
   std::string key_id_ = "key_id";
   std::string allowed_policy_hash_ = "hash_1";
   std::string public_key_;
-  std::unique_ptr<MessageDecryptor> message_decryptor_;
+  std::unique_ptr<Decryptor> decryptor_;
 };
 
 TEST_F(FedSqlServerTest, StreamInitializeWithMessageConfigSucceeds) {

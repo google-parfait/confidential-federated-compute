@@ -34,6 +34,8 @@
 #include "cc/crypto/encryption_key.h"
 #include "containers/batched_inference/batched_inference_engine.h"
 #include "containers/batched_inference/batched_inference_test_utils.h"
+#include "containers/blob_metadata.h"
+#include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/status_converters.h"
@@ -57,6 +59,8 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::confidential_federated_compute::Decryptor;
+using ::confidential_federated_compute::GetKeyIdFromMetadata;
 using ::confidential_federated_compute::crypto_test_utils::GenerateKeyPair;
 using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::MessageEncryptor;
@@ -230,7 +234,7 @@ class BatchedInferenceServerTest : public ::testing::Test {
     ASSERT_TRUE(session_stream->Write(write_req));
   }
 
-  // Push one commit message to a session initilaized with InitializeSession.
+  // Push one commit message to a session initialized with InitializeSession.
   void WriteCommitToSession(SessionStream& session_stream) {
     SessionRequest commit_req;
     commit_req.mutable_commit();
@@ -240,8 +244,7 @@ class BatchedInferenceServerTest : public ::testing::Test {
   // Read all replies until the first non-read, and accumulate the reads on the
   // output vector.
   absl::StatusOr<std::unique_ptr<SessionResponse>> ReadResponsesFromSession(
-      SessionStream& session_stream,
-      fcp::confidential_compute::MessageDecryptor& decryptor,
+      SessionStream& session_stream, Decryptor& decryptor,
       std::vector<std::string>* ptr_response_vec) {
     bool received_read_response = false;
     BlobMetadata read_metadata;
@@ -260,15 +263,11 @@ class BatchedInferenceServerTest : public ::testing::Test {
         if (session_response->read().has_first_response_metadata()) {
           read_metadata = session_response->read().first_response_metadata();
         }
-        auto decrypted_result = decryptor.Decrypt(
-            std::string(session_response->read().data()),
-            read_metadata.hpke_plus_aead_data().ciphertext_associated_data(),
-            read_metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-            read_metadata.hpke_plus_aead_data()
-                .kms_symmetric_key_associated_data()
-                .record_header(),
-            read_metadata.hpke_plus_aead_data().encapsulated_public_key(),
-            kKeyId);
+        ABSL_ASSIGN_OR_RETURN(std::string key_id,
+                              GetKeyIdFromMetadata(read_metadata));
+        auto decrypted_result = decryptor.DecryptBlob(
+            read_metadata, std::string(session_response->read().data()),
+            key_id);
         if (!decrypted_result.ok()) {
           return absl::InternalError(absl::StrCat(
               "Decryption error: ", decrypted_result.status().ToString()));
@@ -340,9 +339,8 @@ TEST_F(BatchedInferenceServerTest, NoWrites) {
 TEST_F(BatchedInferenceServerTest, SingleWriteNoCommit) {
   EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_)).Times(0);
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
-  fcp::confidential_compute::MessageDecryptor decryptor(
-      std::vector<absl::string_view>(
-          {session_priv_key_cose, session_priv_key_cose}));
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
   grpc::ClientContext session_context;
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
@@ -362,9 +360,8 @@ TEST_F(BatchedInferenceServerTest, SingleWriteNoCommit) {
 TEST_F(BatchedInferenceServerTest, MultipleWritesNoCommit) {
   EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_)).Times(0);
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
-  fcp::confidential_compute::MessageDecryptor decryptor(
-      std::vector<absl::string_view>(
-          {session_priv_key_cose, session_priv_key_cose}));
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
   grpc::ClientContext session_context;
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
@@ -396,9 +393,8 @@ TEST_F(BatchedInferenceServerTest, SingleWriteWithCommit) {
         return results;
       }));
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
-  fcp::confidential_compute::MessageDecryptor decryptor(
-      std::vector<absl::string_view>(
-          {session_priv_key_cose, session_priv_key_cose}));
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
   grpc::ClientContext session_context;
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
@@ -433,9 +429,8 @@ TEST_F(BatchedInferenceServerTest, MultipleWritesWithCommit) {
         return results;
       }));
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
-  fcp::confidential_compute::MessageDecryptor decryptor(
-      std::vector<absl::string_view>(
-          {session_priv_key_cose, session_priv_key_cose}));
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
   grpc::ClientContext session_context;
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,
@@ -480,9 +475,8 @@ TEST_F(BatchedInferenceServerTest, MultipleCommits) {
         return results;
       }));
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
-  fcp::confidential_compute::MessageDecryptor decryptor(
-      std::vector<absl::string_view>(
-          {session_priv_key_cose, session_priv_key_cose}));
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
   grpc::ClientContext session_context;
   SessionStream session_stream;
   InitializeSession(session_pub_key_cose, session_priv_key_cose,

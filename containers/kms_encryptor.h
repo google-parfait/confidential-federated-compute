@@ -77,21 +77,17 @@ class KmsEncryptor {
  private:
   absl::StatusOr<absl::string_view> GetReencryptionKey(
       int reencryption_key_index) const;
-  absl::StatusOr<std::string> CreateSerializedBlobHeader(
-      absl::string_view reencryption_key, absl::string_view blob_id) const;
 
-  // Creates BlobMetadata for the existing BlobHeader path. The blob_header
-  // is a serialized BlobHeader stored in kms_associated_data.record_header;
-  // key_id is already embedded in the serialized BlobHeader.
-  fcp::confidentialcompute::BlobMetadata CreateMetadataWithBlobHeader(
-      const fcp::confidential_compute::EncryptMessageResult& encrypted_message,
-      absl::string_view blob_id, absl::string_view blob_header) const;
+  // Creates an Any packed with a BlobHeader with the given
+  // key_id, blob_id, and the encryptor's reencryption_policy_hash.
+  google::protobuf::Any PackBlobHeader(absl::string_view key_id,
+                                       absl::string_view blob_id) const;
 
-  // Creates BlobMetadata with the Any associated_metadata.
+  // Creates BlobMetadata with the Any associated_metadata .
   // KmsAssociatedData.associated_metadata is set to the provided
-  // associated_metadata; the deprecated record_header is
-  // left empty. key_id is set directly on HpkePlusAeadMetadata.
-  fcp::confidentialcompute::BlobMetadata CreateMetadataWithAssociatedMetadata(
+  // associated_metadata; the deprecated record_header is left empty.
+  // key_id is set directly on HpkePlusAeadMetadata.
+  fcp::confidentialcompute::BlobMetadata CreateMetadata(
       const fcp::confidential_compute::EncryptMessageResult& encrypted_message,
       absl::string_view blob_id, absl::string_view key_id,
       google::protobuf::Any associated_metadata) const;

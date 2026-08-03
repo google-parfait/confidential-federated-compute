@@ -198,6 +198,7 @@ cc_test(
         ":inference_model",
         ":range_tracker",
         "//containers:big_endian",
+        "//containers:blob_metadata",
         "//containers:crypto",
         "//containers:crypto_test_utils",
         "//containers/common/time_budget:budget_cc_proto",

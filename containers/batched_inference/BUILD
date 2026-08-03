@@ -130,6 +130,8 @@ cc_test(
         ":batched_inference_engine",
         ":batched_inference_server",
         ":batched_inference_test_utils",
+        "//containers:blob_metadata",
+        "//containers:crypto",
         "//containers:crypto_test_utils",
         "//testing:parse_text_proto",
         "@boringssl//:crypto",

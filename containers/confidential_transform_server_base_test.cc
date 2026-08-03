@@ -1459,10 +1459,8 @@ TEST_F(ConfidentialTransformServerBaseTest, EmitEncrypted) {
       read_response.read().first_response_metadata().hpke_plus_aead_data();
   EXPECT_GT(hpke_plus_aead_data.ciphertext_associated_data().size(), 0);
   EXPECT_GT(hpke_plus_aead_data.encrypted_symmetric_key().size(), 0);
-  EXPECT_GT(hpke_plus_aead_data.kms_symmetric_key_associated_data()
-                .record_header()
-                .size(),
-            0);
+  EXPECT_TRUE(hpke_plus_aead_data.kms_symmetric_key_associated_data()
+                  .has_associated_metadata());
   // Random blob ID is present
   EXPECT_GT(hpke_plus_aead_data.blob_id().size(), 0);
 }
@@ -1506,10 +1504,8 @@ TEST_F(ConfidentialTransformServerBaseTest, EmitReleasable) {
       read_response.read().first_response_metadata().hpke_plus_aead_data();
   EXPECT_GT(hpke_plus_aead_data.ciphertext_associated_data().size(), 0);
   EXPECT_GT(hpke_plus_aead_data.encrypted_symmetric_key().size(), 0);
-  EXPECT_GT(hpke_plus_aead_data.kms_symmetric_key_associated_data()
-                .record_header()
-                .size(),
-            0);
+  EXPECT_TRUE(hpke_plus_aead_data.kms_symmetric_key_associated_data()
+                  .has_associated_metadata());
   // Random blob ID is present
   EXPECT_GT(hpke_plus_aead_data.blob_id().size(), 0);
 

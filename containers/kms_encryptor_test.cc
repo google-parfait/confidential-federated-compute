@@ -19,6 +19,7 @@
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -31,6 +32,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::crypto_test_utils::MockSigningKeyHandle;
 using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::testing::_;
 using ::testing::NiceMock;
@@ -54,6 +56,39 @@ TEST(KmsEncryptorTest, EncryptIntermediateResult) {
   EXPECT_THAT(decryptor.DecryptBlob(encrypted_result->metadata,
                                     encrypted_result->ciphertext, "key_1"),
               IsOkAndHolds("plaintext"));
+}
+
+TEST(KmsEncryptorTest, EncryptIntermediateResultGeneratesCorrectMetadata) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
+  KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
+                         std::make_unique<NiceMock<MockSigningKeyHandle>>());
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor.EncryptIntermediateResult(0, "plaintext", "foo");
+  ASSERT_THAT(encrypted_result, IsOk());
+
+  const BlobMetadata& metadata = encrypted_result->metadata;
+
+  // key_id should be set directly on HpkePlusAeadMetadata.
+  EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
+
+  // record_header should be empty (deprecated).
+  EXPECT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .record_header()
+                  .empty());
+
+  // associated_metadata Any should be set and contain a BlobHeader.
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .has_associated_metadata());
+  BlobHeader unpacked;
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .associated_metadata()
+                  .UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.key_id(), "key_1");
+  EXPECT_EQ(unpacked.blob_id(), "foo");
 }
 
 TEST(KmsEncryptorTest, EncryptIntermediateResultInvalidReencryptionIndex) {
@@ -177,6 +212,42 @@ TEST(KmsEncryptorTest, EncryptReleasableResult) {
   EXPECT_THAT(decryptor.DecryptBlob(encrypted_result->metadata,
                                     encrypted_result->ciphertext, "key_1"),
               IsOkAndHolds("plaintext"));
+}
+
+TEST(KmsEncryptorTest, EncryptReleasableResultGeneratesCorrectMetadata) {
+  auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
+  auto signing_key_handle = std::make_unique<NiceMock<MockSigningKeyHandle>>();
+  EXPECT_CALL(*signing_key_handle, Sign(_))
+      .WillOnce(Return(oak::crypto::v1::Signature::default_instance()));
+  KmsEncryptor encryptor(std::vector<std::string>{key_pair_1.first},
+                         std::move(signing_key_handle));
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor.EncryptReleasableResult(0, "plaintext", "foo", "src", "dst");
+  ASSERT_THAT(encrypted_result, IsOk());
+
+  const BlobMetadata& metadata = encrypted_result->metadata;
+
+  // key_id should be set directly on HpkePlusAeadMetadata.
+  EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
+
+  // record_header should be empty (deprecated).
+  EXPECT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .record_header()
+                  .empty());
+
+  // associated_metadata Any should be set and contain a BlobHeader.
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .has_associated_metadata());
+  BlobHeader unpacked;
+  ASSERT_TRUE(metadata.hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .associated_metadata()
+                  .UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.key_id(), "key_1");
+  EXPECT_EQ(unpacked.blob_id(), "foo");
 }
 
 TEST(KmsEncryptorTest, EncryptReleasableResultInvalidReencryptionIndex) {
