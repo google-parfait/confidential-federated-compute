@@ -231,14 +231,14 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-fSgxmFfrisZeGWStV+Hv0SdFXvSPeW+q0ZH9shhXQK8=",
+    integrity = "sha256-lX/9lYdbTnzEegQByexWwyIocYLSk7zQcuNsE2LXJUo=",
     patch_args = ["-p1"],
     patches = [
         "//third_party/org_tensorflow_federated:tff_tf_combined_fixes.patch",
     ],
     repo_mapping = {"@pypi": "@pypi_compat"},
-    strip_prefix = "tensorflow-federated-189fb8e13aa97ff11653a95de631b305420f9a5a",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/189fb8e13aa97ff11653a95de631b305420f9a5a.tar.gz",
+    strip_prefix = "tensorflow-federated-45c4d8e7e3e6b1654af5ca99fb54856759556c8e",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/45c4d8e7e3e6b1654af5ca99fb54856759556c8e.tar.gz",
 )
 
 http_archive(
