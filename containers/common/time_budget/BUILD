@@ -25,7 +25,7 @@ proto_library(
 
 cc_proto_library(
     name = "budget_cc_proto",
-    visibility = ["//containers:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [":budget_proto"],
 )
 
@@ -33,6 +33,7 @@ cc_library(
     name = "budget_interval_map",
     srcs = ["budget_interval_map.cc"],
     hdrs = ["budget_interval_map.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//containers/common/intervals:interval",
         "//containers/common/intervals:interval_map",
@@ -57,6 +58,7 @@ cc_library(
     name = "time_budget",
     srcs = ["time_budget.cc"],
     hdrs = ["time_budget.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":budget_cc_proto",
         ":budget_interval_map",
