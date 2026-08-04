@@ -13,11 +13,11 @@
 // limitations under the License.
 #include "nn_histogram_fn.h"
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "containers/fns/do_fn.h"
 #include "containers/fns/fn_factory.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/nn_histogram_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "google/protobuf/any.h"
@@ -74,10 +74,10 @@ class NNHistogramFnFactory : public FnFactory {
 
 absl::Status NNHistogramFn::Do(KV input, Context& context) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto parser, parser_factory.Create(absl::Cord(std::move(input.data))));
-  FCP_ASSIGN_OR_RETURN(auto tensor,
-                       parser->GetTensor(std::string(kDataTensorName)));
+  ABSL_ASSIGN_OR_RETURN(auto tensor,
+                        parser->GetTensor(std::string(kDataTensorName)));
   if (tensor.dtype() != DT_FLOAT) {
     return absl::InvalidArgumentError("The input tensor not a float tensor.");
   }
@@ -93,17 +93,17 @@ absl::Status NNHistogramFn::Do(KV input, Context& context) {
   nn_indices.reserve(batch_dim);
   for (int i = 0; i < batch_dim; i++) {
     auto input_emb = data.subspan(i * emb_dim, emb_dim);
-    FCP_ASSIGN_OR_RETURN(int32_t index,
-                         (*nn_fn_)(input_emb, synthetic_data_embeddings_));
+    ABSL_ASSIGN_OR_RETURN(int32_t index,
+                          (*nn_fn_)(input_emb, synthetic_data_embeddings_));
     nn_indices.push_back(index);
   }
 
   FederatedComputeCheckpointBuilderFactory builder_factory;
   auto builder = builder_factory.Create();
   Tensor index_t(std::move(nn_indices));
-  FCP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       builder->Add(std::string(kIndexTensorName), std::move(index_t)));
-  FCP_ASSIGN_OR_RETURN(auto checkpoint, builder->Build());
+  ABSL_ASSIGN_OR_RETURN(auto checkpoint, builder->Build());
 
   if (input.blob_id.empty()) {
     return absl::InvalidArgumentError("Missing input blob id.");
@@ -138,7 +138,8 @@ absl::StatusOr<std::unique_ptr<FnFactory>> ProvideNNHistogramFnFactory(
   }
   std::string path = write_configuration_map.at(
       init_config.synthetic_data_embeddings_configuration_id());
-  FCP_ASSIGN_OR_RETURN(std::vector<Embedding> embeddings, read_record_fn(path));
+  ABSL_ASSIGN_OR_RETURN(std::vector<Embedding> embeddings,
+                        read_record_fn(path));
   return std::make_unique<NNHistogramFnFactory>(std::move(embeddings),
                                                 std::move(nn_fn));
 }

@@ -7,6 +7,11 @@ build --output_filter='^//'  # Suppress warnings from external dependencies.
 build --incompatible_merge_fixed_and_default_shell_env  # https://github.com/bazelbuild/rules_rust/issues/2665
 build --incompatible_default_to_explicit_init_py
 
+# Suppress an error when building abseil-cpp 20260526.0 with clang 14 or 15.
+# See https://github.com/abseil/abseil-cpp/issues/2073. This should be removed
+# when either abseil-cpp or clang is updated.
+build --per_file_copt=external/abseil-cpp./absl/strings/internal/stl_type_traits.h@-Wno-invalid-partial-specialization
+
 common --experimental_repo_remote_exec
 
 build:asan --compilation_mode=dbg
