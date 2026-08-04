@@ -24,20 +24,6 @@
 
 namespace confidential_federated_compute::fns {
 
-struct Value {
-  // The serialized input or output data.
-  std::string data;
-  // Metadata associated with the data descriving how the data was compressed
-  // and encrypted.
-  // TODO: consider hiding the metadata and providing it automatically.
-  fcp::confidentialcompute::BlobMetadata metadata;
-};
-
-struct KeyValue {
-  google::protobuf::Any key;
-  Value value;
-};
-
 // Common base class for functions
 class Fn : public confidential_federated_compute::Session {
  public:

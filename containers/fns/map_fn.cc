@@ -13,40 +13,36 @@
 // limitations under the License.
 #include "containers/fns/map_fn.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/fns/fn_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
-#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
     fcp::confidentialcompute::WriteRequest write_request,
     std::string unencrypted_data, Context& context) {
-  int64_t unencrypted_data_size = unencrypted_data.size();
-  KeyValue input;
-  input.value.data = std::move(unencrypted_data);
-  input.value.metadata = std::move(write_request.first_request_metadata());
+  size_t unencrypted_data_size = unencrypted_data.size();
+  KV input;
+  input.data = std::move(unencrypted_data);
+  input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
-  absl::StatusOr<KeyValue> output = Map(std::move(input), context);
-  // TODO: Handle output encryption more generally. Currently Map is responsible
-  // for encrypting the output properly.
+  absl::StatusOr<KV> output = Map(std::move(input), context);
   if (!output.ok()) {
     return ToWriteFinishedResponse(output.status());
   }
 
-  fcp::confidentialcompute::ReadResponse read_response;
-  read_response.set_data(std::move(output->value.data));
-  *read_response.mutable_first_response_metadata() =
-      std::move(output->value.metadata);
-  *read_response.mutable_first_response_configuration() =
-      std::move(output->key);
-  context.Emit(read_response);
+  std::optional<int> key_index = GetReencryptionKeyIndex();
+  if (key_index.has_value()) {
+    context.EmitEncrypted(*key_index, std::move(*output));
+  } else {
+    context.EmitUnencrypted(std::move(*output));
+  }
   fcp::confidentialcompute::WriteFinishedResponse response;
   response.set_committed_size_bytes(unencrypted_data_size);
   return response;

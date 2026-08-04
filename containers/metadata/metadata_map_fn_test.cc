@@ -41,7 +41,6 @@ namespace {
 using ::absl::StatusCode;
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
-using ::confidential_federated_compute::fns::KeyValue;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::confidential_federated_compute::metadata::testing::BuildCheckpoint;
 using ::confidential_federated_compute::metadata::testing::
@@ -56,7 +55,6 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::MetadataContainerConfig;
 using ::fcp::confidentialcompute::MetadataContainerInitializationConfig;
 using ::fcp::confidentialcompute::PayloadMetadataSet;
-using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -193,16 +191,15 @@ TEST_F(MetadataMapFnTest, MapSucceeds) {
       {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"},
       on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   ASSERT_EQ(metadata_set.metadata_size(), 1);
   const auto& tee_metadata = metadata_set.metadata().at("test_config");
 
@@ -224,16 +221,15 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithTimezone) {
       {"2025-01-01T18:00:00-08:00", "2025-01-02T10:00:00+08:00"},
       on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   const auto& tee_metadata = metadata_set.metadata().at("test_config");
   EXPECT_THAT(tee_metadata.event_time_range(),
               EqualsEventTimeRange(2025, 1, 1, 2025, 1, 3));
@@ -263,16 +259,15 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithOnePartition) {
   std::string checkpoint = BuildCheckpoint(
       "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   const auto& tee_metadata = metadata_set.metadata().at("test_config");
 
   // With 1 partition, all privacy IDs map to partition key 0.
@@ -301,16 +296,15 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithMultipleConfigs) {
   std::string checkpoint = BuildCheckpoint(
       "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   ASSERT_EQ(metadata_set.metadata_size(), 2);
   const auto& tee_metadata_1 = metadata_set.metadata().at("config_1");
   EXPECT_THAT(tee_metadata_1.partition_key(), LowerNBitsAreZero(54));
@@ -345,16 +339,15 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithSingleEventTime) {
   std::string checkpoint = BuildCheckpoint(
       "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   const auto& tee_metadata = metadata_set.metadata().at("test_config");
 
   // Verify event time range.
@@ -366,16 +359,15 @@ TEST_F(MetadataMapFnTest, MapWithNoEventTimesDoesNotSetEventTimeRange) {
   std::string checkpoint =
       BuildCheckpoint("16byteprivacyid1", {}, on_device_query_name_);
 
-  ReadResponse read_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&read_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
   absl::StatusOr<WriteFinishedResponse> result =
       fn_->Write(WriteRequest(), checkpoint, context_);
   ASSERT_THAT(result, IsOk());
 
   PayloadMetadataSet metadata_set;
-  ASSERT_TRUE(
-      read_response.first_response_configuration().UnpackTo(&metadata_set));
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
   const auto& tee_metadata = metadata_set.metadata().at("test_config");
 
   // Verify event time range is not set.

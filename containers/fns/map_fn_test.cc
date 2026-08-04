@@ -14,27 +14,24 @@
 #include "containers/fns/map_fn.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "containers/testing/mocks.h"
-#include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
-#include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::fns {
 namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FinalizeRequest;
-using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -49,10 +46,17 @@ class MockMapFn : public MapFn {
  public:
   MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
               (override));
-  MOCK_METHOD(absl::StatusOr<KeyValue>, Map, (KeyValue input, Context& context),
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, Context& context),
               (override));
   MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, Context& context),
               (override));
+};
+
+class MockEncryptedMapFn : public MapFn {
+ public:
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, Context& context),
+              (override));
+  std::optional<int> GetReencryptionKeyIndex() const override { return 0; }
 };
 
 class MapFnTest : public Test {
@@ -78,28 +82,32 @@ TEST_F(MapFnTest, ConfigureCallsInitialize) {
   EXPECT_EQ(passed_config.type_url(), "foo");
 }
 
-TEST_F(MapFnTest, WriteCallsMapAndEmit) {
+TEST_F(MapFnTest, WriteCallsMapAndEmitUnencrypted) {
   Any config;
   config.set_type_url("bar");
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_GZIP);
   std::string data = "somedata";
 
   WriteRequest request;
   *request.mutable_first_request_configuration() = config;
-  *request.mutable_first_request_metadata() = metadata;
 
-  KeyValue output_key_value;
-  output_key_value.value.data = "output_data";
-  output_key_value.key.set_type_url("output_key");
+  Session::KV output_kv;
+  output_kv.data = "output_data";
+  output_kv.key.set_type_url("output_key");
 
-  KeyValue passed_input;
+  Session::KV passed_input;
   EXPECT_CALL(*session_, Map(_, _))
-      .WillOnce(DoAll(SaveArg<0>(&passed_input), Return(output_key_value)));
+      .WillOnce([&passed_input, &output_kv](
+                    Session::KV input,
+                    Session::Context&) -> absl::StatusOr<Session::KV> {
+        passed_input = std::move(input);
+        Session::KV result;
+        result = output_kv;
+        return std::move(result);
+      });
 
-  ReadResponse emitted_response;
-  EXPECT_CALL(context_, Emit(_))
-      .WillOnce(DoAll(SaveArg<0>(&emitted_response), Return(true)));
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
 
   absl::StatusOr<WriteFinishedResponse> result =
       session_->Write(request, data, context_);
@@ -107,12 +115,38 @@ TEST_F(MapFnTest, WriteCallsMapAndEmit) {
   EXPECT_EQ(result->committed_size_bytes(), data.size());
 
   EXPECT_EQ(passed_input.key.type_url(), "bar");
-  EXPECT_EQ(passed_input.value.metadata.compression_type(),
-            BlobMetadata::COMPRESSION_TYPE_GZIP);
-  EXPECT_EQ(passed_input.value.data, "somedata");
-  EXPECT_EQ(emitted_response.data(), "output_data");
-  EXPECT_EQ(emitted_response.first_response_configuration().type_url(),
-            "output_key");
+  EXPECT_EQ(passed_input.data, "somedata");
+  EXPECT_EQ(emitted_kv.data, "output_data");
+  EXPECT_EQ(emitted_kv.key.type_url(), "output_key");
+}
+
+TEST_F(MapFnTest, WriteCallsMapAndEmitEncrypted) {
+  auto session = std::make_unique<MockEncryptedMapFn>();
+  std::string data = "somedata";
+
+  WriteRequest request;
+
+  Session::KV output_kv;
+  output_kv.data = "output_data";
+  output_kv.key.set_type_url("output_key");
+
+  EXPECT_CALL(*session, Map(_, _))
+      .WillOnce([&output_kv](Session::KV,
+                             Session::Context&) -> absl::StatusOr<Session::KV> {
+        Session::KV result;
+        result = output_kv;
+        return std::move(result);
+      });
+
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  absl::StatusOr<WriteFinishedResponse> result =
+      session->Write(request, data, context_);
+  ASSERT_THAT(result, IsOk());
+  EXPECT_EQ(emitted_kv.data, "output_data");
+  EXPECT_EQ(emitted_kv.key.type_url(), "output_key");
 }
 
 TEST_F(MapFnTest, FinalizeCallsFinalizeReplica) {
