@@ -30,27 +30,12 @@
 #include "include/llama-cpp.h"
 #include "include/llama.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 
 namespace confidential_federated_compute::fed_sql {
 namespace {
 
-using ::fcp::confidentialcompute::ColumnConfiguration;
-using ::fcp::confidentialcompute::GEMMA2_2B;
-using ::fcp::confidentialcompute::GEMMA2_9B;
-using ::fcp::confidentialcompute::GEMMA3_12B;
-using ::fcp::confidentialcompute::GEMMA3_1B;
-using ::fcp::confidentialcompute::GEMMA3_4B;
-using ::fcp::confidentialcompute::GEMMA_2B;
-using ::fcp::confidentialcompute::GEMMA_7B;
-using ::fcp::confidentialcompute::GEMMA_F32;
-using ::fcp::confidentialcompute::GEMMA_IT;
-using ::fcp::confidentialcompute::GEMMA_PT;
-using ::fcp::confidentialcompute::GEMMA_SFP;
-using ::fcp::confidentialcompute::GEMMA_TINY;
-using ::fcp::confidentialcompute::GemmaConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::Prompt;
 using ::fcp::confidentialcompute::RuntimeConfig;
@@ -59,16 +44,13 @@ using ::gcpp::InferenceArgs;
 using ::gcpp::KVCache;
 using ::gcpp::LoaderArgs;
 using ::gcpp::MatMulEnv;
-using ::gcpp::PromptWrapping;
 using ::gcpp::ThreadingArgs;
 using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
 using ::gcpp::WrapAndTokenize;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::MutableStringData;
-using ::tensorflow_federated::aggregation::MutableVectorData;
 using ::tensorflow_federated::aggregation::Tensor;
-using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
 
 // The max prompt size is set to match the gemma.cpp default seq_len value.
@@ -283,9 +265,9 @@ InferenceModel::RunGemmaCppInference(
     std::vector<size_t> generated_counts(batch_size, 0);
 
     auto batch_stream_token = [&gemma, &output_streams, &generated_counts,
-                               &prompt_sizes,
-                               batch_start](size_t query_idx, size_t /*pos*/,
-                                            int token, float /*prob*/) -> bool {
+                               &prompt_sizes](size_t query_idx, size_t /*pos*/,
+                                              int token,
+                                              float /*prob*/) -> bool {
       // query_idx is absolute within AllQueries.
       size_t local_idx = query_idx;  // batch is rebuilt per chunk, so 0-based.
       ++generated_counts[local_idx];
@@ -579,11 +561,6 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
                         std::move(input).MoveToTensors());
 
   const auto& per_row_output_counts = per_row_output_counts_map.begin()->second;
-
-  size_t total_new_rows = 0;
-  for (size_t count : per_row_output_counts) {
-    total_new_rows += count;
-  }
 
   // Use the shared helper for tensor row duplication.
   ABSL_ASSIGN_OR_RETURN(
