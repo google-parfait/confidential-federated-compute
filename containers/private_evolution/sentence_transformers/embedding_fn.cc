@@ -20,13 +20,13 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "archive_utils.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
@@ -163,24 +163,25 @@ absl::StatusOr<WriteFinishedResponse> EmbeddingFn::Write(
 
 absl::StatusOr<std::string> EmbeddingFn::Process(std::string unencrypted_data) {
   FederatedComputeCheckpointParserFactory parser_factory;
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto parser,
       parser_factory.Create(absl::Cord(std::move(unencrypted_data))));
-  FCP_ASSIGN_OR_RETURN(auto tensor,
-                       parser->GetTensor(std::string(kDataTensorName)));
+  ABSL_ASSIGN_OR_RETURN(auto tensor,
+                        parser->GetTensor(std::string(kDataTensorName)));
   if (tensor.dtype() != DT_STRING) {
     return absl::InvalidArgumentError("Unsupported tensor data type.");
   }
   LOG(INFO) << "Generating embedding";
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::vector<float>> embeddings,
       delegate_->GenerateEmbeddings(tensor.ToStringVector(), prompt_));
 
-  FCP_ASSIGN_OR_RETURN(auto t, CreateEmbeddingTensor(std::move(embeddings)));
+  ABSL_ASSIGN_OR_RETURN(auto t, CreateEmbeddingTensor(std::move(embeddings)));
   FederatedComputeCheckpointBuilderFactory builder_factory;
   auto builder = builder_factory.Create();
-  FCP_RETURN_IF_ERROR(builder->Add(std::string(kDataTensorName), std::move(t)));
-  FCP_ASSIGN_OR_RETURN(absl::Cord ckpt_cord, builder->Build());
+  ABSL_RETURN_IF_ERROR(
+      builder->Add(std::string(kDataTensorName), std::move(t)));
+  ABSL_ASSIGN_OR_RETURN(absl::Cord ckpt_cord, builder->Build());
 
   return std::string(std::move(ckpt_cord));
 }
@@ -227,8 +228,8 @@ EmbeddingFnFactoryProvider CreateEmbeddingFnFactoryProvider(
     }
     std::string archive_path =
         write_configuration_map.at(config.model_artifacts_configuration_id());
-    FCP_ASSIGN_OR_RETURN(std::string model_artifacts_path,
-                         ExtractAll(archive_path, tmp_dir));
+    ABSL_ASSIGN_OR_RETURN(std::string model_artifacts_path,
+                          ExtractAll(archive_path, tmp_dir));
     LOG(WARNING) << "model archive path is " << model_artifacts_path;
     std::optional<std::string> prompt;
     if (config.has_encode_config() &&

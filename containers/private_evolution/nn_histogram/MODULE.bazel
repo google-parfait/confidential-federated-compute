@@ -20,52 +20,65 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# Keep sorted
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+# go/keep-sorted start
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "confidential-federated-compute")
-archive_override(
-    module_name = "confidential-federated-compute",
-    integrity = "sha256-za3cvTnE2ANuqaMIwDwIMp/luixj4/J93zoorEjvM7g=",
-    strip_prefix = "confidential-federated-compute-dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/dd032d11266f1f2bd8b9ec50655e4beb4ce5fea6.tar.gz"],
-)
-
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
-archive_override(
-    module_name = "federated-compute",
-    integrity = "sha256-ebc/RIdgTEG5dQJKjyM8ACFLJaLgeVUeD9tEK969JC0=",
-    strip_prefix = "federated-compute-86887cbc804aef55430bff26c05e458eb4a83386",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/86887cbc804aef55430bff26c05e458eb4a83386.tar.gz"],
-)
-
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
-bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "oak")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "riegeli")
+bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
-bazel_dep(name = "rules_python", version = "1.5.4")
+bazel_dep(name = "rules_python", version = "2.0.2")
 bazel_dep(name = "toolchains_llvm", version = "1.6.0")
-bazel_dep(name = "riegeli")
-archive_override(
-    module_name = "riegeli",
-    integrity = "sha256-zS45loS3Jcmkmrn0E4nXKl2ttf+qQrLmgE6i78C9zNs=",
-    strip_prefix = "riegeli-a9be707bf24ad44fca8d42be4f8d72c7d8a94f30",
-    url = "https://github.com/google/riegeli/archive/a9be707bf24ad44fca8d42be4f8d72c7d8a94f30.tar.gz",
+# go/keep-sorted end
+
+# Module overrides
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+single_version_override(
+    module_name = "abseil-cpp",
+    # Force 20260526.0 despite it having a lower compatibility_level than
+    # earlier versions. 20260526.0 stopped setting compatibility_level because
+    # it's deprecated starting in bazel 8.6.
+    version = "20260526.0",
 )
 
-bazel_dep(name = "oak")
+archive_override(
+    module_name = "confidential-federated-compute",
+    integrity = "sha256-YIUXcSRlXRJGcHPkw1Ypl1sl4FGoKhzS0RvR7UK9Ba4=",
+    strip_prefix = "confidential-federated-compute-af76490e49a7f0f5ac8050bd804ed4910ec16d4e",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/af76490e49a7f0f5ac8050bd804ed4910ec16d4e.tar.gz"],
+)
+
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-Hq+2YuRqukDgE53zdY43Bubsi10ttjWNTKQNOhvTzCI=",
+    strip_prefix = "federated-compute-a416480b3438fbb5d079913b24a4e00eb79914b1",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/a416480b3438fbb5d079913b24a4e00eb79914b1.tar.gz"],
+)
+
 archive_override(
     module_name = "oak",
     integrity = "sha256-jjUzyg3EQw0wNllRRmtRuZTAlXPllSmkKJHRD13jEXM=",
     strip_prefix = "oak-dd8e629ee6e198153d86fec3f55645a8330f6b66",
     urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
+
+archive_override(
+    module_name = "riegeli",
+    integrity = "sha256-zS45loS3Jcmkmrn0E4nXKl2ttf+qQrLmgE6i78C9zNs=",
+    strip_prefix = "riegeli-a9be707bf24ad44fca8d42be4f8d72c7d8a94f30",
+    url = "https://github.com/google/riegeli/archive/a9be707bf24ad44fca8d42be4f8d72c7d8a94f30.tar.gz",
+)
+# go/keep-sorted end
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")

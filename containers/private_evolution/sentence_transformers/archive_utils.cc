@@ -19,6 +19,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -94,7 +95,7 @@ absl::StatusOr<std::string> ExtractAll(absl::string_view zip_file_path,
     // Write the header and data to disk
     r = archive_write_header(ext, entry);
     if (r == ARCHIVE_OK) {
-      FCP_RETURN_IF_ERROR(CopyData(a, ext));
+      ABSL_RETURN_IF_ERROR(CopyData(a, ext));
       r = archive_write_finish_entry(ext);
     } else {
       return absl::InvalidArgumentError(archive_error_string(ext));

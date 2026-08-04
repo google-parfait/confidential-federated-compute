@@ -18,6 +18,7 @@
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "containers/fns/fn.h"
@@ -84,6 +85,10 @@ class MockModelDelegateFactory : public ModelDelegateFactory {
 
 class MockContext : public confidential_federated_compute::Session::Context {
  public:
+  MockContext() {
+    ON_CALL(*this, GetCounters()).WillByDefault(testing::ReturnRef(counters_));
+  }
+
   MOCK_METHOD(bool, Emit, (ReadResponse), (override));
   MOCK_METHOD(bool, EmitUnencrypted, (Session::KV), (override));
   MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV), (override));
@@ -91,7 +96,9 @@ class MockContext : public confidential_federated_compute::Session::Context {
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
               (override));
-  MOCK_METHOD(bool, EmitError, (absl::Status), (override));
+  MOCK_METHOD(Counters&, GetCounters, (), (override));
+
+  Counters counters_;
 };
 
 class EmbeddingMapFnTest : public testing::Test {
@@ -155,8 +162,8 @@ absl::StatusOr<std::string> CreateInputCheckpoint(
   FederatedComputeCheckpointBuilderFactory builder_factory;
   auto builder = builder_factory.Create();
   Tensor t(std::move(input));
-  FCP_RETURN_IF_ERROR(builder->Add(std::string(kDataTensorName), t));
-  FCP_ASSIGN_OR_RETURN(absl::Cord ckpt, builder->Build());
+  ABSL_RETURN_IF_ERROR(builder->Add(std::string(kDataTensorName), t));
+  ABSL_ASSIGN_OR_RETURN(absl::Cord ckpt, builder->Build());
   std::string ckpt_str;
   absl::CopyCordToString(ckpt, &ckpt_str);
   return ckpt_str;
@@ -164,11 +171,12 @@ absl::StatusOr<std::string> CreateInputCheckpoint(
 
 absl::StatusOr<std::string> CreateOutputCheckpoint(
     std::vector<std::vector<float>> output) {
-  FCP_ASSIGN_OR_RETURN(auto t, CreateEmbeddingTensor(std::move(output)));
+  ABSL_ASSIGN_OR_RETURN(auto t, CreateEmbeddingTensor(std::move(output)));
   FederatedComputeCheckpointBuilderFactory builder_factory;
   auto builder = builder_factory.Create();
-  FCP_RETURN_IF_ERROR(builder->Add(std::string(kDataTensorName), std::move(t)));
-  FCP_ASSIGN_OR_RETURN(absl::Cord ckpt, builder->Build());
+  ABSL_RETURN_IF_ERROR(
+      builder->Add(std::string(kDataTensorName), std::move(t)));
+  ABSL_ASSIGN_OR_RETURN(absl::Cord ckpt, builder->Build());
   return std::string(std::move(ckpt));
 }
 

@@ -20,46 +20,67 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# Keep sorted
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "boringssl", version = "0.20250514.0")
+# go/keep-sorted start
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "confidential-federated-compute")
-archive_override(
-    module_name = "confidential-federated-compute",
-    integrity = "sha256-fbSviH6hWRuvo6EsEFq9iJFPkAgbhDToaBWzPrt5+nc=",
-    strip_prefix = "confidential-federated-compute-1b10ca792af509f4064e3a552b982945983b3de8",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/1b10ca792af509f4064e3a552b982945983b3de8.tar.gz"],
+bazel_dep(name = "federated-compute")
+bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "libarchive", version = "3.8.1")
+bazel_dep(name = "oak")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "pybind11_bazel", version = "2.13.6")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "2.0.2")
+bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+# go/keep-sorted end
+
+# Module overrides
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+single_version_override(
+    module_name = "abseil-cpp",
+    # Force 20260526.0 despite it having a lower compatibility_level than
+    # earlier versions. 20260526.0 stopped setting compatibility_level because
+    # it's deprecated starting in bazel 8.6.
+    version = "20260526.0",
 )
 
-bazel_dep(name = "googleapis", version = "0.0.0-20250730-f6801ce4", repo_name = "com_google_googleapis")
-bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
-bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
-bazel_dep(name = "libarchive", version = "3.8.1")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
-bazel_dep(name = "pybind11_bazel", version = "2.13.6")
-bazel_dep(name = "rules_cc", version = "0.2.8")
-bazel_dep(name = "rules_distroless", version = "0.5.1")
-bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_oci", version = "2.2.6")
-bazel_dep(name = "rules_pkg", version = "1.1.0")
-bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "rules_python", version = "1.7.0")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
-bazel_dep(name = "oak")
+archive_override(
+    module_name = "confidential-federated-compute",
+    integrity = "sha256-YIUXcSRlXRJGcHPkw1Ypl1sl4FGoKhzS0RvR7UK9Ba4=",
+    strip_prefix = "confidential-federated-compute-af76490e49a7f0f5ac8050bd804ed4910ec16d4e",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/af76490e49a7f0f5ac8050bd804ed4910ec16d4e.tar.gz"],
+)
+
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-Hq+2YuRqukDgE53zdY43Bubsi10ttjWNTKQNOhvTzCI=",
+    strip_prefix = "federated-compute-a416480b3438fbb5d079913b24a4e00eb79914b1",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/a416480b3438fbb5d079913b24a4e00eb79914b1.tar.gz"],
+)
+
 archive_override(
     module_name = "oak",
-    integrity = "sha256-ayZil41/X2ieLpdpJNvuHdRyeWNqVPtoEMCrDL23YjU=",
-    strip_prefix = "oak-7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a",
-    url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
+    integrity = "sha256-jjUzyg3EQw0wNllRRmtRuZTAlXPllSmkKJHRD13jEXM=",
+    strip_prefix = "oak-dd8e629ee6e198153d86fec3f55645a8330f6b66",
+    urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
 )
+# go/keep-sorted end
 
 internal_configure = use_extension("@pybind11_bazel//:internal_configure.bzl", "internal_configure_extension")
 use_repo(internal_configure, "pybind11")
 
-cfc_deps = use_extension("@confidential-federated-compute//:extensions.bzl", "cfc_deps")
-use_repo(cfc_deps, "bazel_toolchains", "federated-compute", "org_tensorflow_federated")
+fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains", "libcppbor", "org_tensorflow_federated")
 
 http_archive(
     name = "sysroot",
