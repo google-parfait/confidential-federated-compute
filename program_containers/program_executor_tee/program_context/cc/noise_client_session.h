@@ -46,13 +46,18 @@ class NoiseClientSession : public NoiseClientSessionInterface {
   // Creates a NoiseClientSession.
   static absl::StatusOr<std::shared_ptr<NoiseClientSession>> Create(
       const std::string& worker_bns,
-      oak::session::SessionConfig* session_config,
+      std::function<oak::session::SessionConfig*()> session_config_fn,
       fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
           stub) {
+    auto* config = session_config_fn();
+    if (config == nullptr) {
+      return absl::InvalidArgumentError("session_config_fn returned null.");
+    }
     ABSL_ASSIGN_OR_RETURN(auto client_session,
-                          oak::session::ClientSession::Create(session_config));
+                          oak::session::ClientSession::Create(config));
     return std::shared_ptr<NoiseClientSession>(
-        new NoiseClientSession(worker_bns, std::move(client_session), stub));
+        new NoiseClientSession(worker_bns, std::move(session_config_fn),
+                               std::move(client_session), stub));
   }
 
   // Delegates the request (serialized as a PlaintextMessage) to the worker, and
@@ -66,12 +71,27 @@ class NoiseClientSession : public NoiseClientSessionInterface {
  private:
   NoiseClientSession(
       const std::string& worker_bns,
+      std::function<oak::session::SessionConfig*()> session_config_fn,
       std::unique_ptr<oak::session::ClientSession> client_session,
       fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
           stub)
       : worker_bns_(worker_bns),
+        session_config_fn_(std::move(session_config_fn)),
         client_session_(std::move(client_session)),
         stub_(stub) {}
+
+  // Resets client_session_ to a new, unopened ClientSession using
+  // session_config_fn_. Called whenever an RPC or decryption error occurs to
+  // ensure that any desynchronized Noise sequence counters are discarded,
+  // allowing the next DelegateComputation call to re-establish a clean Noise
+  // session via OpenSession().
+  void ResetSession();
+
+  absl::Status OpenSessionInternal();
+
+  absl::StatusOr<oak::session::v1::PlaintextMessage>
+  DelegateComputationInternal(
+      const oak::session::v1::PlaintextMessage& plaintext_request);
 
   absl::StatusOr<oak::session::v1::SessionRequest> EncryptRequest(
       const oak::session::v1::PlaintextMessage& plaintext_request);
@@ -80,6 +100,7 @@ class NoiseClientSession : public NoiseClientSessionInterface {
       const oak::session::v1::SessionResponse& session_response);
 
   const std::string worker_bns_;
+  std::function<oak::session::SessionConfig*()> session_config_fn_;
   std::unique_ptr<oak::session::ClientSession> client_session_;
   fcp::confidentialcompute::outgoing::ComputationDelegation::StubInterface*
       stub_;

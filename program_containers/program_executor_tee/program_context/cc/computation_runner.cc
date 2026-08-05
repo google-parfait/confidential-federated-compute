@@ -151,11 +151,13 @@ ComputationRunner::ComputationRunner(
       // Create a noise client session for each worker and open the session.
       // So the session can be used to send computation requests when the
       // computation is invoked.
-      absl::StatusOr<SessionConfig*> session_config =
-          GetClientSessionConfig(serialized_reference_values);
-      CHECK_OK(session_config.status());
+      std::string ref_vals = serialized_reference_values;
+      auto session_config_fn = [ref_vals]() -> SessionConfig* {
+        auto config_or = GetClientSessionConfig(ref_vals);
+        return config_or.ok() ? config_or.value() : nullptr;
+      };
       auto client_session = NoiseClientSession::Create(
-          worker_bns, session_config.value(), stub_.get());
+          worker_bns, session_config_fn, stub_.get());
       CHECK_OK(client_session);
       CHECK_OK(client_session.value()->OpenSession());
       noise_client_sessions_.push_back(std::move(client_session.value()));

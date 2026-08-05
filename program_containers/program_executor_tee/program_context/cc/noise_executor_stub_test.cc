@@ -77,19 +77,19 @@ class NoiseExecutorStubTest : public Test {
                             grpc::InsecureChannelCredentials()));
 
     // Create a fake SessionConfig for testing.
-    auto verifier = bindings::new_fake_attestation_verifier(
-        ffi_bindings::BytesView(kFakeEvent),
-        ffi_bindings::BytesView(kFakePlatform));
-    absl::StatusOr<SessionConfig*> session_config =
-        SessionConfigBuilder(AttestationType::kPeerUnidirectional,
-                             HandshakeType::kNoiseNN)
-            .AddPeerVerifier(kFakeAttesterId, verifier)
-            .Build();
+    auto session_config_fn = []() -> SessionConfig* {
+      auto verifier = bindings::new_fake_attestation_verifier(
+          ffi_bindings::BytesView(kFakeEvent),
+          ffi_bindings::BytesView(kFakePlatform));
+      return SessionConfigBuilder(AttestationType::kPeerUnidirectional,
+                                  HandshakeType::kNoiseNN)
+          .AddPeerVerifier(kFakeAttesterId, verifier)
+          .Build();
+    };
 
     // Create a NoiseExecutorStub wrapping a NoiseClientSession.
-    CHECK_OK(session_config.status());
     noise_client_session_ = NoiseClientSession::Create(
-        kWorkerBns, session_config.value(), computation_delegation_stub_.get());
+        kWorkerBns, session_config_fn, computation_delegation_stub_.get());
     CHECK_OK(noise_client_session_.status());
     noise_executor_stub_ = std::make_unique<NoiseExecutorStub>(
         noise_client_session_.value().get());

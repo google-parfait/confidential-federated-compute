@@ -45,12 +45,19 @@ class FakeComputationDelegationService
       override;
 
   void SetWorkerFailing(const std::string& worker_bns);
+  void ClearWorkerFailing(const std::string& worker_bns);
+  void ResetWorkerCallCounts();
+  int32_t GetWorkerSuccessfulCallCount(const std::string& worker_bns);
 
  private:
   // A map from worker bns to the NoiseLeafExecutor for the worker.
   absl::flat_hash_map<std::string, std::unique_ptr<NoiseLeafExecutor>>
       noise_leaf_executors_;
+  // Workers that will fail Execute requests (simulating transient RPC errors
+  // like UNAVAILABLE or DEADLINE_EXCEEDED).
   absl::flat_hash_set<std::string> failing_workers_;
+  // Per-worker successful Execute call counts, keyed by worker BNS address.
+  absl::flat_hash_map<std::string, int32_t> successful_call_counts_;
   absl::Mutex mutex_;
 };
 

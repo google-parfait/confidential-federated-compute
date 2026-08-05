@@ -65,6 +65,14 @@ PYBIND11_MODULE(fake_service_bindings_jax, m) {
            py::arg("worker_bns"))
       .def("set_worker_failing",
            &FakeComputationDelegationService::SetWorkerFailing,
+           py::arg("worker_bns"))
+      .def("clear_worker_failing",
+           &FakeComputationDelegationService::ClearWorkerFailing,
+           py::arg("worker_bns"))
+      .def("reset_worker_call_counts",
+           &FakeComputationDelegationService::ResetWorkerCallCounts)
+      .def("get_worker_successful_call_count",
+           &FakeComputationDelegationService::GetWorkerSuccessfulCallCount,
            py::arg("worker_bns"));
 
   py::class_<FakeServer>(m, "FakeServer")

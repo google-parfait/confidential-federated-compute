@@ -295,6 +295,84 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       result = map_comp([10, 20, 30, 40])
       self.assertEqual(list(result), [11, 21, 31, 41])
 
+  async def test_execution_context_worker_recovery(self):
+    if self.num_workers < 2 or not getattr(
+        self, "use_elastic_composing_executor", False
+    ):
+      return
+    with federated_language.framework.get_context_stack().install(self.context):
+      client_data_type = federated_language.FederatedType(
+          np.int32, federated_language.CLIENTS
+      )
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
+
+      @federated_language.federated_computation(
+          [client_data_type, server_state_type]
+      )
+      def my_comp(client_data, server_state):
+        return build_federated_sum_comp()(client_data), server_state
+
+      # Round 1: all workers healthy.
+      self.computation_delegation_service.reset_worker_call_counts()
+      result_1, result_2 = my_comp([1, 2, 3, 4], 10)
+      self.assertEqual(result_1, 10)
+      self.assertEqual(result_2, 10)
+      # Verify both workers completed requests successfully.
+      self.assertGreater(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_0"
+          ),
+          0,
+      )
+      self.assertGreater(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_1"
+          ),
+          0,
+      )
+
+      # Round 2: worker 1 fails, surviving workers handle all work.
+      self.computation_delegation_service.set_worker_failing("bns_address_1")
+      self.computation_delegation_service.reset_worker_call_counts()
+      result_1, result_2 = my_comp([1, 2, 3, 4], 10)
+      self.assertEqual(result_1, 10)
+      self.assertEqual(result_2, 10)
+      # Worker 0 handled all the work. Worker 1 completed zero successful requests.
+      self.assertGreater(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_0"
+          ),
+          0,
+      )
+      self.assertEqual(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_1"
+          ),
+          0,
+      )
+
+      # Round 3: worker 1 recovers. Confirm both workers participate.
+      self.computation_delegation_service.clear_worker_failing("bns_address_1")
+      self.computation_delegation_service.reset_worker_call_counts()
+      result_1, result_2 = my_comp(list(range(1, 101)), 10)
+      self.assertEqual(result_1, 5050)
+      self.assertEqual(result_2, 10)
+      # Verify both workers handled requests.
+      self.assertGreater(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_0"
+          ),
+          0,
+      )
+      self.assertGreater(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              "bns_address_1"
+          ),
+          0,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -111,7 +111,7 @@ class NoiseClientSessionTest : public ::testing::Test {
  protected:
   void SetUp() override {
     auto client_session = NoiseClientSession::Create(
-        kWorkerBns, TestConfigAttestedNNClient(), mock_stub_.get());
+        kWorkerBns, TestConfigAttestedNNClient, mock_stub_.get());
     CHECK_OK(client_session);
     client_session_ = std::move(client_session.value());
     auto server_session =

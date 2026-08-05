@@ -37,7 +37,17 @@ using ::oak::session::v1::SessionResponse;
 
 namespace confidential_federated_compute::program_executor_tee {
 
-absl::Status NoiseClientSession::OpenSession() {
+void NoiseClientSession::ResetSession() {
+  if (!session_config_fn_) return;
+  auto* config = session_config_fn_();
+  if (config == nullptr) return;
+  auto new_session = oak::session::ClientSession::Create(config);
+  if (new_session.ok()) {
+    client_session_ = std::move(new_session.value());
+  }
+}
+
+absl::Status NoiseClientSession::OpenSessionInternal() {
   while (!client_session_->IsOpen()) {
     ABSL_ASSIGN_OR_RETURN(auto init_request,
                           client_session_->GetOutgoingMessage());
@@ -68,13 +78,21 @@ absl::Status NoiseClientSession::OpenSession() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
+absl::Status NoiseClientSession::OpenSession() {
+  auto status = OpenSessionInternal();
+  if (!status.ok()) {
+    ResetSession();
+  }
+  return status;
+}
+
+absl::StatusOr<PlaintextMessage>
+NoiseClientSession::DelegateComputationInternal(
     const PlaintextMessage& plaintext_request) {
-  absl::MutexLock lock(&mutex_);
   // Open the session if it is not already open. This is needed before sending
   // any actual computation request.
   if (!client_session_->IsOpen()) {
-    ABSL_RETURN_IF_ERROR(OpenSession());
+    ABSL_RETURN_IF_ERROR(OpenSessionInternal());
   }
   ABSL_ASSIGN_OR_RETURN(auto session_request,
                         EncryptRequest(plaintext_request));
@@ -101,6 +119,16 @@ absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
   ABSL_ASSIGN_OR_RETURN(auto plaintext_response,
                         DecryptResponse(session_response));
   return plaintext_response;
+}
+
+absl::StatusOr<PlaintextMessage> NoiseClientSession::DelegateComputation(
+    const PlaintextMessage& plaintext_request) {
+  absl::MutexLock lock(&mutex_);
+  auto status_or = DelegateComputationInternal(plaintext_request);
+  if (!status_or.ok()) {
+    ResetSession();
+  }
+  return status_or;
 }
 
 absl::StatusOr<SessionRequest> NoiseClientSession::EncryptRequest(

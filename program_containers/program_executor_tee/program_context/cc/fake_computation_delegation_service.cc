@@ -108,7 +108,26 @@ FakeComputationDelegationService::FakeComputationDelegationService(
 
 void FakeComputationDelegationService::SetWorkerFailing(
     const std::string& worker_bns) {
+  absl::MutexLock lock(&mutex_);
   failing_workers_.insert(worker_bns);
+}
+
+void FakeComputationDelegationService::ClearWorkerFailing(
+    const std::string& worker_bns) {
+  absl::MutexLock lock(&mutex_);
+  failing_workers_.erase(worker_bns);
+}
+
+void FakeComputationDelegationService::ResetWorkerCallCounts() {
+  absl::MutexLock lock(&mutex_);
+  successful_call_counts_.clear();
+}
+
+int32_t FakeComputationDelegationService::GetWorkerSuccessfulCallCount(
+    const std::string& worker_bns) {
+  absl::MutexLock lock(&mutex_);
+  auto it = successful_call_counts_.find(worker_bns);
+  return it != successful_call_counts_.end() ? it->second : 0;
 }
 
 Status FakeComputationDelegationService::Execute(
@@ -128,6 +147,7 @@ Status FakeComputationDelegationService::Execute(
   if (!execute_status.ok()) {
     return execute_status;
   }
+  successful_call_counts_[request->worker_bns()]++;
   *response->mutable_result() = std::move(worker_response.result());
   return grpc::Status::OK;
 }
