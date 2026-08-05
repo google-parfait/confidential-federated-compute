@@ -22,6 +22,8 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -190,6 +192,9 @@ TestExecutors MakeExecutor(int num_workers = 2, int total_clients = 8,
         .WillByDefault([weak, call_count](ValueId, std::optional<const ValueId>)
                            -> absl::StatusOr<OwnedValueId> {
           (*call_count)++;
+          // Sleep briefly to give other worker threads a chance to pick up
+          // batches, preventing one worker from draining the entire work queue.
+          absl::SleepFor(absl::Milliseconds(10));
           return OwnedValueId(weak.lock(), g_next_id++);
         });
     composing_children.push_back(

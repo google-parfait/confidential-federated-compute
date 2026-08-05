@@ -28,6 +28,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "federated_language/proto/computation.pb.h"
@@ -82,7 +83,9 @@ class WorkQueue {
   static constexpr int32_t kMaxRetries = 4;
 
   explicit WorkQueue(int32_t num_items, int32_t num_workers)
-      : active_workers_(num_workers), retry_counts_(num_items, 0) {
+      : active_workers_(num_workers),
+        retry_counts_(num_items, 0),
+        batch_counts_(num_workers, 0) {
     for (int32_t i = 0; i < num_items; ++i) {
       items_.push_back(i);
     }
@@ -115,6 +118,15 @@ class WorkQueue {
     return batch;
   }
 
+  // Records a successfully completed batch for the given worker.
+  void RecordBatchCompleted(int32_t worker_id) {
+    absl::MutexLock lock(mu_);
+    if (worker_id >= 0 &&
+        worker_id < static_cast<int32_t>(batch_counts_.size())) {
+      batch_counts_[worker_id]++;
+    }
+  }
+
   // Requeues the given items (if they haven't exceeded kMaxRetries) and
   // permanently removes this worker from the active pool.  Call with an
   // empty vector when only the worker failure (no requeue) is needed.
@@ -141,6 +153,11 @@ class WorkQueue {
     return exceeded_retries_;
   }
 
+  std::string BatchCountsString() const {
+    absl::MutexLock lock(mu_);
+    return absl::StrCat("[", absl::StrJoin(batch_counts_, ", "), "]");
+  }
+
  private:
   mutable absl::Mutex mu_;
   absl::CondVar cv_;
@@ -152,6 +169,8 @@ class WorkQueue {
   std::vector<int32_t> retry_counts_ ABSL_GUARDED_BY(mu_);
   // Set to true if any item exceeded kMaxRetries.
   bool exceeded_retries_ ABSL_GUARDED_BY(mu_) = false;
+  // Per-worker batch counts for logging.
+  std::vector<int32_t> batch_counts_ ABSL_GUARDED_BY(mu_);
 };
 
 // Dynamically distributes per-client work across child worker executors using
@@ -362,7 +381,8 @@ class ElasticComposingExecutor
   absl::Status RunOnWorkers(
       int32_t num_work_units,
       const std::function<absl::Status(Executor* child, WorkQueue& queue,
-                                       int32_t batch_size)>& worker_fn,
+                                       int32_t batch_size, int32_t worker_id)>&
+          worker_fn,
       absl::string_view intrinsic_name) {
     WorkQueue queue(num_work_units, static_cast<int32_t>(children_.size()));
     int32_t bs = batch_size(num_work_units);
@@ -371,11 +391,15 @@ class ElasticComposingExecutor
       ParallelTasks tasks(&thread_pool_);
       for (size_t w = 0; w < children_.size(); w++) {
         TFF_TRY(tasks.add_task([&, w]() -> absl::Status {
-          return worker_fn(children_[w].executor().get(), queue, bs);
+          return worker_fn(children_[w].executor().get(), queue, bs,
+                           static_cast<int32_t>(w));
         }));
       }
       TFF_TRY(tasks.WaitAll());
     }
+
+    LOG(INFO) << "Batches processed by workers for " << intrinsic_name << ": "
+              << queue.BatchCountsString();
 
     if (queue.ExceededRetries()) {
       return absl::UnavailableError(
@@ -424,8 +448,8 @@ class ElasticComposingExecutor
 
     TFF_TRY(RunOnWorkers(
         total_clients_,
-        [&](Executor* child, WorkQueue& queue,
-            int32_t batch_size) -> absl::Status {
+        [&](Executor* child, WorkQueue& queue, int32_t batch_size,
+            int32_t worker_id) -> absl::Status {
           auto intrinsic_or = child->CreateValue(map_intrinsic);
           if (!intrinsic_or.ok()) {
             LOG(WARNING) << "Worker setup failed: " << intrinsic_or.status();
@@ -495,6 +519,7 @@ class ElasticComposingExecutor
                 results[batch[j]] = result.federated().value(0);
               }
             }
+            queue.RecordBatchCompleted(worker_id);
           }
           return absl::OkStatus();
         },
@@ -562,8 +587,8 @@ class ElasticComposingExecutor
 
     TFF_TRY(RunOnWorkers(
         total_clients_,
-        [&](Executor* child, WorkQueue& queue,
-            int32_t batch_size) -> absl::Status {
+        [&](Executor* child, WorkQueue& queue, int32_t batch_size,
+            int32_t worker_id) -> absl::Status {
           // Embed shared values on this worker.  If any fail, mark the
           // worker as failed and let others pick up its work.
           auto try_embed =
@@ -647,6 +672,7 @@ class ElasticComposingExecutor
                   TFF_TRY(server_->CreateStruct({*current, partial_id}));
               current = TFF_TRY(server_->CreateCall(merge_fn, pair));
             }
+            queue.RecordBatchCompleted(worker_id);
           }
           return absl::OkStatus();
         },
@@ -671,8 +697,8 @@ class ElasticComposingExecutor
     std::vector<v0::Value> results(total_clients_);
     TFF_TRY(RunOnWorkers(
         total_clients_,
-        [&](Executor* child, WorkQueue& queue,
-            int32_t batch_size) -> absl::Status {
+        [&](Executor* child, WorkQueue& queue, int32_t batch_size,
+            int32_t worker_id) -> absl::Status {
           auto fn_or = child->CreateValue(*fn_proto);
           if (!fn_or.ok()) {
             LOG(WARNING) << "Worker setup failed: " << fn_or.status();
@@ -682,25 +708,27 @@ class ElasticComposingExecutor
           OwnedValueId fn_id = std::move(fn_or.value());
 
           while (true) {
-            auto batch = queue.PopBatchOrWait(batch_size);
+            // Unlike map and aggregate, which send an entire batch to the
+            // worker as a single federated value, eval_at_clients processes
+            // each client individually. Popping one item at a time gives
+            // finer-grained work distribution and avoids the complexity of
+            // partial batch requeue on mid-batch failures.
+            auto batch = queue.PopBatchOrWait(1);
             if (batch.empty()) break;
+            int32_t item = batch[0];
 
-            for (size_t i = 0; i < batch.size(); ++i) {
-              int32_t item = batch[i];
-              auto res_or = child->CreateCall(fn_id, std::nullopt);
-              if (!res_or.ok()) {
-                queue.RequeueAndMarkFailed(
-                    {batch.begin() + static_cast<int>(i), batch.end()});
-                return absl::OkStatus();
-              }
-              OwnedValueId res_id = std::move(res_or.value());
-              auto mat = child->Materialize(res_id, &results[item]);
-              if (!mat.ok()) {
-                queue.RequeueAndMarkFailed(
-                    {batch.begin() + static_cast<int>(i), batch.end()});
-                return absl::OkStatus();
-              }
+            auto res_or = child->CreateCall(fn_id, std::nullopt);
+            if (!res_or.ok()) {
+              queue.RequeueAndMarkFailed(batch);
+              return absl::OkStatus();
             }
+            OwnedValueId res_id = std::move(res_or.value());
+            auto mat = child->Materialize(res_id, &results[item]);
+            if (!mat.ok()) {
+              queue.RequeueAndMarkFailed(batch);
+              return absl::OkStatus();
+            }
+            queue.RecordBatchCompleted(worker_id);
           }
           return absl::OkStatus();
         },
