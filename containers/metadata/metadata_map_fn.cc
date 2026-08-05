@@ -32,7 +32,7 @@
 namespace confidential_federated_compute::metadata {
 namespace {
 using ::confidential_federated_compute::Session;
-using ::confidential_federated_compute::fns::KeyValue;
+using KV = ::confidential_federated_compute::Session::KV;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::client::EventTimeRange;
 using ::fcp::confidential_compute::kEventTimeColumnName;
@@ -149,11 +149,10 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
 
   // Parses the unencrypted data, for each metadata config compute the
   // corresponding metadata.
-  absl::StatusOr<KeyValue> Map(KeyValue input,
-                               Session::Context& context) override {
+  absl::StatusOr<KV> Map(KV input, Session::Context& context) override {
     FederatedComputeCheckpointParserFactory parser_factory;
     absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
-        parser_factory.Create(absl::Cord(std::move(input.value.data)));
+        parser_factory.Create(absl::Cord(std::move(input.data)));
     if (!parser.ok()) {
       return absl::Status(
           parser.status().code(),
@@ -187,7 +186,7 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
           {name, std::move(tee_payload_metadata)});
     }
 
-    KeyValue output;
+    KV output;
     output.key.PackFrom(payload_metadata_set);
     return output;
   }

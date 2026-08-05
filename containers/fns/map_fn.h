@@ -14,6 +14,7 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_MAP_FN_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_MAP_FN_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -26,10 +27,17 @@ namespace confidential_federated_compute::fns {
 // Session base class for MapFns.
 class MapFn : public Fn {
  public:
-  // Processes an input element. The input Value.data is unencrypted. Returns a
-  // KeyValue containing the corresponding output element along with any
+  // Processes an input element. The input KV.data is unencrypted. Returns a
+  // KV containing the corresponding output element along with any
   // metadata.
-  virtual absl::StatusOr<KeyValue> Map(KeyValue input, Context& context) = 0;
+  virtual absl::StatusOr<KV> Map(KV input, Context& context) = 0;
+
+  // Controls how the output KV is emitted. Override to return a
+  // reencryption key index for encrypted emission. Returns std::nullopt by
+  // default, which emits the output unencrypted.
+  virtual std::optional<int> GetReencryptionKeyIndex() const {
+    return std::nullopt;
+  }
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,

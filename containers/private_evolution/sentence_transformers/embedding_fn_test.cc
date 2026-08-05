@@ -47,7 +47,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::bazel::tools::cpp::runfiles::Runfiles;
 using ::confidential_federated_compute::fns::Fn;
-using ::confidential_federated_compute::fns::KeyValue;
 using ::confidential_federated_compute::fns::MapFn;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidentialcompute::BlobHeader;
