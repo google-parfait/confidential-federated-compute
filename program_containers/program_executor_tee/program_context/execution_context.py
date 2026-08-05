@@ -50,6 +50,7 @@ class TrustedContext(federated_language.program.FederatedContext):
       worker_bns: list[str] = [],
       serialized_reference_values: bytes = b"",
       max_concurrent_computation_calls=-1,
+      use_elastic_composing_executor: bool = False,
   ):
     """Initializes the execution context with an invoke helper function.
 
@@ -70,6 +71,8 @@ class TrustedContext(federated_language.program.FederatedContext):
       max_concurrent_computation_calls: The number of calls that can be handled
         in parallel by the leaf executors. Non-positive values indicate no
         maximum.
+      use_elastic_composing_executor: Whether to use ElasticComposingExecutor
+        instead of ComposingExecutor.
     """
 
     if compiler_fn is not None:
@@ -97,6 +100,7 @@ class TrustedContext(federated_language.program.FederatedContext):
         # The computation runner will decode this arg into a ReferenceValues proto.
         f"--serialized_reference_values={serialized_reference_values.decode('utf-8')}",
         f"--max_concurrent_computation_calls={max_concurrent_computation_calls}",
+        f"--use_elastic_composing_executor={use_elastic_composing_executor}",
     ]
     self._process = subprocess.Popen(args, stdout=sys.stdout, stderr=sys.stderr)
     channel_options = [

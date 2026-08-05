@@ -22,6 +22,7 @@ def get_program_initialize_fn(
     worker_bns: list[str] = [],
     serialized_reference_values: bytes = b"",
     max_concurrent_computation_calls = -1,
+    use_elastic_composing_executor: bool = False,
 ):
 
   def initialize():
@@ -33,6 +34,7 @@ def get_program_initialize_fn(
             worker_bns,
             serialized_reference_values,
             max_concurrent_computation_calls,
+            use_elastic_composing_executor,
         )
     )
 

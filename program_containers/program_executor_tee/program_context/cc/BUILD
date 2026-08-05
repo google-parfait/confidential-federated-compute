@@ -22,12 +22,57 @@ package(
 )
 
 cc_library(
+    name = "elastic_composing_executor",
+    srcs = ["elastic_composing_executor.cc"],
+    hdrs = ["elastic_composing_executor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@federated_language//federated_language/proto:computation_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:composing_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:computations",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federated_intrinsics",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:status_macros",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:threading",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:value_validation",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "elastic_composing_executor_test",
+    srcs = ["elastic_composing_executor_test.cc"],
+    deps = [
+        ":elastic_composing_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:cardinalities",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:composing_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:mock_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:status_macros",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+cc_library(
     name = "computation_runner",
     srcs = ["computation_runner.cc"],
     hdrs = ["computation_runner.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":client_session_config",
+        ":elastic_composing_executor",
         ":noise_client_session",
         ":noise_executor_stub",
         "@com_github_grpc_grpc//:grpc++",

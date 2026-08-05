@@ -16,6 +16,7 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_LEARNING_CONTAINERS_PROGRAM_EXECUTOR_TEE_PROGRAM_CONTEXT_CC_FAKE_COMPUTATION_DELEGATION_SERVICE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "cc/oak_session/server_session.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
@@ -43,11 +44,13 @@ class FakeComputationDelegationService
       ::fcp::confidentialcompute::outgoing::ComputationResponse* response)
       override;
 
+  void SetWorkerFailing(const std::string& worker_bns);
+
  private:
   // A map from worker bns to the NoiseLeafExecutor for the worker.
   absl::flat_hash_map<std::string, std::unique_ptr<NoiseLeafExecutor>>
       noise_leaf_executors_;
-
+  absl::flat_hash_set<std::string> failing_workers_;
   absl::Mutex mutex_;
 };
 

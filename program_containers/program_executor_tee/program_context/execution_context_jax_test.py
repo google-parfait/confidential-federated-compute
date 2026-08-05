@@ -73,10 +73,13 @@ def build_federated_sum_comp() -> federated_language.Computation:
 
 
 @parameterized_class([
-    {"num_workers": 0},
-    {"num_workers": 2},
-    {"num_workers": 3},
-    {"num_workers": 4},
+    {"num_workers": 0, "use_elastic_composing_executor": False},
+    {"num_workers": 2, "use_elastic_composing_executor": False},
+    {"num_workers": 2, "use_elastic_composing_executor": True},
+    {"num_workers": 3, "use_elastic_composing_executor": False},
+    {"num_workers": 3, "use_elastic_composing_executor": True},
+    {"num_workers": 4, "use_elastic_composing_executor": False},
+    {"num_workers": 4, "use_elastic_composing_executor": True},
 ])
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
@@ -107,6 +110,9 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
+        use_elastic_composing_executor=getattr(
+            self, "use_elastic_composing_executor"
+        ),
     )
 
   def tearDown(self):
@@ -140,14 +146,25 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       def my_comp(client_data, server_state):
         return build_federated_sum_comp()(client_data), server_state
 
-      result_1, result_2 = my_comp([1, 2, 3], 10)
-      self.assertEqual(result_1, 6)
-      self.assertEqual(result_2, 10)
+      # 0 clients
+      res_1, res_2 = my_comp([], 10)
+      self.assertEqual(res_1, 0)
+      self.assertEqual(res_2, 10)
 
-      # Change the cardinality of the inputs.
-      result_1, result_2 = my_comp([1, 2, 3, 4], 10)
-      self.assertEqual(result_1, 10)
-      self.assertEqual(result_2, 10)
+      # 1 client
+      res_1, res_2 = my_comp([42], 10)
+      self.assertEqual(res_1, 42)
+      self.assertEqual(res_2, 10)
+
+      # 5 clients
+      res_1, res_2 = my_comp([1, 2, 3, 4, 5], 10)
+      self.assertEqual(res_1, 15)
+      self.assertEqual(res_2, 10)
+
+      # 100 clients: sum(1..100) = 5050
+      res_1, res_2 = my_comp(list(range(1, 101)), 10)
+      self.assertEqual(res_1, 5050)
+      self.assertEqual(res_2, 10)
 
   async def test_execution_context_server_arg_only(self):
     with federated_language.framework.get_context_stack().install(self.context):
@@ -172,6 +189,111 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       result = my_comp(10)
 
     self.assertEqual(result, 11)
+
+  async def test_execution_context_worker_failover(self):
+    if self.num_workers < 2 or not getattr(
+        self, "use_elastic_composing_executor", False
+    ):
+      return
+    # Inject worker 1 failure mid-computation.
+    self.computation_delegation_service.set_worker_failing("bns_address_1")
+    with federated_language.framework.get_context_stack().install(self.context):
+      client_data_type = federated_language.FederatedType(
+          np.int32, federated_language.CLIENTS
+      )
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
+
+      @federated_language.federated_computation(
+          [client_data_type, server_state_type]
+      )
+      def my_comp(client_data, server_state):
+        return build_federated_sum_comp()(client_data), server_state
+
+      # Even with worker 1 failing, the elastic executor reassigns all work to worker 0.
+      result_1, result_2 = my_comp([1, 2, 3, 4], 10)
+      self.assertEqual(result_1, 10)
+      self.assertEqual(result_2, 10)
+
+  async def test_execution_context_all_workers_failing(self):
+    if self.num_workers < 2 or not getattr(
+        self, "use_elastic_composing_executor", False
+    ):
+      return
+    # Mark all workers failing.
+    for bns in self.worker_bns:
+      self.computation_delegation_service.set_worker_failing(bns)
+
+    with federated_language.framework.get_context_stack().install(self.context):
+      client_data_type = federated_language.FederatedType(
+          np.int32, federated_language.CLIENTS
+      )
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
+
+      @federated_language.federated_computation(
+          [client_data_type, server_state_type]
+      )
+      def my_comp(client_data, server_state):
+        return build_federated_sum_comp()(client_data), server_state
+
+      with self.assertRaises(Exception):
+        my_comp([1, 2, 3, 4], 10)
+
+  async def test_execution_context_federated_map(self):
+    with federated_language.framework.get_context_stack().install(self.context):
+      value_type = federated_language.TensorType(np.int32)
+      client_data_type = federated_language.FederatedType(
+          value_type, federated_language.CLIENTS
+      )
+
+      @jax_computation.jax_computation(np.int32)
+      def add_one(x):
+        return x + 1
+
+      @federated_language.federated_computation(client_data_type)
+      def map_comp(client_data):
+        return federated_language.federated_map(add_one, client_data)
+
+      # 1 client
+      result_1 = map_comp([42])
+      self.assertEqual(list(result_1), [43])
+
+      # 5 clients
+      result_5 = map_comp([1, 2, 3, 4, 5])
+      self.assertEqual(list(result_5), [2, 3, 4, 5, 6])
+
+      # 100 clients
+      inputs_100 = list(range(1, 101))
+      result_100 = map_comp(inputs_100)
+      self.assertEqual(list(result_100), [x + 1 for x in inputs_100])
+
+  async def test_execution_context_worker_failover_during_map(self):
+    if self.num_workers < 2 or not getattr(
+        self, "use_elastic_composing_executor", False
+    ):
+      return
+    # Inject worker 1 failure.
+    self.computation_delegation_service.set_worker_failing("bns_address_1")
+    with federated_language.framework.get_context_stack().install(self.context):
+      value_type = federated_language.TensorType(np.int32)
+      client_data_type = federated_language.FederatedType(
+          value_type, federated_language.CLIENTS
+      )
+
+      @jax_computation.jax_computation(np.int32)
+      def add_one(x):
+        return x + 1
+
+      @federated_language.federated_computation(client_data_type)
+      def map_comp(client_data):
+        return federated_language.federated_map(add_one, client_data)
+
+      # Even with worker 1 failing, the elastic executor reassigns work.
+      result = map_comp([10, 20, 30, 40])
+      self.assertEqual(list(result), [11, 21, 31, 41])
 
 
 if __name__ == "__main__":
