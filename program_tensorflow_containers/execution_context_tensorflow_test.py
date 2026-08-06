@@ -15,6 +15,7 @@
 import unittest
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import compilers
 import fake_service_bindings_tensorflow
 import federated_language
@@ -88,7 +89,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result_1, expected_result_1)
     self.assertEqual(result_2, expected_result_2)
 
-  async def test_tf_execution_context(self):
+  async def test_federated_sum(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
@@ -121,7 +122,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result_1, 6)
     self.assertEqual(result_2, 10)
 
-  async def test_tf_execution_context_no_arg(self):
+  async def test_federated_eval_no_arg(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
@@ -144,7 +145,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.assertEqual(my_comp(), 10)
 
-  async def test_execution_context_server_arg_only(self):
+  async def test_server_arg_only(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
@@ -165,7 +166,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     result = my_comp(10)
     self.assertEqual(result, 10)
 
-  async def test_execution_context_tf_computation(self):
+  async def test_tf_computation(self):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
@@ -184,7 +185,9 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result, 11)
 
 
-class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
+class ExecutionContextDistributedTest(
+    parameterized.TestCase, unittest.IsolatedAsyncioTestCase
+):
 
   def setUp(self):
     self.untrusted_root_port = portpicker.pick_unused_port()
@@ -213,7 +216,11 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
   def tearDown(self):
     self.server.stop()
 
-  async def test_execution_context(self):
+  @parameterized.named_parameters(
+      ("composing_executor", False),
+      ("elastic_composing_executor", True),
+  )
+  async def test_federated_map_and_sum(self, use_elastic_composing_executor):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
@@ -221,6 +228,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
+            use_elastic_composing_executor=use_elastic_composing_executor,
         )
     )
 
@@ -251,7 +259,11 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result_1, 20)
     self.assertEqual(result_2, 10)
 
-  async def test_execution_context_server_arg_only(self):
+  @parameterized.named_parameters(
+      ("composing_executor", False),
+      ("elastic_composing_executor", True),
+  )
+  async def test_federated_mean(self, use_elastic_composing_executor):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
@@ -259,6 +271,34 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
+            use_elastic_composing_executor=use_elastic_composing_executor,
+        )
+    )
+
+    client_data_type = federated_language.FederatedType(
+        np.float32, federated_language.CLIENTS
+    )
+
+    @federated_language.federated_computation(client_data_type)
+    def my_comp(client_data):
+      return federated_language.federated_mean(client_data)
+
+    result = my_comp([1.0, 2.0, 3.0, 4.0])
+    self.assertAlmostEqual(float(result), 2.5, places=5)
+
+  @parameterized.named_parameters(
+      ("composing_executor", False),
+      ("elastic_composing_executor", True),
+  )
+  async def test_server_arg_only(self, use_elastic_composing_executor):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            compilers.compile_tf_to_call_dominant,
+            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+            use_elastic_composing_executor=use_elastic_composing_executor,
         )
     )
     server_state_type = federated_language.FederatedType(
@@ -272,7 +312,11 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
     result = my_comp(10)
     self.assertEqual(result, 10)
 
-  async def test_execution_context_tf_computation(self):
+  @parameterized.named_parameters(
+      ("composing_executor", False),
+      ("elastic_composing_executor", True),
+  )
+  async def test_tf_computation(self, use_elastic_composing_executor):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
@@ -280,6 +324,7 @@ class ExecutionContextDistributedTest(unittest.IsolatedAsyncioTestCase):
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
+            use_elastic_composing_executor=use_elastic_composing_executor,
         )
     )
 

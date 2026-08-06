@@ -95,16 +95,16 @@ http_archive(
 
 http_archive(
     name = "confidential_federated_compute",
-    integrity = "sha256-8+yFvYDGpn/9XyaSBlXN8Pluf4mR7AvldHaK9xKH/mo=",
-    strip_prefix = "confidential-federated-compute-c0f665242e6e59b144bc0109233fc113aeb2e2fb",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/c0f665242e6e59b144bc0109233fc113aeb2e2fb.tar.gz",
+    integrity = "sha256-Mh0PHniw8EgOW/05ExK2JaVY6La4ZfWADrQpqvwwW3M=",
+    strip_prefix = "confidential-federated-compute-440a48bad4cd04d8021047071b1328c11368f3ff",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/440a48bad4cd04d8021047071b1328c11368f3ff.tar.gz",
 )
 
 http_archive(
     name = "confidential_federated_compute_program",
-    integrity = "sha256-8+yFvYDGpn/9XyaSBlXN8Pluf4mR7AvldHaK9xKH/mo=",
-    strip_prefix = "confidential-federated-compute-c0f665242e6e59b144bc0109233fc113aeb2e2fb/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/c0f665242e6e59b144bc0109233fc113aeb2e2fb.tar.gz",
+    integrity = "sha256-Mh0PHniw8EgOW/05ExK2JaVY6La4ZfWADrQpqvwwW3M=",
+    strip_prefix = "confidential-federated-compute-440a48bad4cd04d8021047071b1328c11368f3ff/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/440a48bad4cd04d8021047071b1328c11368f3ff.tar.gz",
 )
 
 http_archive(
