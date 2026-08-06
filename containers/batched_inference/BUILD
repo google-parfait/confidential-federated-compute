@@ -78,6 +78,7 @@ cc_test(
     name = "batched_inference_fn_test",
     srcs = ["batched_inference_fn_test.cc"],
     deps = [
+        ":batched_inference_engine",
         ":batched_inference_fn",
         ":batched_inference_test_utils",
         "//containers:session",

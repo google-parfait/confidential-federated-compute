@@ -469,6 +469,189 @@ TEST_F(BatchedInferenceFnTest, AllTasksProduceZeroValuesForRow) {
   EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
               IsOk());
 }
+TEST_F(BatchedInferenceFnTest, InferenceHandlesEmptyResponse) {
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "none_col"
+      }
+      prompt { prompt_template: "none {transcript}" }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark", "meow"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (p == "none bark") {
+            // First row succeeds with output
+            results.push_back("bark_result");
+          } else if (p == "none meow") {
+            // Second row returns empty string (e.g. filtered by safety filter)
+            results.push_back("");
+          }
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark", "meow"}}, {"none_col", {"bark_result", ""}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+  EXPECT_EQ(
+      mock_context
+          .GetCounters()["BatchedInferenceContainer-empty-inference-response"],
+      1);
+}
+
+TEST_F(BatchedInferenceFnTest, InferenceHandlesParsingFailureGracefully) {
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "auto_col"
+      }
+      prompt { prompt_template: "auto {transcript}" parser: PARSER_AUTO }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark", "meow"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (absl::StartsWith(p, "auto bark")) {
+            results.push_back("```json\n{\"auto_col\": [\"bark_res\"]}\n```");
+          } else if (absl::StartsWith(p, "auto meow")) {
+            // Returns empty string, which fails PARSER_AUTO JSON parsing.
+            results.push_back("");
+          }
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark", "meow"}}, {"auto_col", {"bark_res", ""}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+  EXPECT_EQ(
+      mock_context
+          .GetCounters()["BatchedInferenceContainer-empty-inference-response"],
+      1);
+  EXPECT_EQ(
+      mock_context.GetCounters()
+          ["BatchedInferenceContainer-inference-output-processing-failed"],
+      1);
+}
+
+TEST_F(BatchedInferenceFnTest,
+       InferenceCountsMultipleEmptyResponsesAccurately) {
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "none_col"
+      }
+      prompt { prompt_template: "none {transcript}" }
+    }
+    runtime_config { max_prompt_size: 1000 max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input = testing::GetPrivateInferenceInputCheckpointForTest(
+      {"dog", "cat", "bird", "fish"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& p : prompts) {
+          if (p == "none dog") {
+            results.push_back("dog_res");
+          } else if (p == "none cat") {
+            results.push_back("");
+          } else if (p == "none bird") {
+            results.push_back("");
+          } else if (p == "none fish") {
+            results.push_back("fish_res");
+          }
+        }
+        return results;
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"dog", "cat", "bird", "fish"}},
+       {"none_col", {"dog_res", "", "", "fish_res"}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+  EXPECT_EQ(
+      mock_context
+          .GetCounters()["BatchedInferenceContainer-empty-inference-response"],
+      2);
+}
 
 }  // namespace
 }  // namespace confidential_federated_compute::batched_inference

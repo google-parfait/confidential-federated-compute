@@ -29,6 +29,9 @@ class PiClient {
  public:
   virtual ~PiClient() = default;
 
+  // Generates a response from the model server for the given prompt.
+  // If the server response contains no text (e.g., due to safety filters or
+  // empty candidates), returns an empty string.
   virtual absl::StatusOr<std::string> Generate(const std::string& prompt) = 0;
 };
 
