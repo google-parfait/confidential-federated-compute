@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -193,13 +194,10 @@ class ElasticComposingExecutor
  public:
   ElasticComposingExecutor(std::shared_ptr<Executor> server,
                            std::vector<ComposingChild> children,
-                           int32_t total_clients, int32_t num_children,
+                           int32_t total_clients,
                            int32_t avg_batches_per_worker = 10)
-      : ComposingExecutor(std::move(server), std::move(children), total_clients,
-                          /*threadpool_size=*/
-                          4 * std::max(static_cast<int32_t>(
-                                           std::thread::hardware_concurrency()),
-                                       num_children)),
+      : ComposingExecutor(std::move(server), std::move(children),
+                          total_clients),
         avg_batches_per_worker_(avg_batches_per_worker) {}
 
   ~ElasticComposingExecutor() override { ClearTracked(); }
@@ -306,13 +304,14 @@ class ElasticComposingExecutor
         ->mutable_value()
         ->mutable_uri()
         ->assign(kClientsUri.data(), kClientsUri.size());
+    federated->mutable_type()->set_all_equal(false);
     if (client_data.all_equal) {
-      federated->mutable_type()->set_all_equal(true);
       if (!client_data.values.empty()) {
-        *federated->add_value() = client_data.values[0];
+        for (size_t i = 0; i < client_indices.size(); ++i) {
+          *federated->add_value() = client_data.values[0];
+        }
       }
     } else {
-      federated->mutable_type()->set_all_equal(false);
       for (int32_t idx : client_indices) {
         *federated->add_value() = client_data.values[idx];
       }
@@ -388,7 +387,7 @@ class ElasticComposingExecutor
     int32_t bs = batch_size(num_work_units);
 
     {
-      ParallelTasks tasks(&thread_pool_);
+      ParallelTasks tasks;
       for (size_t w = 0; w < children_.size(); w++) {
         TFF_TRY(tasks.add_task([&, w]() -> absl::Status {
           return worker_fn(children_[w].executor().get(), queue, bs,
@@ -398,8 +397,8 @@ class ElasticComposingExecutor
       TFF_TRY(tasks.WaitAll());
     }
 
-    LOG(INFO) << "Batches processed by workers for " << intrinsic_name << ": "
-              << queue.BatchCountsString();
+    std::cout << "Batches processed by workers for " << intrinsic_name << ": "
+              << queue.BatchCountsString() << std::endl;
 
     if (queue.ExceededRetries()) {
       return absl::UnavailableError(
@@ -501,9 +500,10 @@ class ElasticComposingExecutor
               break;
             }
 
-            if (!result.has_federated()) {
+            if (!result.has_federated() ||
+                result.federated().value_size() == 0) {
               return absl::InternalError(
-                  "Child executor returned non-federated value for "
+                  "Child executor returned non-federated or empty value for "
                   "federated_map");
             }
 
@@ -545,23 +545,26 @@ class ElasticComposingExecutor
 
     v0::Value zero_proto;
     {
-      ParallelTasks zero_tasks(&thread_pool_);
+      ParallelTasks zero_tasks;
       TFF_TRY(
           MaterializeValue(arg.structure()->at(1), &zero_proto, zero_tasks));
       TFF_TRY(zero_tasks.WaitAll());
     }
+    const auto& accumulate = arg.structure()->at(2);
     auto accumulate_proto =
-        TFF_TRY(arg.structure()->at(2).GetUnplacedFunctionProto("accumulate"));
-    auto merge_proto =
-        TFF_TRY(arg.structure()->at(3).GetUnplacedFunctionProto("merge"));
-    auto report_proto =
-        TFF_TRY(arg.structure()->at(4).GetUnplacedFunctionProto("report"));
+        TFF_TRY(accumulate.GetUnplacedFunctionProto("accumulate"));
+    const auto& merge = arg.structure()->at(3);
+    auto merge_proto = TFF_TRY(merge.GetUnplacedFunctionProto("merge"));
+    auto server_merge_id = TFF_TRY(merge.unplaced()->Embedded(*server_));
+    const auto& report = arg.structure()->at(4);
+    auto report_proto = TFF_TRY(report.GetUnplacedFunctionProto("report"));
+    auto server_report_id = TFF_TRY(report.unplaced()->Embedded(*server_));
 
     // Zero-clients edge case: no data to aggregate, just report(zero).
     if (total_clients_ == 0) {
-      OwnedValueId report_fn = TFF_TRY(server_->CreateValue(*report_proto));
       OwnedValueId zero_val = TFF_TRY(server_->CreateValue(zero_proto));
-      OwnedValueId result = TFF_TRY(server_->CreateCall(report_fn, zero_val));
+      OwnedValueId result =
+          TFF_TRY(server_->CreateCall(server_report_id->ref(), zero_val));
       return ExecutorValue::CreateServerPlaced(ShareValueId(std::move(result)));
     }
 
@@ -571,7 +574,6 @@ class ElasticComposingExecutor
     absl::Mutex merge_mu;
     // Starts as nullopt; the first partial initializes it.
     std::optional<OwnedValueId> current;
-    OwnedValueId merge_fn = TFF_TRY(server_->CreateValue(*merge_proto));
 
     v0::Value agg_intrinsic;
     agg_intrinsic.mutable_computation()->mutable_intrinsic()->set_uri(
@@ -613,8 +615,8 @@ class ElasticComposingExecutor
           OwnedValueId intrinsic_id = std::move(*intrinsic_or);
           OwnedValueId zero_id = std::move(*zero_or);
           OwnedValueId acc_id = std::move(*acc_or);
-          OwnedValueId merge_id = std::move(*merge_or);
-          OwnedValueId report_id = std::move(*report_or);
+          OwnedValueId child_merge_id = std::move(*merge_or);
+          OwnedValueId child_report_id = std::move(*report_or);
 
           while (true) {
             auto batch = queue.PopBatchOrWait(batch_size);
@@ -630,7 +632,7 @@ class ElasticComposingExecutor
             }
             OwnedValueId data_id = std::move(data_or.value());
             auto args_or = child->CreateStruct(
-                {data_id, zero_id, acc_id, merge_id, report_id});
+                {data_id, zero_id, acc_id, child_merge_id, child_report_id});
             if (!args_or.ok()) {
               LOG(WARNING) << "Batch failed: " << args_or.status();
               queue.RequeueAndMarkFailed(batch);
@@ -670,7 +672,8 @@ class ElasticComposingExecutor
             } else {
               OwnedValueId pair =
                   TFF_TRY(server_->CreateStruct({*current, partial_id}));
-              current = TFF_TRY(server_->CreateCall(merge_fn, pair));
+              current =
+                  TFF_TRY(server_->CreateCall(server_merge_id->ref(), pair));
             }
             queue.RecordBatchCompleted(worker_id);
           }
@@ -683,8 +686,8 @@ class ElasticComposingExecutor
     }
 
     // Apply report to the fully-merged accumulator.
-    OwnedValueId report_fn = TFF_TRY(server_->CreateValue(*report_proto));
-    OwnedValueId result = TFF_TRY(server_->CreateCall(report_fn, *current));
+    OwnedValueId result =
+        TFF_TRY(server_->CreateCall(server_report_id->ref(), *current));
     return ExecutorValue::CreateServerPlaced(ShareValueId(std::move(result)));
   }
 
@@ -748,9 +751,8 @@ std::shared_ptr<tensorflow_federated::Executor> CreateElasticComposingExecutor(
     std::shared_ptr<tensorflow_federated::Executor> server,
     std::vector<tensorflow_federated::ComposingChild> children,
     int32_t total_clients, int32_t avg_batches_per_worker) {
-  int32_t num_children = children.size();
   return std::make_shared<ElasticComposingExecutor>(
-      std::move(server), std::move(children), total_clients, num_children,
+      std::move(server), std::move(children), total_clients,
       avg_batches_per_worker);
 }
 

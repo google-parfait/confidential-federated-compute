@@ -281,6 +281,61 @@ TEST(ElasticComposingExecutorTest, ClientsAllEqualRoundTrip) {
   EXPECT_EQ(GetInt32(output.federated().value(0)), 42);
 }
 
+TEST(ElasticComposingExecutorTest, FederatedBroadcast) {
+  auto t = MakeExecutor();
+
+  v0::Value server_val = MakeServerFederated(99);
+  ON_CALL(*t.server, Materialize(_, _))
+      .WillByDefault([](ValueId, v0::Value* out) -> absl::Status {
+        *out = MakeInt32(99);
+        return absl::OkStatus();
+      });
+
+  auto server_id = t.executor->CreateValue(server_val);
+  ASSERT_TRUE(server_id.ok()) << server_id.status();
+
+  auto intrinsic_id =
+      t.executor->CreateValue(MakeIntrinsic("federated_broadcast"));
+  ASSERT_TRUE(intrinsic_id.ok()) << intrinsic_id.status();
+
+  auto broadcast_id = t.executor->CreateCall(*intrinsic_id, server_id->ref());
+  ASSERT_TRUE(broadcast_id.ok()) << broadcast_id.status();
+
+  v0::Value output;
+  auto mat_status = t.executor->Materialize(*broadcast_id, &output);
+  ASSERT_TRUE(mat_status.ok()) << mat_status;
+  ASSERT_TRUE(output.has_federated());
+  EXPECT_TRUE(output.federated().type().all_equal());
+  EXPECT_EQ(output.federated().type().placement().value().uri(), "clients");
+  ASSERT_EQ(output.federated().value_size(), 1);
+  EXPECT_EQ(GetInt32(output.federated().value(0)), 99);
+}
+
+TEST(ElasticComposingExecutorTest, FederatedValueAtClients) {
+  auto t = MakeExecutor();
+
+  v0::Value unplaced = MakeInt32(123);
+  auto unplaced_id = t.executor->CreateValue(unplaced);
+  ASSERT_TRUE(unplaced_id.ok()) << unplaced_id.status();
+
+  auto intrinsic_id =
+      t.executor->CreateValue(MakeIntrinsic("federated_value_at_clients"));
+  ASSERT_TRUE(intrinsic_id.ok()) << intrinsic_id.status();
+
+  auto at_clients_id =
+      t.executor->CreateCall(*intrinsic_id, unplaced_id->ref());
+  ASSERT_TRUE(at_clients_id.ok()) << at_clients_id.status();
+
+  v0::Value output;
+  auto mat_status = t.executor->Materialize(*at_clients_id, &output);
+  ASSERT_TRUE(mat_status.ok()) << mat_status;
+  ASSERT_TRUE(output.has_federated());
+  EXPECT_TRUE(output.federated().type().all_equal());
+  EXPECT_EQ(output.federated().type().placement().value().uri(), "clients");
+  ASSERT_EQ(output.federated().value_size(), 1);
+  EXPECT_EQ(GetInt32(output.federated().value(0)), 123);
+}
+
 // ===========================================================================
 // Tests: federated_map
 // ===========================================================================
@@ -307,6 +362,37 @@ TEST(ElasticComposingExecutorTest, FederatedMapReturnsCorrectClientCount) {
   EXPECT_EQ(output.federated().value_size(), 8);
 
   // 4 batches total distributed dynamically across 2 workers.
+  EXPECT_EQ(t.create_call_count(0) + t.create_call_count(1), 4);
+  EXPECT_GT(t.create_call_count(0), 0);
+  EXPECT_GT(t.create_call_count(1), 0);
+}
+
+TEST(ElasticComposingExecutorTest, FederatedMapWithAllEqualClientData) {
+  auto t = MakeExecutor();
+
+  // Create an all_equal client value (e.g. from broadcast or
+  // federated_value_at_clients).
+  v0::Value fed = MakeClientsFederated({42}, /*all_equal=*/true);
+  auto data_id = t.executor->CreateValue(fed);
+  ASSERT_TRUE(data_id.ok()) << data_id.status();
+
+  auto fn_id = t.executor->CreateValue(MakeLambda());
+  ASSERT_TRUE(fn_id.ok()) << fn_id.status();
+
+  std::vector<OwnedValueId> args;
+  args.push_back(std::move(*fn_id));
+  args.push_back(std::move(*data_id));
+  auto result_id = CallIntrinsic(*t.executor, "federated_map", args);
+  ASSERT_TRUE(result_id.ok()) << result_id.status();
+
+  v0::Value output;
+  ASSERT_TRUE(t.executor->Materialize(*result_id, &output).ok());
+  ASSERT_TRUE(output.has_federated());
+  EXPECT_EQ(output.federated().type().placement().value().uri(), "clients");
+  // Total clients is 8; all 8 should receive mapped results even when input was
+  // all_equal.
+  EXPECT_EQ(output.federated().value_size(), 8);
+
   EXPECT_EQ(t.create_call_count(0) + t.create_call_count(1), 4);
   EXPECT_GT(t.create_call_count(0), 0);
   EXPECT_GT(t.create_call_count(1), 0);
@@ -438,6 +524,47 @@ TEST(ElasticComposingExecutorTest, FederatedAggregateProducesServerResult) {
   EXPECT_EQ(output.federated().type().placement().value().uri(), "server");
 
   // 4 batches total distributed dynamically across 2 workers.
+  EXPECT_EQ(t.create_call_count(0) + t.create_call_count(1), 4);
+  EXPECT_GT(t.create_call_count(0), 0);
+  EXPECT_GT(t.create_call_count(1), 0);
+}
+
+TEST(ElasticComposingExecutorTest, FederatedAggregateWithAllEqualClientData) {
+  auto t = MakeExecutor();
+
+  // Aggregate an all_equal client input.
+  auto data_id =
+      t.executor->CreateValue(MakeClientsFederated({42}, /*all_equal=*/true));
+  ASSERT_TRUE(data_id.ok());
+  auto zero_id = t.executor->CreateValue(MakeInt32(0));
+  ASSERT_TRUE(zero_id.ok());
+  auto accum_id = t.executor->CreateValue(MakeLambda());
+  auto merge_id = t.executor->CreateValue(MakeLambda());
+  auto report_id = t.executor->CreateValue(MakeLambda());
+  ASSERT_TRUE(accum_id.ok());
+  ASSERT_TRUE(merge_id.ok());
+  ASSERT_TRUE(report_id.ok());
+
+  ON_CALL(*t.server, Materialize(_, _))
+      .WillByDefault([](ValueId, v0::Value* out) -> absl::Status {
+        *out = MakeInt32(10);
+        return absl::OkStatus();
+      });
+
+  std::vector<OwnedValueId> args;
+  args.push_back(std::move(*data_id));
+  args.push_back(std::move(*zero_id));
+  args.push_back(std::move(*accum_id));
+  args.push_back(std::move(*merge_id));
+  args.push_back(std::move(*report_id));
+  auto result_id = CallIntrinsic(*t.executor, "federated_aggregate", args);
+  ASSERT_TRUE(result_id.ok()) << result_id.status();
+
+  v0::Value output;
+  ASSERT_TRUE(t.executor->Materialize(*result_id, &output).ok());
+  ASSERT_TRUE(output.has_federated());
+  EXPECT_EQ(output.federated().type().placement().value().uri(), "server");
+
   EXPECT_EQ(t.create_call_count(0) + t.create_call_count(1), 4);
   EXPECT_GT(t.create_call_count(0), 0);
   EXPECT_GT(t.create_call_count(1), 0);

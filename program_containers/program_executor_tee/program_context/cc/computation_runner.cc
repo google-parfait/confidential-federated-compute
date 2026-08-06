@@ -35,6 +35,7 @@
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/federating_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/reference_resolving_executor.h"
+#include "tensorflow_federated/cc/core/impl/executors/remote_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -58,6 +59,7 @@ using ::tensorflow_federated::CardinalityMap;
 using ::tensorflow_federated::ComposingChild;
 using ::tensorflow_federated::CreateFederatingExecutor;
 using ::tensorflow_federated::CreateReferenceResolvingExecutor;
+using ::tensorflow_federated::CreateRemoteExecutor;
 using ::tensorflow_federated::CreateStreamingRemoteExecutor;
 using ::tensorflow_federated::Executor;
 
@@ -182,14 +184,20 @@ ComputationRunner::CreateDistributedExecutor(
     // ElasticComposingExecutor distributes client work dynamically across
     // workers, so child executors are created with a cardinality of 0.
     // The actual client count is passed to ElasticComposingExecutor, which
-    // manages batching and load balancing internally.
+    // manages batching and load balancing internally. We use RemoteExecutor
+    // instead of StreamingRemoteExecutor because StreamingRemoteExecutor
+    // requires a positive client cardinality (> 0) during materialization of
+    // federated structures and validates against a fixed static client count,
+    // whereas RemoteExecutor executes unary RPCs that work with dynamic
+    // per-batch execution without requiring a non-zero cardinality at
+    // initialization.
     for (int i = 0; i < worker_bns_.size(); i++) {
       CardinalityMap cardinality_map;
       cardinality_map[tensorflow_federated::kClientsUri] = 0;
       client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
-          CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
-                                            noise_client_sessions_[i].get()),
-                                        cardinality_map),
+          CreateRemoteExecutor(std::make_unique<NoiseExecutorStub>(
+                                   noise_client_sessions_[i].get()),
+                               cardinality_map),
           cardinality_map)));
     }
   } else {

@@ -94,6 +94,7 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:federating_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:reference_resolving_executor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:remote_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:streaming_remote_executor",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
     ],
