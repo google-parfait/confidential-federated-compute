@@ -33,9 +33,8 @@ absl::StatusOr<RowView> RowView::CreateFromTensors(
 absl::StatusOr<RowView> RowView::CreateFromMessage(
     const google::protobuf::Message* message,
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
-    uint32_t row_index, const FieldPathList* field_paths) {
-  return RowView(
-      MessageRowView(message, system_columns, row_index, field_paths));
+    uint32_t row_index, const MessageColumnSchema* schema) {
+  return RowView(MessageRowView(message, system_columns, row_index, schema));
 }
 
 absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
@@ -57,47 +56,19 @@ absl::StatusOr<RowView::TensorRowView> RowView::TensorRowView::Create(
 RowView::MessageRowView::MessageRowView(
     const google::protobuf::Message* message,
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns,
-    uint32_t row_index, const FieldPathList* field_paths)
+    uint32_t row_index, const MessageColumnSchema* schema)
     : message_(message),
       system_columns_(system_columns),
       row_index_(row_index),
-      field_paths_(field_paths) {}
-
-size_t RowView::MessageRowView::GetSystemColumnIndex(int column_index) const {
-  return column_index - field_paths_->size();
-}
-
-tensorflow_federated::aggregation::DataType
-RowView::MessageRowView::GetMessageColumnType(int column_index) const {
-  const google::protobuf::FieldDescriptor* field =
-      (*field_paths_)[column_index].back();
-  switch (field->cpp_type()) {
-    case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
-    case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
-    case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
-      return tensorflow_federated::aggregation::DataType::DT_INT32;
-    case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
-      return tensorflow_federated::aggregation::DataType::DT_INT64;
-    case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
-      return tensorflow_federated::aggregation::DataType::DT_FLOAT;
-    case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
-      return tensorflow_federated::aggregation::DataType::DT_DOUBLE;
-    case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
-      return tensorflow_federated::aggregation::DataType::DT_STRING;
-    default:
-      LOG(FATAL) << "Unsupported column type " << field->cpp_type_name();
-  }
-}
+      schema_(schema) {}
 
 tensorflow_federated::aggregation::DataType
 RowView::MessageRowView::GetColumnType(int column_index) const {
-  if (column_index < field_paths_->size()) {
-    return GetMessageColumnType(column_index);
-  }
-  return system_columns_[GetSystemColumnIndex(column_index)].dtype();
+  return (*schema_)[column_index].column_type;
 }
 
 size_t RowView::MessageRowView::GetColumnCount() const {
-  return field_paths_->size() + system_columns_.size();
+  return schema_->size();
 }
+
 }  // namespace confidential_federated_compute

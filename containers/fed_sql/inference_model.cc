@@ -608,17 +608,17 @@ absl::Status InferenceModel::RunInference(Input& input) {
         inference_task.column_config().output_column_name();
 
     // Find the indices that correspond to the input columns.
+    absl::Span<const std::string> column_names = input.GetColumnNames();
     std::vector<size_t> input_column_indices;
     for (const auto& input_column_name : input_column_names) {
-      const auto it =
-          std::find(input.GetColumnNames().begin(),
-                    input.GetColumnNames().end(), input_column_name);
-      if (it == input.GetColumnNames().end()) {
+      const auto it = std::find(column_names.begin(), column_names.end(),
+                                input_column_name);
+      if (it == column_names.end()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Couldn't find an input column ", input_column_name,
                          " to run inference on."));
       }
-      input_column_indices.push_back(it - input.GetColumnNames().begin());
+      input_column_indices.push_back(it - column_names.begin());
     }
 
     InferenceOutput inference_output;

@@ -71,10 +71,8 @@ absl::StatusOr<RowSet> RowSet::Create(const Input* input) {
 }
 
 absl::Span<const std::string> RowSet::GetColumnNames() const {
-  if (storage_.empty()) {
-    return absl::Span<const std::string>();
-  }
-  return storage_[0].GetColumnNames();
+  return storage_.empty() ? absl::Span<const std::string>{}
+                          : storage_[0].GetColumnNames();
 }
 
 }  // namespace confidential_federated_compute

@@ -14,8 +14,33 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_VIEW_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_ROW_VIEW_H_
 
+// Overview
+// --------
+// The table abstraction stack is organized into four layers across row_view.h,
+// input.h, and row_set.h:
+//
+// Column Schema
+//   MessageColumnSchema (std::vector<ColumnDescriptor>) describes every column
+//   in order and encodes how to read it. Proto columns store a FieldPath and
+//   read via reflection; system columns have an empty FieldPath and read from a
+//   Tensor using system_column_index. column_type is set once at schema-build
+//   time and never re-derived from FieldDescriptor::cpp_type() at read time,
+//   allowing enum fields to produce both a DT_INT32 integer column and a
+//   DT_STRING name column.
+//
+// Single-Row Cursor
+//   RowView is a lightweight, non-owning view over a single row. It holds no
+//   data of its own, only references into the owning storage plus a row index.
+//   - TensorRowView reads directly from flat column-major Tensor arrays.
+//   - MessageRowView uses MessageColumnSchema to route reads to either proto
+//     reflection or system Tensors.
+//
+// See input.h for Table Storage (Input) and row_set.h for Cross-Table View
+// (RowSet).
+
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,21 +57,53 @@
 
 namespace confidential_federated_compute {
 
-// Represents a direct mapping from a root message level to a leaf field.
-// Each `FieldDescriptor` in the path describes navigation through a single
-// nested message field, sequentially resolving values to mapped leaf fields.
+// Represents the sequence of FieldDescriptors that navigates from the root
+// message to a leaf field.  Each entry describes a single hop through a
+// nested message field.
+//
 // Safety: Pointers to FieldDescriptors are owned by static DescriptorPools
 // and remain valid across runtime executions.
 using FieldPath = std::vector<const google::protobuf::FieldDescriptor*>;
 
-// An ordered flat array of field paths matching mapped table columns.
-// The list maps 1:1 with flat columns computed once per table schema execution
-// by Input::CreateFromMessages during initialization via GetFlattenedSchema.
+// Unified descriptor for one logical column in a message-backed Input.
 //
-// Safety: Pointers referencing this list are safe to pass because lists are
-// owned by Input::MessageContents which is guaranteed to outlive all RowView
-// instances generated during operations.
-using FieldPathList = std::vector<FieldPath>;
+// Covers both kinds of columns:
+//   - Proto columns:        proto_path is non-empty; value is read via proto
+//                           reflection by navigating the field path.
+//   - System tensor columns: proto_path is empty; value is read from the
+//                           system_columns span at system_tensor_index.
+//
+// name and column_type are always present and are the single source of truth
+// for column identity and type — no secondary name arrays are kept in sync.
+//
+// Two proto columns may share the same proto_path but carry different
+// column_types and names (e.g. an enum's integer column and its "_as_str"
+// string column). column_type is never re-inferred from cpp_type() at read
+// time; it is set once at schema-build time.
+struct ColumnDescriptor {
+  // The flat column name, e.g. "event_type" or "nested__sub_col1".
+  std::string name;
+
+  // The output DataType for this column. Set once at schema-build time
+  // (GetFlattenedSchema) and read directly by GetColumnType().
+  tensorflow_federated::aggregation::DataType column_type;
+
+  // Path of FieldDescriptors from the root message to the leaf field.
+  // Non-empty for proto columns; empty for system tensor columns.
+  FieldPath proto_path;
+
+  // For system tensor columns (proto_path.empty()), the index into the
+  // system_columns span passed to CreateFromMessage (and held by
+  // MessageContents::system_columns_).
+  size_t system_tensor_index = 0;
+};
+
+// Ordered schema describing all logical columns for a message-backed Input.
+// Computed once by Input::CreateFromMessages; covers both proto columns
+// (appended by GetFlattenedSchema) and system tensor columns (appended
+// immediately after).  Shared by pointer with every RowView this Input
+// produces.
+using MessageColumnSchema = std::vector<ColumnDescriptor>;
 
 // A non-owning view of a single row of data, abstracting the underlying
 // storage mechanism (e.g., Tensors, Messages) via absl::variant.
@@ -59,17 +116,19 @@ class RowView {
       absl::Span<const tensorflow_federated::aggregation::Tensor> columns,
       uint32_t row_index);
 
-  // Creates a RowView from a Message, a list of system columns, and a row
+  // Creates a RowView from a Message, a span of system tensors, and a row
   // index.
-  // The row index identifies the row within the system columns.
-  // A RowView created this way will provide access to the elements of the
-  // row by index, in the order of the message's field numbers followed by the
-  // system columns in order of the `system_columns` span.
+  //
+  // `schema` describes every column — both proto columns (non-empty
+  // proto_path) and system tensor columns (empty proto_path, with
+  // system_tensor_index pointing into `system_columns`).
+  // `schema` must outlive this RowView.
   static absl::StatusOr<RowView> CreateFromMessage(
       const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
       absl::Span<const tensorflow_federated::aggregation::Tensor>
           system_columns,
-      uint32_t row_index, const FieldPathList* field_paths);
+      uint32_t row_index,
+      const MessageColumnSchema* schema ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
   // Returns the data type of a column.
   tensorflow_federated::aggregation::DataType GetColumnType(
@@ -144,15 +203,21 @@ class RowView {
   static_assert(has_row_view_interface<TensorRowView>::value,
                 "TensorRowView does not conform to the RowView interface.");
 
-  // A RowView backed by a Message and a list of system columns.
+  // A RowView backed by a Message and a unified MessageColumnSchema.
+  //
+  // The schema covers both proto columns (non-empty proto_path) and system
+  // columns (empty proto_path, backed by a Tensor at system_column_index).
   class MessageRowView {
    public:
-    MessageRowView(const google::protobuf::Message* message
-                       ABSL_ATTRIBUTE_LIFETIME_BOUND,
-                   absl::Span<const tensorflow_federated::aggregation::Tensor>
-                       system_columns,
-                   uint32_t row_index, const FieldPathList* field_paths);
+    MessageRowView(
+        const google::protobuf::Message* message ABSL_ATTRIBUTE_LIFETIME_BOUND,
+        absl::Span<const tensorflow_federated::aggregation::Tensor>
+            system_columns,
+        uint32_t row_index,
+        const MessageColumnSchema* schema ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
+    // Returns ColumnDescriptor::column_type, set at schema-build time.
+    // This is what ensures enum-as-str columns return DT_STRING.
     tensorflow_federated::aggregation::DataType GetColumnType(
         int column_index) const;
 
@@ -162,21 +227,16 @@ class RowView {
     size_t GetColumnCount() const;
 
    private:
-    size_t GetSystemColumnIndex(int column_index) const;
-
     template <typename T>
     T GetMessageValue(const google::protobuf::Message& msg,
                       const google::protobuf::FieldDescriptor* field) const;
-
-    tensorflow_federated::aggregation::DataType GetMessageColumnType(
-        int column_index) const;
 
     const google::protobuf::Message* message_;
     absl::Span<const tensorflow_federated::aggregation::Tensor> system_columns_;
     // The index of the row within the system columns.
     uint32_t row_index_;
-    // Flattened list of field paths for message columns. Owned by Input.
-    const FieldPathList* field_paths_;
+    // Owned by Input::MessageContents, outlives all RowViews from that Input.
+    const MessageColumnSchema* schema_;
   };
 
   static_assert(has_row_view_interface<MessageRowView>::value,
@@ -208,6 +268,12 @@ inline int32_t RowView::MessageRowView::GetMessageValue<int32_t>(
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_BOOL) {
     return static_cast<int32_t>(reflection->GetBool(msg, field));
   }
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_UINT32) {
+    uint32_t val = reflection->GetUInt32(msg, field);
+    CHECK_LE(val, static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+        << "uint32 field " << field->name() << " value overflows int32";
+    return static_cast<int32_t>(val);
+  }
   CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT32)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int32";
@@ -218,6 +284,13 @@ template <>
 inline int64_t RowView::MessageRowView::GetMessageValue<int64_t>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
+  const google::protobuf::Reflection* reflection = msg.GetReflection();
+  if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_UINT64) {
+    uint64_t val = reflection->GetUInt64(msg, field);
+    CHECK_LE(val, static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+        << "uint64 field " << field->name() << " value overflows int64";
+    return static_cast<int64_t>(val);
+  }
   CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT64)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
       << " but expected int64";
@@ -250,10 +323,20 @@ RowView::MessageRowView::GetMessageValue<absl::string_view>(
     const google::protobuf::Message& msg,
     const google::protobuf::FieldDescriptor* field) const {
   const google::protobuf::Reflection* reflection = msg.GetReflection();
-  // This is a special case placed before target checks to return enum values
-  // directly via reflection, bypassing following logic that expects strings.
+  // Enum fields read as string_view return the value's name (e.g. "SHOWN").
+  // This is used when column_type == DT_STRING for an enum column spec.
   if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
-    return reflection->GetEnum(msg, field)->name();
+    const google::protobuf::EnumValueDescriptor* enum_val =
+        reflection->GetEnum(msg, field);
+    if (enum_val != nullptr) {
+      return enum_val->name();
+    }
+    // enum_val is null for unknown enum values (e.g. values not present in the
+    // descriptor, which can happen with proto3 open enums or mismatched
+    // schemas). Return empty string rather than crashing.
+    LOG(WARNING) << "Unknown enum value for field " << field->name()
+                 << "; returning empty string";
+    return "";
   }
   CHECK(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING)
       << "Field " << field->name() << " has type " << field->cpp_type_name()
@@ -271,20 +354,20 @@ RowView::MessageRowView::GetMessageValue<absl::string_view>(
 
 template <typename T>
 T RowView::MessageRowView::GetValue(int column_index) const {
-  if (column_index < field_paths_->size()) {
+  const ColumnDescriptor& desc = (*schema_)[column_index];
+  if (!desc.proto_path.empty()) {
     // Navigate the pre-computed path of field descriptors to retrieve the
     // value from the correct nested message instance.
-    const auto& path = (*field_paths_)[column_index];
     const google::protobuf::Message* current_msg = message_;
-    for (size_t i = 0; i < path.size() - 1; ++i) {
-      current_msg =
-          &current_msg->GetReflection()->GetMessage(*current_msg, path[i]);
+    for (size_t i = 0; i < desc.proto_path.size() - 1; ++i) {
+      current_msg = &current_msg->GetReflection()->GetMessage(
+          *current_msg, desc.proto_path[i]);
     }
-    return GetMessageValue<T>(*current_msg, path.back());
+    return GetMessageValue<T>(*current_msg, desc.proto_path.back());
   }
+  // System tensor column: read from the pre-indexed tensor.
   // This will CHECK-fail if T does not match the column's dtype.
-  return system_columns_[GetSystemColumnIndex(column_index)].AsSpan<T>().at(
-      row_index_);
+  return system_columns_[desc.system_tensor_index].AsSpan<T>().at(row_index_);
 }
 
 }  // namespace confidential_federated_compute

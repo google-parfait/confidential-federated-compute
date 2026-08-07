@@ -273,8 +273,9 @@ SharedColumnSet GetSharedColumnSet(const RowSet& rows,
 }
 
 absl::Status ValidateRowSet(const RowSet& rows, const TableSchema& table) {
+  absl::Span<const std::string> row_column_names_span = rows.GetColumnNames();
   absl::flat_hash_set<std::string> row_column_names(
-      rows.GetColumnNames().begin(), rows.GetColumnNames().end());
+      row_column_names_span.begin(), row_column_names_span.end());
 
   for (const auto& column : table.column()) {
     if (!row_column_names.contains(column.name())) {
