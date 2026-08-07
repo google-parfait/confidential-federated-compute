@@ -221,10 +221,14 @@ class PiClientImpl : public PiClient {
               return result;
             }
           }
+          // Response has no candidates or no text parts (e.g. safety filter).
+          LOG(WARNING) << "PiClientImpl::Generate: No text found in "
+                          "GenerateContentResponse";
+          return std::string("");
         }
 
         return absl::InternalError(
-            "PiClientImpl::Generate: No text found in GenerateContentResponse");
+            "PiClientImpl::Generate: Response missing GenerateContentResponse");
       }
       auto pump_status2 = PumpOutgoingMessages(session_.get(), stream_.get());
       if (!pump_status2.ok()) {

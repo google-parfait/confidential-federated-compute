@@ -177,6 +177,64 @@ TEST(PiClientTest, RequestResponseDecryptionSucceeds) {
       ::mdi::privatearatea::PcsCandidate::STOP);
 }
 
+TEST(PiClientTest, RequestResponseDecryptionWithEmptyResponseSucceeds) {
+  auto client_session_or = ClientSession::Create(TestConfigAttestedNNClient());
+  ASSERT_TRUE(client_session_or.ok());
+  auto client_session = std::move(client_session_or.value());
+
+  auto server_session_or =
+      oak::session::ServerSession::Create(TestConfigAttestedNNServer());
+  ASSERT_TRUE(server_session_or.ok());
+  auto server_session = std::move(server_session_or.value());
+
+  // Perform handshake
+  while (!client_session->IsOpen() || !server_session->IsOpen()) {
+    auto client_msg = client_session->GetOutgoingMessage();
+    if (client_msg.ok() && client_msg->has_value()) {
+      server_session->PutIncomingMessage(client_msg->value());
+    }
+    auto server_msg = server_session->GetOutgoingMessage();
+    if (server_msg.ok() && server_msg->has_value()) {
+      client_session->PutIncomingMessage(server_msg->value());
+    }
+  }
+
+  ASSERT_TRUE(client_session->IsOpen());
+  ASSERT_TRUE(server_session->IsOpen());
+  // Server sends response without any text parts (e.g., due to safety filter)
+  ::mdi::privatearatea::PcsPrivateArateaResponse proto_response;
+  proto_response.set_request_id(43);
+  auto* candidate =
+      proto_response.mutable_generate_content_response()->add_candidates();
+  std::string serialized_response = proto_response.SerializeAsString();
+
+  auto server_write_status = server_session->Write(serialized_response);
+  ASSERT_TRUE(server_write_status.ok());
+
+  auto encrypted_response = server_session->GetOutgoingMessage();
+  ASSERT_TRUE(encrypted_response.ok());
+  ASSERT_TRUE(encrypted_response->has_value());
+
+  // Client receives and decrypts
+  client_session->PutIncomingMessage(encrypted_response->value());
+  auto decrypted_response_or = client_session->ReadToRustBytes();
+  ASSERT_TRUE(decrypted_response_or.ok());
+  ASSERT_TRUE(decrypted_response_or->has_value());
+
+  std::string payload =
+      static_cast<std::string>(decrypted_response_or->value());
+
+  ::mdi::privatearatea::PcsPrivateArateaResponse parsed_response;
+  ASSERT_TRUE(parsed_response.ParseFromString(payload));
+  EXPECT_EQ(parsed_response.request_id(), 43);
+  EXPECT_EQ(parsed_response.generate_content_response().candidates_size(), 1);
+  EXPECT_EQ(parsed_response.generate_content_response()
+                .candidates(0)
+                .content()
+                .parts_size(),
+            0);
+}
+
 TEST(PiClientTest, CreatePiClientFailsWhenServerIsUnreachable) {
   auto client_or = CreatePiClient("localhost:12345", 100);
 

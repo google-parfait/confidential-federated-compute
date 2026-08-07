@@ -205,7 +205,7 @@ absl::Status UnpackCallsForTask(const Input& input, size_t max_prompt_size,
 // populated. output_columns is left empty, to be populated later by
 // CartesianExpand.
 absl::StatusOr<std::vector<TaskOutput>> ProcessTaskOutputs(
-    BlobLevelWorkItem* blob_item) {
+    BlobLevelWorkItem* blob_item, Session::Context& context) {
   const long num_rows = static_cast<long>(blob_item->input->GetRowCount());
   std::vector<TaskOutput> task_outputs;
   InferenceOutputProcessor output_processor;
@@ -227,8 +227,14 @@ absl::StatusOr<std::vector<TaskOutput>> ProcessTaskOutputs(
               task_item->task.prompt(), std::move(call_item->result),
               task_item->output_column_name, row_data.get());
       if (!process_result.ok()) {
-        return absl::InternalError(absl::StrCat(
-            "Couldn't process inference output: ", process_result.status()));
+        LOG(WARNING) << "Failed to process inference output: "
+                     << process_result.status()
+                     << ". Skipping output for this row.";
+        ++context.GetCounters()
+              ["BatchedInferenceContainer-inference-output-processing-failed"];
+        parsed_column.values.push_back(std::vector<std::string>());
+        task_output.per_row_output_counts.push_back(0);
+        continue;
       }
 
       // Extract strings from MutableStringData via a temporary Tensor.
@@ -288,8 +294,9 @@ absl::StatusOr<std::vector<size_t>> CartesianExpand(
     }
 
     // Generate the Cartesian product across `num_active` active tasks for
-    // input row `i`,
+    // input row `i`.
     const size_t num_active = active_task_indices.size();
+
     // For input row i and active task a, sizes[a] is the number of output rows
     // task a produces for row i.
     std::vector<size_t> sizes(num_active);
@@ -404,7 +411,7 @@ class BatchedInferenceFn final
 
  private:
   absl::Status DoBatchedInferenceInternal(
-      const std::vector<CallLevelWorkItem*>& batch);
+      const std::vector<CallLevelWorkItem*>& batch, Context& context);
 
   absl::Status FinalizeBlob(BlobLevelWorkItem* blob_item, Context& context);
 
@@ -536,7 +543,7 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceAndFinalizeAllBlobs(
     const std::vector<CallLevelWorkItem*>& batched_call_items,
     std::queue<BlobLevelWorkItem*>* blob_items, Context& context) {
   absl::Status inference_status =
-      DoBatchedInferenceInternal(batched_call_items);
+      DoBatchedInferenceInternal(batched_call_items, context);
   if (!inference_status.ok()) {
     return inference_status;
   }
@@ -548,7 +555,7 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceAndFinalizeAllBlobs(
 }
 
 absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
-    const std::vector<CallLevelWorkItem*>& batch) {
+    const std::vector<CallLevelWorkItem*>& batch, Context& context) {
   std::vector<std::string> prompts;
   for (CallLevelWorkItem* call_item : batch) {
     prompts.push_back(call_item->prompt);
@@ -566,6 +573,10 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
           absl::StrCat("Inference failed: ", results[i].status()));
     }
     batch[i]->result = *results[i];
+    if (batch[i]->result.empty()) {
+      ++context.GetCounters()
+            ["BatchedInferenceContainer-empty-inference-response"];
+    }
   }
   return absl::OkStatus();
 }
@@ -576,7 +587,7 @@ absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
 
   // Process all task outputs and parse each inference result.
   absl::StatusOr<std::vector<TaskOutput>> task_outputs_or =
-      ProcessTaskOutputs(blob_item);
+      ProcessTaskOutputs(blob_item, context);
   if (!task_outputs_or.ok()) {
     return task_outputs_or.status();
   }
