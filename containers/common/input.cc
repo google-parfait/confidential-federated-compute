@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
+#include "containers/common/checkpoint_utils.h"
 #include "containers/common/row_view.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "google/protobuf/descriptor.h"
@@ -198,27 +199,9 @@ Input::Input(ContentsVariant contents, std::string metadata,
       metadata_(std::move(metadata)),
       privacy_id_(std::move(privacy_id)) {}
 
-absl::StatusOr<std::optional<std::string>> ExtractPrivacyIdAndValidate(
-    const std::optional<Tensor>& privacy_id) {
-  if (!privacy_id.has_value()) {
-    return std::nullopt;
-  }
-  if (privacy_id->dtype() != tensorflow_federated::aggregation::DT_STRING) {
-    return absl::InvalidArgumentError("Privacy ID must be of type DT_STRING.");
-  }
-  ABSL_ASSIGN_OR_RETURN(int64_t num_elements,
-                        privacy_id->shape().NumElements());
-  if (num_elements != 1) {
-    return absl::InvalidArgumentError("Privacy ID must be a scalar.");
-  }
-  return std::string(privacy_id->AsScalar<absl::string_view>());
-}
-
 absl::StatusOr<Input> Input::CreateFromTensors(
     std::vector<Tensor> contents, std::string metadata,
-    std::optional<Tensor> privacy_id) {
-  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
-                        ExtractPrivacyIdAndValidate(privacy_id));
+    std::optional<std::string> privacy_id) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("No columns provided.");
   }
@@ -240,7 +223,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(
     }
   }
   return Input(TensorContents(std::move(contents)), std::move(metadata),
-               std::move(privacy_id_string));
+               std::move(privacy_id));
 }
 
 absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
@@ -303,9 +286,7 @@ void Input::MessageContents::AddColumn(Tensor&& column) {
 absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<Message>> messages,
     std::vector<Tensor> system_columns, std::string metadata,
-    std::optional<Tensor> privacy_id) {
-  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id_string,
-                        ExtractPrivacyIdAndValidate(privacy_id));
+    std::optional<std::string> privacy_id) {
   ABSL_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
 
   // Build schema for proto columns.
@@ -324,7 +305,7 @@ absl::StatusOr<Input> Input::CreateFromMessages(
 
   return Input(MessageContents(std::move(messages), std::move(system_columns),
                                std::move(schema)),
-               std::move(metadata), std::move(privacy_id_string));
+               std::move(metadata), std::move(privacy_id));
 }
 
 absl::StatusOr<RowView> Input::MessageContents::GetRow(
@@ -417,16 +398,8 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
         absl::StrFormat("`%s` tensor must be a string tensor",
                         fcp::confidential_compute::kPrivateLoggerEntryKey));
   }
-  ABSL_ASSIGN_OR_RETURN(
-      Tensor time_tensor,
-      checkpoint->GetTensor(absl::StrCat(
-          column_prefix, fcp::confidential_compute::kEventTimeColumnName)));
-  if (time_tensor.dtype() !=
-      tensorflow_federated::aggregation::DataType::DT_STRING) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("`%s` tensor must be a string tensor",
-                        fcp::confidential_compute::kEventTimeColumnName));
-  }
+  ABSL_ASSIGN_OR_RETURN(Tensor time_tensor,
+                        GetEventTime(*checkpoint, on_device_query_name));
 
   // Rename the time tensor to remove the column prefix. Pipelines that process
   // Message-based checkpoints don't use the column name prefix.
@@ -449,11 +422,22 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     messages.push_back(std::move(message));
   }
 
+  // Extract privacy ID if present
+  std::optional<std::string> privacy_id;
+  absl::StatusOr<std::string> pid_result = GetPrivacyId(*checkpoint);
+  if (pid_result.ok()) {
+    privacy_id = *std::move(pid_result);
+  } else if (!absl::IsNotFound(pid_result.status())) {
+    // The tensor exists but is invalid.
+    return pid_result.status();
+  }
+
   std::vector<Tensor> system_columns;
   system_columns.reserve(1);
   system_columns.push_back(std::move(time_tensor));
   return Input::CreateFromMessages(std::move(messages),
-                                   std::move(system_columns));
+                                   std::move(system_columns),
+                                   /*metadata=*/"", std::move(privacy_id));
 }
 
 absl::StatusOr<std::unique_ptr<MessageFactory>>

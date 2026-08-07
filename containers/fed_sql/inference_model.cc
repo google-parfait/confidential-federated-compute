@@ -568,14 +568,10 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
       DuplicateTensorRows(original_columns, original_row_count,
                           per_row_output_counts));
 
-  std::optional<Tensor> privacy_id_tensor;
-  if (original_privacy_id.has_value()) {
-    privacy_id_tensor = Tensor(*original_privacy_id, "privacy_id");
-  }
   ABSL_ASSIGN_OR_RETURN(
       Input new_input,
       Input::CreateFromTensors(std::move(final_columns), std::move(metadata),
-                               std::move(privacy_id_tensor)));
+                               std::move(original_privacy_id)));
   input = std::move(new_input);
   return absl::OkStatus();
 }

@@ -1040,10 +1040,8 @@ TEST_F(InferenceModelTest,
   columns.push_back(Tensor({"foo", "bar"}, "transcript"));
   ASSERT_THAT(inference_model_.BuildModel(inference_configuration), IsOk());
 
-  Tensor privacy_id_tensor("privacy_id_1", "privacy_id");
-
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(columns), "key_1", std::move(privacy_id_tensor));
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(columns), "key_1", "privacy_id_1");
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(inference_model_.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =

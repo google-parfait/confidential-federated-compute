@@ -105,6 +105,7 @@ cc_library(
     srcs = ["input.cc"],
     hdrs = ["input.h"],
     deps = [
+        ":checkpoint_utils",
         ":row_view",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

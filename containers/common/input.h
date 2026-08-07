@@ -121,8 +121,7 @@ class Input {
   static absl::StatusOr<Input> CreateFromTensors(
       std::vector<tensorflow_federated::aggregation::Tensor> contents,
       std::string metadata = "",
-      std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
-          std::nullopt);
+      std::optional<std::string> privacy_id = std::nullopt);
 
   // Creates an Input from a list of Messages and a list of system column
   // Tensors.
@@ -139,8 +138,7 @@ class Input {
       std::vector<std::unique_ptr<google::protobuf::Message>> messages,
       std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
       std::string metadata = "",
-      std::optional<tensorflow_federated::aggregation::Tensor> privacy_id =
-          std::nullopt);
+      std::optional<std::string> privacy_id = std::nullopt);
 
   Input(Input&&) = default;
   Input& operator=(Input&&) = default;

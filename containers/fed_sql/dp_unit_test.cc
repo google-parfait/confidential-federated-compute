@@ -47,7 +47,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fed_sql::testing::CreateStringTestData;
-using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::google::protobuf::RepeatedPtrField;
@@ -210,17 +209,6 @@ absl::StatusOr<std::vector<Tensor>> BuildTensors(
   return tensors;
 }
 
-// A helper to build a privacy ID tensor.
-absl::StatusOr<Tensor> CreatePrivacyIdTensor(std::string id) {
-  auto privacy_id_data = std::make_unique<MutableStringData>(1);
-  privacy_id_data->Add(std::move(id));
-  ABSL_ASSIGN_OR_RETURN(
-      Tensor privacy_id_tensor,
-      Tensor::Create(DataType::DT_STRING, {}, std::move(privacy_id_data)));
-  privacy_id_tensor.set_name(kPrivacyIdColumnName);
-  return privacy_id_tensor;
-}
-
 TEST_F(DpUnitCommitTest, SuccessWithSingleColumn) {
   FederatedComputeCheckpointParserFactory parser_factory;
   // Input 1 (privacy_id = 1) contains:
@@ -256,15 +244,11 @@ TEST_F(DpUnitCommitTest, SuccessWithSingleColumn) {
                    {{"unit1", {0, 1}}});
   ASSERT_THAT(tensors2, IsOk());
 
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
-  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor2, IsOk());
-  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
-      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(*std::move(tensors2), {}, id1_);
   ASSERT_THAT(input2, IsOk());
 
   // For each DP unit, we run the SQL query `SELECT key, SUM(val) + 1 AS val
@@ -351,15 +335,11 @@ TEST_F(DpUnitCommitTest, SuccessEmptyDpUnitColumns) {
       {"2025-01-01T13:00:00+00:00", "2025-01-01T13:00:00+00:00"}, {});
   ASSERT_THAT(tensors2, IsOk());
 
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
-  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id2_);
-  ASSERT_THAT(privacy_id_tensor2, IsOk());
-  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
-      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(*std::move(tensors2), {}, id2_);
   ASSERT_THAT(input2, IsOk());
 
   // For each DP unit, we run the SQL query `SELECT key, SUM(val) + 1 AS val
@@ -457,15 +437,11 @@ TEST_F(DpUnitCommitTest, SuccessMultipleDpUnitColumns) {
   ASSERT_THAT(tensors2, IsOk());
 
   // Use same privacy ID for both inputs.
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
-  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor2, IsOk());
-  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
-      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(*std::move(tensors2), {}, id1_);
   ASSERT_THAT(input2, IsOk());
 
   // With same privacy ID and event time, DP units are determined by unit1,
@@ -529,15 +505,11 @@ TEST_F(DpUnitCommitTest, SuccessDpUnitDeterminedByEventTime) {
   ASSERT_THAT(tensors2, IsOk());
 
   // Same privacy ID for both inputs.
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
-  absl::StatusOr<Tensor> privacy_id_tensor2 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor2, IsOk());
-  absl::StatusOr<Input> input2 = Input::CreateFromTensors(
-      *std::move(tensors2), {}, *std::move(privacy_id_tensor2));
+  absl::StatusOr<Input> input2 =
+      Input::CreateFromTensors(*std::move(tensors2), {}, id1_);
   ASSERT_THAT(input2, IsOk());
 
   // With no DP columns and the same privacy ID, the data is split into two DP
@@ -604,10 +576,8 @@ TEST_F(DpUnitCommitTest, PartialSqlError) {
       {"2025-01-01T12:00:00+00:00", "2025-01-02T13:00:00+00:00"}, {});
   ASSERT_THAT(tensors1, IsOk());
 
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
   sql_config_.query = "SELECT key, 1 / val AS val FROM input";
   DpUnitParameters dp_unit_parameters;
@@ -661,10 +631,8 @@ TEST_F(DpUnitCommitTest, SqlError) {
                    {{"unit1", {0, 1}}});
   ASSERT_THAT(tensors1, IsOk());
 
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
 
   // Invalid SQL query will cause an error for each DP unit.
@@ -699,10 +667,8 @@ TEST_F(DpUnitCommitTest, AccumulateError) {
       BuildTensors({1}, {100}, {"2025-01-01T12:00:00+00:00"}, {{"unit1", {0}}});
   ASSERT_THAT(tensors1, IsOk());
 
-  absl::StatusOr<Tensor> privacy_id_tensor1 = CreatePrivacyIdTensor(id1_);
-  ASSERT_THAT(privacy_id_tensor1, IsOk());
-  absl::StatusOr<Input> input1 = Input::CreateFromTensors(
-      *std::move(tensors1), {}, *std::move(privacy_id_tensor1));
+  absl::StatusOr<Input> input1 =
+      Input::CreateFromTensors(*std::move(tensors1), {}, id1_);
   ASSERT_THAT(input1, IsOk());
 
   // Output column name "wrong_name" doesn't match aggregator expectation.

@@ -45,6 +45,9 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::fcp::confidential_compute::kEventTimeColumnName;
+using ::fcp::confidential_compute::kPrivacyIdColumnName;
+using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
 using ::google::protobuf::Descriptor;
 using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
@@ -84,25 +87,9 @@ TEST_F(InputTest, CreateFromTensors) {
 }
 
 TEST_F(InputTest, CreateFromTensorsWithPrivacyId) {
-  auto privacy_id_tensor = Tensor::Create(
-      DataType::DT_STRING, TensorShape({}),
-      CreateTestData<absl::string_view>({"the_privacy_id"}), "privacy_id");
-  ASSERT_THAT(privacy_id_tensor, IsOk());
   absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", std::move(*privacy_id_tensor));
+      std::move(contents_), "key-id", "the_privacy_id");
   ASSERT_THAT(input, IsOk());
-}
-
-TEST_F(InputTest, CreateFromTensorsFailsWithWrongPrivacyIdType) {
-  auto privacy_id =
-      Tensor::Create(DataType::DT_INT64, TensorShape({}),
-                     CreateTestData<int64_t>({123}), "privacy_id");
-  ASSERT_THAT(privacy_id, IsOk());
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", std::move(*privacy_id));
-  EXPECT_THAT(input.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     "Privacy ID must be of type DT_STRING."));
 }
 
 TEST_F(InputTest, CreateFromTensorsFailsWithNoColumns) {
@@ -170,12 +157,8 @@ TEST_F(InputTest, GetPrivacyId) {
 }
 
 TEST_F(InputTest, GetPrivacyIdWithValue) {
-  auto privacy_id_tensor = Tensor::Create(
-      DataType::DT_STRING, TensorShape({}),
-      CreateTestData<absl::string_view>({"the_privacy_id"}), "privacy_id");
-  ASSERT_THAT(privacy_id_tensor, IsOk());
   absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", std::move(*privacy_id_tensor));
+      std::move(contents_), "key-id", "the_privacy_id");
   ASSERT_THAT(input, IsOk());
   ASSERT_TRUE(input->GetPrivacyId().has_value());
   EXPECT_EQ(*input->GetPrivacyId(), "the_privacy_id");
@@ -416,42 +399,10 @@ TEST_F(MessageInputTest, CreateFromMessages) {
 }
 
 TEST_F(MessageInputTest, CreateFromMessagesWithPrivacyId) {
-  auto privacy_id = Tensor::Create(
-      DataType::DT_STRING, TensorShape({}),
-      CreateTestData<absl::string_view>({"privacy_id_value"}), "privacy_id");
-  ASSERT_THAT(privacy_id, IsOk());
   absl::StatusOr<Input> input = Input::CreateFromMessages(
       std::move(messages_), std::move(system_columns_), "key-id",
-      std::move(*privacy_id));
+      "privacy_id_value");
   ASSERT_THAT(input, IsOk());
-}
-
-TEST_F(MessageInputTest, CreateFromMessagesFailsWithWrongPrivacyIdType) {
-  auto privacy_id =
-      Tensor::Create(DataType::DT_INT32, TensorShape({}),
-                     CreateTestData<int32_t>({123}), "privacy_id");
-  ASSERT_THAT(privacy_id, IsOk());
-  absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      std::move(*privacy_id));
-  EXPECT_THAT(input.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     "Privacy ID must be of type DT_STRING."));
-}
-
-TEST_F(MessageInputTest, CreateFromMessagesFailsWithNonScalarPrivacyId) {
-  auto privacy_id =
-      Tensor::Create(DataType::DT_STRING, TensorShape({2}),
-                     CreateTestData<absl::string_view>(
-                         {"privacy_id_value", "privacy_id_value"}),
-                     "privacy_id");
-  ASSERT_THAT(privacy_id, IsOk());
-  absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      std::move(*privacy_id));
-  EXPECT_THAT(input.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     "Privacy ID must be a scalar."));
 }
 
 TEST_F(MessageInputTest, CreateFromMessagesFailsWithNoRows) {
@@ -739,32 +690,24 @@ class FakeMessageFactory : public MessageFactory {
   }
 };
 
-TEST(CreateFromMessageCheckpointTest, Success) {
+TEST(CreateFromMessageCheckpointTest, SuccessWithoutPrivacyId) {
   FakeMessageFactory factory;
 
   std::string query_name = "my_query";
-  std::string entry_name = absl::StrCat(
-      query_name, "/", fcp::confidential_compute::kPrivateLoggerEntryKey);
-  std::string time_name = absl::StrCat(
-      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
 
   fcp::confidentialcompute::BlobHeader header;
   std::string serialized_header;
   header.SerializeToString(&serialized_header);
 
-  absl::StatusOr<Tensor> entry_tensor = Tensor::Create(
-      DataType::DT_STRING, TensorShape({1}),
-      CreateTestData<absl::string_view>({serialized_header}), entry_name);
-  ASSERT_THAT(entry_tensor, IsOk());
-
-  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
-      DataType::DT_STRING, TensorShape({1}),
-      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
-  ASSERT_THAT(time_tensor, IsOk());
+  Tensor entry_tensor({serialized_header}, entry_name);
+  Tensor time_tensor({{"2026-05-05"}}, time_name);
 
   std::vector<Tensor> tensors;
-  tensors.push_back(std::move(*entry_tensor));
-  tensors.push_back(std::move(*time_tensor));
+  tensors.push_back(std::move(entry_tensor));
+  tensors.push_back(std::move(time_tensor));
 
   InMemoryCheckpointParser parser(std::move(tensors));
 
@@ -772,13 +715,40 @@ TEST(CreateFromMessageCheckpointTest, Success) {
 
   EXPECT_THAT(input_result, IsOk());
   EXPECT_EQ(input_result->GetRowCount(), 1);
+  EXPECT_FALSE(input_result->GetPrivacyId().has_value());
+}
+
+TEST(CreateFromMessageCheckpointTest, SuccessWithPrivacyId) {
+  FakeMessageFactory factory;
+
+  std::string query_name = "my_query";
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
+
+  fcp::confidentialcompute::BlobHeader header;
+  std::string serialized_header;
+  header.SerializeToString(&serialized_header);
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor({serialized_header}, entry_name));
+  tensors.push_back(Tensor({"2026-05-05"}, time_name));
+  tensors.push_back(Tensor("the_privacy_id", kPrivacyIdColumnName));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
+
+  ASSERT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 1);
+  ASSERT_TRUE(input_result->GetPrivacyId().has_value());
+  EXPECT_EQ(*input_result->GetPrivacyId(), "the_privacy_id");
 }
 
 TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {
   FakeMessageFactory factory;
   std::string query_name = "my_query";
-  std::string time_name = absl::StrCat(
-      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
 
   absl::StatusOr<Tensor> time_tensor = Tensor::Create(
       DataType::DT_STRING, TensorShape({1}),
@@ -797,10 +767,9 @@ TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {
 TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
   FakeMessageFactory factory;
   std::string query_name = "my_query";
-  std::string entry_name = absl::StrCat(
-      query_name, "/", fcp::confidential_compute::kPrivateLoggerEntryKey);
-  std::string time_name = absl::StrCat(
-      query_name, "/", fcp::confidential_compute::kEventTimeColumnName);
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
 
   absl::StatusOr<Tensor> entry_tensor = Tensor::Create(
       DataType::DT_STRING, TensorShape({1}),
