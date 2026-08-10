@@ -176,3 +176,18 @@ https://github.com/google-parfait/confidential-federated-compute repository
 using the "Build and attest" workflow.
 https://github.com/google-parfait/confidential-federated-compute/actions/runs/26261649715/attempts/1
 has more information about the action that produced the binary.
+
+### Transforms using GCP Confidential Space offloading
+
+If a `DataAccessPolicy` in an attestation verification record specifies a
+transform whose container binary offloads processing to a GCP Confidential
+Space TEE VM (such as for LLM inference), the container layer digest in the
+record will identify the Oak client container. While the client container's own
+provenance can be found on sigstore.dev as described above, it additionally
+enforces an attestation policy over a GCP server container that is attested
+using Intel Trust Authority (ITA) rather than Oak endorsements.
+
+For details on auditing both containers in these offloading pipelines, see:
+
+- [External Verifiability — Architecture](/containers/gcp/external_verifiability/architecture.md)
+- [External Verifiability — Auditing Instructions](/containers/gcp/external_verifiability/instructions.md)

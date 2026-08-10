@@ -821,6 +821,30 @@ repository. The logs available at the "Run Invocation" link have more details.
 The source code for this particular application binary is available in the
 [/containers/fed_sql](/containers/fed_sql) directory.
 
+### Data transformations using GCP Confidential Space offloading
+
+Some data access policies may specify transformations that offload processing
+(e.g. LLM inference) from an Oak TEE to a
+[GCP Confidential Space](https://cloud.google.com/confidential-computing/confidential-space/docs)
+TEE VM. These transformations use a different verification model: the Oak client
+container's digest appears in the access policy (and is traceable via the
+endorsement flow above), but it internally attests a GCP server container using
+[Intel Trust Authority](https://www.intel.com/content/www/us/en/security/trust-authority.html)
+(ITA) rather than Oak endorsements. The builds are also not guaranteed to be
+reproducible — verification relies on
+[SLSA provenance](https://slsa.dev/spec/v0.1/provenance) via the GitHub
+Attestation API instead.
+
+For details on verifying these GCP offloading containers, see:
+
+- [External Verifiability — Architecture](/containers/gcp/external_verifiability/architecture.md)
+  for a description of the two-container system, ITA attestation flow, and
+  distributed trust model.
+- [External Verifiability — Auditing Instructions](/containers/gcp/external_verifiability/instructions.md)
+  for step-by-step instructions on cryptographically tracing both client and
+  server container digests to their source commits using the `trace_digest.py`
+  tool.
+
 ## Additional notes
 
 ### Restrictions on endorsement log integration times

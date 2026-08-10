@@ -92,3 +92,11 @@ The prototype consists of a server binary designed to run within a Confidential 
       --gcp_server_address=<GCP_SERVER_IP>:8000 \
       --prompt="Tell me a joke about semi-conductors."
     ```
+
+## External Verifiability
+
+For documentation on how external auditors can verify the containers built
+from this directory, see:
+
+- [External Verifiability — Architecture](external_verifiability/architecture.md)
+- [External Verifiability — Auditing Instructions](external_verifiability/instructions.md)

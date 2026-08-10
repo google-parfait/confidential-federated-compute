@@ -52,3 +52,13 @@ transformation step are prescribed by a `ReferenceValues` protobuf embedded in
 the data access policy. The KMS verifies the identity of the TEE-hosted data
 transformation using its attestation evidence. Only if this identity matches the
 `ReferenceValues` is the data transform granted access to the data.
+
+### Transforms using GCP Confidential Space offloading
+
+Some data access policies specify transforms that offload processing to
+[GCP Confidential Space](https://cloud.google.com/confidential-computing/confidential-space/docs)
+TEE VMs. These use a different attestation mechanism (Intel Trust Authority)
+and verification workflow. For details, see:
+
+- [External Verifiability — Architecture](/containers/gcp/external_verifiability/architecture.md)
+- [External Verifiability — Auditing Instructions](/containers/gcp/external_verifiability/instructions.md)
