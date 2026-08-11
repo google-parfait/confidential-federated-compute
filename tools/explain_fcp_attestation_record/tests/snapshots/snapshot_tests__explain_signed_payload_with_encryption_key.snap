@@ -18,23 +18,23 @@ https://search.sigstore.dev/?hash=2f450a0f60c5ed734c7af661c41e42631c84d0a71fcfe8
 The evidence describing this layer is outlined below.
 
 sev_snp:
+  report_data: 1559b1b7fd64e650864087c31a69f940adb1ac9d6bf7c400ab2c8846e087494b0000000000000000000000000000000000000000000000000000000000000000
   current_tcb:
     boot_loader: 4
-    fmc: 0
-    microcode: 219
-    snp: 24
     tee: 0
-  debug: false
-  hardware_id: d434c30555a180626ade858fb3efdb214c08596a812f188620af8a7cebce86f4b24f4f1a53b5cd9f22cfeaffb3527fc07b51b6270910cf694e7c9bfc582d3a49
-  initial_measurement: 2840fe8252a9f0c76a89b6cb801f881fb85c93242bcd1950ed4a5afa0491ee0d088773b384b899420e26d9ca3a1e61a1
-  product: 1
-  report_data: 1559b1b7fd64e650864087c31a69f940adb1ac9d6bf7c400ab2c8846e087494b0000000000000000000000000000000000000000000000000000000000000000
+    snp: 24
+    microcode: 219
+    fmc: 0
   reported_tcb:
     boot_loader: 4
-    fmc: 0
-    microcode: 219
-    snp: 24
     tee: 0
+    snp: 24
+    microcode: 219
+    fmc: 0
+  debug: false
+  initial_measurement: 2840fe8252a9f0c76a89b6cb801f881fb85c93242bcd1950ed4a5afa0491ee0d088773b384b899420e26d9ca3a1e61a1
+  product: 1
+  hardware_id: d434c30555a180626ade858fb3efdb214c08596a812f188620af8a7cebce86f4b24f4f1a53b5cd9f22cfeaffb3527fc07b51b6270910cf694e7c9bfc582d3a49
   vmpl: 0
 
 
@@ -48,17 +48,17 @@ Initial Ramdisk: https://search.sigstore.dev/?hash=a8b5371594bfc2944fe6263148f6e
 
 The evidence describing the kernel layer is outlined below.
 
-acpi:
-  sha2_256: a70dbecea0605c60e7bf16a114e4a3210c133517d304c776f4d291d05bff665a
-init_ram_fs:
-  sha2_256: a8b5371594bfc2944fe6263148f6ef289821bf2e581b1ed976cc2f83704538c6
 kernel_image:
   sha2_256: f9d0584247b46cc234a862aa8cd08765b38405022253a78b9af189c4cedbe447
-kernel_raw_cmd_line: console=ttyS0 panic=-1 earlycon=uart,io,0x3F8 brd.rd_nr=1 brd.rd_size=3072000 brd.max_part=1 ip=10.0.2.15:::255.255.255.0::eth0:off net.ifnames=0 quiet
 kernel_setup_data:
   sha2_256: 5a5cd42b9471aadf96dc2d2407d9dcbb1165c28c7eea1a0b4e9c72cf0623bbba
+kernel_raw_cmd_line: console=ttyS0 panic=-1 earlycon=uart,io,0x3F8 brd.rd_nr=1 brd.rd_size=3072000 brd.max_part=1 ip=10.0.2.15:::255.255.255.0::eth0:off net.ifnames=0 quiet
+init_ram_fs:
+  sha2_256: a8b5371594bfc2944fe6263148f6ef289821bf2e581b1ed976cc2f83704538c6
 memory_map:
   sha2_256: 79ae6053b1afd95db05643d3676af49fa7ea30c5b3579d090be9a18ae7030308
+acpi:
+  sha2_256: a70dbecea0605c60e7bf16a114e4a3210c133517d304c776f4d291d05bff665a
 
 
 Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).
@@ -116,72 +116,6 @@ hybrid_encryption_public_key:
 - 96
 - 28
 - 52
-session_binding_public_key:
-- 4
-- 254
-- 173
-- 97
-- 195
-- 116
-- 173
-- 54
-- 247
-- 172
-- 238
-- 191
-- 221
-- 108
-- 47
-- 135
-- 136
-- 243
-- 101
-- 115
-- 201
-- 140
-- 25
-- 109
-- 89
-- 42
-- 222
-- 56
-- 109
-- 1
-- 58
-- 165
-- 210
-- 82
-- 86
-- 235
-- 179
-- 198
-- 186
-- 156
-- 59
-- 63
-- 145
-- 88
-- 163
-- 234
-- 194
-- 150
-- 179
-- 152
-- 155
-- 155
-- 215
-- 7
-- 126
-- 77
-- 84
-- 254
-- 139
-- 108
-- 87
-- 183
-- 77
-- 52
-- 174
 signing_public_key:
 - 4
 - 221
@@ -248,6 +182,72 @@ signing_public_key:
 - 240
 - 155
 - 122
+session_binding_public_key:
+- 4
+- 254
+- 173
+- 97
+- 195
+- 116
+- 173
+- 54
+- 247
+- 172
+- 238
+- 191
+- 221
+- 108
+- 47
+- 135
+- 136
+- 243
+- 101
+- 115
+- 201
+- 140
+- 25
+- 109
+- 89
+- 42
+- 222
+- 56
+- 109
+- 1
+- 58
+- 165
+- 210
+- 82
+- 86
+- 235
+- 179
+- 198
+- 186
+- 156
+- 59
+- 63
+- 145
+- 88
+- 163
+- 234
+- 194
+- 150
+- 179
+- 152
+- 155
+- 155
+- 215
+- 7
+- 126
+- 77
+- 84
+- 254
+- 139
+- 108
+- 87
+- 183
+- 77
+- 52
+- 174
 
 
 Note: this layer describes the "KMS" application binary, which is generally a build of the `kms` in the https://github.com/google-parfait/confidential-federated-compute repository.

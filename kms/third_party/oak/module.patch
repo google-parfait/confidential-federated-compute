@@ -1,9 +1,10 @@
 # Add additional crates used by CFC and its dependencies. Since crate_universe
 # doesn't share crates between modules, we instead add them to Oak's module
 # with a patch (https://github.com/bazelbuild/rules_rust/issues/3157).
---- MODULE.bazel
-+++ MODULE.bazel
-@@ -514,2 +514,42 @@
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -576,6 +576,47 @@
+ 
  # Crate Specifications and Annotations
  # -------------------------------------
 +crate.spec(
@@ -46,7 +47,12 @@
 +    repositories = ALL_STD,
 +    version = "0.3.0",
 +)
-@@ -1203,7 +1248,7 @@
++
+ # This section lists all external crates and their project-specific configurations.
+ # Entries are sorted alphabetically by package name.
+ #
+@@ -1375,10 +1416,10 @@
+ )
  crate.spec(
      default_features = True,
 -    features = [],
@@ -56,7 +62,10 @@
 -    version = "0.9.0",
 +    version = "0.8.5",  # raft_rs doesn't support 0.9.
  )
-@@  -1618,7 +1658,7 @@
+ crate.spec(
+     default_features = True,
+@@ -1749,7 +1790,7 @@
+ )
  crate.spec(
      default_features = True,
 -    features = [],
@@ -64,4 +73,3 @@
      package = "tokio-util",
      repositories = ALL_STD,
      version = "0.7.10",
- )

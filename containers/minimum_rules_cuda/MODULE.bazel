@@ -47,9 +47,9 @@ archive_override(
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
-    integrity = "sha256-m1Dk4m7ar2CgPwzQ85qnQd50vG+7Is/mUQElEHjJIe8=",
-    strip_prefix = "oak-af94fc2c4f8256be948c23af59c171b90dbc672c",
-    url = "https://github.com/project-oak/oak/archive/af94fc2c4f8256be948c23af59c171b90dbc672c.tar.gz",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
 bazel_dep(name = "rules_cuda")

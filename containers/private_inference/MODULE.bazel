@@ -47,7 +47,12 @@ bazel_dep(name = "rules_foreign_cc", version = "0.11.1")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "aspect_bazel_lib", version = "2.9.4")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
-bazel_dep(name = "rules_rust", version = "0.69.0")
+
+# `oak` must be declared before `rules_rust` so that Oak's registered Rust
+# toolchains take precedence over rules_rust's default 2021 toolchain during
+# Bzlmod toolchain resolution.
+bazel_dep(name = "oak")
+bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "private_compute_services")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -116,12 +121,12 @@ archive_override(
     urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/6edcd4dec1457d1a33dbda5df3b958951f478039.tar.gz"],
 )
 
-bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
-    integrity = "sha256-jjUzyg3EQw0wNllRRmtRuZTAlXPllSmkKJHRD13jEXM=",
-    strip_prefix = "oak-dd8e629ee6e198153d86fec3f55645a8330f6b66",
-    urls = ["https://github.com/project-oak/oak/archive/dd8e629ee6e198153d86fec3f55645a8330f6b66.tar.gz"],
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    patch_strip = 1,
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
 bazel_dep(name = "boringssl", version = "0.20260211.0")
@@ -172,19 +177,6 @@ archive_override(
 # Rust crates.
 oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
 use_repo(oak_crates, "oak_crates_index")
-
-rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
-rust.toolchain(
-    edition = "2021",
-    sha256s = {
-        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
-        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
-        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
-        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
-        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
-    },
-    versions = ["nightly/2025-03-01"],
-)
 
 single_version_override(
     module_name = "toolchains_llvm",

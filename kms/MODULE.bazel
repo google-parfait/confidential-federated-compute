@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# `oak` must be declared before `rules_rust` so that Oak's registered Rust
+# toolchains take precedence over rules_rust's default 2021 toolchain during
+# Bzlmod toolchain resolution.
 # go/keep-sorted start
 bazel_dep(name = "boringssl")
 bazel_dep(name = "confidential-federated-compute")
@@ -67,16 +70,19 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-oDxVrBtisUvlyMza94c+QCOgi0AqSca18mNqCyiBxDY=",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    patch_strip = 1,
     patches = [
         "//third_party/oak:module.patch",
         "//third_party/oak:oak_attestation_verification.patch",
-        "//third_party/oak:oak_restricted_kernel_sdk.patch",
+        "//third_party/oak:oak_enclave_runtime_support_build.patch",
+        "//third_party/oak:oak_enclave_runtime_support_lib.patch",
+        "//third_party/oak:oak_restricted_kernel_sdk_lib.patch",
         "//third_party/oak:session_binder.patch",
         "//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-e72bbdbf0342f7a13373bc26d14135fcc37f0410",
-    urls = ["https://github.com/project-oak/oak/archive/e72bbdbf0342f7a13373bc26d14135fcc37f0410.tar.gz"],
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
 archive_override(

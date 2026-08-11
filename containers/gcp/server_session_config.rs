@@ -31,9 +31,9 @@ use oak_session::{
 };
 // Import crypto crates for P-256 ECDSA signing.
 use p256::ecdsa::{
-    signature::{rand_core::OsRng, Signer}, // Use the `Signer` trait for signing.
     Signature as EcdsaSignature,           // The signature type.
     SigningKey,                            // The private key type.
+    signature::{Signer, rand_core::OsRng}, // Use the `Signer` trait for signing.
 };
 use std::{ffi::c_char, ptr, slice, str::Utf8Error, sync::Arc};
 
@@ -63,7 +63,7 @@ pub type SigningKeyHandle = SigningKey;
 /// - `out_private_key_handle` points to a valid `*mut SigningKeyHandle`.
 /// Ownership of the returned `SigningKeyHandle` is transferred to the C++
 /// caller.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn generate_key_pair(
     out_public_key_bytes: *mut u8,
     public_key_capacity: usize,
@@ -189,7 +189,7 @@ fn c_str_to_string(ptr: *const c_char, len: usize) -> Result<String, Utf8Error> 
 ///   it's a valid pointer previously returned by `generate_key_pair` and that
 ///   C++ has relinquished ownership. Double-free or use-after-free will occur
 ///   if C++ mismanages the handle.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn create_server_session_config(
     attestation_token: *const c_char,
     attestation_token_len: usize,
