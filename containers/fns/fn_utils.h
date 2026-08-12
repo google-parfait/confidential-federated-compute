@@ -24,6 +24,11 @@ namespace confidential_federated_compute::fns {
 // empty string. Shared by DoFn, MapFn, and BatchDoFn.
 std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata);
 
+// Extracts the AssociatedMetadata from the BlobMetadata if present.
+// Returns an empty AssociatedMetadata if not found.
+fcp::confidentialcompute::AssociatedMetadata ExtractAssociatedMetadata(
+    const fcp::confidentialcompute::BlobMetadata& metadata);
+
 }  // namespace confidential_federated_compute::fns
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_UTILS_H_

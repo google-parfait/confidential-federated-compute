@@ -19,6 +19,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "containers/fns/fn.h"
 #include "containers/testing/mocks.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
@@ -46,7 +47,7 @@ class MockMapFn : public MapFn {
  public:
   MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
               (override));
-  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, Context& context),
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, FnContext& context),
               (override));
   MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, Context& context),
               (override));
@@ -54,7 +55,7 @@ class MockMapFn : public MapFn {
 
 class MockEncryptedMapFn : public MapFn {
  public:
-  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, Context& context),
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, FnContext& context),
               (override));
   std::optional<int> GetReencryptionKeyIndex() const override { return 0; }
 };
@@ -98,7 +99,7 @@ TEST_F(MapFnTest, WriteCallsMapAndEmitUnencrypted) {
   EXPECT_CALL(*session_, Map(_, _))
       .WillOnce([&passed_input, &output_kv](
                     Session::KV input,
-                    Session::Context&) -> absl::StatusOr<Session::KV> {
+                    Fn::FnContext&) -> absl::StatusOr<Session::KV> {
         passed_input = std::move(input);
         Session::KV result;
         result = output_kv;
@@ -132,7 +133,7 @@ TEST_F(MapFnTest, WriteCallsMapAndEmitEncrypted) {
 
   EXPECT_CALL(*session, Map(_, _))
       .WillOnce([&output_kv](Session::KV,
-                             Session::Context&) -> absl::StatusOr<Session::KV> {
+                             Fn::FnContext&) -> absl::StatusOr<Session::KV> {
         Session::KV result;
         result = output_kv;
         return std::move(result);

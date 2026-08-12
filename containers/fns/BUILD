@@ -24,6 +24,7 @@ cc_library(
         "batch_do_fn.cc",
         "confidential_transform_server.cc",
         "do_fn.cc",
+        "fn.cc",
         "fn_utils.cc",
         "map_fn.cc",
     ],
@@ -123,6 +124,23 @@ cc_test(
     srcs = ["fn_utils_test.cc"],
     deps = [
         ":fns",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fn_test",
+    srcs = ["fn_test.cc"],
+    deps = [
+        ":fns",
+        "//containers:session",
+        "//containers/testing",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

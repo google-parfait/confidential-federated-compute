@@ -20,6 +20,7 @@
 #include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
 #include "containers/common/checkpoint_utils.h"
+#include "containers/fns/fn.h"
 #include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
 #include "fcp/confidentialcompute/constants.h"
@@ -149,7 +150,7 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
 
   // Parses the unencrypted data, for each metadata config compute the
   // corresponding metadata.
-  absl::StatusOr<KV> Map(KV input, Session::Context& context) override {
+  absl::StatusOr<KV> Map(KV input, FnContext& context) override {
     FederatedComputeCheckpointParserFactory parser_factory;
     absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
         parser_factory.Create(absl::Cord(std::move(input.data)));

@@ -15,12 +15,15 @@
 
 #include <string>
 
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gtest/gtest.h"
 
 namespace confidential_federated_compute::fns {
 namespace {
 
+using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 TEST(FnUtilsTest, GetBlobIdUnencryptedReturnsBlobId) {
@@ -38,6 +41,25 @@ TEST(FnUtilsTest, GetBlobIdHpkePlusAeadDataReturnsBlobId) {
 TEST(FnUtilsTest, GetBlobIdEmptyMetadataReturnsEmptyString) {
   BlobMetadata metadata;
   EXPECT_EQ(GetBlobId(metadata), "");
+}
+
+TEST(ExtractAssociatedMetadataTest,
+     ExtractsMetadataFromHpkeWithKmsAssociatedData) {
+  BlobHeader header;
+  header.set_blob_id("test_blob");
+  AssociatedMetadata assoc_metadata;
+  assoc_metadata.add_metadata()->PackFrom(header);
+  BlobMetadata metadata;
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(assoc_metadata);
+
+  AssociatedMetadata result = ExtractAssociatedMetadata(metadata);
+  ASSERT_EQ(result.metadata_size(), 1);
+  BlobHeader unpacked;
+  EXPECT_TRUE(result.metadata(0).UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "test_blob");
 }
 
 }  // namespace

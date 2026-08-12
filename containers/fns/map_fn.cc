@@ -32,16 +32,18 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
   input.data = std::move(unencrypted_data);
   input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
-  absl::StatusOr<KV> output = Map(std::move(input), context);
+  FnContext fn_context(context, ExtractAssociatedMetadata(
+                                    write_request.first_request_metadata()));
+  absl::StatusOr<KV> output = Map(std::move(input), fn_context);
   if (!output.ok()) {
     return ToWriteFinishedResponse(output.status());
   }
 
   std::optional<int> key_index = GetReencryptionKeyIndex();
   if (key_index.has_value()) {
-    context.EmitEncrypted(*key_index, std::move(*output));
+    fn_context.EmitEncrypted(*key_index, std::move(*output));
   } else {
-    context.EmitUnencrypted(std::move(*output));
+    fn_context.EmitUnencrypted(std::move(*output));
   }
   fcp::confidentialcompute::WriteFinishedResponse response;
   response.set_committed_size_bytes(unencrypted_data_size);

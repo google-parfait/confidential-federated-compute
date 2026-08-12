@@ -30,4 +30,17 @@ std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata) {
   }
 }
 
+fcp::confidentialcompute::AssociatedMetadata ExtractAssociatedMetadata(
+    const fcp::confidentialcompute::BlobMetadata& metadata) {
+  fcp::confidentialcompute::AssociatedMetadata result;
+  if (metadata.has_hpke_plus_aead_data() &&
+      metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
+    metadata.hpke_plus_aead_data()
+        .kms_symmetric_key_associated_data()
+        .associated_metadata()
+        .UnpackTo(&result);
+  }
+  return result;
+}
+
 }  // namespace confidential_federated_compute::fns

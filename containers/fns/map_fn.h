@@ -30,7 +30,7 @@ class MapFn : public Fn {
   // Processes an input element. The input KV.data is unencrypted. Returns a
   // KV containing the corresponding output element along with any
   // metadata.
-  virtual absl::StatusOr<KV> Map(KV input, Context& context) = 0;
+  virtual absl::StatusOr<KV> Map(KV input, FnContext& context) = 0;
 
   // Controls how the output KV is emitted. Override to return a
   // reencryption key index for encrypted emission. Returns std::nullopt by

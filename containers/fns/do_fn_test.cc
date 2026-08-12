@@ -20,6 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "containers/fns/fn.h"
 #include "containers/testing/mocks.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
@@ -51,7 +52,7 @@ class MockDoFn : public DoFn {
  public:
   MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
               (override));
-  MOCK_METHOD(absl::Status, Do, (KV input, Context& context), (override));
+  MOCK_METHOD(absl::Status, Do, (KV input, FnContext& context), (override));
   MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, Context& context),
               (override));
 };
