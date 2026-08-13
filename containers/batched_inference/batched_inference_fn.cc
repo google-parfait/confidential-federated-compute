@@ -388,8 +388,9 @@ absl::StatusOr<std::vector<size_t>> CartesianExpand(
 //
 // Currently implemented behavior and restrictions:
 // 1. One row in, one row out - we enforce the exact 1:1 correspondence.
-// 2. If anything in the committed set of writes fails, the entire commit
-//    fails as well; there are no silent errors (empty results).
+// 2. If an inference call fails, it is skipped and logged. The output for
+//    that row will be filled with empty strings/padding, allowing the rest of
+//    the batch to proceed.
 //
 // FUTURE WORK: Relax these restrictiosn. and port over the logic used in
 // the FedSql container. Possibly make this behavior configurable.
@@ -570,8 +571,14 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
   }
   for (int i = 0; i < results.size(); ++i) {
     if (!results[i].ok()) {
-      return absl::InternalError(
-          absl::StrCat("Inference failed: ", results[i].status()));
+      if (absl::IsInternal(results[i].status())) {
+        return results[i].status();
+      }
+      LOG(WARNING) << "Inference failed with skippable error: "
+                   << results[i].status();
+      ++context.GetCounters()["BatchedInferenceContainer-inference-failed"];
+      batch[i]->result = "";
+      continue;
     }
     batch[i]->result = *results[i];
     if (batch[i]->result.empty()) {

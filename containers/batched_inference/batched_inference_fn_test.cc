@@ -653,5 +653,71 @@ TEST_F(BatchedInferenceFnTest,
       2);
 }
 
+TEST_F(BatchedInferenceFnTest, ErrorHandling_SkipsInvalidArgument) {
+  InferenceConfiguration config = testing::GetInferenceConfigForTest();
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        return std::vector<absl::StatusOr<std::string>>{
+            absl::InvalidArgumentError("Something is wrong")};
+      });
+
+  std::string expected =
+      testing::GetPrivateInferenceOutputCheckpointForTest({"bark"}, {""});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+}
+
+TEST_F(BatchedInferenceFnTest, ErrorHandling_FailsOnInternalError) {
+  InferenceConfiguration config = testing::GetInferenceConfigForTest();
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillOnce([](std::vector<std::string> prompts) {
+        return std::vector<absl::StatusOr<std::string>>{
+            absl::InternalError("Something is very wrong")};
+      });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::batched_inference
