@@ -31,9 +31,9 @@ use oak_session::{
 };
 // Import crypto crates for P-256 ECDSA signing.
 use p256::ecdsa::{
-    signature::{rand_core::OsRng, Signer}, // Use the `Signer` trait for signing.
     Signature as EcdsaSignature,           // The signature type.
     SigningKey,                            // The private key type.
+    signature::{Signer, rand_core::OsRng}, // Use the `Signer` trait for signing.
 };
 use std::{ffi::c_char, ptr, slice, str::Utf8Error, sync::Arc};
 
@@ -100,6 +100,23 @@ pub extern "C" fn generate_key_pair(
 
     eprintln!("---> Rust: Generated key pair, public key size: {}", key_len);
     key_len as i32 // Return the number of bytes written.
+}
+
+/// Frees a SigningKeyHandle previously returned by
+/// `generate_key_pair`.
+///
+/// # Safety
+///
+/// `handle` must be a valid pointer previously returned
+/// by `generate_key_pair`, or null (in which case this
+/// is a no-op). After this call, the pointer is invalid.
+#[no_mangle]
+pub extern "C" fn free_signing_key_handle(handle: *mut SigningKeyHandle) {
+    if !handle.is_null() {
+        unsafe {
+            drop(Box::from_raw(handle));
+        }
+    }
 }
 
 // --- Custom Attestation Logic ---
@@ -195,9 +212,14 @@ pub extern "C" fn create_server_session_config(
     attestation_token_len: usize,
     private_key_handle: *mut SigningKeyHandle, // Opaque private key handle from C++.
 ) -> *mut SessionConfig {
-    // Convert the C string token to a Rust String. Panics if invalid UTF-8.
-    let token_str = c_str_to_string(attestation_token, attestation_token_len)
-        .expect("Invalid UTF-8 token from C++");
+    // Convert the C string token to a Rust String.
+    let token_str = match c_str_to_string(attestation_token, attestation_token_len) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("---> Rust ERROR: Invalid UTF-8: {}", e);
+            return std::ptr::null_mut();
+        }
+    };
 
     eprintln!("---> Rust: Received token (len {}).", token_str.len());
     eprintln!("---> Rust: Received private key handle: {:?}", private_key_handle);
@@ -206,8 +228,8 @@ pub extern "C" fn create_server_session_config(
     // Wrap it in an Arc immediately for safe sharing with the assertion generator.
     let signing_key_arc = unsafe {
         if private_key_handle.is_null() {
-            // Check for null pointers from C++.
-            panic!("Received null private key handle from C++");
+            eprintln!("---> Rust ERROR: null key handle");
+            return std::ptr::null_mut();
         }
         // Reconstruct the Box from the raw pointer to manage its lifetime in Rust.
         let key_box = Box::from_raw(private_key_handle);

@@ -38,7 +38,7 @@ cc_library(
     copts = COPTS,
     local_defines = [
         "GGML_VERSION='\"0.0.0\"'",
-        "GGML_COMMIT='\"6efcd65945a98cf6883cdd9de4c8ccd8c79d219a\"'",
+        "GGML_COMMIT='\"1f368f354d9edcfea9fd6a1e0989b3e7335a050f\"'",
         "GGML_USE_CPU",
         "GGML_USE_CUDA",
     ],
@@ -141,6 +141,10 @@ cc_library(
         "src",
     ],
     copts = COPTS,
+    local_defines = [
+        "LLAMA_VERSION='\"0.1.0-dev\"'",
+        "LLAMA_COMMIT='\"1f368f35\"'",
+    ],
     deps = [
         ":ggml-base",
         ":ggml-cpu",
