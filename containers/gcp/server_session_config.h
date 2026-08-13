@@ -66,6 +66,15 @@ int generate_key_pair(unsigned char* out_public_key_bytes,
                       size_t public_key_capacity,
                       oak::session::SigningKeyHandle** out_private_key_handle);
 
+/**
+ * @brief Frees a SigningKeyHandle previously returned
+ * by generate_key_pair.
+ *
+ * @param handle The handle to free. May be null
+ * (no-op).
+ */
+void free_signing_key_handle(oak::session::SigningKeyHandle* handle);
+
 // --- Config Creation Function (Implemented in Rust) ---
 
 /**

@@ -68,8 +68,14 @@ constexpr char kEndOfTurn[] = "<end_of_turn>";
 
 void BatchClear(llama_batch& batch) { batch.n_tokens = 0; }
 
-void BatchAdd(llama_batch& batch, llama_token token, llama_pos pos,
-              const std::vector<llama_seq_id>& seq_ids, bool logits) {
+absl::Status BatchAddSafe(llama_batch& batch, int capacity, llama_token token,
+                          llama_pos pos,
+                          const std::vector<llama_seq_id>& seq_ids,
+                          bool logits) {
+  if (batch.n_tokens >= capacity) {
+    return absl::ResourceExhaustedError(
+        absl::StrCat("Batch full: ", batch.n_tokens, " >= ", capacity));
+  }
   batch.token[batch.n_tokens] = token;
   batch.pos[batch.n_tokens] = pos;
   batch.n_seq_id[batch.n_tokens] = seq_ids.size();
@@ -78,6 +84,7 @@ void BatchAdd(llama_batch& batch, llama_token token, llama_pos pos,
   }
   batch.logits[batch.n_tokens] = logits ? 1 : 0;
   batch.n_tokens++;
+  return absl::OkStatus();
 }
 
 /**
@@ -141,6 +148,7 @@ class LlamaCppBatchedInferenceEngine : public BatchedInferenceEngine {
 
   // Reusable batch structure for llama.cpp to avoid frequent allocations.
   llama_batch batch_ ABSL_GUARDED_BY(mutex_);
+  int current_batch_capacity_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
 LlamaCppBatchedInferenceEngine::LlamaCppBatchedInferenceEngine(
@@ -148,6 +156,7 @@ LlamaCppBatchedInferenceEngine::LlamaCppBatchedInferenceEngine(
     : model_(model), vocab_(vocab) {
   // Initialize the batch structure once.
   batch_ = llama_batch_init(kBatchSize, 0, 1);
+  current_batch_capacity_ = kBatchSize;
 
   // Build the stop string list from two sources:
   absl::flat_hash_set<std::string> seen;
@@ -237,22 +246,50 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
                                   ? request.params().max_output_tokens()
                                   : kDefaultMaxTokens;
 
-  // Add margin for generated tokens (batch size * max output)
-  total_tokens_needed += (request.requests_size() * max_tokens_to_predict);
+  // Compute prefill token count (just prompts).
+  int prefill_tokens = 0;
+  for (const auto& toks : all_tokens) {
+    prefill_tokens += toks.size();
+  }
 
-  // 2. Re-initialize Context per request
+  // total_tokens_needed includes room for generation.
+  total_tokens_needed =
+      prefill_tokens + (request.requests_size() * max_tokens_to_predict);
+
+  // Capacity for the batch struct itself only needs
+  // to hold the prefill pass (decode step adds 1 per
+  // sequence, which is always <= prefill_tokens).
+  int capacity = std::max(static_cast<int>(kBatchSize), prefill_tokens + 128);
+
+  // Reallocate batch if current allocation is too small.
+  if (capacity > current_batch_capacity_) {
+    llama_batch new_batch = llama_batch_init(capacity, 0, 1);
+    if (new_batch.token == nullptr || new_batch.pos == nullptr ||
+        new_batch.n_seq_id == nullptr || new_batch.seq_id == nullptr ||
+        new_batch.logits == nullptr) {
+      llama_batch_free(new_batch);
+      return absl::ResourceExhaustedError("Failed to allocate batch buffer");
+    }
+    llama_batch_free(batch_);
+    batch_ = new_batch;
+    current_batch_capacity_ = capacity;
+  }
+
+  // Re-initialize context per request.
   if (ctx_) llama_free(ctx_);
   llama_context_params ctx_params = llama_context_default_params();
-  ctx_params.n_ctx = total_tokens_needed + 128;  // Safety margin
-  ctx_params.n_batch = kBatchSize;
+  ctx_params.n_ctx = total_tokens_needed + 128;
+  ctx_params.n_batch = capacity;
   ctx_params.no_perf = true;
-  // Allow enough unique sequences for every request in the batch
+  ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
   ctx_params.n_seq_max = request.requests_size();
 
   ctx_ = llama_init_from_model(model_, ctx_params);
-  if (!ctx_) return absl::InternalError("Failed to create llama_context");
+  if (!ctx_) {
+    return absl::InternalError("Failed to create llama_context");
+  }
 
-  // 3. Initialize sampler
+  // Initialize sampler (greedy for now).
   if (sampler_) llama_sampler_free(sampler_);
   auto sparams = llama_sampler_chain_default_params();
   sparams.no_perf = true;
@@ -276,8 +313,9 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
     states.push_back({i, "", false, 0});
     const auto& tokens = all_tokens[i];
     for (size_t k = 0; k < tokens.size(); ++k) {
-      // Request logits only for the last token of the prompt
-      BatchAdd(batch_, tokens[k], k, {i}, k == tokens.size() - 1);
+      auto s = BatchAddSafe(batch_, capacity, tokens[k], k, {i},
+                            k == tokens.size() - 1);
+      if (!s.ok()) return s;
     }
   }
 
@@ -314,7 +352,15 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
         // special=false: suppress tokens with LLAMA_TOKEN_ATTR_CONTROL.
         int n = llama_token_to_piece(vocab_, new_token_id, buf, sizeof(buf), 0,
                                      false);
-        if (n > 0) {
+        if (n < 0) {
+          // Buffer too small. Retry with exact size.
+          std::string large_buf(-n, '\0');
+          int m = llama_token_to_piece(vocab_, new_token_id, large_buf.data(),
+                                       large_buf.size(), 0, false);
+          if (m > 0) {
+            states[seq_id].output.append(large_buf.data(), m);
+          }
+        } else if (n > 0) {
           states[seq_id].output.append(buf, n);
         }
         states[seq_id].tokens_generated++;
@@ -352,7 +398,8 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
       // Position is length of prompt + generated so far
       int pos = all_tokens[seq_id].size() + states[seq_id].tokens_generated - 1;
 
-      BatchAdd(batch_, token, pos, {seq_id}, true);
+      auto s = BatchAddSafe(batch_, capacity, token, pos, {seq_id}, true);
+      if (!s.ok()) return s;
     }
   }
 

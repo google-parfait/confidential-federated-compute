@@ -98,7 +98,7 @@ class ClientImpl : public Client {
       }
 
       absl::Status put_status = session_->PutIncomingMessage(session_response);
-      if (!pump_status.ok()) {
+      if (!put_status.ok()) {
         return absl::InternalError(absl::StrCat("PutIncomingMessage failed:  ",
                                                 put_status.ToString()));
       }

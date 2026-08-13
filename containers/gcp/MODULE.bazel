@@ -120,9 +120,9 @@ use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_
 http_archive(
     name = "llama_cpp",
     build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
-    # b8875 release (2026-04-21) - adds Gemma 4 architecture support
-    strip_prefix = "llama.cpp-98d2d2884e28ca8718774caad691ddd525f2f7b2",
-    url = "https://github.com/ggml-org/llama.cpp/archive/98d2d2884e28ca8718774caad691ddd525f2f7b2.tar.gz",
+    # b10400 release - flash attention, Fused Gated Delta Net
+    strip_prefix = "llama.cpp-1f368f354d9edcfea9fd6a1e0989b3e7335a050f",
+    url = "https://github.com/ggml-org/llama.cpp/archive/1f368f354d9edcfea9fd6a1e0989b3e7335a050f.tar.gz",
 )
 
 gcs_file = use_repo_rule("//:repo_rules.bzl", "gcs_file")
