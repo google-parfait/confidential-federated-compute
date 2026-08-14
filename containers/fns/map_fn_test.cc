@@ -49,7 +49,7 @@ class MockMapFn : public MapFn {
               (override));
   MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, FnContext& context),
               (override));
-  MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, Context& context),
+  MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, FnContext& context),
               (override));
 };
 

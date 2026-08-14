@@ -405,7 +405,7 @@ class BatchedInferenceFn final
 
   ~BatchedInferenceFn() {}
 
-  absl::Status Do(Session::KV kv, FnContext& context) override;
+  absl::Status Do(Session::KV kv, DoContext& context) override;
 
   absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
       fcp::confidentialcompute::CommitRequest commit_request,
@@ -429,7 +429,7 @@ class BatchedInferenceFn final
   std::vector<std::unique_ptr<BlobLevelWorkItem>> uncommitted_blob_items_;
 };
 
-absl::Status BatchedInferenceFn::Do(Session::KV kv, FnContext& context) {
+absl::Status BatchedInferenceFn::Do(Session::KV kv, DoContext& context) {
   auto blob_item = std::make_unique<BlobLevelWorkItem>(kv.key, kv.blob_id);
   absl::Status task_unpack_status =
       UnpackTasksForBlob(inference_config_, blob_item.get());

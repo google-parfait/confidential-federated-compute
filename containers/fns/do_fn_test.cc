@@ -34,10 +34,8 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
-using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
-using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -52,9 +50,7 @@ class MockDoFn : public DoFn {
  public:
   MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
               (override));
-  MOCK_METHOD(absl::Status, Do, (KV input, FnContext& context), (override));
-  MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, Context& context),
-              (override));
+  MOCK_METHOD(absl::Status, Do, (KV input, DoContext& context), (override));
 };
 
 class DoFnTest : public Test {
@@ -140,21 +136,6 @@ TEST_F(DoFnTest, WriteCallsDoWithNoBlobId) {
   ASSERT_THAT(result, IsOk());
   EXPECT_EQ(result->committed_size_bytes(), data.size());
   EXPECT_TRUE(passed_input.blob_id.empty());
-}
-
-TEST_F(DoFnTest, FinalizeCallsFinalizeReplica) {
-  Any config;
-  config.set_type_url("baz");
-  FinalizeRequest request;
-  *request.mutable_configuration() = config;
-  BlobMetadata metadata;
-
-  Any passed_config;
-  EXPECT_CALL(*session_, FinalizeReplica(_, _))
-      .WillOnce(DoAll(SaveArg<0>(&passed_config), Return(absl::OkStatus())));
-
-  EXPECT_THAT(session_->Finalize(request, metadata, context_), IsOk());
-  EXPECT_EQ(passed_config.type_url(), "baz");
 }
 
 TEST_F(DoFnTest, CommitIsNoOp) {

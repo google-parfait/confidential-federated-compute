@@ -94,7 +94,7 @@ class MockFn : public Fn {
   MOCK_METHOD((absl::Status), InitializeReplica,
               (google::protobuf::Any config, Context& context), (override));
   MOCK_METHOD((absl::Status), FinalizeReplica,
-              (google::protobuf::Any config, Context& context), (override));
+              (google::protobuf::Any config, FnContext& context), (override));
   MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>),
               Write,
               (fcp::confidentialcompute::WriteRequest request,
