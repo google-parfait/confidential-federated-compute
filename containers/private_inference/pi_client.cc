@@ -80,7 +80,10 @@ class PiClientImpl : public PiClient {
                                    grpc::InsecureChannelCredentials());
     stub_ = oak::services::OakSessionV1Service::NewStub(channel_);
 
-    stream_ = stub_->Stream(&context_);
+    stream_.reset();
+    session_.reset();
+    context_ = std::make_unique<grpc::ClientContext>();
+    stream_ = stub_->Stream(context_.get());
 
     // 2. Configure session (Attestation)
     VerificationKeys verification_keys;
@@ -171,23 +174,46 @@ class PiClientImpl : public PiClient {
     while (true) {
       oak::session::v1::SessionResponse response;
       if (!stream_->Read(&response)) {
-        return absl::InternalError(
-            "PiClientImpl::Generate: Server closed stream while waiting for "
-            "application reply.");
+        grpc::Status finish_status = stream_->Finish();
+        absl::Status error_ret;
+        if (!finish_status.ok()) {
+          error_ret = absl::Status(
+              static_cast<absl::StatusCode>(finish_status.error_code()),
+              absl::StrCat(
+                  "PiClientImpl::Generate: Server closed stream with error: ",
+                  finish_status.error_message()));
+        } else {
+          error_ret = absl::CancelledError(
+              "PiClientImpl::Generate: Server closed stream while waiting for "
+              "reply.");
+        }
+
+        LOG(WARNING) << "PiClientImpl::Generate: Read from stream failed: "
+                     << error_ret << ". Cleaning up and re-initializing.";
+
+        absl::Status reinit_status = Initialize();
+        if (!reinit_status.ok()) {
+          LOG(ERROR) << "PiClientImpl::Generate: Failed to re-initialize after "
+                        "read failure: "
+                     << reinit_status;
+        }
+        return error_ret;
       }
 
       absl::Status put_status = session_->PutIncomingMessage(response);
       if (!put_status.ok()) {
-        return absl::InternalError(
-            absl::StrCat("PiClientImpl::Generate: PutIncomingMessage failed:  ",
+        return absl::FailedPreconditionError(
+            absl::StrCat("PiClientImpl::Generate: PutIncomingMessage to "
+                         "OakSession failed:  ",
                          put_status.ToString()));
       }
 
       auto decrypted_message = session_->ReadToRustBytes();
       if (!decrypted_message.ok()) {
-        return absl::InternalError(absl::StrCat(
-            "PiClientImpl::Generate: Failed to read from session: ",
-            decrypted_message.status().ToString()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("PiClientImpl::Generate: Failed to read decrypted "
+                         "message from Oak session: ",
+                         decrypted_message.status().ToString()));
       }
 
       if (decrypted_message->has_value()) {
@@ -196,7 +222,7 @@ class PiClientImpl : public PiClient {
 
         PcsPrivateArateaResponse response;
         if (!response.ParseFromString(payload)) {
-          return absl::InternalError(
+          return absl::FailedPreconditionError(
               "PiClientImpl::Generate: Failed to parse "
               "PcsPrivateArateaResponse");
         }
@@ -227,7 +253,7 @@ class PiClientImpl : public PiClient {
           return std::string("");
         }
 
-        return absl::InternalError(
+        return absl::FailedPreconditionError(
             "PiClientImpl::Generate: Response missing GenerateContentResponse");
       }
       auto pump_status2 = PumpOutgoingMessages(session_.get(), stream_.get());
@@ -244,7 +270,7 @@ class PiClientImpl : public PiClient {
  private:
   std::string server_address_;
   PcsPrivateInferenceFeatureName feature_name_;
-  grpc::ClientContext context_;
+  std::unique_ptr<grpc::ClientContext> context_;
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<oak::services::OakSessionV1Service::Stub> stub_;
   std::unique_ptr<grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
