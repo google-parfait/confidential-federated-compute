@@ -16,24 +16,59 @@
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "containers/fns/fn.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::fns {
 
 // Session base class for DoFns.
+//
+// DoFn processes inputs one at a time via Do() (called from Write) and
+// optionally produces final output via FinalizeReplica() (called from
+// Finalize).
+//
+// Typical lifecycle:
+//   1. Configure → calls InitializeReplica (setup)
+//   2. Write (1..N) → each calls Do() to process a single input element.
+//        Do() receives a DoContext which supports emitting intermediate
+//        (non-releasable) blobs only.
+//   3. Finalize → calls FinalizeReplica() to emit final output.
+//        FinalizeReplica() receives an FnContext which supports
+//        emitting releasable blobs via FnContext::EmitReleasable.
+//        The release token is automatically captured and returned in the
+//        FinalizeResponse.
 class DoFn : public Fn {
  public:
+  // A context for the Do() method that intentionally hides EmitReleasable
+  // and GetReleaseToken. This ensures that releasable blobs can only be
+  // emitted during FinalizeReplica(), not during Do().
+  //
+  // All other FnContext methods (Emit, EmitUnencrypted, EmitEncrypted,
+  // metadata, counters) remain accessible.
+  class DoContext : public FnContext {
+   public:
+    DoContext(Context& session_context,
+              fcp::confidentialcompute::AssociatedMetadata metadata)
+        : FnContext(session_context, std::move(metadata)) {}
+
+   private:
+    // Hide EmitReleasable and GetReleaseToken from Do() callers.
+    using FnContext::EmitReleasable;
+    using FnContext::GetReleaseToken;
+  };
+
   // Processes an input element. The input Value.data is unencrypted. Uses the
-  // FnContext to emit zero or more output elements.
+  // DoContext to emit zero or more non-releasable output elements.
   //
   // Returns an error status if an error occurred and the Fn should be aborted.
   // This is equivalent to calling AbortReplica in Flume. Metrics about
   // ignorable errors can be recorded using the Counters returned by
-  // FnContext::GetCounters.
-  virtual absl::Status Do(KV input, FnContext& context) = 0;
+  // DoContext::GetCounters.
+  virtual absl::Status Do(KV input, DoContext& context) = 0;
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,

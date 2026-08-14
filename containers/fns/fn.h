@@ -85,13 +85,17 @@ class Fn : public confidential_federated_compute::Session {
     bool EmitEncrypted(int reencryption_key_index, Session::KV kv);
     bool EmitReleasable(int reencryption_key_index, Session::KV kv,
                         std::optional<absl::string_view> src_state,
-                        absl::string_view dst_state,
-                        std::string& release_token);
+                        absl::string_view dst_state);
     Counters& GetCounters();
+
+    // Returns the release token saved by EmitReleasable, or empty if
+    // EmitReleasable was not called.
+    const std::string& GetReleaseToken() const { return release_token_; }
 
    private:
     Context& session_context_;
     fcp::confidentialcompute::AssociatedMetadata metadata_;
+    std::string release_token_;
   };
 
   // Does any setup work needed for this Fn replica.
@@ -112,7 +116,7 @@ class Fn : public confidential_federated_compute::Session {
   //
   // By default, does nothing.
   virtual absl::Status FinalizeReplica(google::protobuf::Any config,
-                                       Context& context) {
+                                       FnContext& context) {
     return absl::OkStatus();
   }
 
@@ -128,9 +132,14 @@ class Fn : public confidential_federated_compute::Session {
       fcp::confidentialcompute::FinalizeRequest request,
       fcp::confidentialcompute::BlobMetadata input_metadata,
       Context& context) override final {
-    ABSL_RETURN_IF_ERROR(FinalizeReplica(request.configuration(), context));
-    // TODO: Add support for releasing the results (if needed).
-    return fcp::confidentialcompute::FinalizeResponse();
+    FnContext fn_context(context,
+                         fcp::confidentialcompute::AssociatedMetadata());
+    ABSL_RETURN_IF_ERROR(FinalizeReplica(request.configuration(), fn_context));
+    fcp::confidentialcompute::FinalizeResponse response;
+    if (!fn_context.GetReleaseToken().empty()) {
+      *response.mutable_release_token() = fn_context.GetReleaseToken();
+    }
+    return response;
   }
 };
 

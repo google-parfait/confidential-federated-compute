@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -55,11 +56,14 @@ bool Fn::FnContext::EmitEncrypted(int reencryption_key_index, Session::KV kv) {
 
 bool Fn::FnContext::EmitReleasable(int reencryption_key_index, Session::KV kv,
                                    std::optional<absl::string_view> src_state,
-                                   absl::string_view dst_state,
-                                   std::string& release_token) {
+                                   absl::string_view dst_state) {
+  if (!release_token_.empty()) {
+    LOG(WARNING) << "Release token can be set only once per Fn.";
+    return false;
+  }
   MaybeAttachMetadata(kv, metadata_);
   return session_context_.EmitReleasable(reencryption_key_index, std::move(kv),
-                                         src_state, dst_state, release_token);
+                                         src_state, dst_state, release_token_);
 }
 
 Counters& Fn::FnContext::GetCounters() {

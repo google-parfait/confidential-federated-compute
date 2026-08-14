@@ -64,7 +64,7 @@ class SqlDataIngressDoFn : public fns::DoFn {
       : sql_configuration_(std::move(sql_configuration)),
         message_factory_(std::move(message_factory)),
         on_device_query_name_(std::move(on_device_query_name)) {}
-  absl::Status Do(Session::KV input, FnContext& context) override;
+  absl::Status Do(Session::KV input, DoContext& context) override;
 
  private:
   SqlConfiguration sql_configuration_;
@@ -112,7 +112,7 @@ class SqlDataIngressFnFactory : public fns::FnFactory {
 // Note that this function hasn't supported executing SQL queries at DP unit
 // level. If a single incoming input have data for multiple DP units and the SQL
 // query contains GROUP BY aggregation, the result could be incorrect.
-absl::Status SqlDataIngressDoFn::Do(KV input, FnContext& context) {
+absl::Status SqlDataIngressDoFn::Do(KV input, DoContext& context) {
   if (input.blob_id.empty()) {
     return absl::InvalidArgumentError("Missing input blob id.");
   }
