@@ -23,6 +23,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
+#include "containers/common/privacy_id_utils.h"
 #include "containers/common/time_budget/budget.pb.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
@@ -70,6 +71,7 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
+using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -615,8 +617,10 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitPartitionSucceeds) {
 TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateCommitPartitionSucceedsWithTimeWindow) {
   // Create data with two different keys.
-  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {2});
-  std::string data2 = BuildFedSqlGroupByCheckpoint({1003}, {2});
+  std::string privacy_id1(16, '\x03');
+  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id1);
+  std::string privacy_id2(16, '\x04');
+  std::string data2 = BuildFedSqlGroupByCheckpoint({1003}, {2}, privacy_id2);
 
   // Write inputs to the container with time windows.
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -651,10 +655,11 @@ TEST_F(KmsFedSqlSessionWriteTest,
   EXPECT_EQ(write_result2->status().code(), Code::OK)
       << write_result2->status().message();
 
-  // Commit the inputs.
+  // Commit the inputs. Range [0, UINT64_MAX) covers the entire hashed
+  // privacy ID space.
   CommitRequest commit_request;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
-    range { start: 1 end: 3 }
+    range { start: 0 end: 18446744073709551615 }
   )pb");
   commit_request.mutable_configuration()->PackFrom(commit_config);
   auto commit_response = session_->Commit(commit_request, context_);
@@ -681,14 +686,17 @@ TEST_F(KmsFedSqlSessionWriteTest,
 
   // Verify the partitioned results contain the merged aggregation window [1000,
   // 4000).
-  EXPECT_THAT(
-      result_data,
-      ElementsAre(IsPartitionDataWithAggWindow(
-                      0, SizeIs(0), ElementsAre(Interval<uint64_t>(1, 3)),
-                      Interval<uint64_t>(1000, 4000)),
-                  IsPartitionDataWithAggWindow(
-                      1, SizeIs(0), ElementsAre(Interval<uint64_t>(1, 3)),
-                      Interval<uint64_t>(1000, 4000))));
+  EXPECT_THAT(result_data,
+              ElementsAre(IsPartitionDataWithAggWindow(
+                              0, SizeIs(0),
+                              ElementsAre(Interval<uint64_t>(
+                                  0, std::numeric_limits<uint64_t>::max())),
+                              Interval<uint64_t>(1000, 4000)),
+                          IsPartitionDataWithAggWindow(
+                              1, SizeIs(0),
+                              ElementsAre(Interval<uint64_t>(
+                                  0, std::numeric_limits<uint64_t>::max())),
+                              Interval<uint64_t>(1000, 4000))));
   EXPECT_THAT(configs, ElementsAre(HasPartitionIndex(0), HasPartitionIndex(1)));
 }
 
@@ -850,7 +858,6 @@ TEST(KmsFedSqlSessionAggWindowTest, ReportSucceedsWhenAggWindowMeetsMinimum) {
   std::string agg_data = std::move(*input_aggregator).Serialize().value();
 
   RangeTracker range_tracker;
-  range_tracker.AddKey("key_foo");
   range_tracker.AddRange(1, 3);
   range_tracker.MergeAggWindow(Interval<uint64_t>(0, 7200));  // 7200s = 120 min
   std::string blob = BundleRangeTracker(agg_data, range_tracker);
@@ -925,7 +932,6 @@ TEST(KmsFedSqlSessionAggWindowTest, ReportFailsWhenAggWindowBelowMinimum) {
   std::string agg_data = std::move(*input_aggregator).Serialize().value();
 
   RangeTracker range_tracker;
-  range_tracker.AddKey("key_foo");
   range_tracker.AddRange(1, 3);
   range_tracker.MergeAggWindow(Interval<uint64_t>(0, 1800));  // 1800s = 30 min
   std::string blob = BundleRangeTracker(agg_data, range_tracker);
@@ -1017,18 +1023,22 @@ TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsFailsIfNoInputs) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
-  RangeTracker range_tracker1;
-  range_tracker1.AddKey("key_foo");
-  range_tracker1.AddRange(1, 3);
-  range_tracker1.SetExpiredKeys({"expired_key"});
-  range_tracker1.SetPartitionIndex(123);
-  range_tracker1.MergeAggWindow(Interval<uint64_t>(1000, 2000));
-  RangeTracker range_tracker2;
-  range_tracker2.AddKey("key_foo");
-  range_tracker2.AddRange(1, 3);
-  range_tracker2.SetExpiredKeys({"expired_key"});
-  range_tracker2.SetPartitionIndex(456);
-  range_tracker2.MergeAggWindow(Interval<uint64_t>(1000, 2000));
+  RangeTrackerState range_tracker_state1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "key_foo"
+    values: 1
+    values: 3
+    expired_keys: "expired_key"
+    partition_index: 123
+  )pb");
+  RangeTracker range_tracker1 = *RangeTracker::Parse(range_tracker_state1);
+  RangeTrackerState range_tracker_state2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "key_foo"
+    values: 1
+    values: 3
+    expired_keys: "expired_key"
+    partition_index: 456
+  )pb");
+  RangeTracker range_tracker2 = *RangeTracker::Parse(range_tracker_state2);
 
   // Generate release tokens.
   auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair("key-id");
@@ -1100,8 +1110,8 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateSerializePrivateStateSucceeds) {
   EXPECT_THAT(private_state_proto.expired_keys(), ElementsAre("expired_key"));
   EXPECT_THAT(private_state_proto.keys(), UnorderedElementsAre("key_foo"));
   EXPECT_THAT(private_state_proto.values(), ElementsAre(1, 3));
-  EXPECT_EQ(private_state_proto.start_time().seconds(), 1000);
-  EXPECT_EQ(private_state_proto.end_time().seconds(), 2000);
+  EXPECT_FALSE(private_state_proto.has_start_time());
+  EXPECT_FALSE(private_state_proto.has_end_time());
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulatePrivateStateInvalidRangeTracker) {
@@ -1260,10 +1270,103 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
 
   // Submitting the same request again should fail due to duplicating blob ID.
   write_result = session_->Write(write_request, data, context_);
+  EXPECT_THAT(write_result,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Blob rejected due to duplicate ID")));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateTimeWindowBlobMissingPrivacyIdTensorFails) {
+  // Use a checkpoint without privacy ID tensor.
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data, 1, start, end);
+  auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());
-  EXPECT_THAT(write_result->status().code(), Code::FAILED_PRECONDITION);
+  EXPECT_EQ(write_result->status().code(), Code::NOT_FOUND);
   EXPECT_THAT(write_result->status().message(),
-              HasSubstr("Blob rejected due to duplicate ID"));
+              HasSubstr("No aggregation tensor found for name "
+                        "confidential_compute_privacy_id"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateTimeWindowDuplicatePrivacyIdFails) {
+  std::string privacy_id(16, '\x02');
+  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  std::string data2 = BuildFedSqlGroupByCheckpoint({9}, {2}, privacy_id);
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
+  // First write should succeed.
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data1, 1, start, end);
+  auto write_result1 = session_->Write(write_request1, data1, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+
+  // Second write with same privacy ID should fail.
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data2, 2, start, end);
+  auto write_result2 = session_->Write(write_request2, data2, context_);
+  EXPECT_THAT(write_result2, StatusIs(absl::StatusCode::kFailedPrecondition,
+                                      HasSubstr("duplicate ID")));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       CommitTimeWindowBlobPrivacyIdOutOfRangeFails) {
+  std::string privacy_id(16, '\x03');
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data, 1, start, end);
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK)
+      << write_result->status().message();
+
+  // Compute the hashed privacy ID the same way the production code does,
+  // and construct a commit range that excludes it.
+  uint64_t hashed_pid = ComputeUpper64HashedPrivacyId(privacy_id);
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config;
+  commit_config.mutable_range()->set_start(hashed_pid + 1);
+  commit_config.mutable_range()->set_end(hashed_pid + 2);
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  ASSERT_THAT(
+      session_->Commit(commit_request, context_),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("hashed privacy ID falling outside the range")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
@@ -1614,19 +1717,24 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
   std::string data = (std::move(*input_aggregator).Serialize()).value();
 
   // Create 2 blobs with different ranges for partition index 0.
-  RangeTracker range_tracker1;
-  range_tracker1.AddKey("key_foo");
-  range_tracker1.AddRange(1, 2);
-  range_tracker1.SetPartitionIndex(0);
-  range_tracker1.SetExpiredKeys({"key_bar"});
-  range_tracker1.MergeAggWindow(Interval<uint64_t>(1000, 2000));
+  RangeTrackerState range_tracker_state1 = PARSE_TEXT_PROTO(R"pb(
+    keys: "key_foo"
+    values: 1
+    values: 2
+    partition_index: 0
+    expired_keys: "key_bar"
+  )pb");
+  RangeTracker range_tracker1 = *RangeTracker::Parse(range_tracker_state1);
   std::string blob1 = BundleRangeTracker(data, range_tracker1);
-  RangeTracker range_tracker2;
-  range_tracker2.AddKey("key_foo");
-  range_tracker2.AddRange(2, 3);
-  range_tracker2.SetPartitionIndex(0);
-  range_tracker2.SetExpiredKeys({"key_bar", "key_baz"});
-  range_tracker2.MergeAggWindow(Interval<uint64_t>(1500, 3000));
+  RangeTrackerState range_tracker_state2 = PARSE_TEXT_PROTO(R"pb(
+    keys: "key_foo"
+    values: 2
+    values: 3
+    partition_index: 0
+    expired_keys: "key_bar"
+    expired_keys: "key_baz"
+  )pb");
+  RangeTracker range_tracker2 = *RangeTracker::Parse(range_tracker_state2);
   std::string blob2 = BundleRangeTracker(data, range_tracker2);
 
   // Write the blobs.
@@ -1676,8 +1784,6 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPartitionSucceeds) {
                 partition_index: 0
                 expired_keys: "key_bar"
                 expired_keys: "key_baz"
-                start_time { seconds: 1000 }
-                end_time { seconds: 3000 }
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
@@ -1790,8 +1896,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
     symmetric_keys { id: 1 symmetric_key: "key1" }
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "key_baz"
-    keys: "key_foo"
-    keys: "key_bar"
     values: 1
     values: 4
     values: 7
@@ -1818,8 +1922,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
     symmetric_keys { id: 3 symmetric_key: "key3" }
     symmetric_keys { id: 4 symmetric_key: "key4" }
     expired_keys: "key_baz"
-    keys: "key_foo"
-    keys: "key_bar"
     values: 1
     values: 4
     values: 7
@@ -1887,8 +1989,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
     symmetric_keys { id: 1 symmetric_key: "key1" }
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "key_baz"
-    keys: "key_foo"
-    keys: "key_bar"
     values: 1
     values: 4
     values: 7
@@ -1911,8 +2011,6 @@ TEST_F(KmsFedSqlSessionWriteTest,
     symmetric_keys { id: 3 symmetric_key: "key3" }
     symmetric_keys { id: 4 symmetric_key: "key4" }
     expired_keys: "key_baz"
-    keys: "key_foo"
-    keys: "key_bar"
     values: 1
     values: 4
     values: 7

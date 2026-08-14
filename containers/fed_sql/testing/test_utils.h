@@ -15,9 +15,11 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TEST_UTILS_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_TEST_UTILS_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
@@ -33,6 +35,7 @@ CreateStringTestData(std::vector<std::string> data);
 std::string BuildFedSqlGroupByCheckpoint(
     std::initializer_list<uint64_t> key_col_values,
     std::initializer_list<uint64_t> val_col_values,
+    std::optional<absl::string_view> privacy_id = std::nullopt,
     const std::string& key_col_name = "key",
     const std::string& val_col_name = "val");
 

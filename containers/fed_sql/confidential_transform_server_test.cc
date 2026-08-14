@@ -2383,7 +2383,8 @@ TEST_F(FedSqlServerTest, SessionIgnoresInputThatCannotBeQueried) {
   header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
-      BuildFedSqlGroupByCheckpoint({9}, {7}, "bad_key_col_name"),
+      BuildFedSqlGroupByCheckpoint({9}, {7}, /*privacy_id=*/std::nullopt,
+                                   /*key_col_name=*/"bad_key_col_name"),
       header.SerializeAsString());
   SessionResponse write_response_1;
 

@@ -20,6 +20,7 @@
 #include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
 #include "containers/common/checkpoint_utils.h"
+#include "containers/common/privacy_id_utils.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/map_fn.h"
 #include "fcp/base/digest.h"
@@ -54,7 +55,7 @@ using ::tensorflow_federated::aggregation::Tensor;
 
 absl::StatusOr<uint64_t> GetUpper64HashedPrivacyId(CheckpointParser& parser) {
   ABSL_ASSIGN_OR_RETURN(std::string privacy_id, GetPrivacyId(parser));
-  return LoadBigEndian<uint64_t>(fcp::ComputeSHA256(privacy_id));
+  return ComputeUpper64HashedPrivacyId(privacy_id);
 }
 
 // Computes the partition key for the privacy ID held by the parser and

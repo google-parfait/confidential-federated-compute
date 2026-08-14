@@ -65,6 +65,7 @@ cc_library(
     deps = [
         "//containers:big_endian",
         "//containers/common:checkpoint_utils",
+        "//containers/common:privacy_id_utils",
         "//containers/fns",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/numeric:bits",
