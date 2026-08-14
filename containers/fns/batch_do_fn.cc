@@ -20,6 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "containers/fns/fn.h"
 #include "containers/fns/fn_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -35,6 +36,8 @@ BatchDoFn::Write(fcp::confidentialcompute::WriteRequest write_request,
   input.data = std::move(unencrypted_data);
   input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
+  input.associated_metadata =
+      ExtractAssociatedMetadata(write_request.first_request_metadata());
   accumulated_inputs_.push_back(std::move(input));
 
   fcp::confidentialcompute::WriteFinishedResponse response;
@@ -49,8 +52,9 @@ absl::StatusOr<fcp::confidentialcompute::CommitResponse> BatchDoFn::Commit(
   auto inputs = std::move(accumulated_inputs_);
   accumulated_inputs_.clear();
   int32_t num_inputs = inputs.size();
+  DoContext do_context(context, fcp::confidentialcompute::AssociatedMetadata());
   ABSL_RETURN_IF_ERROR(Do(std::move(*commit_request.mutable_configuration()),
-                          std::move(inputs), context));
+                          std::move(inputs), do_context));
   fcp::confidentialcompute::CommitResponse response;
   response.mutable_stats()->set_num_inputs_committed(num_inputs);
   return response;

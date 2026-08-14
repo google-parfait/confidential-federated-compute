@@ -64,6 +64,10 @@ class DoFn : public Fn {
   // Processes an input element. The input Value.data is unencrypted. Uses the
   // DoContext to emit zero or more non-releasable output elements.
   //
+  // Any associated metadata from the input is captured in FnContext and
+  // automatically attached to emitted outputs (unless explicitly specified on
+  // the emitted Session::KV).
+  //
   // Returns an error status if an error occurred and the Fn should be aborted.
   // This is equivalent to calling AbortReplica in Flume. Metrics about
   // ignorable errors can be recorded using the Counters returned by

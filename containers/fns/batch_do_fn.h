@@ -32,23 +32,58 @@ namespace confidential_federated_compute::fns {
 // Instead of processing each input independently (like DoFn), BatchDoFn
 // buffers all inputs and processes them as a batch.
 //
-// Usage: subclass BatchDoFn and implement Do().
+// Typical lifecycle:
+//   1. Configure → calls InitializeReplica (setup)
+//   2. Write (1..N) → buffers unencrypted inputs into memory.
+//   3. Commit → calls Do() with all accumulated inputs.
+//        Do() receives a DoContext which supports emitting intermediate
+//        (non-releasable) blobs only.
+//   4. Finalize → calls FinalizeReplica() to emit final output.
+//        FinalizeReplica() receives an FnContext which supports
+//        emitting releasable blobs via FnContext::EmitReleasable.
+//        The release token is automatically captured and returned in the
+//        FinalizeResponse.
+//
+// Usage: subclass BatchDoFn and implement Do(), and optionally override
+// FinalizeReplica() to emit releasable results.
 //
 // Memory note: all unencrypted Write() data is buffered in memory as
 // Session::KV objects until Commit(). Subclasses processing large
 // datasets should be aware of this memory profile.
 class BatchDoFn : public Fn {
  public:
+  // A context for the Do() method that intentionally hides EmitReleasable
+  // and GetReleaseToken. This ensures that releasable blobs can only be
+  // emitted during FinalizeReplica(), not during Do().
+  //
+  // All other FnContext methods (Emit, EmitUnencrypted, EmitEncrypted,
+  // metadata, counters) remain accessible.
+  class DoContext : public FnContext {
+   public:
+    DoContext(Context& session_context,
+              fcp::confidentialcompute::AssociatedMetadata metadata)
+        : FnContext(session_context, std::move(metadata)) {}
+
+   private:
+    // Hide EmitReleasable and GetReleaseToken from Do() callers.
+    using FnContext::EmitReleasable;
+    using FnContext::GetReleaseToken;
+  };
+
   // Called once with ALL accumulated inputs from Write() calls and the
   // commit configuration. Implementations should process the inputs
   // and emit output(s) via context.Emit*().
   //
+  // Each input KV carries its associated_metadata. The DoContext starts with
+  // empty metadata; use PackMetadata() or set associated_metadata on output KVs
+  // directly.
+  //
   // Returns an error status if an error occurred and the Fn should be
   // aborted. Metrics about ignorable errors can be recorded using the
-  // Counters returned by Context::GetCounters.
+  // Counters returned by DoContext::GetCounters.
   virtual absl::Status Do(google::protobuf::Any config,
                           std::vector<Session::KV> accumulated_inputs,
-                          Context& context) = 0;
+                          DoContext& context) = 0;
 
   // final: accumulates unencrypted_data into internal buffer, preserving
   // key and blob_id from the WriteRequest.

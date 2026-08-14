@@ -15,6 +15,7 @@
 #include "containers/fns/batch_do_fn.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -25,6 +26,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "containers/session.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
@@ -35,14 +37,22 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::BlobMetadata;
+using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::testing::_;
+using ::testing::DoAll;
 using ::testing::ElementsAre;
 using ::testing::Return;
+using ::testing::SaveArg;
 using ::testing::SizeIs;
 using ::testing::StrictMock;
+using DoContext = BatchDoFn::DoContext;
 
 // Mock Context for verifying emissions.
 class MockContext : public Session::Context {
@@ -62,7 +72,11 @@ class MockContext : public Session::Context {
 class TestBatchDoFn : public BatchDoFn {
  public:
   absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
-                  Context& context) override {
+                  DoContext& context) override {
+    if (custom_do_) {
+      return custom_do_(std::move(config), std::move(accumulated_inputs),
+                        context);
+    }
     if (do_error_.has_value()) {
       return *do_error_;
     }
@@ -92,8 +106,17 @@ class TestBatchDoFn : public BatchDoFn {
   // Configure Do() to return an error.
   void SetDoError(absl::Status error) { do_error_ = std::move(error); }
 
+  // Configure a custom Do() implementation for specific test cases.
+  void SetCustomDo(
+      std::function<absl::Status(Any, std::vector<Session::KV>, DoContext&)>
+          custom_do) {
+    custom_do_ = std::move(custom_do);
+  }
+
  private:
   std::optional<absl::Status> do_error_;
+  std::function<absl::Status(Any, std::vector<Session::KV>, DoContext&)>
+      custom_do_;
 };
 
 class BatchDoFnTest : public testing::Test {
@@ -239,6 +262,72 @@ TEST_F(BatchDoFnTest, FullLifecycleViaConfigure) {
   auto finalize_result =
       fn_.Finalize(finalize_request, input_metadata, context_);
   ASSERT_THAT(finalize_result, IsOk());
+}
+
+TEST_F(BatchDoFnTest, WritePreservesAssociatedMetadata) {
+  WriteRequest request;
+  BlobHeader header;
+  header.set_blob_id("meta_blob_id");
+  header.set_key_id("meta_key_id");
+  AssociatedMetadata assoc_metadata;
+  assoc_metadata.add_metadata()->PackFrom(header);
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(assoc_metadata);
+
+  ASSERT_THAT(fn_.Write(request, "data_with_metadata", context_), IsOk());
+
+  bool metadata_verified = false;
+  fn_.SetCustomDo([&](Any config, std::vector<Session::KV> inputs,
+                      DoContext& context) -> absl::Status {
+    if (inputs.size() == 1 && inputs[0].associated_metadata.has_value()) {
+      BlobHeader unpacked_header;
+      if (inputs[0].associated_metadata->metadata_size() > 0 &&
+          inputs[0].associated_metadata->metadata(0).UnpackTo(
+              &unpacked_header)) {
+        if (unpacked_header.blob_id() == "meta_blob_id" &&
+            unpacked_header.key_id() == "meta_key_id") {
+          metadata_verified = true;
+        }
+      }
+    }
+    return absl::OkStatus();
+  });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
+  EXPECT_TRUE(metadata_verified);
+}
+
+TEST_F(BatchDoFnTest, DoContextStartsWithEmptyMetadata) {
+  WriteRequest request;
+  ASSERT_THAT(fn_.Write(request, "data", context_), IsOk());
+
+  bool empty_metadata_verified = false;
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  fn_.SetCustomDo([&](Any config, std::vector<Session::KV> inputs,
+                      DoContext& context) -> absl::Status {
+    BlobHeader unpacked_header;
+    // Context starts with empty metadata so UnpackMetadata should return false.
+    EXPECT_FALSE(context.UnpackMetadata(&unpacked_header));
+
+    Session::KV output;
+    output.data = "output_data";
+    context.EmitEncrypted(0, std::move(output));
+    empty_metadata_verified = true;
+    return absl::OkStatus();
+  });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
+  EXPECT_TRUE(empty_metadata_verified);
+  // Emission should not have any associated_metadata auto-attached.
+  EXPECT_FALSE(emitted_kv.associated_metadata.has_value());
 }
 
 }  // namespace

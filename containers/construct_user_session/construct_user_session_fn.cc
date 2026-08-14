@@ -100,13 +100,13 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
 
   absl::Status Do(google::protobuf::Any config,
                   std::vector<Session::KV> accumulated_inputs,
-                  Context& context) override;
+                  DoContext& context) override;
 
  private:
   // Parses, deduplicates, validates dtypes, and groups checkpoints by
   // privacy ID.
   IngestionResult IngestAndGroupCheckpoints(
-      std::vector<Session::KV> accumulated_inputs, Context& context);
+      std::vector<Session::KV> accumulated_inputs, DoContext& context);
 
   // Builds serialized session output from `privacy_id_tensor` and
   // `output_tensors`.
@@ -116,7 +116,7 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
 
   // Emits the serialized session output encrypted.
   // Returns a non-OK status only for fatal failures.
-  absl::Status EmitSessionOutput(std::string output_data, Context& context);
+  absl::Status EmitSessionOutput(std::string output_data, DoContext& context);
 
   const absl::Time window_start_;
   const absl::Time window_end_;
@@ -126,7 +126,7 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
 
 absl::Status ConstructUserSessionFn::Do(
     google::protobuf::Any config, std::vector<Session::KV> accumulated_inputs,
-    Context& context) {
+    DoContext& context) {
   IngestionResult ingestion_result =
       IngestAndGroupCheckpoints(std::move(accumulated_inputs), context);
 
@@ -153,7 +153,7 @@ absl::Status ConstructUserSessionFn::Do(
 }
 
 IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
-    std::vector<Session::KV> accumulated_inputs, Context& context) {
+    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
   IngestionResult result;
   absl::flat_hash_set<std::string> seen_blob_ids;
 
@@ -223,7 +223,7 @@ std::string ConstructUserSessionFn::BuildSessionOutput(
 }
 
 absl::Status ConstructUserSessionFn::EmitSessionOutput(std::string output_data,
-                                                       Context& context) {
+                                                       DoContext& context) {
   // Create the associated metadata with the session window timestamps.
   fcp::confidentialcompute::SessionTimeWindowMetadata time_window_metadata;
   *time_window_metadata.mutable_session_window_start() =
