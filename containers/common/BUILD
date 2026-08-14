@@ -248,3 +248,13 @@ cc_test(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
+
+cc_library(
+    name = "privacy_id_utils",
+    hdrs = ["privacy_id_utils.h"],
+    deps = [
+        "//containers:big_endian",
+        "@com_google_absl//absl/strings",
+        "@federated_compute//fcp/base:digest",
+    ],
+)

@@ -65,6 +65,7 @@ std::unique_ptr<MutableStringData> CreateStringTestData(
 std::string BuildFedSqlGroupByCheckpoint(
     std::initializer_list<uint64_t> key_col_values,
     std::initializer_list<uint64_t> val_col_values,
+    std::optional<absl::string_view> privacy_id,
     const std::string& key_col_name, const std::string& val_col_name) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> ckpt_builder = builder_factory.Create();
@@ -81,6 +82,13 @@ std::string BuildFedSqlGroupByCheckpoint(
   CHECK_OK(val);
   CHECK_OK(ckpt_builder->Add(key_col_name, *key));
   CHECK_OK(ckpt_builder->Add(val_col_name, *val));
+
+  if (privacy_id.has_value()) {
+    Tensor pid = Tensor(*privacy_id);
+    CHECK_OK(ckpt_builder->Add(
+        std::string(fcp::confidential_compute::kPrivacyIdColumnName), pid));
+  }
+
   auto checkpoint = ckpt_builder->Build();
   CHECK_OK(checkpoint.status());
 

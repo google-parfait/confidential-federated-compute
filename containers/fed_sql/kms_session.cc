@@ -27,7 +27,9 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
+#include "containers/common/checkpoint_utils.h"
 #include "containers/common/input.h"
+#include "containers/common/privacy_id_utils.h"
 #include "containers/common/row_set.h"
 #include "containers/common/sqlite_adapter.h"
 #include "containers/fed_sql/any_bundle.h"
@@ -276,10 +278,6 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     return ToWriteFinishedResponse(budget_status);
   }
 
-  // TODO: Switch to privacy id instead of blob id after
-  // sessionization is complete.
-  auto blob_id =
-      LoadBigEndian<absl::uint128>(metadata.hpke_plus_aead_data().blob_id());
   // Save the data size before moving it out so that it can be reported
   // back in metrics.
   size_t unencrypted_data_size = unencrypted_data.size();
@@ -295,7 +293,6 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   if (message_factory_ != nullptr) {
     input = CreateFromMessageCheckpoint(parser->get(), *message_factory_,
                                         on_device_query_name_);
-    // TODO: handle sensitive columns for Message checkpoints.
   } else {
     auto model_inference_configuration =
         inference_model_.GetInferenceConfiguration();
@@ -313,7 +310,22 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                          "AGGREGATION_TYPE_ACCUMULATE: ",
                          contents.status()));
     }
-    input = Input::CreateFromTensors(std::move(contents.value()));
+
+    // Extract privacy ID from checkpoint if in time-window budget mode.
+    // TODO: Add a CreateFromTensorCheckpoint that's analogous to
+    // CreateFromMessageCheckpoint so we don't have to extract the privacy ID
+    // separately. CreateFromTensorCheckpoint would replace the separate calls
+    // to Deserialize and CreateFromTensors.
+    std::optional<std::string> privacy_id;
+    if (range_tracker_.GetAggregationWindow().has_value()) {
+      absl::StatusOr<std::string> pid = GetPrivacyId(**parser);
+      if (!pid.ok()) {
+        return ToWriteFinishedResponse(pid.status());
+      }
+      privacy_id = *std::move(pid);
+    }
+    input = Input::CreateFromTensors(std::move(contents.value()),
+                                     /*metadata=*/"", privacy_id);
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(
@@ -324,13 +336,19 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     ABSL_RETURN_IF_ERROR(inference_model_.RunInference(*input));
   }
 
-  // TODO: Calculate the DP unit for each row in the blob and add a RowLocation
-  // to uncommitted_row_locations_ to track it.
-
-  auto [unused, inserted] = uncommitted_blob_ids_.insert(blob_id);
+  // Uniqueness check: use privacy ID in time-window budget mode, blob ID
+  // otherwise.
+  std::string unique_id;
+  if (range_tracker_.GetAggregationWindow().has_value()) {
+    CHECK(input->GetPrivacyId().has_value())
+        << "Privacy ID is required in time-window budget mode.";
+    unique_id = *input->GetPrivacyId();
+  } else {
+    unique_id = metadata.hpke_plus_aead_data().blob_id();
+  }
+  auto [unused, inserted] = uncommitted_unique_ids_.insert(unique_id);
   if (!inserted) {
-    return ToWriteFinishedResponse(
-        absl::FailedPreconditionError("Blob rejected due to duplicate ID"));
+    return absl::FailedPreconditionError("Blob rejected due to duplicate ID");
   }
 
   uncommitted_inputs_.push_back(*std::move(input));
@@ -425,18 +443,31 @@ absl::StatusOr<std::vector<absl::Status>>
 KmsFedSqlSession::CommitRowsGroupingByInput(
     std::vector<Input>&& uncommitted_inputs, const Interval<uint64_t>& range) {
   std::vector<absl::Status> ignored_errors;
-  // Iterate over uncommitted_blob_ids_ and check that they're in the specified
-  // range.
-  for (auto blob_id : uncommitted_blob_ids_) {
-    // Use the high 64 bit of the blob_id to check whether the blob is
-    // in the specified range.
-    uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
-    if (!range.Contains(blob_id_high64)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Failed to commit due to blob ID conflicting with the "
-                       "range. Range: [",
-                       range.start(), ", ", range.end(),
-                       "), blob id (high 8 bytes): ", blob_id_high64));
+
+  for (const auto& unique_id : uncommitted_unique_ids_) {
+    if (range_tracker_.GetAggregationWindow().has_value()) {
+      // Check that the hashed privacy ID falls in the assigned range. We use
+      // the raw SHA256 hash (not masked to coarse privacy ID granularity)
+      // because for non-overlapping ranges, each deterministic hash value falls
+      // in exactly one range, preventing duplicate processing.
+      uint64_t hashed_privacy_id = ComputeUpper64HashedPrivacyId(unique_id);
+      if (!range.Contains(hashed_privacy_id)) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Failed to commit due to hashed privacy ID falling outside the "
+            "range. Range: [",
+            range.start(), ", ", range.end(), ")"));
+      }
+    } else {
+      // Legacy mode: iterate over uncommitted_unique_ids_ and check that
+      // they're in the specified range.
+      uint64_t blob_id_high64 = LoadBigEndian<uint64_t>(unique_id);
+      if (!range.Contains(blob_id_high64)) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Failed to commit due to blob ID conflicting with the "
+                         "range. Range: [",
+                         range.start(), ", ", range.end(),
+                         "), blob id (high 8 bytes): ", blob_id_high64));
+      }
     }
   }
 
@@ -495,7 +526,6 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
                            commit_config.range().end());
 
   int num_committed = uncommitted_inputs_.size();
-  // TODO: Commit rows by DP unit if DP parameters are configured.
   ABSL_ASSIGN_OR_RETURN(
       std::vector<absl::Status> ignored_errors,
       CommitRowsGroupingByInput(std::move(uncommitted_inputs_), range));
@@ -507,7 +537,7 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   }
 
   uncommitted_inputs_.clear();
-  uncommitted_blob_ids_.clear();
+  uncommitted_unique_ids_.clear();
   num_committed -= ignored_errors.size();
   return ToCommitResponse(absl::OkStatus(), num_committed, ignored_errors);
 }

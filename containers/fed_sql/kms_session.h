@@ -179,8 +179,9 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
   std::vector<Input> uncommitted_inputs_;
-  // The blob IDs of the uncommitted inputs.
-  absl::flat_hash_set<absl::uint128> uncommitted_blob_ids_;
+  // Unique IDs for uncommitted inputs. In legacy mode, stores blob IDs; in
+  // time-window budget mode, stores privacy IDs.
+  absl::flat_hash_set<std::string> uncommitted_unique_ids_;
   // Tracks committed ranges of blobs for this session.
   RangeTracker range_tracker_;
   // Private state.

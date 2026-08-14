@@ -119,7 +119,8 @@ TEST(DeserializeTest, DeserializeSucceedsWithoutInferenceConfig) {
     create_table_sql: "CREATE TABLE input (key INTEGER, val INTEGER)"
   )pb");
 
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, "key", "val");
+  std::string data = BuildFedSqlGroupByCheckpoint(
+      {8}, {1}, /*privacy_id=*/std::nullopt, "key", "val");
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(data));
