@@ -730,10 +730,9 @@ KmsFedSqlSession::ReportPrivateState(Context& context) {
   // Try merging the consumed_tracker with the partition_private_state_.
   // This will fail if there are overlapping ranges.
   if (!private_state_->consumed_tracker.Merge(
-          partition_private_state_.GetKeys(),
+          partition_private_state_.GetKeysOrAggWindow(),
           partition_private_state_.GetRanges(),
-          partition_private_state_.GetExpiredKeys(),
-          partition_private_state_.GetAggregationWindow())) {
+          partition_private_state_.GetExpiredKeys())) {
     return absl::FailedPreconditionError(
         "Conflicting ranges between autotuning and aggregation.");
   }

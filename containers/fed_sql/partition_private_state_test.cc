@@ -51,7 +51,6 @@ TEST(PartitionPrivateStateTest, ParseAndSerializeWithAggWindow) {
   PartitionPrivateStateProto proto = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    keys: "foo"
     values: 0
     values: 10
     start_time { seconds: 100 }
@@ -145,7 +144,6 @@ TEST(PartitionPrivateStateTest, AddPartition) {
 
 TEST(PartitionPrivateStateTest, AddPartitionWithAggWindow) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 10
     partition_index: 123
@@ -156,7 +154,6 @@ TEST(PartitionPrivateStateTest, AddPartitionWithAggWindow) {
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 10
     partition_index: 456
@@ -176,7 +173,6 @@ TEST(PartitionPrivateStateTest, AddPartitionWithAggWindow) {
 
 TEST(PartitionPrivateStateTest, AddPartitionMismatchAggWindow) {
   RangeTrackerState range_tracker_state_1 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 10
     partition_index: 123
@@ -187,7 +183,6 @@ TEST(PartitionPrivateStateTest, AddPartitionMismatchAggWindow) {
   RangeTracker range_tracker_1 =
       RangeTracker::Parse(range_tracker_state_1).value();
   RangeTrackerState range_tracker_state_2 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 10
     partition_index: 456
@@ -440,7 +435,6 @@ TEST(PartitionPrivateState, MergeWithAggWindow) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    keys: "foo"
     values: 0
     values: 10
     start_time { seconds: 100 }
@@ -449,7 +443,6 @@ TEST(PartitionPrivateState, MergeWithAggWindow) {
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
-    keys: "foo"
     values: 0
     values: 10
     start_time { seconds: 100 }
@@ -467,7 +460,6 @@ TEST(PartitionPrivateState, MergeMismatchAggWindow) {
   PartitionPrivateStateProto proto_1 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
     expired_keys: "expired_key1"
-    keys: "foo"
     values: 0
     values: 10
     start_time { seconds: 100 }
@@ -476,7 +468,6 @@ TEST(PartitionPrivateState, MergeMismatchAggWindow) {
   PartitionPrivateStateProto proto_2 = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 2 symmetric_key: "key2" }
     expired_keys: "expired_key1"
-    keys: "foo"
     values: 0
     values: 10
     start_time { seconds: 300 }

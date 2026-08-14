@@ -16,7 +16,9 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_PARTITION_PRIVATE_STATE_H_
 
 #include <optional>
+#include <variant>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -62,7 +64,14 @@ class PartitionPrivateState {
 
   // Returns the set of keys that are currently being tracked by this
   // PartitionPrivateState.
-  const absl::flat_hash_set<std::string>& GetKeys() const { return keys_; }
+  const absl::flat_hash_set<std::string>& GetKeys() const {
+    if (auto* keys = std::get_if<absl::flat_hash_set<std::string>>(
+            &keys_or_agg_window_)) {
+      return *keys;
+    }
+    static const absl::NoDestructor<absl::flat_hash_set<std::string>> kEmpty;
+    return *kEmpty;
+  }
 
   // Returns the set of ranges that have been visited by this
   // PartitionPrivateState.
@@ -80,7 +89,15 @@ class PartitionPrivateState {
 
   // Returns the aggregation time window, if set.
   std::optional<Interval<uint64_t>> GetAggregationWindow() const {
-    return agg_window_;
+    if (auto* window = std::get_if<Interval<uint64_t>>(&keys_or_agg_window_)) {
+      return *window;
+    }
+    return std::nullopt;
+  }
+
+  // Returns the underlying keys-or-aggregation-window variant.
+  const KeysOrAggWindow& GetKeysOrAggWindow() const {
+    return keys_or_agg_window_;
   }
 
  private:
@@ -88,12 +105,11 @@ class PartitionPrivateState {
   absl::flat_hash_map<uint64_t, std::string> symmetric_keys_;
   // KMS keys that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_keys_;
-  // KMS keys that are currently being tracked by this PartitionPrivateState.
-  absl::flat_hash_set<std::string> keys_;
+  // Holds either a set of keys (for per-key budget tracking) or an aggregation
+  // time window (for time-window budget tracking).
+  KeysOrAggWindow keys_or_agg_window_;
   // Stores visited ranges of blobs. These are tracked across all keys.
   IntervalSet<uint64_t> ranges_;
-  // The aggregation time window.
-  std::optional<Interval<uint64_t>> agg_window_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

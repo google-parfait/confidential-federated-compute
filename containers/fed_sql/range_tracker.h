@@ -18,7 +18,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -28,6 +30,13 @@
 #include "containers/fed_sql/range_tracker.pb.h"
 
 namespace confidential_federated_compute::fed_sql {
+
+// Holds either a set of keys (for per-key budget tracking) or an aggregation
+// time window (for time-window budget tracking). std::monostate represents the
+// unset state before either is configured.
+using KeysOrAggWindow =
+    std::variant<std::monostate, absl::flat_hash_set<std::string>,
+                 Interval<uint64_t>>;
 
 // Tracks FedSql specific private state, which consists of ranges of blobs
 // visited during execution in FedSql Confidential Transform.
@@ -69,14 +78,20 @@ class RangeTracker {
   bool Merge(const RangeTracker& other);
 
   // A variant of Merge that merges the underlying data directly.
-  bool Merge(const absl::flat_hash_set<std::string>& keys,
+  bool Merge(const KeysOrAggWindow& keys_or_agg_window,
              const IntervalSet<uint64_t>& ranges,
-             const absl::flat_hash_set<std::string>& expired_keys,
-             std::optional<Interval<uint64_t>> agg_window = std::nullopt);
+             const absl::flat_hash_set<std::string>& expired_keys);
 
   // Returns the set of keys that are currently being tracked by this
   // RangeTracker.
-  const absl::flat_hash_set<std::string>& GetKeys() const { return keys_; }
+  const absl::flat_hash_set<std::string>& GetKeys() const {
+    if (auto* keys = std::get_if<absl::flat_hash_set<std::string>>(
+            &keys_or_agg_window_)) {
+      return *keys;
+    }
+    static const absl::NoDestructor<absl::flat_hash_set<std::string>> kEmpty;
+    return *kEmpty;
+  }
 
   // Returns the set of ranges that have been visited by this RangeTracker.
   const IntervalSet<uint64_t>& GetRanges() const { return ranges_; }
@@ -98,12 +113,23 @@ class RangeTracker {
 
   // Returns the aggregation time window, if set.
   std::optional<Interval<uint64_t>> GetAggregationWindow() const {
-    return agg_window_;
+    if (auto* window = std::get_if<Interval<uint64_t>>(&keys_or_agg_window_)) {
+      return *window;
+    }
+    return std::nullopt;
+  }
+
+  // Returns the underlying keys-or-aggregation-window variant.
+  const KeysOrAggWindow& GetKeysOrAggWindow() const {
+    return keys_or_agg_window_;
   }
 
  private:
-  // Set of keys that are currently being tracked by this RangeTracker.
-  absl::flat_hash_set<std::string> keys_;
+  // Holds either a set of keys (for per-key budget tracking) or an aggregation
+  // time window (for time-window budget tracking). std::monostate represents
+  // the initial state before either is set. Only one of keys or agg_window can
+  // be active at a time.
+  KeysOrAggWindow keys_or_agg_window_;
 
   // Stores visited ranges of blobs. These are tracked across all keys.
   IntervalSet<uint64_t> ranges_;
@@ -113,9 +139,6 @@ class RangeTracker {
 
   // Keys that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_keys_;
-
-  // The aggregation time window.
-  std::optional<Interval<uint64_t>> agg_window_;
 };
 
 // Serializes RangeTracker and bundles it to a blob, and returns a combined

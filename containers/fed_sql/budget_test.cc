@@ -678,7 +678,6 @@ TEST(BudgetTest, SerializeAndParseTimeBudget) {
   Budget budget(/*default_budget=*/3);
   RangeTracker range_tracker;
   range_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
-  range_tracker.AddKey("foo");
   EXPECT_TRUE(range_tracker.AddRange(1, 4));
 
   EXPECT_THAT(budget.UpdateBudget(range_tracker), IsOk());

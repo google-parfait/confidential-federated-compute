@@ -14,6 +14,9 @@
 
 #include "containers/fed_sql/partition_private_state.h"
 
+#include <variant>
+
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 
@@ -41,9 +44,6 @@ absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
   state.expired_keys_ = absl::flat_hash_set<std::string>(
       proto.expired_keys().begin(), proto.expired_keys().end());
 
-  state.keys_ = absl::flat_hash_set<std::string>(proto.keys().begin(),
-                                                 proto.keys().end());
-
   if (proto.values_size() % 2 != 0) {
     return absl::InvalidArgumentError(
         "Unexpected number of values in serialized PartitionPrivateState.");
@@ -63,9 +63,21 @@ absl::StatusOr<PartitionPrivateState> PartitionPrivateState::Parse(
         "PartitionPrivateState proto must have either both start_time and "
         "end_time or neither.");
   }
-  if (proto.has_start_time()) {
-    state.agg_window_ = Interval<uint64_t>(proto.start_time().seconds(),
-                                           proto.end_time().seconds());
+
+  bool has_keys = !proto.keys().empty();
+  bool has_agg_window = proto.has_start_time();
+  if (has_keys && has_agg_window) {
+    return absl::InvalidArgumentError(
+        "PartitionPrivateState proto must not have both keys and an "
+        "aggregation window.");
+  }
+
+  if (has_keys) {
+    state.keys_or_agg_window_ = absl::flat_hash_set<std::string>(
+        proto.keys().begin(), proto.keys().end());
+  } else if (has_agg_window) {
+    state.keys_or_agg_window_ = Interval<uint64_t>(proto.start_time().seconds(),
+                                                   proto.end_time().seconds());
   }
 
   return state;
@@ -85,16 +97,22 @@ PartitionPrivateStateProto PartitionPrivateState::Serialize() const {
   for (const auto& key : expired_keys_) {
     proto.add_expired_keys(key);
   }
-  for (const auto& key : keys_) {
-    proto.add_keys(key);
-  }
+  std::visit(absl::Overload{
+                 [](std::monostate) {},
+                 [&](const absl::flat_hash_set<std::string>& keys) {
+                   for (const auto& key : keys) {
+                     proto.add_keys(key);
+                   }
+                 },
+                 [&](const Interval<uint64_t>& window) {
+                   proto.mutable_start_time()->set_seconds(window.start());
+                   proto.mutable_end_time()->set_seconds(window.end());
+                 },
+             },
+             keys_or_agg_window_);
   for (const auto& interval : ranges_) {
     proto.add_values(interval.start());
     proto.add_values(interval.end());
-  }
-  if (agg_window_.has_value()) {
-    proto.mutable_start_time()->set_seconds(agg_window_->start());
-    proto.mutable_end_time()->set_seconds(agg_window_->end());
   }
   return proto;
 }
@@ -114,13 +132,14 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
     return false;
   }
 
-  //  Validate ranges, keys and expired keys match, if non-empty.
+  // Validate ranges, keys/agg_window, and expired keys match, if non-empty.
   if (!ranges_.empty() && ranges_ != range_tracker.GetRanges()) {
     LOG(ERROR) << "Mismatched ranges between partitions.";
     return false;
   }
-  if (!keys_.empty() && keys_ != range_tracker.GetKeys()) {
-    LOG(ERROR) << "Mismatched keys between partitions.";
+  if (!std::holds_alternative<std::monostate>(keys_or_agg_window_) &&
+      keys_or_agg_window_ != range_tracker.GetKeysOrAggWindow()) {
+    LOG(ERROR) << "Mismatched keys or aggregation window between partitions.";
     return false;
   }
   if (!expired_keys_.empty() &&
@@ -129,26 +148,15 @@ bool PartitionPrivateState::AddPartition(const RangeTracker& range_tracker,
     return false;
   }
 
-  // Validate agg_window matches, if non-empty.
-  auto incoming_agg_window = range_tracker.GetAggregationWindow();
-  if (agg_window_.has_value() && incoming_agg_window.has_value() &&
-      agg_window_.value() != incoming_agg_window.value()) {
-    LOG(ERROR) << "Mismatched aggregation windows between partitions.";
-    return false;
-  }
-
   // All checks passed, update the state.
   if (ranges_.empty()) {
     ranges_ = range_tracker.GetRanges();
   }
-  if (keys_.empty()) {
-    keys_ = range_tracker.GetKeys();
+  if (std::holds_alternative<std::monostate>(keys_or_agg_window_)) {
+    keys_or_agg_window_ = range_tracker.GetKeysOrAggWindow();
   }
   if (expired_keys_.empty()) {
     expired_keys_ = range_tracker.GetExpiredKeys();
-  }
-  if (!agg_window_.has_value() && incoming_agg_window.has_value()) {
-    agg_window_ = incoming_agg_window;
   }
   symmetric_keys_[*partition_index] = std::string(symmetric_key);
   return true;
@@ -164,23 +172,19 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
     }
   }
 
-  //  Validate ranges, keys and expired keys match, if non-empty.
+  // Validate ranges, keys/agg_window, and expired keys match, if non-empty.
   if (!ranges_.empty() && ranges_ != other.ranges_) {
     LOG(ERROR) << "Mismatched ranges between private states.";
     return false;
   }
-  if (!keys_.empty() && keys_ != other.keys_) {
-    LOG(ERROR) << "Mismatched keys between private states.";
+  if (!std::holds_alternative<std::monostate>(keys_or_agg_window_) &&
+      keys_or_agg_window_ != other.keys_or_agg_window_) {
+    LOG(ERROR)
+        << "Mismatched keys or aggregation window between private states.";
     return false;
   }
   if (!expired_keys_.empty() && expired_keys_ != other.expired_keys_) {
     LOG(ERROR) << "Mismatched expired_keys between private states.";
-    return false;
-  }
-  // Validate agg_window matches, if non-empty.
-  if (agg_window_.has_value() && other.agg_window_.has_value() &&
-      agg_window_.value() != other.agg_window_.value()) {
-    LOG(ERROR) << "Mismatched aggregation windows between private states.";
     return false;
   }
 
@@ -188,14 +192,11 @@ bool PartitionPrivateState::Merge(const PartitionPrivateState& other) {
   if (ranges_.empty()) {
     ranges_ = other.ranges_;
   }
-  if (keys_.empty()) {
-    keys_ = other.keys_;
+  if (std::holds_alternative<std::monostate>(keys_or_agg_window_)) {
+    keys_or_agg_window_ = other.keys_or_agg_window_;
   }
   if (expired_keys_.empty()) {
     expired_keys_ = other.expired_keys_;
-  }
-  if (!agg_window_.has_value() && other.agg_window_.has_value()) {
-    agg_window_ = other.agg_window_;
   }
   symmetric_keys_.insert(other.symmetric_keys_.begin(),
                          other.symmetric_keys_.end());

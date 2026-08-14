@@ -14,9 +14,12 @@
 
 #include "containers/fed_sql/range_tracker.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
+#include <variant>
 
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "containers/fed_sql/any_bundle.h"
@@ -35,8 +38,6 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(const std::string& data) {
 absl::StatusOr<RangeTracker> RangeTracker::Parse(
     const RangeTrackerState& state) {
   RangeTracker range_tracker;
-  range_tracker.keys_ = absl::flat_hash_set<std::string>(state.keys().begin(),
-                                                         state.keys().end());
 
   if (state.values_size() % 2 != 0) {
     return absl::InternalError(
@@ -68,9 +69,21 @@ absl::StatusOr<RangeTracker> RangeTracker::Parse(
         "RangeTracker state must have either both start_time and end_time or "
         "neither.");
   }
-  if (state.has_start_time()) {
-    range_tracker.agg_window_ = Interval<uint64_t>(state.start_time().seconds(),
-                                                   state.end_time().seconds());
+
+  bool has_keys = !state.keys().empty();
+  bool has_agg_window = state.has_start_time();
+  if (has_keys && has_agg_window) {
+    return absl::InvalidArgumentError(
+        "RangeTracker state must not have both keys and an aggregation "
+        "window.");
+  }
+
+  if (has_keys) {
+    range_tracker.keys_or_agg_window_ = absl::flat_hash_set<std::string>(
+        state.keys().begin(), state.keys().end());
+  } else if (has_agg_window) {
+    range_tracker.keys_or_agg_window_ = Interval<uint64_t>(
+        state.start_time().seconds(), state.end_time().seconds());
   }
 
   return range_tracker;
@@ -82,9 +95,19 @@ std::string RangeTracker::SerializeAsString() const {
 
 RangeTrackerState RangeTracker::Serialize() const {
   RangeTrackerState state;
-  for (const auto& key : keys_) {
-    state.add_keys(key);
-  }
+  std::visit(absl::Overload{
+                 [](std::monostate) {},
+                 [&](const absl::flat_hash_set<std::string>& keys) {
+                   for (const auto& key : keys) {
+                     state.add_keys(key);
+                   }
+                 },
+                 [&](const Interval<uint64_t>& window) {
+                   state.mutable_start_time()->set_seconds(window.start());
+                   state.mutable_end_time()->set_seconds(window.end());
+                 },
+             },
+             keys_or_agg_window_);
   for (const auto& interval : ranges_) {
     state.add_values(interval.start());
     state.add_values(interval.end());
@@ -95,17 +118,19 @@ RangeTrackerState RangeTracker::Serialize() const {
   if (partition_index_.has_value()) {
     state.set_partition_index(partition_index_.value());
   }
-  if (agg_window_.has_value()) {
-    state.mutable_start_time()->set_seconds(agg_window_->start());
-    state.mutable_end_time()->set_seconds(agg_window_->end());
-  }
+
   return state;
 }
 
 void RangeTracker::AddKey(const std::string& key) {
+  CHECK(!std::holds_alternative<Interval<uint64_t>>(keys_or_agg_window_))
+      << "Cannot add keys when an aggregation window is set";
   // Key must not be expired.
   CHECK(!expired_keys_.contains(key)) << "Found an expired key " << key;
-  keys_.insert(key);
+  if (std::holds_alternative<std::monostate>(keys_or_agg_window_)) {
+    keys_or_agg_window_.emplace<absl::flat_hash_set<std::string>>();
+  }
+  std::get<absl::flat_hash_set<std::string>>(keys_or_agg_window_).insert(key);
 }
 
 bool RangeTracker::AddRange(uint64_t start, uint64_t end) {
@@ -113,15 +138,17 @@ bool RangeTracker::AddRange(uint64_t start, uint64_t end) {
 }
 
 void RangeTracker::MergeAggWindow(Interval<uint64_t> agg_window) {
-  if (!agg_window_.has_value()) {
-    agg_window_ = agg_window;
-    return;
+  CHECK(!std::holds_alternative<absl::flat_hash_set<std::string>>(
+      keys_or_agg_window_))
+      << "Cannot set an aggregation window when keys are present";
+  if (auto* existing = std::get_if<Interval<uint64_t>>(&keys_or_agg_window_)) {
+    // Create a bounding aggregation window (smallest start, largest end).
+    keys_or_agg_window_ =
+        Interval<uint64_t>(std::min(existing->start(), agg_window.start()),
+                           std::max(existing->end(), agg_window.end()));
+  } else {
+    keys_or_agg_window_ = agg_window;
   }
-
-  // Create a bounding aggregation window (smallest start, largest end).
-  agg_window_ =
-      Interval<uint64_t>(std::min(agg_window_->start(), agg_window.start()),
-                         std::max(agg_window_->end(), agg_window.end()));
 }
 
 bool RangeTracker::Merge(const RangeTracker& other) {
@@ -136,20 +163,24 @@ bool RangeTracker::Merge(const RangeTracker& other) {
     return false;
   }
 
-  return Merge(other.keys_, other.ranges_, other.expired_keys_,
-               other.agg_window_);
+  return Merge(other.keys_or_agg_window_, other.ranges_, other.expired_keys_);
 }
 
-bool RangeTracker::Merge(const absl::flat_hash_set<std::string>& keys,
+bool RangeTracker::Merge(const KeysOrAggWindow& keys_or_agg_window,
                          const IntervalSet<uint64_t>& ranges,
-                         const absl::flat_hash_set<std::string>& expired_keys,
-                         std::optional<Interval<uint64_t>> agg_window) {
-  if (agg_window.has_value()) {
-    MergeAggWindow(agg_window.value());
-  }
-
-  // Merge keys.
-  keys_.insert(keys.begin(), keys.end());
+                         const absl::flat_hash_set<std::string>& expired_keys) {
+  std::visit(absl::Overload{
+                 [](std::monostate) {},
+                 [&](const absl::flat_hash_set<std::string>& keys) {
+                   for (const auto& key : keys) {
+                     AddKey(key);
+                   }
+                 },
+                 [&](const Interval<uint64_t>& agg_window) {
+                   MergeAggWindow(agg_window);
+                 },
+             },
+             keys_or_agg_window);
 
   // Merge ranges (if there is no overlap)
   if (!ranges_.Merge(ranges)) {
