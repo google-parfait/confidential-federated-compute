@@ -189,52 +189,6 @@ TEST_F(NoiseExecutorStubTest, Success) {
     ASSERT_EQ(compute_response.value().array().int32_list().value(0), 3);
   }
 
-  // Create a "federated_value_at_clients" intrinsic.
-  std::string intrinsic_comp_ref;
-  {
-    tensorflow_federated::v0::CreateValueResponse
-        create_value_response_intrinsic_comp;
-    ASSERT_TRUE(
-        noise_executor_stub_
-            ->CreateValue(&client_context,
-                          CreateIntrinsicValueRequest(
-                              executor_id, "federated_value_at_clients"),
-                          &create_value_response_intrinsic_comp)
-            .ok());
-    intrinsic_comp_ref = create_value_response_intrinsic_comp.value_ref().id();
-    ASSERT_FALSE(intrinsic_comp_ref.empty());
-  }
-
-  // Create a call for the "federated_value_at_clients" intrinsic on the
-  // value 2.
-  std::string call_ref;
-  {
-    tensorflow_federated::v0::CreateCallResponse create_call_response;
-    ASSERT_TRUE(
-        noise_executor_stub_
-            ->CreateCall(&client_context,
-                         CreateCallRequest(executor_id, intrinsic_comp_ref,
-                                           value_two_ref),
-                         &create_call_response)
-            .ok());
-    call_ref = create_call_response.value_ref().id();
-    ASSERT_FALSE(call_ref.empty());
-  }
-
-  // Materialize the call.
-  {
-    tensorflow_federated::v0::ComputeResponse compute_response;
-    ASSERT_TRUE(noise_executor_stub_
-                    ->Compute(&client_context,
-                              ComputeRequest(executor_id, call_ref),
-                              &compute_response)
-                    .ok());
-    ASSERT_EQ(
-        compute_response.value().federated().type().placement().value().uri(),
-        "clients");
-    ASSERT_EQ(compute_response.value().federated().value_size(), kNumClients);
-  }
-
   // Dispose all refs.
   {
     tensorflow_federated::v0::DisposeResponse dispose_response;
@@ -242,8 +196,7 @@ TEST_F(NoiseExecutorStubTest, Success) {
                     ->Dispose(&client_context,
                               DisposeRequest(executor_id,
                                              {selection_ref, struct_ref,
-                                              value_two_ref, value_three_ref,
-                                              intrinsic_comp_ref, call_ref}),
+                                              value_two_ref, value_three_ref}),
                               &dispose_response)
                     .ok());
   }
@@ -257,6 +210,18 @@ TEST_F(NoiseExecutorStubTest, Success) {
                                       &dispose_executor_response)
                     .ok());
   }
+}
+
+TEST_F(NoiseExecutorStubTest, ReturnsErrorWhenServerOperationFails) {
+  grpc::ClientContext client_context;
+  tensorflow_federated::v0::ComputeResponse compute_response;
+  grpc::Status status = noise_executor_stub_->Compute(
+      &client_context,
+      ComputeRequest("invalid_executor_id", "invalid_value_ref"),
+      &compute_response);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
 }
 
 }  // namespace

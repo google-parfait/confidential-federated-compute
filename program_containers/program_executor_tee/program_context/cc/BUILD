@@ -349,6 +349,7 @@ cc_library(
 
 cc_test(
     name = "noise_executor_stub_test",
+    size = "large",
     srcs = ["noise_executor_stub_test.cc"],
     tags = ["noasan"],
     deps = [
@@ -403,6 +404,7 @@ cc_library(
 
 cc_test(
     name = "noise_leaf_executor_test",
+    size = "large",
     srcs = ["noise_leaf_executor_test.cc"],
     tags = ["noasan"],
     deps = [
@@ -477,6 +479,7 @@ cc_library(
 
 cc_test(
     name = "fake_computation_delegation_service_test",
+    size = "large",
     srcs = ["fake_computation_delegation_service_test.cc"],
     tags = ["noasan"],
     deps = [

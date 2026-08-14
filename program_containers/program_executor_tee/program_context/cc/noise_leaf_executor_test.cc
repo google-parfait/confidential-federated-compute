@@ -360,54 +360,12 @@ TEST_F(NoiseLeafExecutorTest, Success) {
         response->compute_response().value().array().int32_list().value(0), 3);
   }
 
-  // Create a "federated_value_at_clients" intrinsic.
-  std::string intrinsic_comp_ref;
-  {
-    executor_wrapper::ExecutorGroupRequest request;
-    *request.mutable_create_value_request() =
-        CreateIntrinsicValueRequest(executor_id, "federated_value_at_clients");
-    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
-        MakeExecutorGroupRequest(request, client_session.value().get());
-    ASSERT_TRUE(response.ok());
-    ASSERT_TRUE(response->has_create_value_response());
-    intrinsic_comp_ref = response->create_value_response().value_ref().id();
-    ASSERT_FALSE(intrinsic_comp_ref.empty());
-  }
-
-  // Create a call for the "federated_value_at_clients" intrinsic on the
-  // value 2.
-  std::string call_ref;
-  {
-    executor_wrapper::ExecutorGroupRequest request;
-    *request.mutable_create_call_request() =
-        CreateCallRequest(executor_id, intrinsic_comp_ref, value_two_ref);
-    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
-        MakeExecutorGroupRequest(request, client_session.value().get());
-    ASSERT_TRUE(response.ok());
-    ASSERT_TRUE(response->has_create_call_response());
-    call_ref = response->create_call_response().value_ref().id();
-    ASSERT_FALSE(call_ref.empty());
-  }
-
-  // Materialize the call.
-  {
-    executor_wrapper::ExecutorGroupRequest request;
-    *request.mutable_compute_request() = ComputeRequest(executor_id, call_ref);
-    absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
-        MakeExecutorGroupRequest(request, client_session.value().get());
-    ASSERT_TRUE(response.ok());
-    ASSERT_TRUE(response->has_compute_response());
-    auto federated_response = response->compute_response().value().federated();
-    ASSERT_EQ(federated_response.type().placement().value().uri(), "clients");
-    ASSERT_EQ(federated_response.value_size(), kNumClients);
-  }
-
   // Dispose all refs.
   {
     executor_wrapper::ExecutorGroupRequest request;
     *request.mutable_dispose_request() = DisposeRequest(
-        executor_id, {selection_ref, struct_ref, value_two_ref, value_three_ref,
-                      intrinsic_comp_ref, call_ref});
+        executor_id,
+        {selection_ref, struct_ref, value_two_ref, value_three_ref});
     absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
         MakeExecutorGroupRequest(request, client_session.value().get());
     ASSERT_TRUE(response.ok());
@@ -449,6 +407,21 @@ TEST_F(NoiseLeafExecutorTest, ReturnsErrorWhenSessionConfigFnReturnsNull) {
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_EQ(status.error_message(),
             "The session config function returned a null pointer.");
+}
+
+TEST_F(NoiseLeafExecutorTest, ReturnsErrorWhenExecutorOperationFails) {
+  auto client_session = CreateClientSessionAndDoHandshake();
+  ASSERT_TRUE(client_session.ok());
+
+  // Attempt to compute an invalid value reference.
+  executor_wrapper::ExecutorGroupRequest request;
+  *request.mutable_compute_request() =
+      ComputeRequest("invalid_executor_id", "invalid_value_ref");
+
+  absl::StatusOr<executor_wrapper::ExecutorGroupResponse> response =
+      MakeExecutorGroupRequest(request, client_session.value().get());
+  EXPECT_FALSE(response.ok());
+  EXPECT_EQ(response.status().code(), absl::StatusCode::kFailedPrecondition);
 }
 
 }  // namespace

@@ -180,36 +180,48 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
   switch (executor_group_request.request_case()) {
     case executor_wrapper::ExecutorGroupRequest::kGetExecutorRequest: {
       tensorflow_federated::v0::GetExecutorResponse get_executor_response;
-      executor_service_->GetExecutor(
+      auto status = executor_service_->GetExecutor(
           nullptr, &executor_group_request.get_executor_request(),
           &get_executor_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_get_executor_response() =
           std::move(get_executor_response);
       break;
     }
     case executor_wrapper::ExecutorGroupRequest::kCreateValueRequest: {
       tensorflow_federated::v0::CreateValueResponse create_value_response;
-      executor_service_->CreateValue(
+      auto status = executor_service_->CreateValue(
           nullptr, &executor_group_request.create_value_request(),
           &create_value_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_create_value_response() =
           std::move(create_value_response);
       break;
     }
     case executor_wrapper::ExecutorGroupRequest::kCreateCallRequest: {
       tensorflow_federated::v0::CreateCallResponse create_call_response;
-      executor_service_->CreateCall(
+      auto status = executor_service_->CreateCall(
           nullptr, &executor_group_request.create_call_request(),
           &create_call_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_create_call_response() =
           std::move(create_call_response);
       break;
     }
     case executor_wrapper::ExecutorGroupRequest::kCreateStructRequest: {
       tensorflow_federated::v0::CreateStructResponse create_struct_response;
-      executor_service_->CreateStruct(
+      auto status = executor_service_->CreateStruct(
           nullptr, &executor_group_request.create_struct_request(),
           &create_struct_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_create_struct_response() =
           std::move(create_struct_response);
       break;
@@ -217,27 +229,36 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
     case executor_wrapper::ExecutorGroupRequest::kCreateSelectionRequest: {
       tensorflow_federated::v0::CreateSelectionResponse
           create_selection_response;
-      executor_service_->CreateSelection(
+      auto status = executor_service_->CreateSelection(
           nullptr, &executor_group_request.create_selection_request(),
           &create_selection_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_create_selection_response() =
           std::move(create_selection_response);
       break;
     }
     case executor_wrapper::ExecutorGroupRequest::kComputeRequest: {
       tensorflow_federated::v0::ComputeResponse compute_response;
-      executor_service_->Compute(nullptr,
-                                 &executor_group_request.compute_request(),
-                                 &compute_response);
+      auto status = executor_service_->Compute(
+          nullptr, &executor_group_request.compute_request(),
+          &compute_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_compute_response() =
           std::move(compute_response);
       break;
     }
     case executor_wrapper::ExecutorGroupRequest::kDisposeRequest: {
       tensorflow_federated::v0::DisposeResponse dispose_response;
-      executor_service_->Dispose(nullptr,
-                                 &executor_group_request.dispose_request(),
-                                 &dispose_response);
+      auto status = executor_service_->Dispose(
+          nullptr, &executor_group_request.dispose_request(),
+          &dispose_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_dispose_response() =
           std::move(dispose_response);
       break;
@@ -245,9 +266,12 @@ grpc::Status NoiseLeafExecutor::Execute(const ComputationRequest* request,
     case executor_wrapper::ExecutorGroupRequest::kDisposeExecutorRequest: {
       tensorflow_federated::v0::DisposeExecutorResponse
           disponse_executor_response;
-      executor_service_->DisposeExecutor(
+      auto status = executor_service_->DisposeExecutor(
           nullptr, &executor_group_request.dispose_executor_request(),
           &disponse_executor_response);
+      if (!status.ok()) {
+        return status;
+      }
       *executor_group_response.mutable_dispose_executor_response() =
           std::move(disponse_executor_response);
       break;
