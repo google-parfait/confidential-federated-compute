@@ -47,6 +47,12 @@ using ::oak::session::SessionConfig;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
 
+namespace {
+inline absl::StatusCode GrpcToAbslCode(grpc::StatusCode code) {
+  return static_cast<absl::StatusCode>(static_cast<int>(code));
+}
+}  // namespace
+
 class ClientImpl : public Client {
  public:
   explicit ClientImpl(
@@ -79,33 +85,38 @@ class ClientImpl : public Client {
   virtual absl::StatusOr<std::string> Invoke(std::string request) override {
     absl::Status write_status = session_->Write(request);
     if (!write_status.ok()) {
-      return absl::InternalError(absl::StrCat("Failed to write to session: ",
-                                              write_status.ToString()));
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Failed to write to session: ", write_status.ToString()));
     }
 
     absl::StatusOr<bool> pump_status =
         PumpOutgoingMessages(session_.get(), stream_.get());
     if (!pump_status.ok()) {
-      return absl::InternalError(absl::StrCat("PumpOutgoingMessages failed: ",
-                                              pump_status.status().ToString()));
+      return pump_status.status();
     }
 
     while (true) {
       SessionResponse session_response;
       if (!stream_->Read(&session_response)) {
-        return absl::InternalError(
-            "Server closed stream while waiting for application reply.");
+        grpc::Status finish_status = stream_->Finish();
+        if (!finish_status.ok()) {
+          return absl::Status(GrpcToAbslCode(finish_status.error_code()),
+                              absl::StrCat("Server closed stream with error: ",
+                                           finish_status.error_message()));
+        }
+        return absl::CancelledError(
+            "Server closed stream while waiting for reply.");
       }
 
       absl::Status put_status = session_->PutIncomingMessage(session_response);
       if (!put_status.ok()) {
-        return absl::InternalError(absl::StrCat("PutIncomingMessage failed:  ",
-                                                put_status.ToString()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("PutIncomingMessage failed: ", put_status.ToString()));
       }
 
       auto decrypted_message = session_->ReadToRustBytes();
       if (!decrypted_message.ok()) {
-        return absl::InternalError(
+        return absl::FailedPreconditionError(
             absl::StrCat("Failed to read from session: ",
                          decrypted_message.status().ToString()));
       }
@@ -120,8 +131,7 @@ class ClientImpl : public Client {
 
       pump_status = PumpOutgoingMessages(session_.get(), stream_.get());
       if (!pump_status.ok()) {
-        return absl::InternalError(absl::StrCat(
-            "PumpOutgoingMessages failed: ", pump_status.status().ToString()));
+        return pump_status.status();
       }
     }
     return absl::InternalError("Unreachable.");

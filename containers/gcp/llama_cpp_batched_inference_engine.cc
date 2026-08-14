@@ -216,7 +216,7 @@ LlamaCppBatchedInferenceEngine::Tokenize(const std::string& prompt) {
   tokens.resize(n_prompt);
   if (llama_tokenize(vocab_, formatted_prompt.c_str(), formatted_prompt.size(),
                      tokens.data(), tokens.size(), true, true) < 0) {
-    return absl::InternalError("Failed to tokenize prompt");
+    return absl::InvalidArgumentError("Failed to tokenize prompt");
   }
   return tokens;
 }
@@ -231,30 +231,67 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
     return response;
   }
 
-  // 1. Prepare inputs
-  std::vector<std::vector<llama_token>> all_tokens;
-  int total_tokens_needed = 0;
+  // 1. Per-prompt tokenization with fault isolation.
+  struct PromptState {
+    int seq_id;
+    std::vector<llama_token> tokens;
+    std::string output;
+    bool done;
+    int tokens_generated;
+    google::rpc::Code error_code;
+    std::string error_message;
+  };
 
-  for (const auto& req : request.requests()) {
-    auto tokens_or = Tokenize(req.text());
-    if (!tokens_or.ok()) return tokens_or.status();
-    all_tokens.push_back(*tokens_or);
-    total_tokens_needed += tokens_or->size();
+  std::vector<PromptState> states;
+  states.reserve(request.requests_size());
+
+  for (int i = 0; i < request.requests_size(); ++i) {
+    PromptState state;
+    state.seq_id = i;
+    state.done = false;
+    state.tokens_generated = 0;
+    state.error_code = google::rpc::Code::OK;
+
+    auto tokens_or = Tokenize(request.requests(i).text());
+    if (!tokens_or.ok()) {
+      state.done = true;
+      state.error_code = google::rpc::Code::INVALID_ARGUMENT;
+      state.error_message = std::string(tokens_or.status().message());
+    } else {
+      state.tokens = std::move(*tokens_or);
+    }
+    states.push_back(std::move(state));
   }
 
   int max_tokens_to_predict = request.params().max_output_tokens() > 0
                                   ? request.params().max_output_tokens()
                                   : kDefaultMaxTokens;
 
-  // Compute prefill token count (just prompts).
+  // Compute active count and prefill tokens (valid prompts only).
+  int active_count = 0;
   int prefill_tokens = 0;
-  for (const auto& toks : all_tokens) {
-    prefill_tokens += toks.size();
+  for (const auto& s : states) {
+    if (!s.done) {
+      active_count++;
+      prefill_tokens += s.tokens.size();
+    }
   }
 
-  // total_tokens_needed includes room for generation.
-  total_tokens_needed =
-      prefill_tokens + (request.requests_size() * max_tokens_to_predict);
+  // Fast-path: if all prompts failed tokenization, skip straight to
+  // response assembly — no inference needed.
+  if (active_count == 0) {
+    for (const auto& state : states) {
+      auto* result = response.add_results();
+      result->set_text("");
+      result->mutable_status()->set_code(state.error_code);
+      result->mutable_status()->set_message(state.error_message);
+    }
+    return response;
+  }
+
+  // total_tokens_needed includes room for generation (active prompts only).
+  int total_tokens_needed =
+      prefill_tokens + (active_count * max_tokens_to_predict);
 
   // Capacity for the batch struct itself only needs
   // to hold the prefill pass (decode step adds 1 per
@@ -299,30 +336,28 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
   // 4. Batch Generation Loop
   BatchClear(batch_);
 
-  struct SeqState {
-    int id;
-    std::string output;
-    bool done;
-    int tokens_generated;
-  };
-  std::vector<SeqState> states;
-  states.reserve(request.requests_size());
-
-  // Initial Prefill
-  for (int i = 0; i < request.requests_size(); ++i) {
-    states.push_back({i, "", false, 0});
-    const auto& tokens = all_tokens[i];
-    for (size_t k = 0; k < tokens.size(); ++k) {
-      auto s = BatchAddSafe(batch_, capacity, tokens[k], k, {i},
-                            k == tokens.size() - 1);
-      if (!s.ok()) return s;
+  // Initial Prefill — skip failed prompts.
+  for (auto& state : states) {
+    if (state.done) continue;
+    for (size_t k = 0; k < state.tokens.size(); ++k) {
+      auto s = BatchAddSafe(batch_, capacity, state.tokens[k], k,
+                            {state.seq_id}, k == state.tokens.size() - 1);
+      if (!s.ok()) {
+        state.done = true;
+        state.error_code = google::rpc::Code::RESOURCE_EXHAUSTED;
+        state.error_message = std::string(s.message());
+        active_count--;
+        break;
+      }
     }
   }
 
-  int active_sequences = request.requests_size();
+  int active_sequences = active_count;
 
   while (active_sequences > 0) {
-    // Evaluate current batch
+    // llama_decode failure is a GPU/KV-cache level crash.
+    // This is an accepted fatal error that will abort the
+    // pipeline. Do NOT reclassify.
     if (llama_decode(ctx_, batch_) != 0) {
       return absl::InternalError("llama_decode failed");
     }
@@ -396,24 +431,38 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
       int seq_id = input.first;
       llama_token token = input.second;
       // Position is length of prompt + generated so far
-      int pos = all_tokens[seq_id].size() + states[seq_id].tokens_generated - 1;
+      int pos =
+          states[seq_id].tokens.size() + states[seq_id].tokens_generated - 1;
 
       auto s = BatchAddSafe(batch_, capacity, token, pos, {seq_id}, true);
-      if (!s.ok()) return s;
+      if (!s.ok()) {
+        LOG(WARNING) << "BatchAddSafe failed mid-decode for seq " << seq_id
+                     << ": " << s;
+        states[seq_id].done = true;
+        states[seq_id].error_code = google::rpc::Code::RESOURCE_EXHAUSTED;
+        states[seq_id].error_message = std::string(s.message());
+        active_sequences--;
+        continue;
+      }
     }
   }
 
-  // 5. Populate Response.
-  for (auto& state : states) {
-    // Trim trailing whitespace/newlines.
-    while (!state.output.empty() &&
-           (state.output.back() == '\n' || state.output.back() == ' ')) {
-      state.output.pop_back();
-    }
-
+  // 5. Populate Response with per-item statuses.
+  for (const auto& state : states) {
     auto* result = response.add_results();
-    result->set_text(state.output);
-    result->mutable_status()->set_code(google::rpc::Code::OK);
+    result->mutable_status()->set_code(state.error_code);
+    if (state.error_code == google::rpc::Code::OK) {
+      // Trim trailing whitespace/newlines.
+      std::string output = state.output;
+      while (!output.empty() &&
+             (output.back() == '\n' || output.back() == ' ')) {
+        output.pop_back();
+      }
+      result->set_text(output);
+    } else {
+      result->set_text("");
+      result->mutable_status()->set_message(state.error_message);
+    }
   }
 
   return response;

@@ -91,7 +91,7 @@ void RunServer() {
     // Parse the Batched Request Proto
     BatchedInferenceRequest batch_request;
     if (!batch_request.ParseFromString(request)) {
-      return absl::InternalError(
+      return absl::InvalidArgumentError(
           "Failed to parse BatchedInferenceRequest proto.");
     }
     LOG(INFO) << "Received batch with " << batch_request.requests_size()
@@ -102,8 +102,7 @@ void RunServer() {
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     if (!response_or.ok()) {
-      return absl::InternalError(absl::StrCat("Batch inference failed: ",
-                                              response_or.status().ToString()));
+      return response_or.status();
     }
     LOG(INFO) << "Batch processing complete (" << elapsed.count() << "s).";
     std::string response_payload;

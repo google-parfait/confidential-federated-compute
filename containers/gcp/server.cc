@@ -88,6 +88,12 @@ using ::oak::session::SigningKeyHandle;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
 
+namespace {
+inline grpc::StatusCode AbslToGrpcCode(absl::StatusCode code) {
+  return static_cast<grpc::StatusCode>(static_cast<int>(code));
+}
+}  // namespace
+
 class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
  public:
   explicit OakSessionV1ServiceImpl(
@@ -177,7 +183,7 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
       absl::Status put_status = server_session->PutIncomingMessage(request);
       if (!put_status.ok()) {
         LOG(ERROR) << "Failed to process incoming message: " << put_status;
-        return grpc::Status(grpc::StatusCode::INTERNAL,
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                             std::string(put_status.message()));
       }
 
@@ -197,7 +203,7 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
           LOG(ERROR) << "Failed to read from session: "
                      << decrypted_message.status();
           return grpc::Status(
-              grpc::StatusCode::INTERNAL,
+              grpc::StatusCode::FAILED_PRECONDITION,
               std::string(decrypted_message.status().message()));
         }
         continue;
@@ -217,7 +223,7 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
         LOG(ERROR) << "Request processing failed: "
                    << unencrypted_response_or.status();
         return grpc::Status(
-            grpc::StatusCode::INTERNAL,
+            AbslToGrpcCode(unencrypted_response_or.status().code()),
             std::string(unencrypted_response_or.status().message()));
       }
 
@@ -228,7 +234,7 @@ class OakSessionV1ServiceImpl final : public OakSessionV1Service::Service {
           server_session->Write(unencrypted_response_or.value());
       if (!write_status.ok()) {
         LOG(ERROR) << "Failed to write reply: " << write_status;
-        return grpc::Status(grpc::StatusCode::INTERNAL,
+        return grpc::Status(grpc::StatusCode::UNAVAILABLE,
                             std::string(write_status.message()));
       }
 

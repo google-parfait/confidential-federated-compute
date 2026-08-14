@@ -115,7 +115,7 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
 
   BatchedInferenceResponse batch_response;
   if (!batch_response.ParseFromString(*response_or)) {
-    return absl::InternalError("Failed to parse GCP response");
+    return absl::FailedPreconditionError("Failed to parse GCP response");
   }
 
   if (batch_response.results_size() != prompts.size()) {
@@ -130,7 +130,8 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
       outputs.push_back(result.text());
     } else {
       outputs.push_back(
-          absl::InternalError(absl::StrCat(result.status().message())));
+          absl::Status(static_cast<absl::StatusCode>(result.status().code()),
+                       result.status().message()));
     }
   }
   return outputs;
