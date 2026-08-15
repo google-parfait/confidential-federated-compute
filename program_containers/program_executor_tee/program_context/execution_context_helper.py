@@ -13,12 +13,17 @@
 # limitations under the License.
 """Helper utilities for serialized computation requests and responses."""
 
-from typing import Optional
+import asyncio
+import collections
+from typing import Awaitable, Callable, Optional, Sequence
 
+from absl import logging
 from fcp.protos.confidentialcompute import computation_delegation_pb2
+from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
 from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
 from google.protobuf import any_pb2
+import grpc
 import tensorflow_federated as tff
 from tensorflow_federated.proto.v0 import executor_pb2
 
@@ -70,3 +75,162 @@ def unpack_and_deserialize_computation_response(
   return federated_language.framework.to_structure_with_type(
       deserialized_result, return_type
   )
+
+
+def contains_clients_placement(type_spec: federated_language.Type) -> bool:
+  """Checks if a TFF Type specification contains @CLIENTS placement."""
+  if isinstance(type_spec, federated_language.FederatedType):
+    if type_spec.placement is federated_language.CLIENTS:
+      return True
+    return contains_clients_placement(type_spec.member)
+  elif isinstance(type_spec, federated_language.StructType):
+    return any(contains_clients_placement(elem) for elem in type_spec)
+  elif isinstance(type_spec, federated_language.FunctionType):
+    param_has_clients = (
+        contains_clients_placement(type_spec.parameter)
+        if type_spec.parameter is not None
+        else False
+    )
+    return param_has_clients or contains_clients_placement(type_spec.result)
+  elif isinstance(type_spec, federated_language.SequenceType):
+    return contains_clients_placement(type_spec.element)
+  return False
+
+
+class RunnerAsyncContext(federated_language.framework.AsyncContext):
+  """AsyncContext that delegates computations to the ComputationRunner gRPC service.
+
+  Used by MergeableCompExecutionContext. For computations whose type
+  signature contains @CLIENTS placement, the request's worker_bns is set
+  to the configured worker_bns so the ComputationRunner forwards execution
+  to that worker. For all other computations, worker_bns is set to empty,
+  which causes the ComputationRunner to execute them locally.
+  """
+
+  def __init__(
+      self,
+      computation_runner_stub: computation_delegation_pb2_grpc.ComputationDelegationStub,
+      worker_bns: str = "",
+  ):
+    self._stub = computation_runner_stub
+    self._worker_bns = worker_bns
+
+  async def invoke(
+      self,
+      comp: federated_language.framework.Computation,
+      arg: Optional[object] = None,
+  ) -> object:
+    comp_return_type = comp.type_signature.result
+    target_worker_bns = (
+        self._worker_bns
+        if contains_clients_placement(comp.type_signature)
+        else ""
+    )
+    delegation_request = create_computation_request(comp, arg)
+    delegation_request.worker_bns = target_worker_bns
+
+    loop = asyncio.get_running_loop()
+    try:
+      delegation_response = await loop.run_in_executor(
+          None, self._stub.Execute, delegation_request
+      )
+      return unpack_and_deserialize_computation_response(
+          delegation_response, comp_return_type
+      )
+    except grpc.RpcError as e:
+      raise RuntimeError(
+          f"Request to computation runner failed with error: {e.details()}"
+      ) from e
+    except Exception as e:
+      raise RuntimeError(
+          f"Error decoding computation runner response: {e}"
+      ) from e
+
+
+async def run_resilient_subrounds(
+    task_fn: Callable[
+        [object, federated_language.framework.AsyncContext], Awaitable[object]
+    ],
+    arg_list: Sequence[object],
+    execution_contexts: Sequence[federated_language.framework.AsyncContext],
+    initial_result: object = None,
+    postprocessing: Optional[
+        Callable[
+            [object, object, federated_language.framework.AsyncContext],
+            Awaitable[object],
+        ]
+    ] = None,
+    max_retries_per_subround: int = 4,
+) -> tuple[object, Optional[federated_language.framework.AsyncContext]]:
+  """Runs tasks against a pool of async contexts with dynamic re-queuing and failover."""
+  if postprocessing is None:
+
+    async def postprocessing(acc, val, ctx):
+      del ctx  # Unused
+      return (acc or []) + [val]
+
+  work_queue = collections.deque(enumerate(arg_list))
+  available_contexts = set(execution_contexts)
+  pending_tasks = {}  # task -> (context, subround_idx, subround_arg)
+  subround_retries = collections.defaultdict(int)
+  context_handling_counts = collections.defaultdict(int)
+  accumulated_result = initial_result
+  last_ctx = None
+  last_exception = None
+  done = set()
+
+  def _cleanup_tasks():
+    for t in set(pending_tasks) | set(done):
+      if not t.done():
+        t.cancel()
+      elif not t.cancelled():
+        t.exception()
+
+  while work_queue or pending_tasks:
+    # Dispatch available work onto idle worker contexts.
+    while work_queue and available_contexts:
+      ctx = available_contexts.pop()
+      subround_idx, subround_arg = work_queue.popleft()
+      task = task_fn(subround_arg, ctx)
+      pending_tasks[task] = (ctx, subround_idx, subround_arg)
+
+    if not pending_tasks:
+      if work_queue:
+        raise RuntimeError(
+            "All execution contexts failed: no available worker contexts"
+            f" remaining to execute subrounds. Last error: {last_exception}"
+        )
+      break
+
+    # Wait for the first subround task(s) to complete.
+    done, _ = await asyncio.wait(
+        pending_tasks.keys(), return_when=asyncio.FIRST_COMPLETED
+    )
+
+    for done_task in done:
+      ctx, subround_idx, subround_arg = pending_tasks.pop(done_task)
+      try:
+        partial_result = done_task.result()
+        last_ctx = ctx
+        available_contexts.add(ctx)
+        context_handling_counts[ctx] += 1
+        accumulated_result = await postprocessing(
+            accumulated_result, partial_result, ctx
+        )
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        last_exception = e
+        # Re-queue subround arg for retry on any exception if retry budget allows.
+        subround_retries[subround_idx] += 1
+        if subround_retries[subround_idx] > max_retries_per_subround:
+          _cleanup_tasks()
+          raise RuntimeError(
+              f"Subround {subround_idx} failed after"
+              f" {max_retries_per_subround} retries: {e}"
+          )
+        work_queue.append((subround_idx, subround_arg))
+
+  logging.info(
+      "Resilient subrounds completed. Context handling counts: %s",
+      [context_handling_counts[ctx] for ctx in execution_contexts],
+  )
+  return accumulated_result, last_ctx

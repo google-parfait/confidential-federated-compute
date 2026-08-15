@@ -1,0 +1,104 @@
+# Makes the pool runner in MergeableCompExecutionContext pluggable.
+# By default, MergeableCompExecutionContext uses _run_in_async_context_pool to
+# dispatch subrounds across async contexts. This patch adds a pool_runner
+# parameter so callers can inject a custom runner (e.g., run_resilient_subrounds)
+# that provides worker failover and dynamic re-queuing on failure.
+diff --git tensorflow_federated/python/core/impl/execution_contexts/mergeable_comp_execution_context.py tensorflow_federated/python/core/impl/execution_contexts/mergeable_comp_execution_context.py
+index 1a84360..ee70cdd 100644
+--- tensorflow_federated/python/core/impl/execution_contexts/mergeable_comp_execution_context.py
++++ tensorflow_federated/python/core/impl/execution_contexts/mergeable_comp_execution_context.py
+@@ -538,6 +545,7 @@ async def _invoke_merge_in_async_pool(
+     comp: MergeableCompForm,
+     arg_list: Sequence[object],
+     execution_contexts: Sequence[federated_language.framework.AsyncContext],
++    pool_runner,
+ ):
+   """Invokes up to merge and merge in a pool of async contexts."""
+ 
+@@ -555,7 +563,7 @@ async def _invoke_merge_in_async_pool(
+     else:
+       return await _merge_results(comp, result, partial_result, context)
+ 
+-  return await _run_in_async_context_pool(
++  return await pool_runner(
+       task_fn, arg_list, execution_contexts, initial_result, postprocessing
+   )
+ 
+@@ -565,12 +573,13 @@ async def _invoke_after_merge_in_async_pool(
+     merge_result: object,
+     arg_list: Sequence[object],
+     execution_contexts: Sequence[federated_language.framework.AsyncContext],
++    pool_runner,
+ ) -> list[object]:
+   """Invokes after_merge in a pool of async contexts, returning result."""
+ 
+   def task_fn(x, context):
+     return asyncio.create_task(
+-        _compute_after_merged(comp, x, merge_result, context)
++      _compute_after_merged(comp, x, merge_result, context)
+     )
+ 
+   initial_result = ()
+@@ -580,7 +589,7 @@ async def _invoke_after_merge_in_async_pool(
+     # We simply concatenate all the results in a new tuple for repackaging.
+     return (*result, partial_result)
+ 
+-  after_merge_results, _ = await _run_in_async_context_pool(
++  after_merge_results, _ = await pool_runner(
+       task_fn, arg_list, execution_contexts, initial_result, postprocessing
+   )
+   return list(after_merge_results)
+@@ -590,6 +602,7 @@ async def _invoke_mergeable_comp_form(
+     comp: MergeableCompForm,
+     arg: Optional[MergeableCompExecutionContextValue],
+     execution_contexts: Sequence[federated_language.framework.AsyncContext],
++    pool_runner,
+ ):
+   """Invokes `comp` on `arg`, repackaging the results to a single value."""
+ 
+@@ -599,7 +612,7 @@ async def _invoke_mergeable_comp_form(
+     arg_list = [None for _ in range(len(execution_contexts))]
+ 
+   merge_result, merge_context = await _invoke_merge_in_async_pool(
+-      comp, arg_list, execution_contexts
++      comp, arg_list, execution_contexts, pool_runner=pool_runner
+   )
+ 
+   def _predicate(type_spec: federated_language.Type) -> bool:
+@@ -622,7 +635,7 @@ async def _invoke_mergeable_comp_form(
+     return result
+ 
+   after_merge_results = await _invoke_after_merge_in_async_pool(
+-      comp, merge_result, arg_list, execution_contexts
++      comp, merge_result, arg_list, execution_contexts, pool_runner=pool_runner
+   )
+ 
+   repackaged_values = _repackage_partitioned_values(
+@@ -651,6 +664,7 @@ class MergeableCompExecutionContext(
+       transform_args: Optional[Callable[[object], object]] = None,
+       transform_result: Optional[Callable[[object], object]] = None,
+       num_subrounds: Optional[int] = None,
++      pool_runner=_run_in_async_context_pool,
+   ):
+     """Initializes a MergeableCompExecutionContext.
+ 
+@@ -687,6 +701,7 @@ class MergeableCompExecutionContext(
+       self._compiler = cache_decorator(compiler_fn)
+     else:
+       self._compiler = None
++    self._pool_runner = pool_runner
+ 
+   def invoke(
+       self,
+@@ -722,7 +737,10 @@ class MergeableCompExecutionContext(
+     result = federated_language.framework.type_to_py_container(
+         self._async_runner.run_coro_and_return_result(
+             _invoke_mergeable_comp_form(
+-                comp, arg, self._async_execution_contexts
++                comp,
++                arg,
++                self._async_execution_contexts,
++                pool_runner=self._pool_runner,
+             )
+         ),
+         comp.after_merge.type_signature.result,  # pytype: disable=attribute-error

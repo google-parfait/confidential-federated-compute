@@ -31,7 +31,21 @@ namespace confidential_federated_compute::program_executor_tee {
 // Increase gRPC message size limit to 2GB
 inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 
-// Stateful helper class for executing TFF computations.
+// Stateful helper class for executing TFF computations over gRPC.
+//
+// Supports three primary execution modes:
+// 1. Distributing unpartitioned federated computations to multiple workers
+//    via a C++ composing executor stack (e.g., ComposingExecutor or
+//    ElasticComposingExecutor) when worker_bns is configured and
+//    use_mergeable_execution_context is false.
+// 2. Executing work on a single remote worker after work distribution has
+//    already been handled upstream by MergeableCompExecutionContext (when
+//    use_mergeable_execution_context is true and incoming requests specify a
+//    single target worker_bns).
+// 3. Executing work on a local server stack when no remote workers are
+//    configured (worker_bns is empty) or when the request's worker_bns is
+//    empty (e.g., merge and after_merge computations under
+//    MergeableCompExecutionContext).
 class ComputationRunner : public fcp::confidentialcompute::outgoing::
                               ComputationDelegation::Service {
  public:
@@ -41,14 +55,22 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
           leaf_executor_factory,
       std::vector<std::string> worker_bns,
       std::string serialized_reference_values,
-      std::string outgoing_server_address, bool use_elastic_composing_executor);
+      std::string outgoing_server_address, bool use_elastic_composing_executor,
+      bool use_mergeable_execution_context);
 
   // Executes the TFF computation represented in the request message using a C++
   // execution stack. Returns a tensorflow_federated::v0::Value in the response
-  // message. If worker_bns_ is empty, the computation will be executed in a
-  // non-distributed manner, else parts of the computation will be distributed
-  // to the workers. Only TF is supported for now.
-  // TODO: Add support for XLA execution.
+  // message.
+  //
+  // Work is dispatched according to the configuration and request:
+  // - If request->worker_bns() is specified, delegates execution to that
+  //   specific worker via a remote executor (used when worker distribution was
+  //   already performed by MergeableCompExecutionContext).
+  // - If request->worker_bns() is empty:
+  //   - When worker_bns_ is empty or use_mergeable_execution_context is true,
+  //     executes on the local server stack.
+  //   - Otherwise, distributes the computation across all workers in
+  //     worker_bns_ using ComposingExecutor or ElasticComposingExecutor.
   grpc::Status Execute(
       ::grpc::ServerContext* context,
       const ::fcp::confidentialcompute::outgoing::ComputationRequest* request,
@@ -71,6 +93,8 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
   std::vector<std::string> worker_bns_;
   // Whether to use the ElasticComposingExecutor or ComposingExecutor.
   bool use_elastic_composing_executor_;
+  // Whether to use the MergeableCompExecutionContext.
+  bool use_mergeable_execution_context_;
   // ComputationDelegation service stub for communication with workers. This is
   // only initialized if worker_bns_ is non-empty.
   std::unique_ptr<

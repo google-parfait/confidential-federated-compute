@@ -137,10 +137,12 @@ ComputationRunner::ComputationRunner(
         leaf_executor_factory,
     std::vector<std::string> worker_bns,
     std::string serialized_reference_values,
-    std::string outgoing_server_address, bool use_elastic_composing_executor)
+    std::string outgoing_server_address, bool use_elastic_composing_executor,
+    bool use_mergeable_execution_context)
     : leaf_executor_factory_(leaf_executor_factory),
       worker_bns_(worker_bns),
-      use_elastic_composing_executor_(use_elastic_composing_executor) {
+      use_elastic_composing_executor_(use_elastic_composing_executor),
+      use_mergeable_execution_context_(use_mergeable_execution_context) {
   if (!worker_bns_.empty()) {
     grpc::ChannelArguments args;
     args.SetMaxSendMessageSize(kMaxGrpcMessageSize);
@@ -247,11 +249,48 @@ grpc::Status ComputationRunner::Execute(
   };
 
   // Create executor stack.
-  absl::StatusOr<std::shared_ptr<Executor>> executor =
-      worker_bns_.empty()
-          ? CreateExecutor(leaf_executor_fn, session_request.num_clients())
-          : CreateDistributedExecutor(leaf_executor_fn,
-                                      session_request.num_clients());
+  absl::StatusOr<std::shared_ptr<Executor>> executor;
+  if (use_mergeable_execution_context_) {
+    if (!request->worker_bns().empty()) {
+      // This will only be set if the MergeableCompExecutionContext has already
+      // predistributed work.
+      int worker_idx = -1;
+      for (size_t i = 0; i < worker_bns_.size(); ++i) {
+        if (worker_bns_[i] == request->worker_bns()) {
+          worker_idx = static_cast<int>(i);
+          break;
+        }
+      }
+      if (worker_idx == -1) {
+        return grpc::Status(
+            grpc::StatusCode::INVALID_ARGUMENT,
+            absl::StrCat("Worker BNS not found: ", request->worker_bns()));
+      }
+      CardinalityMap cardinality_map;
+      cardinality_map[tensorflow_federated::kClientsUri] =
+          session_request.num_clients();
+      executor =
+          CreateRemoteExecutor(std::make_unique<NoiseExecutorStub>(
+                                   noise_client_sessions_[worker_idx].get()),
+                               cardinality_map);
+    } else {
+      // Execution on the local server stack (e.g. for merge, after_merge, or
+      // single-node).
+      executor =
+          CreateExecutor(leaf_executor_fn, session_request.num_clients());
+    }
+  } else {
+    if (worker_bns_.empty()) {
+      // Single-node execution on the local server stack.
+      executor =
+          CreateExecutor(leaf_executor_fn, session_request.num_clients());
+    } else {
+      // Distributed executor (either ElasticComposingExecutor or
+      // ComposingExecutor).
+      executor = CreateDistributedExecutor(leaf_executor_fn,
+                                           session_request.num_clients());
+    }
+  }
   if (!executor.status().ok()) {
     return ToGrpcStatus(executor.status());
   }

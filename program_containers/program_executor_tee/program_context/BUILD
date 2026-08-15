@@ -20,6 +20,8 @@ py_library(
     name = "execution_context_helper",
     srcs = ["execution_context_helper.py"],
     deps = [
+        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
         "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
@@ -34,6 +36,7 @@ py_test(
     deps = [
         ":execution_context_helper",
         "@absl_py//absl/testing:absltest",
+        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
         "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
@@ -49,9 +52,13 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":execution_context_helper",
+        "@absl_py//absl/logging",
         "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
         "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//googleapis_common_protos:pkg",
         "@pypi//portpicker:pkg",
     ],
 )
@@ -68,6 +75,7 @@ py_test(
         "@federated_language_jax//federated_language_jax",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
+        "@pypi//numpy:pkg",
         "@pypi//parameterized",
         "@pypi//portpicker",
     ],

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import unittest
 
 from absl.testing import absltest
@@ -25,6 +26,7 @@ import portpicker
 from program_executor_tee.program_context import execution_context
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
+from tensorflow_federated.python.core.impl.execution_contexts import mergeable_comp_execution_context
 
 XLA_COMPUTATION_RUNNER_BINARY_PATH = (
     "program_executor_tee/program_context/cc/computation_runner_binary_xla"
@@ -72,14 +74,111 @@ def build_federated_sum_comp() -> federated_language.Computation:
   return federated_sum
 
 
+def build_example_jax_mergeable_comp_form(
+    comp: federated_language.framework.ConcreteComputation,
+) -> mergeable_comp_execution_context.MergeableCompForm:
+  """Builds an example MergeableCompForm for JAX federated computations.
+
+  Constructs the `up_to_merge`, `merge`, and `after_merge` computations by hand
+  for testing JAX computations under `MergeableCompExecutionContext` with
+  resilient subround execution.
+  This is constructed manually because the current compiler pipeline for
+  transforming arbitrary federated computations into `MergeableCompForm`
+  currently depends on TensorFlow transformations that cannot be loaded in a
+  pure JAX environment.
+
+  For a computation taking a 2-tuple parameter `(client_data, server_state)`:
+  - `up_to_merge`: Evaluates the computation on a worker's client data shard and
+    extracts the partial aggregate (first element of the result).
+  - `merge`: Combines (adds) partial aggregates accumulated across workers.
+  - `after_merge`: Bundles the final merged aggregate with the original server
+    state to produce the final computation result.
+  """
+  param_type = comp.type_signature.parameter
+  if (
+      isinstance(param_type, federated_language.StructType)
+      and len(param_type) == 2
+  ):
+
+    @jax_computation.jax_computation(np.int32, np.int32)
+    def add(a, b):
+      return a + b
+
+    @federated_language.federated_computation(param_type)
+    def up_to_merge(arg):
+      result = comp(arg[0], arg[1])
+      return result[0]
+
+    @federated_language.federated_computation([np.int32, np.int32])
+    def merge(accums):
+      return add(accums[0], accums[1])
+
+    @federated_language.federated_computation(
+        param_type,
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+    )
+    def after_merge(arg, merged_accum):
+      return merged_accum, arg[1]
+
+    return mergeable_comp_execution_context.MergeableCompForm(
+        up_to_merge=up_to_merge,
+        merge=merge,
+        after_merge=after_merge,
+    )
+  raise ValueError(f"Unsupported computation for JAX mergeable form: {comp}")
+
+
 @parameterized_class([
-    {"num_workers": 0, "use_elastic_composing_executor": False},
-    {"num_workers": 2, "use_elastic_composing_executor": False},
-    {"num_workers": 2, "use_elastic_composing_executor": True},
-    {"num_workers": 3, "use_elastic_composing_executor": False},
-    {"num_workers": 3, "use_elastic_composing_executor": True},
-    {"num_workers": 4, "use_elastic_composing_executor": False},
-    {"num_workers": 4, "use_elastic_composing_executor": True},
+    {
+        "num_workers": 0,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 2,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 2,
+        "use_elastic_composing_executor": True,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 2,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": True,
+    },
+    {
+        "num_workers": 3,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 3,
+        "use_elastic_composing_executor": True,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 3,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": True,
+    },
+    {
+        "num_workers": 4,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 4,
+        "use_elastic_composing_executor": True,
+        "use_mergeable_execution_context": False,
+    },
+    {
+        "num_workers": 4,
+        "use_elastic_composing_executor": False,
+        "use_mergeable_execution_context": True,
+    },
 ])
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
@@ -106,12 +205,15 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.context = execution_context.TrustedContext(
         compile_to_call_dominant,
+        build_example_jax_mergeable_comp_form
+        if getattr(self, "use_mergeable_execution_context", False)
+        else None,
         XLA_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
         use_elastic_composing_executor=getattr(
-            self, "use_elastic_composing_executor"
+            self, "use_elastic_composing_executor", False
         ),
     )
 
@@ -119,6 +221,15 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.server.stop()
     if self.context:
       self.context.close()
+
+  def _skip_unless_resilient(self):
+    is_resilient = getattr(
+        self, "use_elastic_composing_executor", False
+    ) or getattr(self, "use_mergeable_execution_context", False)
+    if self.num_workers < 2 or not is_resilient:
+      self.skipTest(
+          "Requires >= 2 workers with elastic or mergeable execution context"
+      )
 
   async def test_execution_context_no_arg(self):
     with federated_language.framework.get_context_stack().install(self.context):
@@ -191,10 +302,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(result, 11)
 
   async def test_execution_context_worker_failover(self):
-    if self.num_workers < 2 or not getattr(
-        self, "use_elastic_composing_executor", False
-    ):
-      return
+    self._skip_unless_resilient()
     # Inject worker 1 failure mid-computation.
     self.computation_delegation_service.set_worker_failing("bns_address_1")
     with federated_language.framework.get_context_stack().install(self.context):
@@ -217,10 +325,7 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       self.assertEqual(result_2, 10)
 
   async def test_execution_context_all_workers_failing(self):
-    if self.num_workers < 2 or not getattr(
-        self, "use_elastic_composing_executor", False
-    ):
-      return
+    self._skip_unless_resilient()
     # Mark all workers failing.
     for bns in self.worker_bns:
       self.computation_delegation_service.set_worker_failing(bns)
@@ -248,33 +353,39 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       client_data_type = federated_language.FederatedType(
           value_type, federated_language.CLIENTS
       )
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
 
       @jax_computation.jax_computation(np.int32)
       def add_one(x):
         return x + 1
 
-      @federated_language.federated_computation(client_data_type)
-      def map_comp(client_data):
-        return federated_language.federated_map(add_one, client_data)
+      @federated_language.federated_computation(
+          [client_data_type, server_state_type]
+      )
+      def map_and_sum_comp(client_data, server_state):
+        mapped = federated_language.federated_map(add_one, client_data)
+        return build_federated_sum_comp()(mapped), server_state
 
-      # 1 client
-      result_1 = map_comp([42])
-      self.assertEqual(list(result_1), [43])
+      # 1 client: 42 -> 43, sum = 43
+      result_1, server_1 = map_and_sum_comp([42], 10)
+      self.assertEqual(result_1, 43)
+      self.assertEqual(server_1, 10)
 
-      # 5 clients
-      result_5 = map_comp([1, 2, 3, 4, 5])
-      self.assertEqual(list(result_5), [2, 3, 4, 5, 6])
+      # 5 clients: 1..5 -> 2..6, sum = 20
+      result_5, server_5 = map_and_sum_comp([1, 2, 3, 4, 5], 10)
+      self.assertEqual(result_5, 20)
+      self.assertEqual(server_5, 10)
 
-      # 100 clients
+      # 100 clients: 1..100 -> 2..101, sum = 5150
       inputs_100 = list(range(1, 101))
-      result_100 = map_comp(inputs_100)
-      self.assertEqual(list(result_100), [x + 1 for x in inputs_100])
+      result_100, server_100 = map_and_sum_comp(inputs_100, 10)
+      self.assertEqual(result_100, 5150)
+      self.assertEqual(server_100, 10)
 
   async def test_execution_context_worker_failover_during_map(self):
-    if self.num_workers < 2 or not getattr(
-        self, "use_elastic_composing_executor", False
-    ):
-      return
+    self._skip_unless_resilient()
     # Inject worker 1 failure.
     self.computation_delegation_service.set_worker_failing("bns_address_1")
     with federated_language.framework.get_context_stack().install(self.context):
@@ -282,24 +393,29 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
       client_data_type = federated_language.FederatedType(
           value_type, federated_language.CLIENTS
       )
+      server_state_type = federated_language.FederatedType(
+          np.int32, federated_language.SERVER
+      )
 
       @jax_computation.jax_computation(np.int32)
       def add_one(x):
         return x + 1
 
-      @federated_language.federated_computation(client_data_type)
-      def map_comp(client_data):
-        return federated_language.federated_map(add_one, client_data)
+      @federated_language.federated_computation(
+          [client_data_type, server_state_type]
+      )
+      def map_and_sum_comp(client_data, server_state):
+        mapped = federated_language.federated_map(add_one, client_data)
+        return build_federated_sum_comp()(mapped), server_state
 
-      # Even with worker 1 failing, the elastic executor reassigns work.
-      result = map_comp([10, 20, 30, 40])
-      self.assertEqual(list(result), [11, 21, 31, 41])
+      # Even with worker 1 failing, surviving workers handle all work.
+      # [10, 20, 30, 40] -> [11, 21, 31, 41], sum = 104
+      result_1, result_2 = map_and_sum_comp([10, 20, 30, 40], 10)
+      self.assertEqual(result_1, 104)
+      self.assertEqual(result_2, 10)
 
   async def test_execution_context_worker_recovery(self):
-    if self.num_workers < 2 or not getattr(
-        self, "use_elastic_composing_executor", False
-    ):
-      return
+    self._skip_unless_resilient()
     with federated_language.framework.get_context_stack().install(self.context):
       client_data_type = federated_language.FederatedType(
           np.int32, federated_language.CLIENTS

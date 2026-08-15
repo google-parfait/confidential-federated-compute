@@ -96,6 +96,9 @@ class NoiseExecutorStubTest : public Test {
   }
 
   ~NoiseExecutorStubTest() override {
+    noise_executor_stub_.reset();
+    noise_client_session_ = absl::CancelledError("Tearing down test session");
+    computation_delegation_stub_.reset();
     fake_computation_delegation_server_->Shutdown();
   }
 
