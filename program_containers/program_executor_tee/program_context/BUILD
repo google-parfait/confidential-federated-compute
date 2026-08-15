@@ -17,18 +17,41 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 package(features = ["layering_check"])
 
 py_library(
-    name = "execution_context",
-    srcs = ["execution_context.py"],
-    visibility = ["//visibility:public"],
+    name = "execution_context_helper",
+    srcs = ["execution_context_helper.py"],
     deps = [
-        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
-        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
         "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_py_pb2",
         "@pypi//googleapis_common_protos:pkg",
+    ],
+)
+
+py_test(
+    name = "execution_context_helper_test",
+    srcs = ["execution_context_helper_test.py"],
+    deps = [
+        ":execution_context_helper",
+        "@absl_py//absl/testing:absltest",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//googleapis_common_protos:pkg",
+        "@pypi//numpy:pkg",
+    ],
+)
+
+py_library(
+    name = "execution_context",
+    srcs = ["execution_context.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":execution_context_helper",
+        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
+        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
+        "@federated_language//federated_language",
         "@pypi//portpicker:pkg",
     ],
 )

@@ -19,16 +19,12 @@ import subprocess
 import sys
 from typing import Optional
 
-from fcp.protos.confidentialcompute import computation_delegation_pb2
 from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
-from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
-from google.protobuf import any_pb2
 from google.protobuf.message import DecodeError
 import grpc
 import portpicker
-import tensorflow_federated as tff
-from tensorflow_federated.proto.v0 import executor_pb2
+from program_executor_tee.program_context import execution_context_helper
 
 # Increase gRPC message size limit to 2GB
 _MAX_GPRC_MESSAGE_SIZE = 2 * 1000 * 1000 * 1000
@@ -145,49 +141,17 @@ class TrustedContext(federated_language.program.FederatedContext):
     if self._compiler_fn is not None:
       comp = self._compiler_fn(comp)
 
-    session_config = tff_config_pb2.TffSessionConfig()
-    serialized_comp, _ = tff.framework.serialize_value(comp)
-    session_config.function.CopyFrom(serialized_comp)
-
-    serialized_arg = None
-    clients_cardinality = 0
-    if arg is not None:
-      cardinalities = federated_language.framework.infer_cardinalities(
-          arg, comp.type_signature.parameter
-      )
-      clients_cardinality = cardinalities.get(
-          federated_language.CLIENTS, clients_cardinality
-      )
-      serialized_arg, _ = tff.framework.serialize_value(
-          arg, comp.type_signature.parameter
-      )
-      session_config.initial_arg.CopyFrom(serialized_arg)
-    session_config.num_clients = clients_cardinality
-
-    # Send execution request for comp(arg) to the computation runner, then
-    # deserialize and return the result.
+    delegation_request = execution_context_helper.create_computation_request(
+        comp, arg
+    )
     try:
-      any_proto = any_pb2.Any()
-      any_proto.Pack(session_config)
-      delegation_request = computation_delegation_pb2.ComputationRequest(
-          computation=any_proto
-      )
       delegation_response = self._computation_runner_stub.Execute(
           delegation_request
       )
-      result = executor_pb2.Value()
-      delegation_response.result.Unpack(result)
-      deserialized_result, _ = tff.framework.deserialize_value(result)
-      if isinstance(
-          deserialized_result, federated_language.common_libs.structure.Struct
-      ):
-        deserialized_result = (
-            federated_language.common_libs.structure.to_odict_or_tuple(
-                deserialized_result
-            )
-        )
-      return federated_language.framework.to_structure_with_type(
-          deserialized_result, comp_return_type
+      return (
+          execution_context_helper.unpack_and_deserialize_computation_response(
+              delegation_response, comp_return_type
+          )
       )
     except grpc.RpcError as e:
       raise RuntimeError(
