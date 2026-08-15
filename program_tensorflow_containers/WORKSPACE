@@ -95,16 +95,16 @@ http_archive(
 
 http_archive(
     name = "confidential_federated_compute",
-    integrity = "sha256-Mh0PHniw8EgOW/05ExK2JaVY6La4ZfWADrQpqvwwW3M=",
-    strip_prefix = "confidential-federated-compute-440a48bad4cd04d8021047071b1328c11368f3ff",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/440a48bad4cd04d8021047071b1328c11368f3ff.tar.gz",
+    integrity = "sha256-4tChcdpdEDZOgWj0/N97wbbz4K+zw1aNJ5bK5t8PJWI=",
+    strip_prefix = "confidential-federated-compute-e1c4307bcb5baad3568742a33f3c77b0e6beb279",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/e1c4307bcb5baad3568742a33f3c77b0e6beb279.tar.gz",
 )
 
 http_archive(
     name = "confidential_federated_compute_program",
-    integrity = "sha256-Mh0PHniw8EgOW/05ExK2JaVY6La4ZfWADrQpqvwwW3M=",
-    strip_prefix = "confidential-federated-compute-440a48bad4cd04d8021047071b1328c11368f3ff/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/440a48bad4cd04d8021047071b1328c11368f3ff.tar.gz",
+    integrity = "sha256-4tChcdpdEDZOgWj0/N97wbbz4K+zw1aNJ5bK5t8PJWI=",
+    strip_prefix = "confidential-federated-compute-e1c4307bcb5baad3568742a33f3c77b0e6beb279/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/e1c4307bcb5baad3568742a33f3c77b0e6beb279.tar.gz",
 )
 
 http_archive(
@@ -135,15 +135,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-7abEZe3UmhqygYL+yKB5U2/Q24yCHoVcbiDACXQEw+c=",
+    integrity = "sha256-jMrmTFRcRysQZ6QDrwNdwGhxHLYyS/2QK3D+SBboSkU=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-35de67b19a3e9bc5483f0a73c7677d25a50fdd62",
-    url = "https://github.com/google/federated-compute/archive/35de67b19a3e9bc5483f0a73c7677d25a50fdd62.tar.gz",
+    strip_prefix = "federated-compute-9a644dfbeef1225540577a85e1c2dfd8f15c7ff9",
+    url = "https://github.com/google/federated-compute/archive/9a644dfbeef1225540577a85e1c2dfd8f15c7ff9.tar.gz",
 )
 
 http_archive(
@@ -231,7 +231,6 @@ http_archive(
 
 http_archive(
     name = "org_tensorflow_federated",
-    integrity = "sha256-lX/9lYdbTnzEegQByexWwyIocYLSk7zQcuNsE2LXJUo=",
     patch_cmds = [
         # Fix the Eigen dependency label in all BUILD files.
         r"""find . -name BUILD -exec sed -i 's|"@eigen"|"@eigen_archive//:eigen3"|g' {} +""",
@@ -239,10 +238,12 @@ http_archive(
     patches = [
         "//third_party/org_tensorflow_federated:tff_tf_combined_fixes.patch",
         "@confidential_federated_compute_program//third_party/org_tensorflow_federated:executor.patch",
+        "@confidential_federated_compute_program//third_party/org_tensorflow_federated:mergeable_comp_overrides.patch",
     ],
     repo_mapping = {"@pypi": "@pypi_compat"},
-    strip_prefix = "tensorflow-federated-45c4d8e7e3e6b1654af5ca99fb54856759556c8e",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/45c4d8e7e3e6b1654af5ca99fb54856759556c8e.tar.gz",
+    sha256 = "f15dc44c219b9c319fa80096b951c37156a738b6545434623a6c0c8d8699b6b4",
+    strip_prefix = "tensorflow-federated-c0f0d33fac4c6215d60203ccd5a3c318e631b1b4",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/c0f0d33fac4c6215d60203ccd5a3c318e631b1b4.tar.gz",
 )
 
 http_archive(

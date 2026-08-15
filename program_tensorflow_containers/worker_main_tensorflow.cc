@@ -80,9 +80,12 @@ void RunServer() {
       << "Failed to parse ProgramWorkerTeeInitializeConfig from application "
          "config";
 
-  auto service = ProgramWorkerTee::Create(create_session_config, [&config]() {
-    return CreateExecutor(config.max_concurrent_computation_calls());
-  });
+  auto service = ProgramWorkerTee::Create(
+      create_session_config,
+      [&config]()
+          -> absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> {
+        return CreateExecutor(config.max_concurrent_computation_calls());
+      });
   CHECK_OK(service) << "Failed to create ProgramWorkerTee service: "
                     << service.status();
 

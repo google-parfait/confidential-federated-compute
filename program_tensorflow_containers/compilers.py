@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import federated_language
-import tensorflow_federated as tff
 import tensorflow as tf
-
+import tensorflow_federated as tff
 
 # Turn on ahead-of-time graph optimization.
 grappler_config_pb = tf.compat.v1.ConfigProto()
@@ -37,7 +36,7 @@ def compile_tf_to_call_dominant(
   )
   cdf_comp_bb = tff.framework.to_call_dominant(comp_bb)
   optimized_comp_bb, _ = tff.tensorflow.optimize_tensorflow_graphs(
-    cdf_comp_bb, grappler_config_pb
+      cdf_comp_bb, grappler_config_pb
   )
   # Currently this compiler step will cause errors in some federated programs
   # during ReduceDataset operations that complain about missing placeholders. So
@@ -45,7 +44,7 @@ def compile_tf_to_call_dominant(
   # disabled_grappler_bb, _ = tff.tensorflow.transform_tf_call_ops_to_disable_grappler(
   #   optimized_comp_bb
   # )
-  final_comp_bb, _ =  tff.tensorflow.transform_tf_add_ids(optimized_comp_bb)
+  final_comp_bb, _ = tff.tensorflow.transform_tf_add_ids(optimized_comp_bb)
   return federated_language.framework.ConcreteComputation.from_building_block(
       final_comp_bb
   )

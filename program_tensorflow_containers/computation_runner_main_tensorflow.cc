@@ -39,6 +39,8 @@ ABSL_FLAG(int32_t, max_concurrent_computation_calls, -1,
 ABSL_FLAG(
     bool, use_elastic_composing_executor, false,
     "Whether to use ElasticComposingExecutor instead of ComposingExecutor.");
+ABSL_FLAG(bool, use_mergeable_execution_context, false,
+          "Whether to use MergeableCompExecutionContext.");
 
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
@@ -77,7 +79,8 @@ int main(int argc, char* argv[]) {
       CreateExecutor, absl::GetFlag(FLAGS_worker_bns),
       reference_values.SerializeAsString(),
       absl::GetFlag(FLAGS_outgoing_server_address),
-      absl::GetFlag(FLAGS_use_elastic_composing_executor));
+      absl::GetFlag(FLAGS_use_elastic_composing_executor),
+      absl::GetFlag(FLAGS_use_mergeable_execution_context));
 
   builder.RegisterService(computation_runner_service.get());
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());

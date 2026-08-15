@@ -33,7 +33,8 @@ TensorflowProgramExecutorTeeConfidentialTransform::GetProgramInitializeFn() {
           pybind11::bytes(absl::Base64Escape(
               initialize_config.reference_values().SerializeAsString())),
           initialize_config.max_concurrent_computation_calls(),
-          initialize_config.use_elastic_composing_executor());
+          initialize_config.use_elastic_composing_executor(),
+          initialize_config.use_mergeable_execution_context());
 }
 
 }  // namespace confidential_federated_compute::tensorflow::program_executor_tee
