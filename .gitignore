@@ -1,5 +1,6 @@
 /.sccache-cache/
-/bazel-*
+# Bazel's output directories. (Matching across sub-workspaces, not just the top level.)
+bazel-*
 # Generated project info to support Bazel-only projects in rust-analyzer.
 rust-project.json
 /.vscode/settings.json
