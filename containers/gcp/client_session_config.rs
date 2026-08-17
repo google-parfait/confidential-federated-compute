@@ -30,9 +30,9 @@ use oak_session::{
     verifier::{BoundAssertionVerificationError, BoundAssertionVerifier, VerifiedBoundAssertion},
 };
 // Import crypto crates for P-256 ECDSA verification.
-use ecdsa::{signature::Verifier as _, Signature}; /* Import the Verifier trait extension
-                                                   * methods. */
-use p256::{ecdsa::VerifyingKey, EncodedPoint};
+use ecdsa::{Signature, signature::Verifier as _}; // Import the Verifier trait extension
+// methods.
+use p256::{EncodedPoint, ecdsa::VerifyingKey};
 use std::{ffi::c_void, sync::Arc};
 
 // --- FFI Type Definitions ---
@@ -180,15 +180,13 @@ impl BoundAssertionVerifier for FfiVerifier {
 
         // Call the C++ function via the FFI pointer.
         // This is unsafe because we are calling external C code.
-        let success = unsafe {
-            (self.verify_jwt_cb)(
-                self.verifier_context.0, // Pass the raw C++ object pointer.
-                assertion.content.as_ptr(),
-                assertion.content.len(),
-                public_key_buffer.as_mut_ptr(),
-                &mut public_key_len, // Pass mutable reference to length.
-            )
-        };
+        let success = (self.verify_jwt_cb)(
+            self.verifier_context.0, // Pass the raw C++ object pointer.
+            assertion.content.as_ptr(),
+            assertion.content.len(),
+            public_key_buffer.as_mut_ptr(),
+            &mut public_key_len, // Pass mutable reference to length.
+        );
 
         if success {
             eprintln!("---> Rust: C++ verify_jwt_f returned success.");
@@ -220,7 +218,9 @@ impl BoundAssertionVerifier for FfiVerifier {
             }
 
             // Otherwise, it was a general verification or policy failure reported by C++.
-            eprintln!("---> Rust: C++ verify_jwt_f returned failure (likely policy violation or invalid JWT).");
+            eprintln!(
+                "---> Rust: C++ verify_jwt_f returned failure (likely policy violation or invalid JWT)."
+            );
             Err(BoundAssertionVerificationError::GenericFailure {
                 error_msg: "C++ JWT verification failed (check C++ logs for details)".to_string(),
             })
@@ -239,7 +239,7 @@ impl BoundAssertionVerifier for FfiVerifier {
 /// (`verifier_context`) passed from C++. The caller must ensure that
 /// `verifier_context` points to a valid object with a lifetime that exceeds the
 /// usage of the returned `SessionConfig`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn create_client_session_config(
     verifier_context: *mut c_void,    // Opaque C++ verifier context.
     verify_jwt_cb: VerifyJwtCallback, // C++ JWT verification callback.

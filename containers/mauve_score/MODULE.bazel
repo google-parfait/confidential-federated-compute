@@ -50,9 +50,9 @@ bazel_dep(name = "toolchains_llvm", version = "1.4.0")
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
-    integrity = "sha256-ayZil41/X2ieLpdpJNvuHdRyeWNqVPtoEMCrDL23YjU=",
-    strip_prefix = "oak-7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a",
-    url = "https://github.com/project-oak/oak/archive/7884afbd383fc6a2acc1bc81b7ec0684a4d17d7a.tar.gz",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")

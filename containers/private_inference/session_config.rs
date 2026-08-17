@@ -39,13 +39,13 @@ impl OakClock for SystemClock {
 /// must describe a valid  buffer. Data must not be modified during this
 /// function call. It may be modified or discarded after, as this function
 /// will make its own copy.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn update_peer_unidirectional_session_config(
     builder: *mut SessionConfigBuilder,
     tink_serialized_public_keyset_data: *const u8,
     tink_serialized_public_keyset_len: usize,
 ) -> *mut SessionConfigBuilder {
-    let builder = Box::from_raw(builder);
+    let builder = unsafe { Box::from_raw(builder) };
 
     // Safety: data and len assumed to describe a valid buffer, satisfying the
     // safety condition of std::slice::from_raw_parts.
