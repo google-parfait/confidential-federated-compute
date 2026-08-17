@@ -110,7 +110,7 @@ pub extern "C" fn generate_key_pair(
 /// `handle` must be a valid pointer previously returned
 /// by `generate_key_pair`, or null (in which case this
 /// is a no-op). After this call, the pointer is invalid.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn free_signing_key_handle(handle: *mut SigningKeyHandle) {
     if !handle.is_null() {
         unsafe {
