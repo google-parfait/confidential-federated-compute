@@ -70,8 +70,8 @@ class DoFn : public Fn {
   //
   // Returns an error status if an error occurred and the Fn should be aborted.
   // This is equivalent to calling AbortReplica in Flume. Metrics about
-  // ignorable errors can be recorded using the Counters returned by
-  // DoContext::GetCounters.
+  // ignorable errors can be recorded using
+  // DoContext::IncrementCounter or DoContext::IncrementCounterBy.
   virtual absl::Status Do(KV input, DoContext& context) = 0;
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(

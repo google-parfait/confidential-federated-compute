@@ -283,5 +283,38 @@ TEST_F(FnTest, FinalizeReturnsReleaseToken) {
   EXPECT_EQ(finalize_result->release_token(), "my_release_token");
 }
 
+TEST_F(FnTest, IncrementCounter) {
+  EXPECT_CALL(mock_context_, GetCounters())
+      .WillRepeatedly(testing::ReturnRef(mock_context_.counters_));
+
+  AssociatedMetadata metadata;
+  Fn::FnContext fn_context(mock_context_, std::move(metadata));
+
+  fn_context.IncrementCounter("counter_a");
+  fn_context.IncrementCounter("counter_a");
+  fn_context.IncrementCounter("counter_a");
+  fn_context.IncrementCounter("counter_b");
+  fn_context.IncrementCounter("counter_b");
+
+  EXPECT_EQ(mock_context_.counters_["counter_a"], 3);
+  EXPECT_EQ(mock_context_.counters_["counter_b"], 2);
+}
+
+TEST_F(FnTest, IncrementCounterByAmount) {
+  EXPECT_CALL(mock_context_, GetCounters())
+      .WillRepeatedly(testing::ReturnRef(mock_context_.counters_));
+
+  AssociatedMetadata metadata;
+  Fn::FnContext fn_context(mock_context_, std::move(metadata));
+
+  fn_context.IncrementCounterBy("my_counter_a", 10);
+  fn_context.IncrementCounterBy("my_counter_a", 20);
+  fn_context.IncrementCounterBy("my_counter_b", 5);
+  fn_context.IncrementCounterBy("my_counter_b", 10);
+
+  EXPECT_EQ(mock_context_.counters_["my_counter_a"], 30);
+  EXPECT_EQ(mock_context_.counters_["my_counter_b"], 15);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fns

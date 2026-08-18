@@ -153,10 +153,11 @@ absl::Status MauveScoreFn::Do(Any config,
     return absl::InternalError("Failed to emit MAUVE score result.");
   }
 
-  context.GetCounters()["mauve-score-computed"] = 1;
-  context.GetCounters()["mauve-real-embeddings-count"] = real_embeddings.size();
-  context.GetCounters()["mauve-synth-embeddings-count"] =
-      synthetic_data_embeddings_.size();
+  context.IncrementCounter("mauve-score-computed");
+  context.IncrementCounterBy("mauve-real-embeddings-count",
+                             real_embeddings.size());
+  context.IncrementCounterBy("mauve-synth-embeddings-count",
+                             synthetic_data_embeddings_.size());
 
   return absl::OkStatus();
 }

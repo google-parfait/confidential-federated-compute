@@ -288,12 +288,12 @@ TEST_F(ConstructUserSessionFnTest, DuplicateBlobIdIsSkipped) {
       BuildCheckpoint("user_1", {EventTimeAt(Hours(12))}, kQueryName);
 
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_dup"), IsOk());
-  // Write the same blob_id again — PObjectMapFn stashes it; dedup happens
-  // in Map() during Commit.
+  // Write the same blob_id again — BatchDoFn buffers it; dedup happens
+  // in Do() during Commit.
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_dup"), IsOk());
 
-  // Only one checkpoint should be emitted. GetCounters() is called during
-  // Map() (invoked by Commit) to increment the duplicate_blob_count.
+  // Only one checkpoint should be emitted. IncrementCounter() is called during
+  // Do() (invoked by Commit) to increment the duplicate_blob_count.
   EXPECT_CALL(context_, GetCounters())
       .WillRepeatedly(testing::ReturnRef(context_.counters_));
   Session::KV emitted_kv;
