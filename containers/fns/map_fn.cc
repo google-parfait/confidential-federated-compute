@@ -32,13 +32,14 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
   input.data = std::move(unencrypted_data);
   input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
-  FnContext fn_context(context, ExtractAssociatedMetadata(
-                                    write_request.first_request_metadata()));
-  absl::StatusOr<KV> output = Map(std::move(input), fn_context);
+  MapContext map_context(context, ExtractAssociatedMetadata(
+                                      write_request.first_request_metadata()));
+  absl::StatusOr<KV> output = Map(std::move(input), map_context);
   if (!output.ok()) {
     return ToWriteFinishedResponse(output.status());
   }
 
+  FnContext& fn_context = map_context;
   std::optional<int> key_index = GetReencryptionKeyIndex();
   if (key_index.has_value()) {
     fn_context.EmitEncrypted(*key_index, std::move(*output));

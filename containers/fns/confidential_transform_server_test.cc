@@ -92,7 +92,8 @@ absl::Status WriteInitializeRequest(
 class MockFn : public Fn {
  public:
   MOCK_METHOD((absl::Status), InitializeReplica,
-              (google::protobuf::Any config, Context& context), (override));
+              (google::protobuf::Any config, ConfigureContext& context),
+              (override));
   MOCK_METHOD((absl::Status), FinalizeReplica,
               (google::protobuf::Any config, FnContext& context), (override));
   MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>),

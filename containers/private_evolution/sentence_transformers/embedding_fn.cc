@@ -83,7 +83,7 @@ class EmbeddingFn final : public Fn {
 
   // Initialize embedding model, and initialize python runtime when needed.
   absl::Status InitializeReplica(google::protobuf::Any config,
-                                 Context& context) override;
+                                 ConfigureContext& context) override;
 
   // Finalize python runtime when needed.
   absl::Status FinalizeReplica(Any config, FnContext& context) override;
@@ -121,7 +121,8 @@ EmbeddingFn::EmbeddingFn(absl::string_view model_artifact_path,
   delegate_ = std::move(model_delegate);
 };
 
-absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
+absl::Status EmbeddingFn::InitializeReplica(Any config,
+                                            ConfigureContext& context) {
   if (!delegate_->InitializeModel(model_artifact_path_)) {
     LOG(WARNING) << "Model initialization failed.";
     return absl::InvalidArgumentError("Model initialization failed");

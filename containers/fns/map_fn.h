@@ -27,10 +27,30 @@ namespace confidential_federated_compute::fns {
 // Session base class for MapFns.
 class MapFn : public Fn {
  public:
+  // A context for the Map() method that intentionally hides all Emit methods.
+  // Map returns exactly one output value; the implementation automatically
+  // handles emission of that value.
+  //
+  // Metadata methods and GetCounters remain accessible.
+  class MapContext : public FnContext {
+   public:
+    MapContext(Context& session_context,
+               fcp::confidentialcompute::AssociatedMetadata metadata)
+        : FnContext(session_context, std::move(metadata)) {}
+
+   private:
+    // Hide all Emit methods — Map returns exactly one value,
+    // Write() handles emission.
+    using FnContext::Emit;
+    using FnContext::EmitEncrypted;
+    using FnContext::EmitReleasable;
+    using FnContext::EmitUnencrypted;
+  };
+
   // Processes an input element. The input KV.data is unencrypted. Returns a
   // KV containing the corresponding output element along with any
   // metadata.
-  virtual absl::StatusOr<KV> Map(KV input, FnContext& context) = 0;
+  virtual absl::StatusOr<KV> Map(KV input, MapContext& context) = 0;
 
   // Controls how the output KV is emitted. Override to return a
   // reencryption key index for encrypted emission. Returns std::nullopt by

@@ -151,7 +151,7 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
 
   // Parses the unencrypted data, for each metadata config compute the
   // corresponding metadata.
-  absl::StatusOr<KV> Map(KV input, FnContext& context) override {
+  absl::StatusOr<KV> Map(KV input, MapContext& context) override {
     FederatedComputeCheckpointParserFactory parser_factory;
     absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
         parser_factory.Create(absl::Cord(std::move(input.data)));

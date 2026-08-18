@@ -45,9 +45,9 @@ using ::testing::Test;
 
 class MockMapFn : public MapFn {
  public:
-  MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
-              (override));
-  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, FnContext& context),
+  MOCK_METHOD(absl::Status, InitializeReplica,
+              (Any config, ConfigureContext& context), (override));
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, MapContext& context),
               (override));
   MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, FnContext& context),
               (override));
@@ -55,7 +55,7 @@ class MockMapFn : public MapFn {
 
 class MockEncryptedMapFn : public MapFn {
  public:
-  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, FnContext& context),
+  MOCK_METHOD(absl::StatusOr<KV>, Map, (KV input, MapContext& context),
               (override));
   std::optional<int> GetReencryptionKeyIndex() const override { return 0; }
 };
@@ -99,7 +99,7 @@ TEST_F(MapFnTest, WriteCallsMapAndEmitUnencrypted) {
   EXPECT_CALL(*session_, Map(_, _))
       .WillOnce([&passed_input, &output_kv](
                     Session::KV input,
-                    Fn::FnContext&) -> absl::StatusOr<Session::KV> {
+                    MapFn::MapContext&) -> absl::StatusOr<Session::KV> {
         passed_input = std::move(input);
         Session::KV result;
         result = output_kv;
@@ -132,12 +132,13 @@ TEST_F(MapFnTest, WriteCallsMapAndEmitEncrypted) {
   output_kv.key.set_type_url("output_key");
 
   EXPECT_CALL(*session, Map(_, _))
-      .WillOnce([&output_kv](Session::KV,
-                             Fn::FnContext&) -> absl::StatusOr<Session::KV> {
-        Session::KV result;
-        result = output_kv;
-        return std::move(result);
-      });
+      .WillOnce(
+          [&output_kv](Session::KV,
+                       MapFn::MapContext&) -> absl::StatusOr<Session::KV> {
+            Session::KV result;
+            result = output_kv;
+            return std::move(result);
+          });
 
   Session::KV emitted_kv;
   EXPECT_CALL(context_, EmitEncrypted(0, _))
