@@ -49,7 +49,7 @@ class NNHistogramFn : public DoFn {
       std::shared_ptr<NearestNeighborFn> nn_fn)
       : synthetic_data_embeddings_(synthetic_data_embeddings), nn_fn_(nn_fn) {}
 
-  absl::Status Do(KV input, Context& context) override;
+  absl::Status Do(KV input, DoContext& context) override;
 
  private:
   const std::vector<Embedding>& synthetic_data_embeddings_;
@@ -72,7 +72,7 @@ class NNHistogramFnFactory : public FnFactory {
   std::shared_ptr<NearestNeighborFn> nn_fn_;
 };
 
-absl::Status NNHistogramFn::Do(KV input, Context& context) {
+absl::Status NNHistogramFn::Do(KV input, DoContext& context) {
   FederatedComputeCheckpointParserFactory parser_factory;
   ABSL_ASSIGN_OR_RETURN(
       auto parser, parser_factory.Create(absl::Cord(std::move(input.data))));

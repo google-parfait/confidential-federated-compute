@@ -69,7 +69,7 @@ class MauveScoreFn : public BatchDoFn {
       : synthetic_data_embeddings_(synthetic_data_embeddings) {}
 
   absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
-                  Context& context) override;
+                  DoContext& context) override;
 
  private:
   const std::vector<Embedding>& synthetic_data_embeddings_;
@@ -90,7 +90,7 @@ class MauveScoreFnFactory : public FnFactory {
 
 absl::Status MauveScoreFn::Do(Any config,
                               std::vector<Session::KV> accumulated_inputs,
-                              Context& context) {
+                              DoContext& context) {
   // Phase 1: Parse all accumulated checkpoint blobs into flat float vectors.
   std::vector<std::vector<float>> real_embeddings;
   for (auto& kv : accumulated_inputs) {

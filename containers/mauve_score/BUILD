@@ -106,7 +106,6 @@ cc_library(
     deps = [
         ":py_mauve_delegate",
         ":utils",
-        "//containers/fns",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -115,6 +114,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
+        "@confidential-federated-compute//containers/fns:fns",
         "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",

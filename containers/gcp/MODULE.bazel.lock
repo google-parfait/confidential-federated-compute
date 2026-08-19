@@ -449,7 +449,6 @@
     "https://bcr.bazel.build/modules/rules_robolectric/4.14.1.2/source.json": "37c10335f2361c337c5c1f34ed36d2da70534c23088062b33a8bdaab68aa9dea",
     "https://bcr.bazel.build/modules/rules_rust/0.45.1/MODULE.bazel": "a69d0db3a958fab2c6520961e1b2287afcc8b36690fd31bbc4f6f7391397150d",
     "https://bcr.bazel.build/modules/rules_rust/0.51.0/MODULE.bazel": "2b6d1617ac8503bfdcc0e4520c20539d4bba3a691100bee01afe193ceb0310f9",
-    "https://bcr.bazel.build/modules/rules_rust/0.69.0/MODULE.bazel": "4326fec48f2fef0d514de46346f7f77e200c82936dd08b91c9ef039fbdad5c10",
     "https://bcr.bazel.build/modules/rules_rust/0.70.0/MODULE.bazel": "5b1407b11c305bc2522e204e7f170faf8399e836e49b6afef9074dfe532e6c3f",
     "https://bcr.bazel.build/modules/rules_rust/0.70.0/source.json": "24ae6d23425359db1c3148aa22c389970fce9a06102b2b3a329a2800f9569de2",
     "https://bcr.bazel.build/modules/rules_rust_bindgen/0.70.0/MODULE.bazel": "3d1f5c3e7316e6dddd5c1c19569ab521c90a7373cde11649d7215535912d0d94",
@@ -470,8 +469,6 @@
     "https://bcr.bazel.build/modules/rules_swift/2.5.0/MODULE.bazel": "6d2fec72be0ad2e1fc2eab536cf9d3fb149037c6d2aa678078f3512c06a819e1",
     "https://bcr.bazel.build/modules/rules_swift/2.5.0/source.json": "bbe9667dc745b1bbc443aa4bd2db077c1afee2abb5c1a931b5fd0e0796c2cf05",
     "https://bcr.bazel.build/modules/rules_swift/3.1.2/MODULE.bazel": "72c8f5cf9d26427cee6c76c8e3853eb46ce6b0412a081b2b6db6e8ad56267400",
-    "https://bcr.bazel.build/modules/sqlite3/3.46.1/MODULE.bazel": "7749f9825ef0221a0b6e99ce8d07bbbb5bb922b587ad15438014710cf09656d0",
-    "https://bcr.bazel.build/modules/sqlite3/3.46.1/source.json": "3e745df80e9b43455d058c38c694345a99e9f63370ad5603aacc03551d242e08",
     "https://bcr.bazel.build/modules/stardoc/0.5.0/MODULE.bazel": "f9f1f46ba8d9c3362648eea571c6f9100680efc44913618811b58cc9c02cd678",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
@@ -964,39 +961,6 @@
             "rules_java++compatibility_proxy+compatibility_proxy",
             "rules_java",
             "rules_java+"
-          ]
-        ]
-      }
-    },
-    "@@confidential-federated-compute+//:extensions.bzl%cfc_dev_deps": {
-      "general": {
-        "bzlTransitiveDigest": "l5bgovPiNw0e0z4Zv1b2NoItc1Cy+Q2g8uXs56UD+Qk=",
-        "usagesDigest": "yGbd45KC7zNGFWFFd/xtjvX/xlFR17n/mX1bguss6Og=",
-        "recordedFileInputs": {},
-        "recordedDirentsInputs": {},
-        "envVariables": {},
-        "generatedRepoSpecs": {
-          "llama_cpp": {
-            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
-            "attributes": {
-              "build_file": "@@confidential-federated-compute+//third_party/llama_cpp:llama_cpp.BUILD.bzl",
-              "integrity": "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
-              "patch_args": [
-                "-p1"
-              ],
-              "patches": [
-                "@@confidential-federated-compute+//third_party/llama_cpp:add_build_info.patch"
-              ],
-              "strip_prefix": "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
-              "url": "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz"
-            }
-          }
-        },
-        "recordedRepoMappingEntries": [
-          [
-            "confidential-federated-compute+",
-            "bazel_tools",
-            "bazel_tools"
           ]
         ]
       }

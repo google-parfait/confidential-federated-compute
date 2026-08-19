@@ -114,11 +114,9 @@ oci.pull(
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
 bazel_dep(name = "confidential-federated-compute")
-archive_override(
+local_path_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-+RQXGERIpSVKVp5BxNhvcmFlFKDGi+Cuzn0Tqw13fWw=",
-    strip_prefix = "confidential-federated-compute-6c83c6cc74016951982a7d5bca81a2a71de12f9c",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/6c83c6cc74016951982a7d5bca81a2a71de12f9c.tar.gz"],
+    path = "../..",
 )
 
 archive_override(

@@ -86,7 +86,7 @@ class EmbeddingFn final : public Fn {
                                  Context& context) override;
 
   // Finalize python runtime when needed.
-  absl::Status FinalizeReplica(Any config, Context& context) override;
+  absl::Status FinalizeReplica(Any config, FnContext& context) override;
 
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
@@ -130,7 +130,7 @@ absl::Status EmbeddingFn::InitializeReplica(Any config, Context& context) {
   return absl::OkStatus();
 }
 
-absl::Status EmbeddingFn::FinalizeReplica(Any config, Context& context) {
+absl::Status EmbeddingFn::FinalizeReplica(Any config, FnContext& context) {
   LOG(INFO) << "Replica finalized.";
   return absl::OkStatus();
 }

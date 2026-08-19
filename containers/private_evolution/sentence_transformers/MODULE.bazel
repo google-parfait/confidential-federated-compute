@@ -45,7 +45,7 @@ bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
 
 # Module overrides
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,local_path_override,single_version_override
 single_version_override(
     module_name = "abseil-cpp",
     # Force 20260526.0 despite it having a lower compatibility_level than
@@ -54,11 +54,9 @@ single_version_override(
     version = "20260526.0",
 )
 
-archive_override(
+local_path_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-YIUXcSRlXRJGcHPkw1Ypl1sl4FGoKhzS0RvR7UK9Ba4=",
-    strip_prefix = "confidential-federated-compute-af76490e49a7f0f5ac8050bd804ed4910ec16d4e",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/af76490e49a7f0f5ac8050bd804ed4910ec16d4e.tar.gz"],
+    path = "../../..",
 )
 
 archive_override(

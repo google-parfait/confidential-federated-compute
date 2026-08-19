@@ -223,14 +223,9 @@ cc_library(
 )
 
 bazel_dep(name = "confidential-federated-compute")
-archive_override(
+local_path_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-hKpOlZSrqQ5Gw/J3APV/VXUvfPSQ9pGkBLkbVLYKVdM=",
-    patches = [
-        "//third_party/confidential-federated-compute:make_gemma_regular_dep_module.patch",
-    ],
-    strip_prefix = "confidential-federated-compute-4dad97aadeeae88061e42ff701e71e5840478988",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/4dad97aadeeae88061e42ff701e71e5840478988.tar.gz"],
+    path = "../..",
 )
 
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")

@@ -37,7 +37,7 @@ fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
 
 # Module overrides.
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,local_path_override,single_version_override
 single_version_override(
     module_name = "abseil-cpp",
     # 20260526.0 requires bazel 8.6.0 or later so that compatibility_level is
@@ -54,11 +54,9 @@ archive_override(
     urls = ["https://github.com/google/boringssl/releases/download/0.20260211.0/boringssl-0.20260211.0.tar.gz"],
 )
 
-archive_override(
+local_path_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-l9x8vVCE5FUQSksyiN7OzEw8OTrSKhZQOBIcxsLWtPI=",
-    strip_prefix = "confidential-federated-compute-364cb6cbb686452b88d209c84a7cfd056d0a6181",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/364cb6cbb686452b88d209c84a7cfd056d0a6181.tar.gz"],
+    path = "..",
 )
 
 archive_override(
