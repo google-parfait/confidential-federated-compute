@@ -12,49 +12,59 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-#include <string>
-
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
 #include "containers/common/inference/batched_inference_engine.h"
 #include "containers/common/inference/batched_inference_server.h"
-#include "pi_batched_inference_provider.h"
-#include "pi_client.h"
 
-ABSL_FLAG(std::string, server_address, "10.0.2.100",
-          "IP Address of host proxy server that will forward requests to "
-          "paic server.");
-
-const int kIncomingPort = 8080;
-
-namespace confidential_federated_compute::private_inference {
+namespace confidential_federated_compute::inference {
 namespace {
 
-using ::confidential_federated_compute::inference::
-    BatchedInferenceEngineProvider;
-using ::confidential_federated_compute::inference::BatchedInferenceServer;
-using ::confidential_federated_compute::inference::CreateBatchedInferenceServer;
-using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
-using ::oak::containers::sdk::InstanceSigningKeyHandle;
+using oak::containers::sdk::InstanceEncryptionKeyHandle;
+using oak::containers::sdk::InstanceSigningKeyHandle;
 using ::oak::containers::sdk::OrchestratorClient;
+using ::oak::crypto::EncryptionKeyHandle;
+using ::oak::crypto::SigningKeyHandle;
+
+const int INCOMING_PORT = 8080;
+
+class TestBatchedInferenceEngineImpl : public BatchedInferenceEngine {
+ public:
+  virtual ~TestBatchedInferenceEngineImpl() {}
+
+  std::vector<absl::StatusOr<std::string>> DoBatchedInference(
+      std::vector<std::string> prompts) override {
+    std::vector<absl::StatusOr<std::string>> results;
+    for (const auto& prompt : prompts) {
+      results.push_back("Processed: " + prompt);
+    }
+    return results;
+  }
+};
+
+class TestBatchedInferenceEngineProviderImpl
+    : public BatchedInferenceEngineProvider {
+ public:
+  virtual ~TestBatchedInferenceEngineProviderImpl() {}
+
+  virtual std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceConfiguration& inference_config)
+      override {
+    return std::make_shared<TestBatchedInferenceEngineImpl>();
+  }
+};
 
 void RunServer() {
-  std::shared_ptr<BatchedInferenceEngineProvider> provider =
-      std::make_shared<PiBatchedInferenceProvider>(
-          absl::GetFlag(FLAGS_server_address));
-
   absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server =
       CreateBatchedInferenceServer(
-          provider, kIncomingPort, std::make_unique<InstanceSigningKeyHandle>(),
+          std::make_shared<TestBatchedInferenceEngineProviderImpl>(),
+          INCOMING_PORT, std::make_unique<InstanceSigningKeyHandle>(),
           std::make_unique<InstanceEncryptionKeyHandle>());
   CHECK_OK(server);
   CHECK_OK(OrchestratorClient().NotifyAppReady());
@@ -62,11 +72,11 @@ void RunServer() {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::private_inference
+}  // namespace confidential_federated_compute::inference
 
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
-  confidential_federated_compute::private_inference::RunServer();
+  confidential_federated_compute::inference::RunServer();
   absl::SleepFor(absl::Seconds(1));
   return 0;
 }

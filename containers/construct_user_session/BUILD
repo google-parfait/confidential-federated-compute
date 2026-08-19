@@ -25,7 +25,7 @@ cc_library(
     srcs = ["checkpoint.cc"],
     hdrs = ["checkpoint.h"],
     deps = [
-        "//containers/common:checkpoint_utils",
+        "//containers/common/io:checkpoint_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

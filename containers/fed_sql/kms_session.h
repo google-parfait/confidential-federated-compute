@@ -24,7 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "containers/common/row_set.h"
+#include "containers/common/io/tabular/row_set.h"
 #include "containers/fed_sql/dp_unit.h"
 #include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/partition_private_state.h"

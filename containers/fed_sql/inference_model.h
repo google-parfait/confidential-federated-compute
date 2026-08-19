@@ -22,8 +22,8 @@
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "containers/common/input.h"
-#include "containers/fed_sql/inference_model_helper.h"
+#include "containers/common/inference/inference_model_helper.h"
+#include "containers/common/io/tabular/input.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "include/llama.h"
@@ -167,8 +167,8 @@ class InferenceModel {
 
   std::optional<SessionInferenceConfiguration> inference_configuration_;
   std::variant<NoModel, GemmaCppModel, LlamaCppModel> model_;
-  InferencePromptProcessor prompt_processor_;
-  InferenceOutputProcessor output_processor_;
+  inference::InferencePromptProcessor prompt_processor_;
+  inference::InferenceOutputProcessor output_processor_;
 };
 
 }  // namespace confidential_federated_compute::fed_sql

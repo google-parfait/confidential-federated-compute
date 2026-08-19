@@ -1,0 +1,81 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_INFERENCE_MODEL_HELPER_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_INFERENCE_MODEL_HELPER_H_
+
+#include <regex>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "containers/common/io/tabular/input.h"
+#include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+
+namespace confidential_federated_compute::inference {
+
+// A helper class for processing the outputs of one inference task.
+class InferenceOutputProcessor {
+ public:
+  InferenceOutputProcessor();
+
+  // Applies JSON parsing (if PARSER_AUTO) and regex matching to the inference
+  // output and writes the results directly to `output_string_data`. Returns the
+  // number of values added.
+  absl::StatusOr<size_t> ProcessInferenceOutput(
+      const fcp::confidentialcompute::Prompt& prompt,
+      std::string&& inference_output, const std::string& output_column_name,
+      tensorflow_federated::aggregation::MutableStringData* output_string_data);
+
+ private:
+  // Apply a regex matching to the given text. Returns only the first match. If
+  // no match is found, returns the original text.
+  std::string RegexMatch(const std::string& text, const std::regex& regex);
+};
+
+class InferencePromptProcessor {
+ public:
+  InferencePromptProcessor();
+  // Build the combined prompt for a single row of data by populating the
+  // template and replacing the placeholders with the column values.
+  absl::StatusOr<std::string> PopulatePromptTemplate(
+      const fcp::confidentialcompute::Prompt& prompt, const RowView& row,
+      absl::Span<const std::string> column_names,
+      absl::Span<const size_t> input_column_indices,
+      const std::string& output_column_name, size_t max_prompt_size);
+
+ private:
+  // A helper function to append system instructions to the prompt if the prompt
+  // config is set to PARSER_AUTO.
+  void AppendSystemInstructions(std::string& prompt,
+                                const std::string& output_column_name);
+};
+
+// Duplicates rows in a vector/column of tensors according to
+// per_row_output_counts. For each tensor, row i is repeated
+// per_row_output_counts[i] times. Returns a new vector of tensors with the
+// expanded row counts. Supported dtypes are DT_STRING, DT_INT64, DT_INT32,
+// DT_FLOAT, DT_DOUBLE.
+absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
+DuplicateTensorRows(
+    const std::vector<tensorflow_federated::aggregation::Tensor>& tensors,
+    size_t original_row_count,
+    const std::vector<size_t>& per_row_output_counts);
+
+}  // namespace confidential_federated_compute::inference
+
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_INFERENCE_MODEL_HELPER_H_

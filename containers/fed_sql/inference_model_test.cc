@@ -16,7 +16,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
-#include "containers/common/input.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/fed_sql/testing/mocks.h"
 #include "gemma/gemma.h"
 #include "gmock/gmock.h"

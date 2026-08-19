@@ -23,8 +23,8 @@
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "common/common.h"  // From @llama_cpp.
-#include "containers/common/input.h"
-#include "containers/fed_sql/inference_model_helper.h"
+#include "containers/common/inference/inference_model_helper.h"
+#include "containers/common/io/tabular/input.h"
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
 #include "include/llama-cpp.h"
@@ -565,8 +565,8 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
   // Use the shared helper for tensor row duplication.
   ABSL_ASSIGN_OR_RETURN(
       std::vector<Tensor> final_columns,
-      DuplicateTensorRows(original_columns, original_row_count,
-                          per_row_output_counts));
+      inference::DuplicateTensorRows(original_columns, original_row_count,
+                                     per_row_output_counts));
 
   ABSL_ASSIGN_OR_RETURN(
       Input new_input,

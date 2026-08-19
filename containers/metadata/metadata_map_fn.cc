@@ -19,7 +19,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
-#include "containers/common/checkpoint_utils.h"
+#include "containers/common/io/checkpoint_utils.h"
 #include "containers/common/privacy_id_utils.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/map_fn.h"
