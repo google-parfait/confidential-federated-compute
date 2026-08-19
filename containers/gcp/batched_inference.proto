@@ -35,7 +35,18 @@ message InferenceParameters {
 
 // A single input inference request in a batch.
 message InferenceRequest {
-  string text = 1;
+  // DEPRECATED: Use `prompt` instead. This field is declared as proto `string`
+  // which requires valid UTF-8. Raw client data (e.g., Android chat content)
+  // may contain invalid UTF-8 byte sequences, causing protobuf serialization
+  // to emit errors and silently hang the gRPC stream.
+  // Will be removed after 2026-10-01.
+  string text = 1 [deprecated = true];
+
+  // Raw prompt content as bytes. Preferred over `text` — handles arbitrary
+  // byte sequences without UTF-8 validation issues. The llama.cpp tokenizer
+  // operates on raw bytes and does not require UTF-8 validity.
+  // Only one of `text` or `prompt` should be set; setting both is an error.
+  bytes prompt = 2;
 }
 
 // A single request's output result in a batch.
@@ -43,8 +54,16 @@ message InferenceResult {
   // The status of this specific inference attempt.
   google.rpc.Status status = 1;
 
-  // The generated text. Populated only if status is OK.
-  string text = 2;
+  // DEPRECATED: Use `response_text` instead. Same UTF-8 issue as
+  // InferenceRequest.text — model output may contain partial multi-byte
+  // sequences at truncation boundaries, causing protobuf serialization errors.
+  // Will be removed after 2026-10-01.
+  string text = 2 [deprecated = true];
+
+  // Raw generated output as bytes. Preferred over `text`.
+  // Only one of `text` or `response_text` should be set; setting both is
+  // an error.
+  bytes response_text = 3;
 }
 
 // Top-level request for batched processing.

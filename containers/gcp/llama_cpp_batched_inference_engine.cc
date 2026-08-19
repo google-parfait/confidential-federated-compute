@@ -138,12 +138,17 @@ class LlamaCppBatchedInferenceEngine : public BatchedInferenceEngine {
   // These are the text representations of control tokens (e.g. <end_of_turn>)
   // that should terminate generation if they appear in the output.
   std::vector<std::string> stop_strings_;
+  // Maximum length of any stop string, used for tail-window matching.
+  size_t max_stop_string_length_ = 0;
 
   absl::Mutex mutex_;
   // Context (KV cache) and sampler are reused across requests to save
-  // allocation time, but are reset at the start of each InferInternal() call
-  // to ensure stateless request handling.
+  // allocation time, but are reset at the start of each DoBatchedInference()
+  // call to ensure stateless request handling.
   llama_context* ctx_ ABSL_GUARDED_BY(mutex_) = nullptr;
+  int current_n_ctx_ ABSL_GUARDED_BY(mutex_) = 0;
+  int current_n_seq_max_ ABSL_GUARDED_BY(mutex_) = 0;
+  int current_n_batch_ ABSL_GUARDED_BY(mutex_) = 0;
   llama_sampler* sampler_ ABSL_GUARDED_BY(mutex_) = nullptr;
 
   // Reusable batch structure for llama.cpp to avoid frequent allocations.
@@ -192,7 +197,15 @@ LlamaCppBatchedInferenceEngine::LlamaCppBatchedInferenceEngine(
   LOG(INFO) << "Stop strings (" << stop_strings_.size() << "):";
   for (const auto& s : stop_strings_) {
     LOG(INFO) << "  \"" << s << "\"";
+    max_stop_string_length_ = std::max(max_stop_string_length_, s.size());
   }
+
+  // Initialize sampler once (greedy). Reused across all DoBatchedInference
+  // calls via llama_sampler_reset() instead of free/reinit per batch.
+  auto sparams = llama_sampler_chain_default_params();
+  sparams.no_perf = true;
+  sampler_ = llama_sampler_chain_init(sparams);
+  llama_sampler_chain_add(sampler_, llama_sampler_init_greedy());
 }
 
 LlamaCppBatchedInferenceEngine::~LlamaCppBatchedInferenceEngine() {
@@ -252,13 +265,30 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
     state.tokens_generated = 0;
     state.error_code = google::rpc::Code::OK;
 
-    auto tokens_or = Tokenize(request.requests(i).text());
-    if (!tokens_or.ok()) {
+    // Prefer `prompt` (bytes, UTF-8-safe); fall back to deprecated `text`.
+    const auto& req = request.requests(i);
+    std::string prompt_content;
+    if (!req.prompt().empty() && !req.text().empty()) {
       state.done = true;
       state.error_code = google::rpc::Code::INVALID_ARGUMENT;
-      state.error_message = std::string(tokens_or.status().message());
+      state.error_message =
+          "Both 'prompt' and 'text' set on InferenceRequest; use only "
+          "'prompt'.";
+    } else if (!req.prompt().empty()) {
+      prompt_content = std::string(req.prompt());
     } else {
-      state.tokens = std::move(*tokens_or);
+      prompt_content = req.text();
+    }
+
+    if (!state.done) {
+      auto tokens_or = Tokenize(prompt_content);
+      if (!tokens_or.ok()) {
+        state.done = true;
+        state.error_code = google::rpc::Code::INVALID_ARGUMENT;
+        state.error_message = std::string(tokens_or.status().message());
+      } else {
+        state.tokens = std::move(*tokens_or);
+      }
     }
     states.push_back(std::move(state));
   }
@@ -312,26 +342,34 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
     current_batch_capacity_ = capacity;
   }
 
-  // Re-initialize context per request.
-  if (ctx_) llama_free(ctx_);
-  llama_context_params ctx_params = llama_context_default_params();
-  ctx_params.n_ctx = total_tokens_needed + 128;
-  ctx_params.n_batch = capacity;
-  ctx_params.no_perf = true;
-  ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
-  ctx_params.n_seq_max = request.requests_size();
-
-  ctx_ = llama_init_from_model(model_, ctx_params);
-  if (!ctx_) {
-    return absl::InternalError("Failed to create llama_context");
+  // Reuse context if existing allocation is large enough; otherwise
+  // reallocate.  llama_memory_clear() resets the KV cache head position,
+  // making all prior batch state unreachable by the decode loop — safe for
+  // TEE privacy (no cross-batch information leakage).
+  int needed_n_ctx = total_tokens_needed + 128;
+  int needed_n_seq_max = request.requests_size();
+  if (ctx_ && needed_n_ctx <= current_n_ctx_ &&
+      needed_n_seq_max <= current_n_seq_max_ && capacity <= current_n_batch_) {
+    llama_memory_clear(llama_get_memory(ctx_), true);
+  } else {
+    if (ctx_) llama_free(ctx_);
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_ctx = needed_n_ctx;
+    ctx_params.n_batch = capacity;
+    ctx_params.no_perf = true;
+    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    ctx_params.n_seq_max = needed_n_seq_max;
+    ctx_ = llama_init_from_model(model_, ctx_params);
+    if (!ctx_) {
+      return absl::InternalError("Failed to create llama_context");
+    }
+    current_n_ctx_ = needed_n_ctx;
+    current_n_seq_max_ = needed_n_seq_max;
+    current_n_batch_ = capacity;
   }
 
-  // Initialize sampler (greedy for now).
-  if (sampler_) llama_sampler_free(sampler_);
-  auto sparams = llama_sampler_chain_default_params();
-  sparams.no_perf = true;
-  sampler_ = llama_sampler_chain_init(sparams);
-  llama_sampler_chain_add(sampler_, llama_sampler_init_greedy());
+  // Reset the persistent sampler for the new batch.
+  llama_sampler_reset(sampler_);
 
   // 4. Batch Generation Loop
   BatchClear(batch_);
@@ -382,6 +420,7 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
         states[seq_id].done = true;
         active_sequences--;
       } else {
+        size_t old_size = states[seq_id].output.size();
         // Convert to text
         char buf[128];
         // special=false: suppress tokens with LLAMA_TOKEN_ATTR_CONTROL.
@@ -404,9 +443,15 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
         // tokens that aren't flagged as EOG in the GGUF vocab, so
         // llama_vocab_is_eog misses them.  Check against the stop strings
         // we discovered from the model vocabulary at init time.
+        // Optimization: only search the tail window of the output buffer
+        // anchored before the newly appended token instead of the full string.
         bool hit_stop = false;
+        const auto& output = states[seq_id].output;
+        size_t window_start = old_size > max_stop_string_length_
+                                  ? old_size - max_stop_string_length_
+                                  : 0;
         for (const auto& stop : stop_strings_) {
-          auto pos = states[seq_id].output.find(stop);
+          auto pos = output.find(stop, window_start);
           if (pos != std::string::npos) {
             states[seq_id].output.resize(pos);
             hit_stop = true;
@@ -458,8 +503,11 @@ LlamaCppBatchedInferenceEngine::DoBatchedInference(
              (output.back() == '\n' || output.back() == ' ')) {
         output.pop_back();
       }
+      result->set_response_text(output);
+      // Also set deprecated `text` for backward compatibility with old clients.
       result->set_text(output);
     } else {
+      result->set_response_text("");
       result->set_text("");
       result->mutable_status()->set_message(state.error_message);
     }

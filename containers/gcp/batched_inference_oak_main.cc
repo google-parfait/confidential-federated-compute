@@ -99,7 +99,7 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
   BatchedInferenceRequest batch_request;
   for (const auto& prompt : prompts) {
     auto* req_item = batch_request.add_requests();
-    req_item->set_text(prompt);
+    req_item->set_prompt(prompt);
   }
   batch_request.mutable_params()->set_max_output_tokens(1024);
 
@@ -108,10 +108,21 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
     return absl::InternalError("Failed to serialize request proto");
   }
 
+  auto start_time = std::chrono::high_resolution_clock::now();
   absl::StatusOr<std::string> response_or = client->Invoke(serialized_request);
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end_time - start_time;
+
   if (!response_or.ok()) {
+    LOG(ERROR) << "Batch inference failed after " << elapsed.count()
+               << "s: " << response_or.status();
     return response_or.status();
   }
+
+  LOG(INFO) << "Batch inference completed: " << prompts.size() << " prompts in "
+            << elapsed.count() << "s ("
+            << (prompts.empty() ? 0.0 : elapsed.count() / prompts.size())
+            << "s/prompt).";
 
   BatchedInferenceResponse batch_response;
   if (!batch_response.ParseFromString(*response_or)) {
@@ -127,7 +138,12 @@ IssueBatchedInferenceRequest(Client* client, std::vector<std::string> prompts) {
   std::vector<absl::StatusOr<std::string>> outputs;
   for (const auto& result : batch_response.results()) {
     if (result.status().code() == 0) {  // OK
-      outputs.push_back(result.text());
+      // Prefer `response_text` (bytes); fall back to deprecated `text`.
+      if (!result.response_text().empty()) {
+        outputs.push_back(std::string(result.response_text()));
+      } else {
+        outputs.push_back(result.text());
+      }
     } else {
       outputs.push_back(
           absl::Status(static_cast<absl::StatusCode>(result.status().code()),
