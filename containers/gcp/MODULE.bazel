@@ -18,13 +18,11 @@ module(
     compatibility_level = 1,
 )
 
-curl_file = use_repo_rule("//:repo_rules.bzl", "curl_file")
-
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
-curl_file(
+http_file(
     name = "intel_jwks",
     url = "https://portal.trustauthority.intel.com/certs",
 )
@@ -83,6 +81,15 @@ python.toolchain(python_version = "3.13")
 use_repo(python, "python_3_13")
 
 register_toolchains("@python_3_13//:all")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    experimental_index_url = "https://pypi.org/simple",
+    hub_name = "pip",
+    python_version = "3.13",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "pip")
 
 archive_override(
     module_name = "rules_cuda",

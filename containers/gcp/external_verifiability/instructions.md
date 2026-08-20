@@ -14,15 +14,9 @@ For background on the system architecture, see
 
 ## Prerequisites
 
-- Python 3.6+
+- Bazelisk (or Bazel)
 - A copy of this repository (or at minimum the
   `containers/gcp/` directory)
-- Set up the virtual environment and install dependencies:
-  ```console
-  $ python3 -m venv venv
-  $ source venv/bin/activate
-  $ pip install -r requirements.txt
-  ```
 
 ## Overview
 
@@ -71,18 +65,17 @@ policy and extract the authorized container digests.
 ## Step 1. Trace Client Container Digest to Source Commit
 
 > **NOTE:** While these instructions focus on using the tool on the GCP
-> offloading client container, the same `trace_digest.py` tool can be used
+> offloading client container, the same `trace_digest` tool can be used
 > to find and inspect the source code for any other endorsed container that
 > may occur in an access policy.
 
 **Goal:** Given the client container digest, find the exact source commit
 it was built from and cryptographically verify the associated SLSA provenance evidence.
 
-**Tool:** Use `trace_digest.py` from the `containers/gcp` directory:
+**Tool:** Run `:trace_digest` via Bazel from the `containers/gcp` directory:
 
 ```console
-$ source venv/bin/activate
-$ python3 trace_digest.py 44516b40fd067cf3c01f1dc1c3890d2002add6d4fd21c5532bc5740346915138
+$ bazelisk run //:trace_digest -- 44516b40fd067cf3c01f1dc1c3890d2002add6d4fd21c5532bc5740346915138
 ======================================================================
  EXTERNAL VERIFICATION START: sha256:44516b40fd067cf3c01f1dc1c3890d2002add6d4fd21c5532bc5740346915138
 ======================================================================
@@ -146,7 +139,7 @@ public repositories.
 **Goal:** Confirm that the client container enforces the correct security constraints, connects to the genuine Intel Trust Authority, and properly implements the attestation verification logic.
 
 **Convenience Note:**
-The `trace_digest.py` tool from Step 1 automatically extracts and prints the custom attestation metadata, which contains the finalized policy embedded in the container (including the expected server digests) as well as the JWKS endpoint. However, manual source inspection provides the ultimate ground truth.
+The `trace_digest` tool from Step 1 automatically extracts and prints the custom attestation metadata, which contains the finalized policy embedded in the container (including the expected server digests) as well as the JWKS endpoint. However, manual source inspection provides the ultimate ground truth.
 
 **Instructions:**
 First, open your web browser and navigate to the GitHub repository at the exact source commit hash printed at the end of Step 1. Because the cryptographic provenance ties the container directly to this commit, you can trust that this is the exact code running in the container.
@@ -163,9 +156,9 @@ Then, inspect the source code to manually verify the following properties:
    commit:
    - Review `server_image_registry.json` — the source of truth for
      approved server container digests.
-   - Review `generate_policy.py` — the script that reads the registry
+   - Review `generate_policy.py` — the script (`//:generate_policy`) that reads the registry
      and generates the final `policy.textproto`.
-   - Check the `BUILD` file to see how `generate_policy.py` is invoked
+   - Check the `BUILD` file to see how `generate_policy` is invoked
      during the build.
    - Verify that the resulting policy fields match the expected values
      listed in the [Attestation Policy](architecture.md#attestation-policy)
@@ -184,7 +177,7 @@ Then, inspect the source code to manually verify the following properties:
 client is configured to accept.
 
 **Process:** You can obtain these digests in two ways:
-1. **From Step 1 Output:** Review the custom metadata output printed by `trace_digest.py` in Step 1. The `attestation_policy` object contains the `expected_image_digest` list.
+1. **From Step 1 Output:** Review the custom metadata output printed by `trace_digest` in Step 1. The `attestation_policy` object contains the `expected_image_digest` list.
 2. **From Source Inspection (Step 2):** Read the `server_image_registry.json` file at the attested commit to manually verify the registry.
 
 These are Artifact Registry manifest digests in the format `sha256:...`.
@@ -203,10 +196,10 @@ These digests are the inputs to the next server tracing step.
 **Goal:** Given a server container digest extracted from the policy, find the exact
 source commit it was built from and cryptographically verify the server's SLSA provenance.
 
-**Tool:** Use the same `trace_digest.py` script:
+**Tool:** Run the same `:trace_digest` target via `bazelisk run`:
 
 ```console
-$ python3 trace_digest.py fe822f41abc123...
+$ bazelisk run //:trace_digest -- fe822f41abc123...
 ```
 
 The script uses the same flow as for client digests. It first queries the Rekor transparency log to auto-detect the container type. Then, it queries the GitHub Attestation API and automatically verifies the server's DSSE bundle.
@@ -218,7 +211,7 @@ workflow run, while checking the ECDSA signature and the OIDC SAN identity.
 
 **What to check:**
 
-Look at the output of `trace_digest.py` during the server trace. Ensure you see:
+Look at the output of `trace_digest` during the server trace. Ensure you see:
 - `  -> Attestation 1: Cryptographic signatures (Fulcio, Rekor, DSSE, OIDC Identity) VERIFIED.`
 - The SLSA provenance `subject.digest.sha256` exactly matches the expected server digest.
 

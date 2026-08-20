@@ -19,13 +19,8 @@ uses the sigstore CLI to cryptographically verify the SLSA provenance bundle
 (against Fulcio and Rekor), and extracts the source commit and GitHub Actions
 run ID that produced it.
 
-Setup:
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-
 Usage:
-    python3 trace_digest.py <sha256_digest>
+    bazelisk run //:trace_digest -- <sha256_digest>
 """
 
 import argparse
@@ -37,7 +32,7 @@ import provenance_lib
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Trace a container digest to its source commit via GitHub Attestations.",
-        epilog='''example:\n  python3 trace_digest.py 2dce970207711ffeb036de533243295752d04862687210aabe77c0decdc57d56''',
+        epilog='''example:\n  bazelisk run //:trace_digest -- 2dce970207711ffeb036de533243295752d04862687210aabe77c0decdc57d56''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("digest", type=str, help="The hex SHA256 digest of the container (client or server).")

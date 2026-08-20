@@ -73,37 +73,28 @@ expected_image_digest: "{digest}"
         attest_filter = ctx.attr.server_attestation[BuildSettingInfo].value if ctx.attr.server_attestation else ""
         max_age = ctx.attr.server_max_age_days[IntSettingInfo].value if ctx.attr.server_max_age_days else 60
 
-        ctx.actions.run_shell(
+        args = ctx.actions.args()
+        args.add(ctx.file.registry_file, format = "--registry=%s")
+        args.add(out, format = "--output=%s")
+        args.add(ctx.attr.verifier_type, format = "--verifier_type=%s")
+        if model_filter:
+            args.add(model_filter, format = "--model=%s")
+        if attest_filter:
+            args.add(attest_filter, format = "--attestation=%s")
+        args.add(max_age, format = "--max_age_days=%s")
+        args.add(min_sw_date, format = "--min_sw_tcb_date=%s")
+        args.add(min_hw_date, format = "--min_hw_tcb_date=%s")
+        args.add(max_sw_age, format = "--max_sw_tcb_age_days=%s")
+        args.add(max_hw_age, format = "--max_hw_tcb_age_days=%s")
+        args.add(min_swversion, format = "--min_swversion=%s")
+
+        ctx.actions.run(
             outputs = [out],
             inputs = [ctx.file.registry_file],
-            tools = [ctx.file._generate_policy_script],
-            command = (
-                "python3 {script}" +
-                " --registry={registry}" +
-                " --output={out}" +
-                " --verifier_type={type}" +
-                " --model={model}" +
-                " --attestation={attest}" +
-                " --max_age_days={age}" +
-                " --min_sw_tcb_date='{min_sw_date}'" +
-                " --min_hw_tcb_date='{min_hw_date}'" +
-                " --max_sw_tcb_age_days={max_sw_age}" +
-                " --max_hw_tcb_age_days={max_hw_age}" +
-                " --min_swversion='{min_swversion}'"
-            ).format(
-                script = ctx.file._generate_policy_script.path,
-                registry = ctx.file.registry_file.path,
-                out = out.path,
-                type = ctx.attr.verifier_type,
-                model = model_filter,
-                attest = attest_filter,
-                age = max_age,
-                min_sw_date = min_sw_date,
-                min_hw_date = min_hw_date,
-                max_sw_age = max_sw_age,
-                max_hw_age = max_hw_age,
-                min_swversion = min_swversion,
-            ),
+            executable = ctx.executable._generate_policy_tool,
+            arguments = [args],
+            mnemonic = "GeneratePolicy",
+            progress_message = "Generating policy (%s)" % ctx.attr.verifier_type,
         )
     else:
         # No digest, no registry — generate policy without digest check.
@@ -169,10 +160,11 @@ generate_policy = rule(
         "min_swversion": attr.label(
             doc = "Build flag: minimum Confidential Space image version.",
         ),
-        "_generate_policy_script": attr.label(
-            default = ":generate_policy.py",
-            allow_single_file = True,
-            doc = "The Python script that generates policy from the registry.",
+        "_generate_policy_tool": attr.label(
+            default = ":generate_policy",
+            executable = True,
+            cfg = "exec",
+            doc = "The Python binary that generates policy from the registry.",
         ),
     },
 )
