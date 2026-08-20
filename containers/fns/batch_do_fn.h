@@ -80,7 +80,7 @@ class BatchDoFn : public Fn {
   //
   // Returns an error status if an error occurred and the Fn should be
   // aborted. Metrics about ignorable errors can be recorded using the
-  // Counters returned by DoContext::GetCounters.
+  // Counters via DoContext::IncrementCounter or DoContext::IncrementCounterBy.
   virtual absl::Status Do(google::protobuf::Any config,
                           std::vector<Session::KV> accumulated_inputs,
                           DoContext& context) = 0;

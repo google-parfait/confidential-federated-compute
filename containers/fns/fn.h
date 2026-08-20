@@ -14,6 +14,7 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FNS_FN_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -86,11 +87,14 @@ class Fn : public confidential_federated_compute::Session {
     bool EmitReleasable(int reencryption_key_index, Session::KV kv,
                         std::optional<absl::string_view> src_state,
                         absl::string_view dst_state);
-    Counters& GetCounters();
-
     // Returns the release token saved by EmitReleasable, or empty if
     // EmitReleasable was not called.
     const std::string& GetReleaseToken() const { return release_token_; }
+
+    // Increments the named counter by 1.
+    void IncrementCounter(absl::string_view name);
+    // Increments the named counter by the given amount.
+    void IncrementCounterBy(absl::string_view name, int64_t amount);
 
    private:
     Context& session_context_;

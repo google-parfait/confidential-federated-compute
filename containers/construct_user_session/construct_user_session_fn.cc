@@ -162,7 +162,7 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
     if (!inserted) {
       LOG(ERROR) << "Duplicate blob ID encountered: " << kv.blob_id
                  << ". Skipping blob.";
-      ++context.GetCounters()["duplicate_blob_count"];
+      context.IncrementCounter("duplicate_blob_count");
       continue;
     }
 
@@ -171,14 +171,14 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
     if (!parser.ok()) {
       LOG(WARNING) << "Skipping blob: failed to create checkpoint parser: "
                    << parser.status();
-      ++context.GetCounters()["checkpoint_parse_error_count"];
+      context.IncrementCounter("checkpoint_parse_error_count");
       continue;
     }
     auto checkpoint = Checkpoint::Create(**parser, on_device_query_name_);
     if (!checkpoint.ok()) {
       LOG(WARNING) << "Skipping blob: failed to create Checkpoint: "
                    << checkpoint.status();
-      ++context.GetCounters()["checkpoint_create_error_count"];
+      context.IncrementCounter("checkpoint_create_error_count");
       continue;
     }
 
@@ -186,7 +186,7 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
     // previously seen tensor of the same name.
     if (HasDtypeConflict(*checkpoint, result.column_dtypes)) {
       LOG(WARNING) << "Skipping checkpoint: tensor has a dtype mismatch.";
-      ++context.GetCounters()["checkpoint_dtype_mismatch_count"];
+      context.IncrementCounter("checkpoint_dtype_mismatch_count");
       continue;
     }
     // Register dtypes now that we know there are no conflicts.
@@ -231,14 +231,10 @@ absl::Status ConstructUserSessionFn::EmitSessionOutput(std::string output_data,
   *time_window_metadata.mutable_session_window_end() =
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_end_));
 
-  fcp::confidentialcompute::AssociatedMetadata associated_metadata;
-  associated_metadata.add_metadata()->PackFrom(time_window_metadata);
-
-  Session::KV kv(std::move(output_data));
-  kv.associated_metadata = std::move(associated_metadata);
-
+  context.PackMetadata(time_window_metadata);
   // Emit the session output encrypted.
-  if (!context.EmitEncrypted(/*reencryption_key_index=*/0, std::move(kv))) {
+  if (!context.EmitEncrypted(/*reencryption_key_index=*/0,
+                             Session::KV(std::move(output_data)))) {
     return absl::InternalError("Failed to emit encrypted session output");
   }
   return absl::OkStatus();

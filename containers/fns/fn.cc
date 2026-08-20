@@ -66,8 +66,12 @@ bool Fn::FnContext::EmitReleasable(int reencryption_key_index, Session::KV kv,
                                          src_state, dst_state, release_token_);
 }
 
-Counters& Fn::FnContext::GetCounters() {
-  return session_context_.GetCounters();
+void Fn::FnContext::IncrementCounter(absl::string_view name) {
+  IncrementCounterBy(name, 1);
+}
+
+void Fn::FnContext::IncrementCounterBy(absl::string_view name, int64_t amount) {
+  session_context_.GetCounters()[std::string(name)] += amount;
 }
 
 }  // namespace confidential_federated_compute::fns
