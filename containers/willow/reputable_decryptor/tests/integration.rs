@@ -56,7 +56,7 @@ mod test {
                         ReputableDecryptorResponse::decode(message.message_header.as_ref())
                             .unwrap();
                     reputable_decryptor_response = Some(response);
-                    return true;
+                    true
                 }
                 _ => false,
             });
@@ -142,9 +142,10 @@ mod test {
         let mut verify_key_contributions_request = VerifyKeyContributionsRequest::default();
         verify_key_contributions_request.key_contributions.push(kc1);
 
-        let mut verify_req = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req.key_id = "test_key_1".to_string();
-        verify_req.verify_key_contributions_request = Some(verify_key_contributions_request);
+        let verify_req = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "test_key_1".to_string(),
+            verify_key_contributions_request: Some(verify_key_contributions_request),
+        };
 
         let aggregate_request = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
@@ -213,9 +214,10 @@ mod test {
         let mut verify_key_contributions_request = VerifyKeyContributionsRequest::default();
         verify_key_contributions_request.key_contributions.push(kc1);
 
-        let mut verify_req = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req.key_id = "key_1".to_string();
-        verify_req.verify_key_contributions_request = Some(verify_key_contributions_request);
+        let verify_req = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "key_1".to_string(),
+            verify_key_contributions_request: Some(verify_key_contributions_request),
+        };
 
         let aggregate_request = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
@@ -259,11 +261,13 @@ mod test {
             convert_to_prost(&pd_ciphertext_pb_proto).unwrap();
 
         // 4. Perform successful partial decryption
-        let mut dec_req = HandlePartialDecryptionRequest::default();
-        dec_req.key_id = "key_1".to_string();
-        let mut inner_dec_req = PartialDecryptionRequest::default();
-        inner_dec_req.partial_dec_ciphertext = Some(pd_ciphertext_prost.clone());
-        dec_req.partial_decryption_request = Some(inner_dec_req);
+        let dec_req = HandlePartialDecryptionRequest {
+            key_id: "key_1".to_string(),
+            partial_decryption_request: Some(PartialDecryptionRequest {
+                partial_dec_ciphertext: Some(pd_ciphertext_prost.clone()),
+                ..Default::default()
+            }),
+        };
 
         let dec_request = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::HandlePartialDecryption(dec_req)),
@@ -363,9 +367,10 @@ mod test {
         let mut verify_key_contributions_request_1 = VerifyKeyContributionsRequest::default();
         verify_key_contributions_request_1.key_contributions.push(kc1);
 
-        let mut verify_req_1 = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req_1.key_id = "key_1".to_string();
-        verify_req_1.verify_key_contributions_request = Some(verify_key_contributions_request_1);
+        let verify_req_1 = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "key_1".to_string(),
+            verify_key_contributions_request: Some(verify_key_contributions_request_1),
+        };
 
         let aggregate_request_1 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
@@ -397,9 +402,10 @@ mod test {
         let mut verify_key_contributions_request_2 = VerifyKeyContributionsRequest::default();
         verify_key_contributions_request_2.key_contributions.push(kc2);
 
-        let mut verify_req_2 = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req_2.key_id = "key_2".to_string();
-        verify_req_2.verify_key_contributions_request = Some(verify_key_contributions_request_2);
+        let verify_req_2 = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "key_2".to_string(),
+            verify_key_contributions_request: Some(verify_key_contributions_request_2),
+        };
 
         let aggregate_request_2 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
@@ -468,9 +474,10 @@ mod test {
         }
 
         // 2. HandlePartialDecryptionRequest with empty key_id
-        let mut dec_req_2 = HandlePartialDecryptionRequest::default();
-        dec_req_2.key_id = "".to_string();
-        dec_req_2.partial_decryption_request = Some(PartialDecryptionRequest::default());
+        let dec_req_2 = HandlePartialDecryptionRequest {
+            key_id: "".to_string(),
+            partial_decryption_request: Some(PartialDecryptionRequest::default()),
+        };
         let req_2 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::HandlePartialDecryption(dec_req_2)),
         };
@@ -491,9 +498,10 @@ mod test {
 
         // 3. HandlePartialDecryptionRequest with missing inner
         //    partial_decryption_request
-        let mut dec_req_3 = HandlePartialDecryptionRequest::default();
-        dec_req_3.key_id = "valid_key".to_string();
-        dec_req_3.partial_decryption_request = None;
+        let dec_req_3 = HandlePartialDecryptionRequest {
+            key_id: "valid_key".to_string(),
+            partial_decryption_request: None,
+        };
         let req_3 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::HandlePartialDecryption(dec_req_3)),
         };
@@ -513,10 +521,10 @@ mod test {
         }
 
         // 4. VerifyAndAggregateKeyContributions with empty key_id
-        let mut verify_req_4 = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req_4.key_id = "".to_string();
-        verify_req_4.verify_key_contributions_request =
-            Some(VerifyKeyContributionsRequest::default());
+        let verify_req_4 = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "".to_string(),
+            verify_key_contributions_request: Some(VerifyKeyContributionsRequest::default()),
+        };
         let req_4 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
                 verify_req_4,
@@ -539,9 +547,10 @@ mod test {
 
         // 5. VerifyAndAggregateKeyContributions with missing inner
         //    verify_key_contributions_request
-        let mut verify_req_5 = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req_5.key_id = "some_key".to_string();
-        verify_req_5.verify_key_contributions_request = None;
+        let verify_req_5 = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "some_key".to_string(),
+            verify_key_contributions_request: None,
+        };
         let req_5 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
                 verify_req_5,
@@ -563,10 +572,10 @@ mod test {
         }
 
         // 6. VerifyAndAggregateKeyContributions with empty contributions list
-        let mut verify_req_6 = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req_6.key_id = "valid_key".to_string();
-        verify_req_6.verify_key_contributions_request =
-            Some(VerifyKeyContributionsRequest::default());
+        let verify_req_6 = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "valid_key".to_string(),
+            verify_key_contributions_request: Some(VerifyKeyContributionsRequest::default()),
+        };
         let req_6 = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
                 verify_req_6,
@@ -630,9 +639,10 @@ mod test {
         let mut verify_key_contributions_request = VerifyKeyContributionsRequest::default();
         verify_key_contributions_request.key_contributions.push(kc1);
 
-        let mut verify_req = VerifyAndAggregateKeyContributionsRequest::default();
-        verify_req.key_id = "key_1".to_string();
-        verify_req.verify_key_contributions_request = Some(verify_key_contributions_request);
+        let verify_req = VerifyAndAggregateKeyContributionsRequest {
+            key_id: "key_1".to_string(),
+            verify_key_contributions_request: Some(verify_key_contributions_request),
+        };
 
         let aggregate_request = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::VerifyAndAggregateKeyContributions(
@@ -676,11 +686,13 @@ mod test {
             convert_to_prost(&pd_ciphertext_pb_proto).unwrap();
 
         // 4. Perform successful partial decryption
-        let mut dec_req = HandlePartialDecryptionRequest::default();
-        dec_req.key_id = "key_1".to_string();
-        let mut inner_dec_req = PartialDecryptionRequest::default();
-        inner_dec_req.partial_dec_ciphertext = Some(pd_ciphertext_prost.clone());
-        dec_req.partial_decryption_request = Some(inner_dec_req);
+        let dec_req = HandlePartialDecryptionRequest {
+            key_id: "key_1".to_string(),
+            partial_decryption_request: Some(PartialDecryptionRequest {
+                partial_dec_ciphertext: Some(pd_ciphertext_prost.clone()),
+                ..Default::default()
+            }),
+        };
 
         let dec_request = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::HandlePartialDecryption(dec_req)),
@@ -702,11 +714,13 @@ mod test {
         }
 
         // 5. Send second decryption command for the same key, which must now fail.
-        let mut dec_req_fail = HandlePartialDecryptionRequest::default();
-        dec_req_fail.key_id = "key_1".to_string();
-        let mut inner_dec_req_fail = PartialDecryptionRequest::default();
-        inner_dec_req_fail.partial_dec_ciphertext = Some(pd_ciphertext_prost);
-        dec_req_fail.partial_decryption_request = Some(inner_dec_req_fail);
+        let dec_req_fail = HandlePartialDecryptionRequest {
+            key_id: "key_1".to_string(),
+            partial_decryption_request: Some(PartialDecryptionRequest {
+                partial_dec_ciphertext: Some(pd_ciphertext_prost),
+                ..Default::default()
+            }),
+        };
 
         let dec_request_fail = ReputableDecryptorRequest {
             msg: Some(reputable_decryptor_request::Msg::HandlePartialDecryption(dec_req_fail)),
@@ -769,7 +783,7 @@ mod test {
                 } else if message.correlation_id == 2 {
                     resp2 = Some(response);
                 }
-                return resp1.is_some() && resp2.is_some();
+                resp1.is_some() && resp2.is_some()
             }
             _ => false,
         });

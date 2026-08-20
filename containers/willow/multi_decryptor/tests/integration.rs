@@ -48,7 +48,7 @@ mod test {
                     let response =
                         MultiDecryptorResponse::decode(message.message_header.as_ref()).unwrap();
                     multi_decryptor_response = Some(response);
-                    return true;
+                    true
                 }
                 _ => false,
             });

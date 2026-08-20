@@ -42,7 +42,7 @@ mod test {
                     let response =
                         CommitteeSelectorResponse::decode(message.message_header.as_ref()).unwrap();
                     committee_selector_response = Some(response);
-                    return true;
+                    true
                 }
                 _ => false,
             });

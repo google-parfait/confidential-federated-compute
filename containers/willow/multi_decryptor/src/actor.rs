@@ -39,6 +39,7 @@ use willow_reputable_decryptor_service::apps::willow::reputable_decryptor::servi
 };
 
 // Include generated multi_decryptor proto
+#[allow(clippy::all)]
 pub mod multi_decryptor {
     pub mod service {
         include!(concat!(env!("OUT_DIR"), "/apps.willow.multi_decryptor.service.rs"));

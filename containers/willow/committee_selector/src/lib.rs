@@ -20,6 +20,7 @@ extern crate prost;
 extern crate slog;
 extern crate tcp_runtime;
 
+#[allow(clippy::all)]
 pub mod apps {
     pub mod willow {
         pub mod committee_selector {

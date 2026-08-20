@@ -79,7 +79,7 @@ impl BloomFilter {
     fn get_hashes(&self, item: i64) -> [u64; 4] {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(&item.to_le_bytes());
+        hasher.update(item.to_le_bytes());
         let result = hasher.finalize();
         let mut hashes = [0u64; 4];
         for i in 0..4 {
@@ -351,9 +351,9 @@ impl CommitteeSelector {
 
         for (committee_id, committee) in &self.committees {
             snapshot.committees.push(CommitteeSnapshot {
-                committee_id: committee_id.clone(),
-                status: committee.status.clone().into(),
-                sequential_order: committee.sequential_order.clone(),
+                committee_id: *committee_id,
+                status: committee.status.into(),
+                sequential_order: committee.sequential_order,
                 member_public_key_digests: committee.members.clone(),
                 total_volunteers_seen: committee.total_volunteers_seen as i64,
                 bloom_filter: committee.bloom_filter.data.clone(),

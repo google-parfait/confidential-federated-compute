@@ -52,6 +52,12 @@ pub struct CommitteeSelectorActor {
     selector: CommitteeSelector,
 }
 
+impl Default for CommitteeSelectorActor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommitteeSelectorActor {
     pub fn new() -> Self {
         let skip = BinaryReferenceValue {
@@ -78,7 +84,6 @@ impl CommitteeSelectorActor {
                         init_ram_fs: Some(skip.clone()),
                         memory_map: Some(skip.clone()),
                         acpi: Some(skip.clone()),
-                        ..Default::default()
                     }),
                     application_layer: Some(ApplicationLayerReferenceValues {
                         binary: Some(skip.clone()),
@@ -119,14 +124,14 @@ impl CommitteeSelectorActor {
             )));
         }
 
-        return Ok(CommandOutcome::with_event(ActorEvent::with_proto(
+        Ok(CommandOutcome::with_event(ActorEvent::with_proto(
             correlation_id,
             &CommitteeSelectorEvent {
                 event: Some(committee_selector_event::Event::CreateCommitteeEvent(
-                    CreateCommitteeEvent { committee_id: committee_id.clone() },
+                    CreateCommitteeEvent { committee_id },
                 )),
             },
-        )));
+        )))
     }
 
     fn process_create_committee_event(
@@ -228,14 +233,14 @@ impl CommitteeSelectorActor {
             );
         }
 
-        return Ok(CommandOutcome::with_event(ActorEvent::with_proto(
+        Ok(CommandOutcome::with_event(ActorEvent::with_proto(
             correlation_id,
             &CommitteeSelectorEvent {
                 event: Some(committee_selector_event::Event::SampleCommitteeEvent(
-                    SampleCommitteeEvent { committee_id: committee_id.clone() },
+                    SampleCommitteeEvent { committee_id },
                 )),
             },
-        )));
+        )))
     }
 
     fn process_sample_committee_event(
@@ -315,15 +320,15 @@ impl CommitteeSelectorActor {
         code: i32,
         message: String,
     ) -> Result<CommandOutcome, ActorError> {
-        return Ok(CommandOutcome::with_command(ActorCommand::with_header(
+        Ok(CommandOutcome::with_command(ActorCommand::with_header(
             correlation_id,
             &CommitteeSelectorResponse {
                 msg: Some(committee_selector_response::Msg::Error(CommitteeSelectorStatus {
-                    code: code,
-                    message: message,
+                    code,
+                    message,
                 })),
             },
-        )));
+        )))
     }
 
     fn event_err(
@@ -332,15 +337,15 @@ impl CommitteeSelectorActor {
         code: i32,
         message: String,
     ) -> Result<EventOutcome, ActorError> {
-        return Ok(EventOutcome::with_command(ActorCommand::with_header(
+        Ok(EventOutcome::with_command(ActorCommand::with_header(
             correlation_id,
             &CommitteeSelectorResponse {
                 msg: Some(committee_selector_response::Msg::Error(CommitteeSelectorStatus {
-                    code: code,
-                    message: message,
+                    code,
+                    message,
                 })),
             },
-        )));
+        )))
     }
 }
 
@@ -410,48 +415,44 @@ impl Actor for CommitteeSelectorActor {
 
         match committee_selector_request.msg {
             Some(committee_selector_request::Msg::CreateCommittee(create_committee_request)) => {
-                return self.process_create_committee_command(
+                self.process_create_committee_command(
                     command.correlation_id,
                     create_committee_request,
-                );
+                )
             }
             Some(committee_selector_request::Msg::VolunteerBatchForCommittee(
                 volunteer_batch_for_committee_request,
-            )) => {
-                return self.process_volunteer_batch_for_committee_command(
-                    command.correlation_id,
-                    volunteer_batch_for_committee_request,
-                );
-            }
+            )) => self.process_volunteer_batch_for_committee_command(
+                command.correlation_id,
+                volunteer_batch_for_committee_request,
+            ),
             Some(committee_selector_request::Msg::SampleCommittee(sample_committee_request)) => {
-                return self.process_sample_committee_command(
+                self.process_sample_committee_command(
                     command.correlation_id,
                     sample_committee_request,
-                );
+                )
             }
             Some(committee_selector_request::Msg::CheckCommitteeStatus(
                 check_committee_status_request,
-            )) => {
-                return self.process_check_committee_status_command(
-                    command.correlation_id,
-                    check_committee_status_request,
-                );
-            }
+            )) => self.process_check_committee_status_command(
+                command.correlation_id,
+                check_committee_status_request,
+            ),
             _ => {
                 warn!(
                     self.get_context().logger(),
                     "CommitteeSelectorActor: unknown request {:?}", committee_selector_request
                 );
-                return self.command_err(
+                self.command_err(
                     command.correlation_id,
                     StatusCode::InvalidArgument as i32,
                     format!(
                         "CommitteeSelectorActor: unknown request {:?}",
                         committee_selector_request
                     ),
-                );
+                )
             }
-        };
+        }
     }
 
     fn on_apply_event(
@@ -476,38 +477,36 @@ impl Actor for CommitteeSelectorActor {
 
         match committee_selector_event.event {
             Some(committee_selector_event::Event::CreateCommitteeEvent(create_committee_event)) => {
-                return self.process_create_committee_event(
+                self.process_create_committee_event(
                     context,
                     event.correlation_id,
                     create_committee_event,
-                );
+                )
             }
             Some(committee_selector_event::Event::VolunteerBatchForCommitteeEvent(
                 volunteer_batch_for_committee_event,
-            )) => {
-                return self.process_volunteer_batch_for_committee_event(
-                    context,
-                    event.correlation_id,
-                    volunteer_batch_for_committee_event,
-                );
-            }
+            )) => self.process_volunteer_batch_for_committee_event(
+                context,
+                event.correlation_id,
+                volunteer_batch_for_committee_event,
+            ),
             Some(committee_selector_event::Event::SampleCommitteeEvent(sample_committee_event)) => {
-                return self.process_sample_committee_event(
+                self.process_sample_committee_event(
                     context,
                     event.correlation_id,
                     sample_committee_event,
-                );
+                )
             }
             _ => {
                 warn!(
                     self.get_context().logger(),
                     "CommitteeSelectorActor: unknown event {:?}", committee_selector_event
                 );
-                return self.event_err(
+                self.event_err(
                     event.correlation_id,
                     StatusCode::InvalidArgument as i32,
                     format!("CommitteeSelectorActor: unknown event {:?}", committee_selector_event),
-                );
+                )
             }
         }
     }

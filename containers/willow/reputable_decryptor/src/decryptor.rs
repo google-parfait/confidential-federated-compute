@@ -114,10 +114,11 @@ impl ReputableDecryptorState {
     pub fn save_snapshot(&self) -> Result<ReputableDecryptorSnapshot, StatusError> {
         let mut snapshot = ReputableDecryptorSnapshot::default();
         for (key_id, state) in &self.decryptor_states {
-            let mut key_proto = KeyStateSnapshot::default();
-            key_proto.key_id = key_id.clone();
-            key_proto.sequential_order = state.sequential_order;
-            key_proto.decryptor_state = Bytes::from(state.prng_seed.clone());
+            let key_proto = KeyStateSnapshot {
+                key_id: key_id.clone(),
+                sequential_order: state.sequential_order,
+                decryptor_state: Bytes::from(state.prng_seed.clone()),
+            };
 
             snapshot.key_states.push(key_proto);
         }

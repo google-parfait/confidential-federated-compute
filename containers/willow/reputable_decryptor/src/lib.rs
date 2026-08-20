@@ -20,6 +20,7 @@ extern crate prost;
 extern crate slog;
 extern crate tcp_runtime;
 
+#[allow(clippy::all)]
 pub mod apps {
     pub mod willow {
         pub mod reputable_decryptor {
@@ -30,12 +31,14 @@ pub mod apps {
     }
 }
 
+#[allow(clippy::all)]
 pub mod secure_aggregation {
     pub mod willow {
         include!(concat!(env!("OUT_DIR"), "/secure_aggregation.willow.rs"));
     }
 }
 
+#[allow(clippy::all)]
 pub mod rlwe {
     include!(concat!(env!("OUT_DIR"), "/rlwe.rs"));
 }

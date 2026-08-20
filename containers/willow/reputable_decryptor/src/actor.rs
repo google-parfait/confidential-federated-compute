@@ -56,6 +56,12 @@ pub struct ReputableDecryptorActor {
     state: ReputableDecryptorState,
 }
 
+impl Default for ReputableDecryptorActor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReputableDecryptorActor {
     pub fn new() -> Self {
         let skip = BinaryReferenceValue {
@@ -82,7 +88,6 @@ impl ReputableDecryptorActor {
                         init_ram_fs: Some(skip.clone()),
                         memory_map: Some(skip.clone()),
                         acpi: Some(skip.clone()),
-                        ..Default::default()
                     }),
                     application_layer: Some(ApplicationLayerReferenceValues {
                         binary: Some(skip.clone()),
@@ -222,11 +227,12 @@ impl ReputableDecryptorActor {
         // Leader samples key generation randomness to keep replicas in sync.
         let prng_seed = rand::random::<[u8; 32]>().to_vec();
 
-        let mut event = ReputableDecryptorEvent::default();
-        let mut setup_event = SetupEvent::default();
-        setup_event.key_id = key_id.clone();
-        setup_event.prng_seed = prng_seed;
-        event.event = Some(reputable_decryptor_event::Event::SetupEvent(setup_event));
+        let event = ReputableDecryptorEvent {
+            event: Some(reputable_decryptor_event::Event::SetupEvent(SetupEvent {
+                key_id: key_id.clone(),
+                prng_seed,
+            })),
+        };
 
         Ok(CommandOutcome::with_event(ActorEvent::with_proto(correlation_id, &event)))
     }
@@ -306,11 +312,12 @@ impl ReputableDecryptorActor {
             );
         };
 
-        let mut event = ReputableDecryptorEvent::default();
-        let mut decryption_event = DecryptionEvent::default();
-        decryption_event.key_id = key_id.clone();
-        decryption_event.partial_decryption_request = Some(partial_decryption_request);
-        event.event = Some(reputable_decryptor_event::Event::DecryptionEvent(decryption_event));
+        let event = ReputableDecryptorEvent {
+            event: Some(reputable_decryptor_event::Event::DecryptionEvent(DecryptionEvent {
+                key_id: key_id.clone(),
+                partial_decryption_request: Some(partial_decryption_request),
+            })),
+        };
 
         Ok(CommandOutcome::with_event(ActorEvent::with_proto(correlation_id, &event)))
     }

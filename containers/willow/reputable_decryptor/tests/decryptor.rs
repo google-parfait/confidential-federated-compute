@@ -52,8 +52,8 @@ mod test {
 
     #[test]
     fn test_key_limit_and_fifo_eviction() {
-        let mut state = ReputableDecryptorState::default();
-        state.max_number_of_decryptor_states = 2;
+        let mut state =
+            ReputableDecryptorState { max_number_of_decryptor_states: 2, ..Default::default() };
         let seed1 = vec![1; 32];
         let seed2 = vec![2; 32];
         let seed3 = vec![3; 32];
