@@ -26,7 +26,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "benchmark/benchmark.h"
-#include "containers/common/input.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/fed_sql/inference_model.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"

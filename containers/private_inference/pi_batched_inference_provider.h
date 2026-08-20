@@ -20,13 +20,13 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "containers/batched_inference/batched_inference_engine.h"
+#include "containers/common/inference/batched_inference_engine.h"
 #include "pi_client.h"
 
 namespace confidential_federated_compute::private_inference {
 
 class PiBatchedInferenceEngine : public ::confidential_federated_compute::
-                                     batched_inference::BatchedInferenceEngine {
+                                     inference::BatchedInferenceEngine {
  public:
   explicit PiBatchedInferenceEngine(std::unique_ptr<PiClient> pi_client);
   ~PiBatchedInferenceEngine() override = default;
@@ -39,14 +39,14 @@ class PiBatchedInferenceEngine : public ::confidential_federated_compute::
 };
 
 class PiBatchedInferenceProvider
-    : public ::confidential_federated_compute::batched_inference::
+    : public ::confidential_federated_compute::inference::
           BatchedInferenceEngineProvider {
  public:
   explicit PiBatchedInferenceProvider(std::string server_address);
   ~PiBatchedInferenceProvider() override = default;
 
-  std::shared_ptr<::confidential_federated_compute::batched_inference::
-                      BatchedInferenceEngine>
+  std::shared_ptr<
+      ::confidential_federated_compute::inference::BatchedInferenceEngine>
   GetEngineForInferenceConfig(
       const fcp::confidentialcompute::InferenceConfiguration& config) override;
 

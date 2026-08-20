@@ -48,7 +48,7 @@ PiBatchedInferenceProvider::PiBatchedInferenceProvider(
     : server_address_(std::move(server_address)) {}
 
 std::shared_ptr<
-    ::confidential_federated_compute::batched_inference::BatchedInferenceEngine>
+    ::confidential_federated_compute::inference::BatchedInferenceEngine>
 PiBatchedInferenceProvider::GetEngineForInferenceConfig(
     const fcp::confidentialcompute::InferenceConfiguration& config) {
   int port = DEFAULT_HOST_PROXY_PORT_WHEN_UNSPECIFIED;

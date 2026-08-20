@@ -26,7 +26,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "containers/common/intervals/interval_set.h"
-#include "containers/common/sqlite_adapter.h"
+#include "containers/common/sqlite/sqlite_adapter.h"
 #include "containers/fed_sql/session_utils.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/time_window_utilities.h"

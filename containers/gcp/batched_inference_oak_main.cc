@@ -40,8 +40,8 @@
 #include "cc/containers/sdk/orchestrator_client.h"
 #include "cc/containers/sdk/signing_key_handle.h"
 #include "client.h"
-#include "containers/batched_inference/batched_inference_engine.h"
-#include "containers/batched_inference/batched_inference_server.h"
+#include "containers/common/inference/batched_inference_engine.h"
+#include "containers/common/inference/batched_inference_server.h"
 #include "google/protobuf/text_format.h"
 #include "grpcpp/grpcpp.h"
 #include "proto_parsing_utils.h"
@@ -68,9 +68,9 @@ using ::oak::containers::sdk::OrchestratorClient;
 using ::oak::crypto::EncryptionKeyHandle;
 using ::oak::crypto::SigningKeyHandle;
 
-using batched_inference::BatchedInferenceEngine;
-using batched_inference::BatchedInferenceEngineProvider;
-using batched_inference::BatchedInferenceServer;
+using inference::BatchedInferenceEngine;
+using inference::BatchedInferenceEngineProvider;
+using inference::BatchedInferenceServer;
 
 AttestationPolicy ReadPolicyOrDie() {
   std::string policy_path = absl::GetFlag(FLAGS_policy_path);

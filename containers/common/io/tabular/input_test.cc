@@ -1,0 +1,796 @@
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "containers/common/io/tabular/input.h"
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
+#include "containers/common/io/tabular/row_view.h"
+#include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "gmock/gmock.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
+#include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_shape.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/in_memory_checkpoint_parser.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/testing/test_data.h"
+#include "testing/matchers.h"
+#include "testing/parse_text_proto.h"
+
+namespace confidential_federated_compute {
+namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
+using ::fcp::confidential_compute::kEventTimeColumnName;
+using ::fcp::confidential_compute::kPrivacyIdColumnName;
+using ::fcp::confidential_compute::kPrivateLoggerEntryKey;
+using ::google::protobuf::Descriptor;
+using ::google::protobuf::DescriptorPool;
+using ::google::protobuf::DynamicMessageFactory;
+using ::google::protobuf::FieldDescriptorProto;
+using ::google::protobuf::FileDescriptor;
+using ::google::protobuf::FileDescriptorProto;
+using ::google::protobuf::Message;
+using ::google::protobuf::Reflection;
+using ::tensorflow_federated::aggregation::CreateTestData;
+using ::tensorflow_federated::aggregation::DataType;
+using ::tensorflow_federated::aggregation::InMemoryCheckpointParser;
+using ::tensorflow_federated::aggregation::Tensor;
+using ::tensorflow_federated::aggregation::TensorShape;
+using ::testing::HasSubstr;
+
+class InputTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    auto t1 = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                             CreateTestData<int64_t>({1, 2}), "col1");
+    CHECK_OK(t1);
+    contents_.push_back(*std::move(t1));
+    auto t2 = Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                             CreateTestData<absl::string_view>({"foo", "bar"}),
+                             "col2");
+    CHECK_OK(t2);
+    contents_.push_back(*std::move(t2));
+  }
+
+  std::vector<Tensor> contents_;
+};
+
+TEST_F(InputTest, CreateFromTensors) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+}
+
+TEST_F(InputTest, CreateFromTensorsWithPrivacyId) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", "the_privacy_id");
+  ASSERT_THAT(input, IsOk());
+}
+
+TEST_F(InputTest, CreateFromTensorsFailsWithNoColumns) {
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors({}, "key-id", /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "No columns provided."));
+}
+
+TEST_F(InputTest, CreateFromTensorsFailsWithNoRows) {
+  contents_.clear();
+  contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({}),
+                                      CreateTestData<int64_t>({1}), "col1"));
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "Column has no rows."));
+}
+
+TEST_F(InputTest, CreateFromTensorsFailsWithMultiDimensionalRows) {
+  contents_.clear();
+  contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({1, 2}),
+                                      CreateTestData<int64_t>({1, 2}), "col1"));
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "Column has more than one dimension."));
+}
+
+TEST_F(InputTest, CreateFromTensorsFailsWithMismatchedRows) {
+  contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({3}),
+                                      CreateTestData<int64_t>({1, 2, 3}),
+                                      "col3"));
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(
+      input.status(),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "All columns must have the same number of rows."));
+}
+
+TEST_F(InputTest, GetColumnNames) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>({"col1", "col2"}));
+}
+
+TEST_F(InputTest, GetMetadata) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_EQ(input->GetMetadata(), "key-id");
+}
+
+TEST_F(InputTest, GetPrivacyId) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_FALSE(input->GetPrivacyId().has_value());
+}
+
+TEST_F(InputTest, GetPrivacyIdWithValue) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", "the_privacy_id");
+  ASSERT_THAT(input, IsOk());
+  ASSERT_TRUE(input->GetPrivacyId().has_value());
+  EXPECT_EQ(*input->GetPrivacyId(), "the_privacy_id");
+}
+
+TEST_F(InputTest, GetRow) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<RowView> row = input->GetRow(0);
+  ASSERT_THAT(row, IsOk());
+  EXPECT_EQ(row->GetColumnCount(), 2);
+  EXPECT_EQ(row->GetValue<int64_t>(0), 1);
+  EXPECT_EQ(row->GetValue<absl::string_view>(1), "foo");
+
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int64_t>(0), 2);
+  EXPECT_EQ(row1->GetValue<absl::string_view>(1), "bar");
+}
+
+TEST_F(InputTest, GetRowCount) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_EQ(input->GetRowCount(), 2);
+}
+
+TEST_F(InputTest, AddColumn) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                CreateTestData<int64_t>({3, 4}), "col3");
+  ASSERT_THAT(new_col, IsOk());
+  input->AddColumn(std::move(*new_col));
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>({"col1", "col2", "col3"}));
+  absl::StatusOr<RowView> row0 = input->GetRow(0);
+  ASSERT_THAT(row0, IsOk());
+  EXPECT_EQ(row0->GetValue<int64_t>(2), 3);
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int64_t>(2), 4);
+}
+
+TEST_F(InputTest, MoveToTensors) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<std::vector<Tensor>> tensors =
+      std::move(*input).MoveToTensors();
+  ASSERT_THAT(tensors, IsOk());
+  ASSERT_EQ(tensors->size(), 2);
+  EXPECT_EQ(tensors->at(0).name(), "col1");
+  EXPECT_EQ(tensors->at(0).dtype(), DataType::DT_INT64);
+  EXPECT_EQ(tensors->at(0).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(0).AsSpan<int64_t>(), testing::ElementsAre(1, 2));
+  EXPECT_EQ(tensors->at(1).name(), "col2");
+  EXPECT_EQ(tensors->at(1).dtype(), DataType::DT_STRING);
+  EXPECT_EQ(tensors->at(1).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(1).AsSpan<absl::string_view>(),
+              testing::ElementsAre("foo", "bar"));
+}
+
+TEST_F(InputTest, AddColumnFailsWithEmptyColumnName) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({3, 4}, "");
+  EXPECT_THAT(input->AddColumn(std::move(new_col)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Column name is empty.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithDuplicateColumnName) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({3, 4}, "col1");
+  EXPECT_THAT(
+      input->AddColumn(std::move(new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column name col1 already exists.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithMultiDimensionalColumn) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2, 2}),
+                                CreateTestData<int64_t>({1, 2, 3, 4}), "col3");
+  EXPECT_THAT(
+      input->AddColumn(std::move(*new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column col3 must have exactly one "
+                                       "dimension.")));
+}
+
+TEST_F(InputTest, AddColumnFailsWithMismatchedColumnRows) {
+  absl::StatusOr<Input> input = Input::CreateFromTensors(
+      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  Tensor new_col = Tensor({1, 2, 3}, "col3");
+  EXPECT_THAT(
+      input->AddColumn(std::move(new_col)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Column col3 has a different number of "
+                                       "rows than the table.")));
+}
+
+class MessageInputTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+      name: "test.proto"
+      package: "confidential_federated_compute.sql"
+      message_type {
+        name: "DeeplyNestedMessage"
+        field {
+          name: "deep_col1"
+          number: 1
+          type: TYPE_INT32
+          label: LABEL_OPTIONAL
+        }
+      }
+      message_type {
+        name: "NestedMessage"
+        field {
+          name: "sub_col1"
+          number: 1
+          type: TYPE_INT32
+          label: LABEL_OPTIONAL
+        }
+        field {
+          name: "deep"
+          number: 2
+          type: TYPE_MESSAGE
+          type_name: ".confidential_federated_compute.sql.DeeplyNestedMessage"
+          label: LABEL_OPTIONAL
+        }
+      }
+      message_type {
+        name: "TestMessage"
+        field { name: "col1" number: 1 type: TYPE_INT32 label: LABEL_OPTIONAL }
+        field { name: "col2" number: 2 type: TYPE_INT64 label: LABEL_OPTIONAL }
+        field { name: "col3" number: 3 type: TYPE_FLOAT label: LABEL_OPTIONAL }
+        field { name: "col4" number: 4 type: TYPE_DOUBLE label: LABEL_OPTIONAL }
+        field { name: "col5" number: 5 type: TYPE_STRING label: LABEL_OPTIONAL }
+        field {
+          name: "nested"
+          number: 6
+          type: TYPE_MESSAGE
+          type_name: ".confidential_federated_compute.sql.NestedMessage"
+          label: LABEL_OPTIONAL
+        }
+      }
+    )pb");
+
+    pool_ = std::make_unique<DescriptorPool>();
+    const google::protobuf::FileDescriptor* file_descriptor =
+        pool_->BuildFile(file_proto);
+    ASSERT_NE(file_descriptor, nullptr);
+
+    const Descriptor* descriptor =
+        file_descriptor->FindMessageTypeByName("TestMessage");
+    ASSERT_NE(descriptor, nullptr);
+
+    factory_ = std::make_unique<DynamicMessageFactory>(pool_.get());
+    messages_.push_back(
+        CreateMessage(descriptor, 1, 2, 3.0f, 4.0, "foo", 100, 300));
+    messages_.push_back(
+        CreateMessage(descriptor, 11, 12, 13.0f, 14.0, "bar", 200, 400));
+
+    auto t1 = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                             CreateTestData<int64_t>({42, 24}), "system_col1");
+    CHECK_OK(t1);
+    system_columns_.push_back(*std::move(t1));
+    auto t2 = Tensor::Create(DataType::DT_STRING, TensorShape({2}),
+                             CreateTestData<absl::string_view>({"baz", "qux"}),
+                             "system_col2");
+    CHECK_OK(t2);
+    system_columns_.push_back(*std::move(t2));
+  }
+
+  std::unique_ptr<Message> CreateMessage(const Descriptor* descriptor,
+                                         int32_t int32_val, int64_t int64_val,
+                                         float float_val, double double_val,
+                                         std::string string_val,
+                                         int32_t sub_int32_val,
+                                         int32_t deep_int32_val) {
+    std::unique_ptr<Message> message =
+        std::unique_ptr<Message>(factory_->GetPrototype(descriptor)->New());
+
+    const Reflection* reflection = message->GetReflection();
+    reflection->SetInt32(message.get(), descriptor->FindFieldByName("col1"),
+                         int32_val);
+    reflection->SetInt64(message.get(), descriptor->FindFieldByName("col2"),
+                         int64_val);
+    reflection->SetFloat(message.get(), descriptor->FindFieldByName("col3"),
+                         float_val);
+    reflection->SetDouble(message.get(), descriptor->FindFieldByName("col4"),
+                          double_val);
+    reflection->SetString(message.get(), descriptor->FindFieldByName("col5"),
+                          string_val);
+    const google::protobuf::FieldDescriptor* nested_field =
+        descriptor->FindFieldByName("nested");
+    google::protobuf::Message* nested_message =
+        reflection->MutableMessage(message.get(), nested_field);
+    nested_message->GetReflection()->SetInt32(
+        nested_message,
+        nested_field->message_type()->FindFieldByName("sub_col1"),
+        sub_int32_val);
+
+    const google::protobuf::FieldDescriptor* deep_field =
+        nested_field->message_type()->FindFieldByName("deep");
+    google::protobuf::Message* deep_message =
+        nested_message->GetReflection()->MutableMessage(nested_message,
+                                                        deep_field);
+    deep_message->GetReflection()->SetInt32(
+        deep_message, deep_field->message_type()->FindFieldByName("deep_col1"),
+        deep_int32_val);
+
+    return message;
+  }
+
+  std::unique_ptr<DescriptorPool> pool_;
+  std::unique_ptr<DynamicMessageFactory> factory_;
+  std::vector<std::unique_ptr<Message>> messages_;
+  std::vector<Tensor> system_columns_;
+};
+
+TEST_F(MessageInputTest, CreateFromMessages) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+}
+
+TEST_F(MessageInputTest, CreateFromMessagesWithPrivacyId) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      "privacy_id_value");
+  ASSERT_THAT(input, IsOk());
+}
+
+TEST_F(MessageInputTest, CreateFromMessagesFailsWithNoRows) {
+  absl::StatusOr<Input> input =
+      Input::CreateFromMessages({}, {}, "key-id", /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "No rows provided."));
+}
+
+TEST_F(MessageInputTest, CreateFromMessagesFailsWithMismatchedMessageTypes) {
+  // Create a new descriptor for a different message type.
+  const FileDescriptorProto file_proto2 = PARSE_TEXT_PROTO(R"pb(
+    name: "test2.proto"
+    package: "confidential_federated_compute.sql"
+    message_type {
+      name: "TestMessage2"
+      field {
+        name: "another_col"
+        number: 1
+        type: TYPE_INT32
+        label: LABEL_OPTIONAL
+      }
+    }
+  )pb");
+  const FileDescriptor* file_descriptor = pool_->BuildFile(file_proto2);
+  ASSERT_NE(file_descriptor, nullptr);
+  const Descriptor* descriptor2 =
+      file_descriptor->FindMessageTypeByName("TestMessage2");
+  ASSERT_NE(descriptor2, nullptr);
+
+  // Create a message with the new type.
+  std::unique_ptr<Message> message2 =
+      std::unique_ptr<Message>(factory_->GetPrototype(descriptor2)->New());
+  message2->GetReflection()->SetInt32(
+      message2.get(), descriptor2->FindFieldByName("another_col"), 123);
+
+  // Add the new message to contents.
+  messages_.push_back(std::move(message2));
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "All messages in a table must have the "
+                                     "same proto type."));
+}
+
+TEST_F(MessageInputTest,
+       CreateFromMessagesFailsWithMismatchedSystemColumnRows) {
+  // Add a system column with a different number of rows.
+  auto t3 = Tensor::Create(DataType::DT_INT64, TensorShape({3}),
+                           CreateTestData<int64_t>({1, 2, 3}), "system_col3");
+  ASSERT_THAT(t3, IsOk());
+  system_columns_.push_back(*std::move(t3));
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(input.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     "System columns must have the same "
+                                     "number of rows as the table."));
+}
+
+TEST_F(MessageInputTest,
+       CreateFromMessagesFailsWithMultiDimensionalSystemColumn) {
+  // Add a system column with more than one dimension.
+  auto t3 = Tensor::Create(DataType::DT_INT64, TensorShape({2, 1}),
+                           CreateTestData<int64_t>({1, 2}), "system_col3");
+  ASSERT_THAT(t3, IsOk());
+  system_columns_.push_back(*std::move(t3));
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  EXPECT_THAT(
+      input.status(),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "System columns must have a single dimension."));
+}
+
+TEST_F(MessageInputTest, GetColumnNames) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>(
+                {"col1", "col2", "col3", "col4", "col5", "nested__sub_col1",
+                 "nested__deep__deep_col1", "system_col1", "system_col2"}));
+}
+
+TEST_F(MessageInputTest, GetRowCount) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  EXPECT_EQ(input->GetRowCount(), 2);
+}
+
+TEST_F(MessageInputTest, AddColumn) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
+                                CreateTestData<int64_t>({100, 200}), "new_col");
+  ASSERT_THAT(new_col, IsOk());
+  ASSERT_THAT(input->AddColumn(std::move(*new_col)), IsOk());
+  EXPECT_EQ(
+      input->GetColumnNames(),
+      std::vector<std::string>({"col1", "col2", "col3", "col4", "col5",
+                                "nested__sub_col1", "nested__deep__deep_col1",
+                                "system_col1", "system_col2", "new_col"}));
+  absl::StatusOr<RowView> row0 = input->GetRow(0);
+  ASSERT_THAT(row0, IsOk());
+  EXPECT_EQ(row0->GetValue<int64_t>(9), 100);
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int64_t>(9), 200);
+}
+
+TEST_F(MessageInputTest, GetRow) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id",
+      /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<RowView> row = input->GetRow(0);
+  ASSERT_THAT(row, IsOk());
+  EXPECT_EQ(row->GetColumnCount(), 9);
+  EXPECT_EQ(row->GetValue<int32_t>(0), 1);
+  EXPECT_EQ(row->GetValue<int64_t>(1), 2);
+  EXPECT_EQ(row->GetValue<float>(2), 3.0f);
+  EXPECT_EQ(row->GetValue<double>(3), 4.0);
+  EXPECT_EQ(row->GetValue<absl::string_view>(4), "foo");
+  EXPECT_EQ(row->GetValue<int32_t>(5), 100);
+  EXPECT_EQ(row->GetValue<int32_t>(6), 300);
+  EXPECT_EQ(row->GetValue<int64_t>(7), 42);
+  EXPECT_EQ(row->GetValue<absl::string_view>(8), "baz");
+
+  absl::StatusOr<RowView> row1 = input->GetRow(1);
+  ASSERT_THAT(row1, IsOk());
+  EXPECT_EQ(row1->GetValue<int32_t>(0), 11);
+  EXPECT_EQ(row1->GetValue<int64_t>(1), 12);
+  EXPECT_EQ(row1->GetValue<float>(2), 13.0f);
+  EXPECT_EQ(row1->GetValue<double>(3), 14.0);
+  EXPECT_EQ(row1->GetValue<absl::string_view>(4), "bar");
+  EXPECT_EQ(row1->GetValue<int32_t>(5), 200);
+  EXPECT_EQ(row1->GetValue<int32_t>(6), 400);
+  EXPECT_EQ(row1->GetValue<int64_t>(7), 24);
+  EXPECT_EQ(row1->GetValue<absl::string_view>(8), "qux");
+}
+
+TEST_F(MessageInputTest, MoveToTensors) {
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages_), std::move(system_columns_), "key-id", std::nullopt);
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<std::vector<Tensor>> tensors =
+      std::move(*input).MoveToTensors();
+  ASSERT_THAT(tensors, IsOk());
+  ASSERT_EQ(tensors->size(), 9);
+
+  EXPECT_EQ(tensors->at(0).name(), "col1");
+  EXPECT_EQ(tensors->at(0).dtype(), DataType::DT_INT32);
+  EXPECT_EQ(tensors->at(0).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(0).AsSpan<int32_t>(), testing::ElementsAre(1, 11));
+
+  EXPECT_EQ(tensors->at(1).name(), "col2");
+  EXPECT_EQ(tensors->at(1).dtype(), DataType::DT_INT64);
+  EXPECT_EQ(tensors->at(1).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(1).AsSpan<int64_t>(), testing::ElementsAre(2, 12));
+
+  EXPECT_EQ(tensors->at(2).name(), "col3");
+  EXPECT_EQ(tensors->at(2).dtype(), DataType::DT_FLOAT);
+  EXPECT_EQ(tensors->at(2).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(2).AsSpan<float>(),
+              testing::ElementsAre(3.0f, 13.0f));
+
+  EXPECT_EQ(tensors->at(3).name(), "col4");
+  EXPECT_EQ(tensors->at(3).dtype(), DataType::DT_DOUBLE);
+  EXPECT_EQ(tensors->at(3).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(3).AsSpan<double>(), testing::ElementsAre(4.0, 14.0));
+
+  EXPECT_EQ(tensors->at(4).name(), "col5");
+  EXPECT_EQ(tensors->at(4).dtype(), DataType::DT_STRING);
+  EXPECT_EQ(tensors->at(4).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(4).AsSpan<absl::string_view>(),
+              testing::ElementsAre("foo", "bar"));
+
+  EXPECT_EQ(tensors->at(5).name(), "nested__sub_col1");
+  EXPECT_EQ(tensors->at(5).dtype(), DataType::DT_INT32);
+  EXPECT_EQ(tensors->at(5).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(5).AsSpan<int32_t>(), testing::ElementsAre(100, 200));
+
+  EXPECT_EQ(tensors->at(6).name(), "nested__deep__deep_col1");
+  EXPECT_EQ(tensors->at(6).dtype(), DataType::DT_INT32);
+  EXPECT_EQ(tensors->at(6).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(6).AsSpan<int32_t>(), testing::ElementsAre(300, 400));
+
+  EXPECT_EQ(tensors->at(7).name(), "system_col1");
+  EXPECT_EQ(tensors->at(7).dtype(), DataType::DT_INT64);
+  EXPECT_EQ(tensors->at(7).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(7).AsSpan<int64_t>(), testing::ElementsAre(42, 24));
+
+  EXPECT_EQ(tensors->at(8).name(), "system_col2");
+  EXPECT_EQ(tensors->at(8).dtype(), DataType::DT_STRING);
+  EXPECT_EQ(tensors->at(8).shape(), TensorShape({2}));
+  EXPECT_THAT(tensors->at(8).AsSpan<absl::string_view>(),
+              testing::ElementsAre("baz", "qux"));
+}
+TEST(IsolatedInputTest, EnumFieldGeneratesDuplicateStringColumn) {
+  const FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+    name: "enum_test.proto"
+    package: "confidential_federated_compute.sql"
+    message_type {
+      name: "EnumMessage"
+      enum_type {
+        name: "TestEnum"
+        value { name: "UNKNOWN" number: 0 }
+        value { name: "TEST_VAL" number: 88 }
+        value { name: "TEST_VAL2" number: 99 }
+      }
+      field {
+        name: "enum_col"
+        number: 1
+        type: TYPE_ENUM
+        type_name: ".confidential_federated_compute.sql.EnumMessage.TestEnum"
+        label: LABEL_OPTIONAL
+      }
+    }
+  )pb");
+
+  DescriptorPool pool;
+  const google::protobuf::FileDescriptor* file_descriptor =
+      pool.BuildFile(file_proto);
+  ASSERT_NE(file_descriptor, nullptr);
+
+  const Descriptor* descriptor =
+      file_descriptor->FindMessageTypeByName("EnumMessage");
+  ASSERT_NE(descriptor, nullptr);
+
+  DynamicMessageFactory factory(&pool);
+  std::unique_ptr<Message> message =
+      std::unique_ptr<Message>(factory.GetPrototype(descriptor)->New());
+
+  const Reflection* reflection = message->GetReflection();
+  const google::protobuf::EnumDescriptor* enum_desc =
+      descriptor->FindEnumTypeByName("TestEnum");
+  reflection->SetEnum(message.get(), descriptor->FindFieldByName("enum_col"),
+                      enum_desc->FindValueByNumber(88));
+
+  std::unique_ptr<Message> message2 =
+      std::unique_ptr<Message>(factory.GetPrototype(descriptor)->New());
+  reflection->SetEnum(message2.get(), descriptor->FindFieldByName("enum_col"),
+                      enum_desc->FindValueByNumber(99));
+
+  std::vector<std::unique_ptr<Message>> messages;
+  messages.push_back(std::move(message));
+  messages.push_back(std::move(message2));
+
+  absl::StatusOr<Input> input = Input::CreateFromMessages(
+      std::move(messages), {}, "key-id", /*privacy_id=*/std::nullopt);
+  ASSERT_THAT(input, IsOk());
+
+  EXPECT_EQ(input->GetColumnNames(),
+            std::vector<std::string>({"enum_col", "enum_col_as_str"}));
+
+  auto tensors = std::move(*input).MoveToTensors();
+  ASSERT_THAT(tensors, IsOk());
+  ASSERT_EQ(tensors->size(), 2);
+
+  EXPECT_EQ(tensors->at(0).name(), "enum_col");
+  EXPECT_EQ(tensors->at(0).dtype(), DataType::DT_INT32);
+  EXPECT_THAT(tensors->at(0).AsSpan<int32_t>(), testing::ElementsAre(88, 99));
+
+  EXPECT_EQ(tensors->at(1).name(), "enum_col_as_str");
+  EXPECT_EQ(tensors->at(1).dtype(), DataType::DT_STRING);
+  EXPECT_THAT(tensors->at(1).AsSpan<absl::string_view>(),
+              testing::ElementsAre("TEST_VAL", "TEST_VAL2"));
+}
+
+class FakeMessageFactory : public MessageFactory {
+ public:
+  std::unique_ptr<google::protobuf::Message> NewMessage() const override {
+    return std::make_unique<fcp::confidentialcompute::BlobHeader>();
+  }
+};
+
+TEST(CreateFromMessageCheckpointTest, SuccessWithoutPrivacyId) {
+  FakeMessageFactory factory;
+
+  std::string query_name = "my_query";
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
+
+  fcp::confidentialcompute::BlobHeader header;
+  std::string serialized_header;
+  header.SerializeToString(&serialized_header);
+
+  Tensor entry_tensor({serialized_header}, entry_name);
+  Tensor time_tensor({{"2026-05-05"}}, time_name);
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(entry_tensor));
+  tensors.push_back(std::move(time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
+
+  EXPECT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 1);
+  EXPECT_FALSE(input_result->GetPrivacyId().has_value());
+}
+
+TEST(CreateFromMessageCheckpointTest, SuccessWithPrivacyId) {
+  FakeMessageFactory factory;
+
+  std::string query_name = "my_query";
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
+
+  fcp::confidentialcompute::BlobHeader header;
+  std::string serialized_header;
+  header.SerializeToString(&serialized_header);
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor({serialized_header}, entry_name));
+  tensors.push_back(Tensor({"2026-05-05"}, time_name));
+  tensors.push_back(Tensor("the_privacy_id", kPrivacyIdColumnName));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
+
+  ASSERT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 1);
+  ASSERT_TRUE(input_result->GetPrivacyId().has_value());
+  EXPECT_EQ(*input_result->GetPrivacyId(), "the_privacy_id");
+}
+
+TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {
+  FakeMessageFactory factory;
+  std::string query_name = "my_query";
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
+
+  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
+  ASSERT_THAT(time_tensor, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
+
+  EXPECT_THAT(input_result.status(), StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
+  FakeMessageFactory factory;
+  std::string query_name = "my_query";
+  std::string entry_name =
+      absl::StrCat(query_name, "/", kPrivateLoggerEntryKey);
+  std::string time_name = absl::StrCat(query_name, "/", kEventTimeColumnName);
+
+  absl::StatusOr<Tensor> entry_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"invalid_proto_data"}), entry_name);
+  ASSERT_THAT(entry_tensor, IsOk());
+
+  absl::StatusOr<Tensor> time_tensor = Tensor::Create(
+      DataType::DT_STRING, TensorShape({1}),
+      CreateTestData<absl::string_view>({"2026-05-05"}), time_name);
+  ASSERT_THAT(time_tensor, IsOk());
+
+  std::vector<Tensor> tensors;
+  tensors.push_back(std::move(*entry_tensor));
+  tensors.push_back(std::move(*time_tensor));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto input_result = CreateFromMessageCheckpoint(&parser, factory, query_name);
+
+  EXPECT_THAT(input_result.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+}  // namespace
+}  // namespace confidential_federated_compute

@@ -18,7 +18,7 @@
 
 #include <string>
 
-#include "containers/common/input.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/fed_sql/inference_model.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gmock/gmock.h"
