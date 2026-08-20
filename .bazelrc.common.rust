@@ -1,0 +1,9 @@
+# Common .bazelrc options meant to be imported in Bazel modules in this repo
+# that use rust and hence have @rules_rust defined.
+
+# Rust toolchain settings.
+build --@rules_rust//rust/toolchain/channel=nightly
+
+# Enable Rust clippy checks when building with `--config=clippy`.
+build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
+build:clippy --output_groups=+clippy_checks
