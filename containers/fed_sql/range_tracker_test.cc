@@ -370,7 +370,6 @@ TEST(RangeTrackerTest, SetAggregationWindowSuccess) {
 TEST(RangeTrackerTest, SerializeAndParseAggWindow) {
   RangeTracker range_tracker;
   range_tracker.MergeAggWindow(Interval<uint64_t>(1000, 2000));
-  range_tracker.AddKey("foo");
   EXPECT_TRUE(range_tracker.AddRange(1, 5));
 
   RangeTrackerState serialized_state = range_tracker.Serialize();
@@ -400,14 +399,12 @@ TEST(RangeTrackerTest, SerializeWithoutAggWindow) {
 
 TEST(RangeTrackerTest, MergeSameAggWindow) {
   RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 5
     start_time { seconds: 100 }
     end_time { seconds: 200 }
   )pb");
   RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
-    keys: "bar"
     values: 7
     values: 9
     start_time { seconds: 100 }
@@ -426,14 +423,12 @@ TEST(RangeTrackerTest, MergeSameAggWindow) {
 
 TEST(RangeTrackerTest, MergeDifferentAggWindow) {
   RangeTrackerState state1 = PARSE_TEXT_PROTO(R"pb(
-    keys: "foo"
     values: 0
     values: 5
     start_time { seconds: 100 }
     end_time { seconds: 200 }
   )pb");
   RangeTrackerState state2 = PARSE_TEXT_PROTO(R"pb(
-    keys: "bar"
     values: 7
     values: 9
     start_time { seconds: 300 }
@@ -454,7 +449,6 @@ TEST(RangeTrackerTest, MergeDifferentAggWindow) {
 TEST(RangeTrackerTest, MergeEmptyAggWindow) {
   RangeTracker range_tracker;
   RangeTrackerState state = PARSE_TEXT_PROTO(R"pb(
-    keys: "bar"
     values: 7
     values: 9
     start_time { seconds: 100 }
@@ -467,6 +461,20 @@ TEST(RangeTrackerTest, MergeEmptyAggWindow) {
   ASSERT_TRUE(range_tracker.GetAggregationWindow().has_value());
   EXPECT_EQ(range_tracker.GetAggregationWindow()->start(), 100);
   EXPECT_EQ(range_tracker.GetAggregationWindow()->end(), 200);
+}
+
+TEST(RangeTrackerTest, AddKeyAfterMergeAggWindowDies) {
+  RangeTracker range_tracker;
+  range_tracker.MergeAggWindow(Interval<uint64_t>(100, 200));
+  EXPECT_DEATH(range_tracker.AddKey("key"),
+               "Cannot add keys when an aggregation window is set");
+}
+
+TEST(RangeTrackerTest, MergeAggWindowAfterAddKeyDies) {
+  RangeTracker range_tracker;
+  range_tracker.AddKey("key");
+  EXPECT_DEATH(range_tracker.MergeAggWindow(Interval<uint64_t>(100, 200)),
+               "Cannot set an aggregation window when keys are present");
 }
 
 }  // namespace

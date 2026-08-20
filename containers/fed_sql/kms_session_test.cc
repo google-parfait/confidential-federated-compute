@@ -2117,6 +2117,67 @@ TEST_F(KmsFedSqlSessionWriteTest,
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateLegacyThenTimeWindowBudgetBlobDies) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  // First blob: legacy (key-based) path.
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  auto write_result1 = session_->Write(write_request1, data, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+
+  // Second blob: time-window budget path — should crash.
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data, 2, start, end);
+  EXPECT_DEATH(session_->Write(write_request2, data, context_),
+               "Cannot set an aggregation window when keys are present");
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateTimeWindowBudgetThenLegacyBlobDies) {
+  std::string privacy_id(16, '\xa0');
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  // First blob: time-window budget path.
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data, 1, start, end);
+  auto write_result1 = session_->Write(write_request1, data, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+
+  // Second blob: legacy (key-based) path — should crash.
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 2, "key_foo");
+  EXPECT_DEATH(session_->Write(write_request2, data, context_),
+               "Cannot add keys when an aggregation window is set");
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
        MergeReportPrivateStateWithOverlappingAutotuningRangesFails) {
   RangeTracker consumed_tracker;
   consumed_tracker.AddKey("key_foo");
