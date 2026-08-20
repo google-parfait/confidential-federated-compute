@@ -36,6 +36,9 @@ def gcp_model_targets(model_name, weights_label, weights_filename):
         srcs = [weights_label],
         mode = "0444",
         package_dir = "/saved_model",
+        # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+        # explicitly specified.
+        tags = ["manual"],
     )
 
     _ATTESTATION_VARIANTS = [
@@ -83,6 +86,9 @@ def gcp_model_targets(model_name, weights_label, weights_filename):
             entrypoint = ["/batched_inference_gcp_main"],
             env = {"LD_LIBRARY_PATH": "/usr/local/nvidia/lib64:/usr/local/nvidia/lib"},
             exposed_ports = ["8000/tcp"],
+            # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+            # explicitly specified.
+            tags = ["manual"],
             tars = [
                 ":batched_inference_gcp_tar",
                 ":" + model_layer_name,
@@ -93,6 +99,9 @@ def gcp_model_targets(model_name, weights_label, weights_filename):
             name = tarball_name,
             image = ":" + image_name,
             repo_tags = [repo_tag],
+            # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+            # explicitly specified.
+            tags = ["manual"],
         )
 
         define_load_runner(

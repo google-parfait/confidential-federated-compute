@@ -19,3 +19,10 @@ common --registry=https://bcr.bazel.build --registry=https://raw.githubuserconte
 
 # Work around missing dependencies in the parent (CFC); to remove once fixed
 build --features=-layering_check
+
+# Settings for remote build execution platform targets. We use the CFC-defined :remote_platform
+# target rather than defining a  target in this workspace, so we override the default values from
+# .bazelrc.common.
+build:cfc-remote --extra_execution_platforms=@confidential-federated-compute//:remote_platform
+build:cfc-remote --host_platform=@confidential-federated-compute//:remote_platform
+build:cfc-remote --platforms=@confidential-federated-compute//:remote_platform

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
@@ -566,4 +567,12 @@ pkg_files(
 pkg_install(
     name = "install_all_binaries",
     srcs = [":all_binaries"],
+)
+
+build_test(
+    name = "build_test",
+    targets = [
+        ":batched_inference_gcp_main",
+        ":install_all_binaries",
+    ],
 )

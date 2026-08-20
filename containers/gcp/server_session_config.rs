@@ -61,10 +61,11 @@ pub type SigningKeyHandle = SigningKey;
 /// - `public_key_capacity` is large enough (at least 65 bytes for P-256
 ///   uncompressed).
 /// - `out_private_key_handle` points to a valid `*mut SigningKeyHandle`.
+///
 /// Ownership of the returned `SigningKeyHandle` is transferred to the C++
 /// caller.
 #[unsafe(no_mangle)]
-pub extern "C" fn generate_key_pair(
+pub unsafe extern "C" fn generate_key_pair(
     out_public_key_bytes: *mut u8,
     public_key_capacity: usize,
     out_private_key_handle: *mut *mut SigningKeyHandle,
@@ -111,7 +112,7 @@ pub extern "C" fn generate_key_pair(
 /// by `generate_key_pair`, or null (in which case this
 /// is a no-op). After this call, the pointer is invalid.
 #[unsafe(no_mangle)]
-pub extern "C" fn free_signing_key_handle(handle: *mut SigningKeyHandle) {
+pub unsafe extern "C" fn free_signing_key_handle(handle: *mut SigningKeyHandle) {
     if !handle.is_null() {
         unsafe {
             drop(Box::from_raw(handle));
@@ -152,7 +153,7 @@ impl BindableAssertion for CustomAssertion {
         let signature: EcdsaSignature = signing_key.sign(session_id);
 
         // Package the raw signature bytes into the SessionBinding proto.
-        Ok(SessionBinding { binding: signature.to_vec(), ..Default::default() })
+        Ok(SessionBinding { binding: signature.to_vec() })
     }
 }
 
@@ -207,7 +208,7 @@ fn c_str_to_string(ptr: *const c_char, len: usize) -> Result<String, Utf8Error> 
 ///   C++ has relinquished ownership. Double-free or use-after-free will occur
 ///   if C++ mismanages the handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn create_server_session_config(
+pub unsafe extern "C" fn create_server_session_config(
     attestation_token: *const c_char,
     attestation_token_len: usize,
     private_key_handle: *mut SigningKeyHandle, // Opaque private key handle from C++.
