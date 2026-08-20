@@ -48,8 +48,8 @@ using ::testing::Test;
 
 class MockDoFn : public DoFn {
  public:
-  MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
-              (override));
+  MOCK_METHOD(absl::Status, InitializeReplica,
+              (Any config, ConfigureContext& context), (override));
   MOCK_METHOD(absl::Status, Do, (KV input, DoContext& context), (override));
 };
 

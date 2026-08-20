@@ -228,14 +228,16 @@ TEST_F(EmbeddingMapFnTest, InitializeReplicaInitializeModel) {
   auto fn = InitializeFn();
 
   EXPECT_CALL(*delegate_raw_ptr_, InitializeModel(_)).WillOnce(Return(true));
-  EXPECT_THAT(fn->InitializeReplica(Any(), context_), IsOk());
+  Fn::ConfigureContext configure_context(context_);
+  EXPECT_THAT(fn->InitializeReplica(Any(), configure_context), IsOk());
 }
 
 TEST_F(EmbeddingMapFnTest, InitializeModelFailed) {
   auto fn = InitializeFn();
 
   EXPECT_CALL(*delegate_raw_ptr_, InitializeModel(_)).WillOnce(Return(false));
-  EXPECT_THAT(fn->InitializeReplica(Any(), context_),
+  Fn::ConfigureContext configure_context(context_);
+  EXPECT_THAT(fn->InitializeReplica(Any(), configure_context),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

@@ -52,9 +52,9 @@ namespace confidential_federated_compute::fns {
 // datasets should be aware of this memory profile.
 class BatchDoFn : public Fn {
  public:
-  // A context for the Do() method that intentionally hides EmitReleasable
-  // and GetReleaseToken. This ensures that releasable blobs can only be
-  // emitted during FinalizeReplica(), not during Do().
+  // A context for the Do() method that intentionally hides EmitReleasable.
+  // This ensures that releasable blobs can only be emitted during
+  // FinalizeReplica(), not during Do().
   //
   // All other FnContext methods (Emit, EmitUnencrypted, EmitEncrypted,
   // metadata, counters) remain accessible.
@@ -65,9 +65,8 @@ class BatchDoFn : public Fn {
         : FnContext(session_context, std::move(metadata)) {}
 
    private:
-    // Hide EmitReleasable and GetReleaseToken from Do() callers.
+    // Hide EmitReleasable from Do() callers.
     using FnContext::EmitReleasable;
-    using FnContext::GetReleaseToken;
   };
 
   // Called once with ALL accumulated inputs from Write() calls and the

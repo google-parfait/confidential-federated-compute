@@ -43,9 +43,9 @@ namespace confidential_federated_compute::fns {
 //        FinalizeResponse.
 class DoFn : public Fn {
  public:
-  // A context for the Do() method that intentionally hides EmitReleasable
-  // and GetReleaseToken. This ensures that releasable blobs can only be
-  // emitted during FinalizeReplica(), not during Do().
+  // A context for the Do() method that intentionally hides EmitReleasable.
+  // This ensures that releasable blobs can only be emitted during
+  // FinalizeReplica(), not during Do().
   //
   // All other FnContext methods (Emit, EmitUnencrypted, EmitEncrypted,
   // metadata, counters) remain accessible.
@@ -56,9 +56,8 @@ class DoFn : public Fn {
         : FnContext(session_context, std::move(metadata)) {}
 
    private:
-    // Hide EmitReleasable and GetReleaseToken from Do() callers.
+    // Hide EmitReleasable from Do() callers.
     using FnContext::EmitReleasable;
-    using FnContext::GetReleaseToken;
   };
 
   // Processes an input element. The input Value.data is unencrypted. Uses the

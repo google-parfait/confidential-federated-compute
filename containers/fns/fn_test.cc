@@ -52,8 +52,8 @@ using ::testing::StrictMock;
 
 class MockFn : public Fn {
  public:
-  MOCK_METHOD(absl::Status, InitializeReplica, (Any config, Context& context),
-              (override));
+  MOCK_METHOD(absl::Status, InitializeReplica,
+              (Any config, ConfigureContext& context), (override));
   MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, FnContext& context),
               (override));
   MOCK_METHOD(absl::StatusOr<WriteFinishedResponse>, Write,
@@ -216,7 +216,6 @@ TEST_F(FnTest, EmitReleasableAttachesMetadata) {
       fn_context.EmitReleasable(0, std::move(output), std::nullopt, "dst"));
   ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
   EXPECT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
-  EXPECT_EQ(fn_context.GetReleaseToken(), "test_release_token");
 }
 
 TEST_F(FnTest, MultipleEmissionsGetSameMetadata) {
