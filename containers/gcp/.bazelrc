@@ -14,9 +14,6 @@ common --repo_env=CC=clang
 common --action_env=CUDA_COMPILER_USE_CC_TOOLCHAIN=true
 common --action_env=CUDA_CLANG_LABEL="@llvm_toolchain//:cc-toolchain-x86_64-linux"
 
-# CFC registry
-common --registry=https://bcr.bazel.build --registry=https://raw.githubusercontent.com/google-parfait/confidential-federated-compute/main/registry/
-
 # Work around missing dependencies in the parent (CFC); to remove once fixed
 build --features=-layering_check
 
