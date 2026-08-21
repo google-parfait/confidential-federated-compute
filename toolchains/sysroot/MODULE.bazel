@@ -12,13 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-bazel_dep(name = "rules_distroless", version = "0.5.1")
-bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "rules_pkg", version = "1.3.0")
 
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian/20260815T000000Z",
+    ],
+)
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm-security"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debia-security/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian-security/20260815T000000Z",
+    ],
+)
 apt.install(
-    name = "sysroot",
-    lock = "//:sysroot.lock.json",
-    manifest = "//:sysroot.yaml",
+    dependency_set = "sysroot",
+    packages = [
+        "base-files",  # For common licenses.
+        "libc6-dev",
+        "libicu72",  # LLVM toolchain depends on it
+        "libstdc++-11-dev",
+        "libxml2",  # LLVM toolchain depends on it
+    ],
+    suites = [
+        "bookworm",
+        "bookworm-security",
+    ],
 )
 use_repo(apt, "sysroot")

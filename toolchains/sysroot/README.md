@@ -17,8 +17,8 @@ The sysroot is updated manually on an as-needed basis. To update the sysroot,
 perform the following steps:
 
 1.  Update `sysroot.yaml` to include new packages or a newer snapshot. Run
-    `bazelisk run @sysroot//:lock` to update `sysroot.lock.json`. After
-    confirming the sysroot builds successfully (`bazelisk build //:sysroot`),
+    `bazelisk build --lockfile_mode=update //:sysroot` to update the bazel
+    lock file with the new deps. After confirming this builds successfully,
     commit this change.
 2.  Create a new tag (and optionally release) starting with `sysroot-` (e.g.
     `sysroot-YYYYMMDD`). This will trigger the "Release sysroot" workflow to
