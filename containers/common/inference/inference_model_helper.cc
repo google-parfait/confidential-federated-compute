@@ -24,6 +24,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "containers/common/io/tabular/input.h"
+#include "containers/common/utf8_utils.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/protobuf/util/json_util.h"
@@ -250,7 +251,8 @@ absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
     }
   }
   if (populated_prompt.size() > max_prompt_size) {
-    populated_prompt.resize(max_prompt_size);
+    populated_prompt.resize(
+        TruncateUtf8(populated_prompt, max_prompt_size).size());
   }
   if (prompt.parser() == Prompt::PARSER_AUTO) {
     AppendSystemInstructions(populated_prompt, output_column_name);

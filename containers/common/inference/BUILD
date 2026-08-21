@@ -35,6 +35,7 @@ cc_library(
     srcs = ["inference_model_helper.cc"],
     hdrs = ["inference_model_helper.h"],
     deps = [
+        "//containers/common:utf8_utils",
         "//containers/common/io/tabular:input",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -57,6 +58,7 @@ cc_test(
     srcs = ["inference_model_helper_test.cc"],
     deps = [
         ":inference_model_helper",
+        "//containers/common:utf8_utils",
         "//containers/common/io/tabular:input",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
