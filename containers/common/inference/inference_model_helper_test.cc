@@ -21,6 +21,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "containers/common/io/tabular/input.h"
+#include "containers/common/utf8_utils.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -165,6 +166,85 @@ TEST_F(InferenceModelInternalTest, PopulatePromptTemplateTruncation) {
                   prompt, *row, column_names, indices, output_column_name,
                   max_prompt_size),
               IsOkAndHolds(expected_prompt));
+}
+
+TEST_F(InferenceModelInternalTest,
+       PopulatePromptTemplateTruncationUtf8MultiByte) {
+  Prompt prompt;
+  prompt.set_prompt_template("User: {user}");
+
+  InferencePromptProcessor prompt_processor;
+  const std::string column_names[] = {"user"};
+  const size_t indices[] = {0};
+  const std::string output_column_name = "output";
+
+  // Test 2-byte UTF-8 character truncation: "User: café" (11 bytes total).
+  {
+    absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"café"}, "user");
+    ASSERT_THAT(user_tensor, IsOk());
+    std::vector<Tensor> columns;
+    columns.push_back(std::move(*user_tensor));
+    absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
+    ASSERT_THAT(input, IsOk());
+    absl::StatusOr<RowView> row = input->GetRow(0);
+    ASSERT_THAT(row, IsOk());
+
+    // Truncating at 10 bytes would split 'é' (0xC3 0xA9) into just 0xC3.
+    // Instead, it must truncate safely to "User: caf" (9 bytes).
+    auto result = prompt_processor.PopulatePromptTemplate(
+        prompt, *row, column_names, indices, output_column_name, 10);
+    ASSERT_THAT(result, IsOk());
+    EXPECT_EQ(*result, "User: caf");
+    EXPECT_TRUE(IsValidUtf8(*result));
+  }
+
+  // Test 3-byte UTF-8 character truncation: "User: hi世" (11 bytes total).
+  {
+    absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"hi世"}, "user");
+    ASSERT_THAT(user_tensor, IsOk());
+    std::vector<Tensor> columns;
+    columns.push_back(std::move(*user_tensor));
+    absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
+    ASSERT_THAT(input, IsOk());
+    absl::StatusOr<RowView> row = input->GetRow(0);
+    ASSERT_THAT(row, IsOk());
+
+    // Truncating at 10 bytes or 9 bytes would split '世' (0xE4 0xB8 0x96).
+    // Instead, it must truncate safely to "User: hi" (8 bytes).
+    auto result_10 = prompt_processor.PopulatePromptTemplate(
+        prompt, *row, column_names, indices, output_column_name, 10);
+    ASSERT_THAT(result_10, IsOk());
+    EXPECT_EQ(*result_10, "User: hi");
+    EXPECT_TRUE(IsValidUtf8(*result_10));
+
+    auto result_9 = prompt_processor.PopulatePromptTemplate(
+        prompt, *row, column_names, indices, output_column_name, 9);
+    ASSERT_THAT(result_9, IsOk());
+    EXPECT_EQ(*result_9, "User: hi");
+    EXPECT_TRUE(IsValidUtf8(*result_9));
+  }
+
+  // Test 4-byte UTF-8 character truncation: "User: 🌍" (10 bytes total).
+  {
+    absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"🌍"}, "user");
+    ASSERT_THAT(user_tensor, IsOk());
+    std::vector<Tensor> columns;
+    columns.push_back(std::move(*user_tensor));
+    absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
+    ASSERT_THAT(input, IsOk());
+    absl::StatusOr<RowView> row = input->GetRow(0);
+    ASSERT_THAT(row, IsOk());
+
+    // Truncating at 9, 8, or 7 bytes would split '🌍' (0xF0 0x9F 0x8C 0x8D).
+    // Instead, it must truncate safely to "User: " (6 bytes).
+    for (size_t max_size : {7, 8, 9}) {
+      auto result = prompt_processor.PopulatePromptTemplate(
+          prompt, *row, column_names, indices, output_column_name, max_size);
+      ASSERT_THAT(result, IsOk());
+      EXPECT_EQ(*result, "User: ");
+      EXPECT_TRUE(IsValidUtf8(*result));
+    }
+  }
 }
 
 TEST_F(InferenceModelInternalTest, ProcessInferenceOutputNoAutoParser) {

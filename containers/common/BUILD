@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(
     default_visibility = ["//:__subpackages__"],
@@ -26,5 +26,29 @@ cc_library(
         "//containers:big_endian",
         "@com_google_absl//absl/strings",
         "@federated_compute//fcp/base:digest",
+    ],
+)
+
+cc_library(
+    name = "utf8_utils",
+    srcs = ["utf8_utils.cc"],
+    hdrs = ["utf8_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        # Note: Depending directly on protobuf's internal third_party/utf8_range
+        # may be fragile if upstream changes its export structure, but it is the
+        # easiest option available without introducing major new dependencies.
+        "@com_google_protobuf//third_party/utf8_range:utf8_validity",
+    ],
+)
+
+cc_test(
+    name = "utf8_utils_test",
+    size = "small",
+    srcs = ["utf8_utils_test.cc"],
+    deps = [
+        ":utf8_utils",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
