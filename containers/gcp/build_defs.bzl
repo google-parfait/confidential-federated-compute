@@ -228,6 +228,9 @@ def define_load_runner(variant, image_and_tag, name = None):
         """.format(variant = variant, image_and_tag = image_and_tag),
         executable = True,  # Make runnable via `bazel run`
         local = True,  # Allow access to local Docker daemon
+        # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+        # explicitly specified.
+        tags = ["manual"],
         tools = [":" + variant + "_tarball"],
         visibility = ["//visibility:public"],
     )
