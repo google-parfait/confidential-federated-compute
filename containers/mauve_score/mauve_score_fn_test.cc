@@ -15,20 +15,27 @@
 #include "mauve_score_fn.h"
 
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "containers/fns/fn_factory.h"
+#include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.h"
 #include "gtest/gtest.h"
+#include "mauve_budget_state.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 
 namespace confidential_federated_compute::mauve_score {
@@ -53,7 +60,9 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
+using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::Embedding;
+using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
 using ::fcp::confidentialcompute::ReadResponse;
@@ -82,6 +91,15 @@ class MockContext : public confidential_federated_compute::Session::Context {
               (override));
 };
 
+std::string CreateTempPrivateStateFile(absl::string_view content = "") {
+  std::string path = absl::StrCat(testing::TempDir(), "/private_state_",
+                                  std::to_string(std::rand()));
+  std::ofstream file(path);
+  file << content;
+  file.close();
+  return path;
+}
+
 Embedding CreateEmbedding(const std::vector<float>& values, int32_t index = 0) {
   Embedding emb;
   auto* values_proto = emb.mutable_values();
@@ -101,9 +119,20 @@ Any CreateValidInitConfig() {
   return config;
 }
 
-absl::flat_hash_map<std::string, std::string> CreateWriteConfigurationMap() {
+Any CreateValidConfigConstraints(uint32_t budget_times = 5) {
+  Any constraints;
+  MauveScoreContainerConfigConstraints mauve_constraints;
+  mauve_constraints.mutable_access_budget()->set_times(budget_times);
+  constraints.PackFrom(mauve_constraints);
+  return constraints;
+}
+
+absl::flat_hash_map<std::string, std::string> CreateWriteConfigurationMap(
+    std::string private_state_path) {
   absl::flat_hash_map<std::string, std::string> write_configuration_map;
   write_configuration_map[std::string(kConfigId)] = std::string(kPath);
+  write_configuration_map[std::string(kPrivateStateConfigId)] =
+      std::move(private_state_path);
   return write_configuration_map;
 }
 
@@ -155,8 +184,55 @@ TEST(MauveScoreFnFactoryTest, InvalidConfig) {
 
 TEST(MauveScoreFnFactoryTest, MissingEmbeddingConfigId) {
   Any config = CreateValidInitConfig();
+  Any constraints = CreateValidConfigConstraints();
+  std::string private_state_path = CreateTempPrivateStateFile();
   absl::flat_hash_map<std::string, std::string> write_configuration_map;
   write_configuration_map["other_id"] = "some_path";
+  write_configuration_map[std::string(kPrivateStateConfigId)] =
+      private_state_path;
+  ReadRecordFn unused_reader = [](absl::string_view) {
+    return absl::InternalError("should not be called");
+  };
+  EXPECT_THAT(
+      ProvideMauveScoreFnFactory(config, constraints, write_configuration_map,
+                                 std::move(unused_reader)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(MauveScoreFnFactoryTest, MissingPrivateStateConfigId) {
+  Any config = CreateValidInitConfig();
+  Any constraints = CreateValidConfigConstraints();
+  absl::flat_hash_map<std::string, std::string> write_configuration_map;
+  write_configuration_map[std::string(kConfigId)] = std::string(kPath);
+  ReadRecordFn unused_reader = [](absl::string_view) {
+    return absl::InternalError("should not be called");
+  };
+  EXPECT_THAT(
+      ProvideMauveScoreFnFactory(config, constraints, write_configuration_map,
+                                 std::move(unused_reader)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(MauveScoreFnFactoryTest, ReadRecordFailed) {
+  Any config = CreateValidInitConfig();
+  Any constraints = CreateValidConfigConstraints();
+  std::string private_state_path = CreateTempPrivateStateFile();
+  auto write_configuration_map =
+      CreateWriteConfigurationMap(private_state_path);
+  ReadRecordFn bad_reader = [](absl::string_view) {
+    return absl::InvalidArgumentError("read failed");
+  };
+  EXPECT_THAT(
+      ProvideMauveScoreFnFactory(config, constraints, write_configuration_map,
+                                 std::move(bad_reader)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(MauveScoreFnFactoryTest, MissingConfigConstraints) {
+  Any config = CreateValidInitConfig();
+  std::string private_state_path = CreateTempPrivateStateFile();
+  auto write_configuration_map =
+      CreateWriteConfigurationMap(private_state_path);
   ReadRecordFn unused_reader = [](absl::string_view) {
     return absl::InternalError("should not be called");
   };
@@ -165,22 +241,30 @@ TEST(MauveScoreFnFactoryTest, MissingEmbeddingConfigId) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(MauveScoreFnFactoryTest, ReadRecordFailed) {
+TEST(MauveScoreFnFactoryTest, ZeroBudgetRejected) {
   Any config = CreateValidInitConfig();
-  auto write_configuration_map = CreateWriteConfigurationMap();
-  ReadRecordFn bad_reader = [](absl::string_view) {
-    return absl::InvalidArgumentError("read failed");
+  Any constraints = CreateValidConfigConstraints(/*budget_times=*/0);
+  std::string private_state_path = CreateTempPrivateStateFile();
+  auto write_configuration_map =
+      CreateWriteConfigurationMap(private_state_path);
+  ReadRecordFn unused_reader = [](absl::string_view) {
+    return absl::InternalError("should not be called");
   };
-  EXPECT_THAT(ProvideMauveScoreFnFactory(config, Any(), write_configuration_map,
-                                         std::move(bad_reader)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      ProvideMauveScoreFnFactory(config, constraints, write_configuration_map,
+                                 std::move(unused_reader)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MauveScoreFnFactoryTest, ValidConfigCreatesFactory) {
   Any config = CreateValidInitConfig();
-  auto write_configuration_map = CreateWriteConfigurationMap();
-  auto factory = ProvideMauveScoreFnFactory(
-      config, Any(), write_configuration_map, CreateSyntheticReadRecordFn());
+  Any constraints = CreateValidConfigConstraints();
+  std::string private_state_path = CreateTempPrivateStateFile();
+  auto write_configuration_map =
+      CreateWriteConfigurationMap(private_state_path);
+  auto factory =
+      ProvideMauveScoreFnFactory(config, constraints, write_configuration_map,
+                                 CreateSyntheticReadRecordFn());
   ASSERT_THAT(factory, IsOk());
   auto fn = (*factory)->CreateFn();
   ASSERT_THAT(fn, IsOk());
@@ -193,9 +277,12 @@ class MauveScoreFnTest : public testing::Test {
 
   void SetUp() override {
     Any config = CreateValidInitConfig();
-    auto write_configuration_map = CreateWriteConfigurationMap();
+    Any constraints = CreateValidConfigConstraints();
+    std::string private_state_path = CreateTempPrivateStateFile();
+    auto write_configuration_map =
+        CreateWriteConfigurationMap(private_state_path);
     auto fn_factory = ProvideMauveScoreFnFactory(
-        config, Any(), write_configuration_map,
+        config, constraints, write_configuration_map,
         CreateSyntheticReadRecordFn(kNumSynthetic, kDim));
     ASSERT_THAT(fn_factory, IsOk());
     factory_ = std::move(*fn_factory);
@@ -259,18 +346,38 @@ TEST_F(MauveScoreFnTest, CommitWithoutWriteReturnsError) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
+  std::string ckpt = BuildCheckpoint(/*batch=*/10, kDim);
+
+  // Write two blobs with the same blob_id.
+  WriteRequest request1;
+  request1.mutable_first_request_metadata()->mutable_unencrypted()->set_blob_id(
+      "blob-1");
+  ASSERT_THAT(fn_->Write(request1, ckpt, context_), IsOk());
+
+  WriteRequest request2;
+  request2.mutable_first_request_metadata()->mutable_unencrypted()->set_blob_id(
+      "blob-1");
+  ASSERT_THAT(fn_->Write(request2, ckpt, context_), IsOk());
+
+  // Commit should fail due to duplicate blob ids.
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   // Write enough embeddings for MAUVE to work (need >= 2).
   std::string ckpt = BuildCheckpoint(/*batch=*/50, kDim);
   WriteRequest request;
   ASSERT_THAT(fn_->Write(request, ckpt, context_), IsOk());
 
-  // Set up expectations for Commit (which calls Do()).
-  EXPECT_CALL(context_, EmitUnencrypted(_)).WillOnce(Return(true));
+  // Set up expectations for Commit (which calls Do()). Since we now emit
+  // in FinalizeReplica instead of Do, no Emit calls during Commit.
   EXPECT_CALL(context_, GetCounters())
       .WillRepeatedly(::testing::ReturnRef(counters_));
 
-  // Commit should compute MAUVE and emit the result.
+  // Commit should compute MAUVE and store the result.
   fcp::confidentialcompute::CommitRequest commit_request;
   auto commit_result = fn_->Commit(commit_request, context_);
   ASSERT_THAT(commit_result, IsOk());
@@ -279,9 +386,27 @@ TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
   EXPECT_EQ(counters_["mauve-synth-embeddings-count"], kNumSynthetic);
 
-  // Finalize is a no-op after Commit.
+  // Finalize should emit the result via EmitReleasable.
+  EXPECT_CALL(context_, EmitReleasable(1, _, _, _, _))
+      .WillOnce(
+          [](int, Session::KV kv, std::optional<absl::string_view> src_state,
+             absl::string_view dst_state, std::string& release_token) -> bool {
+            // First run: src_state should be the empty string.
+            EXPECT_TRUE(src_state.has_value());
+            if (src_state.has_value()) {
+              EXPECT_EQ(*src_state, "");
+            }
+            // Verify the dst_state contains a valid MauveBudgetState.
+            MauveBudgetState dst;
+            EXPECT_TRUE(dst.ParseFromString(std::string(dst_state)));
+            // First run with access_budget=5: remaining = 5-1 = 4
+            EXPECT_EQ(dst.remaining_budget(), 4);
+            release_token = "test-release-token";
+            return true;
+          });
   auto finalize_result = fn_->Finalize({}, {}, context_);
   ASSERT_THAT(finalize_result, IsOk());
+  EXPECT_EQ(finalize_result->release_token(), "test-release-token");
 }
 
 }  // anonymous namespace
