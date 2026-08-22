@@ -62,6 +62,10 @@ absl::Status NoiseClientSession::OpenSessionInternal() {
       grpc::ClientContext client_context;
       auto status = stub_->Execute(&client_context, request, &response);
       if (!status.ok()) {
+        std::cout << "NoiseClientSession::OpenSessionInternal: gRPC call failed"
+                     " for worker_bns: '"
+                  << worker_bns_ << "'. Code: " << status.error_code()
+                  << ", Message: " << status.error_message() << std::endl;
         return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
                             status.error_message());
       }
@@ -104,6 +108,10 @@ NoiseClientSession::DelegateComputationInternal(
     grpc::ClientContext client_context;
     auto status = stub_->Execute(&client_context, request, &response);
     if (!status.ok()) {
+      std::cout << "NoiseClientSession::DelegateComputationInternal: gRPC call"
+                   " failed for worker_bns: '"
+                << worker_bns_ << "'. Code: " << status.error_code()
+                << ", Message: " << status.error_message() << std::endl;
       return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
                           status.error_message());
     }

@@ -17,7 +17,6 @@ import asyncio
 import collections
 from typing import Awaitable, Callable, Optional, Sequence
 
-from absl import logging
 from fcp.protos.confidentialcompute import computation_delegation_pb2
 from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
 from fcp.protos.confidentialcompute import tff_config_pb2
@@ -113,7 +112,7 @@ class RunnerAsyncContext(federated_language.framework.AsyncContext):
       worker_bns: str = "",
   ):
     self._stub = computation_runner_stub
-    self._worker_bns = worker_bns
+    self.worker_bns = worker_bns
 
   async def invoke(
       self,
@@ -122,7 +121,7 @@ class RunnerAsyncContext(federated_language.framework.AsyncContext):
   ) -> object:
     comp_return_type = comp.type_signature.result
     target_worker_bns = (
-        self._worker_bns
+        self.worker_bns
         if contains_clients_placement(comp.type_signature)
         else ""
     )
@@ -138,12 +137,19 @@ class RunnerAsyncContext(federated_language.framework.AsyncContext):
           delegation_response, comp_return_type
       )
     except grpc.RpcError as e:
+      details = (
+          e.details()
+          if hasattr(e, "details") and callable(e.details)
+          else str(e)
+      )
       raise RuntimeError(
-          f"Request to computation runner failed with error: {e.details()}"
+          f"Request to computation runner failed with error: {details}"
+          f" (target worker: '{target_worker_bns or '(local)'}')"
       ) from e
     except Exception as e:
       raise RuntimeError(
           f"Error decoding computation runner response: {e}"
+          f" (target worker: '{target_worker_bns or '(local)'}')"
       ) from e
 
 
@@ -171,6 +177,11 @@ async def run_resilient_subrounds(
 
   work_queue = collections.deque(enumerate(arg_list))
   available_contexts = set(execution_contexts)
+  print(
+      f"run_resilient_subrounds: starting with {len(arg_list)} subrounds"
+      f" and {len(execution_contexts)} contexts."
+      f" max_retries_per_subround: {max_retries_per_subround}."
+  )
   pending_tasks = {}  # task -> (context, subround_idx, subround_arg)
   subround_retries = collections.defaultdict(int)
   context_handling_counts = collections.defaultdict(int)
@@ -221,16 +232,27 @@ async def run_resilient_subrounds(
         last_exception = e
         # Re-queue subround arg for retry on any exception if retry budget allows.
         subround_retries[subround_idx] += 1
+        ctx_bns = getattr(ctx, "worker_bns", ctx)
+        print(
+            f"Subround {subround_idx} failed on context {ctx_bns}."
+            f" Error: {e}."
+            f" Retry {subround_retries[subround_idx]}/{max_retries_per_subround}."
+            f" Available contexts:"
+            f" {[getattr(c, 'worker_bns', c) for c in available_contexts]}."
+            f" Pending tasks: {len(pending_tasks)},"
+            f" Work queue: {len(work_queue)}."
+        )
         if subround_retries[subround_idx] > max_retries_per_subround:
           _cleanup_tasks()
           raise RuntimeError(
               f"Subround {subround_idx} failed after"
-              f" {max_retries_per_subround} retries: {e}"
+              f" {max_retries_per_subround} retries."
+              f" Error: {e}"
           )
         work_queue.append((subround_idx, subround_arg))
 
-  logging.info(
-      "Resilient subrounds completed. Context handling counts: %s",
-      [context_handling_counts[ctx] for ctx in execution_contexts],
+  print(
+      f"run_resilient_subrounds: completed. Context handling counts:"
+      f" {[context_handling_counts[ctx] for ctx in execution_contexts]}"
   )
   return accumulated_result, last_ctx

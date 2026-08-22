@@ -12,25 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import collections
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Callable
 import functools
 import os
 import subprocess
 import sys
 from typing import Optional
 
-from absl import logging
-from fcp.protos.confidentialcompute import computation_delegation_pb2
 from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
 import federated_language
 from google.protobuf.message import DecodeError
 import grpc
 import portpicker
 from program_executor_tee.program_context import execution_context_helper
-import tensorflow_federated as tff
-from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.core.impl.execution_contexts import mergeable_comp_execution_context
 
 # Increase gRPC message size limit to 2GB
@@ -50,6 +44,7 @@ class TrustedContext(federated_language.program.FederatedContext):
       serialized_reference_values: bytes = b"",
       max_concurrent_computation_calls: int = -1,
       use_elastic_composing_executor: bool = False,
+      num_subrounds: Optional[int] = None,
   ):
     """Initializes the execution context with an invoke helper function.
 
@@ -78,6 +73,9 @@ class TrustedContext(federated_language.program.FederatedContext):
         maximum.
       use_elastic_composing_executor: Whether to use ElasticComposingExecutor
         instead of ComposingExecutor.
+      num_subrounds: Optional number of subrounds for the
+        MergeableCompExecutionContext. If not set, defaults to the number of
+        worker contexts.
     """
     if (
         use_elastic_composing_executor
@@ -151,6 +149,7 @@ class TrustedContext(federated_language.program.FederatedContext):
       self._mergeable_context = (
           mergeable_comp_execution_context.MergeableCompExecutionContext(
               async_contexts=worker_contexts,
+              num_subrounds=num_subrounds,
               pool_runner=execution_context_helper.run_resilient_subrounds,
           )
       )
@@ -187,12 +186,18 @@ class TrustedContext(federated_language.program.FederatedContext):
           )
       )
     except grpc.RpcError as e:
+      details = (
+          e.details()
+          if hasattr(e, "details") and callable(e.details)
+          else str(e)
+      )
       raise RuntimeError(
-          f"Request to computation runner failed with error: {e.details()}"
+          f"Request to computation runner failed with error: {details}"
+          f" (target worker: '(local)')"
       ) from e
     except DecodeError as e:
       raise RuntimeError(
-          "Error decoding computation runner response to tff Value"
+          f"Error decoding computation runner response: {e}"
       ) from e
 
   def invoke(self, comp: object, arg: Optional[object]) -> object:
@@ -221,12 +226,16 @@ class TrustedContext(federated_language.program.FederatedContext):
     if self._mergeable_context is not None and self._worker_bns:
       try:
         compiled_comp = self._mergeable_comp_compiler_fn(comp)
-      except Exception:
+      except Exception as e:
+        print(
+            f"Compiling computation to MergeableCompForm failed: {e}."
+            " Falling back to _invoke_unpartitioned."
+        )
         compiled_comp = None
 
       if compiled_comp is not None:
-        logging.info("Executing computation via MergeableCompExecutionContext.")
+        print("Executing via MergeableCompExecutionContext.")
         return self._mergeable_context.invoke(compiled_comp, arg)
 
-    logging.info("Executing computation via _invoke_unpartitioned.")
+    print("Executing via _invoke_unpartitioned.")
     return self._invoke_unpartitioned(comp, arg)
