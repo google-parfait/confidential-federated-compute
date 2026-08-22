@@ -22,11 +22,16 @@
      parse_option "${opt}"
      cmd+=("${opt}")
    fi
-@@ -143,4 +150,8 @@
+@@ -143,4 +155,13 @@
  done
  
 +if [[ -n "${sysroot_path}" ]]; then
-+  export LD_LIBRARY_PATH="${sysroot_path}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
++  # HACK: find the path libc.so.* would be found in if we didn't inject the sysroot on the
++  # LD_LIBRARY_PATH. Then ensure that libraries that the host environment already has, like libc
++  # and libstdc++, are loaded from that path, and only if they can't be found there, that they are
++  # loaded from our sysroot.
++  existing_usr_lib_path="$(ldd ${cmd[0]} | grep -oP '=> \K.*(?=/libc\.so\.6)')"
++  export LD_LIBRARY_PATH="${existing_usr_lib_path}:${sysroot_path}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 +fi
 +
  # Call the C++ compiler.
