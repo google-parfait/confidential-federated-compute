@@ -102,9 +102,9 @@ http_archive(
 
 http_archive(
     name = "confidential_federated_compute_program",
-    integrity = "sha256-4tChcdpdEDZOgWj0/N97wbbz4K+zw1aNJ5bK5t8PJWI=",
-    strip_prefix = "confidential-federated-compute-e1c4307bcb5baad3568742a33f3c77b0e6beb279/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/e1c4307bcb5baad3568742a33f3c77b0e6beb279.tar.gz",
+    integrity = "sha256-IShstPK69AO+OTUB8OnIZvX7A8jP+Ssiot7HAceSIew=",
+    strip_prefix = "confidential-federated-compute-0e79b42ee9ab2ca624b167468b7903d61afe82a0/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/0e79b42ee9ab2ca624b167468b7903d61afe82a0.tar.gz",
 )
 
 http_archive(
@@ -135,15 +135,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-jMrmTFRcRysQZ6QDrwNdwGhxHLYyS/2QK3D+SBboSkU=",
+    integrity = "sha256-0ooO0raiPCQ7b6XwbeSPRaOeAK5oFtQSfMFINemTqE0=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-9a644dfbeef1225540577a85e1c2dfd8f15c7ff9",
-    url = "https://github.com/google/federated-compute/archive/9a644dfbeef1225540577a85e1c2dfd8f15c7ff9.tar.gz",
+    strip_prefix = "federated-compute-de83f70c3b352eedc805aa25d804afc3398031f8",
+    url = "https://github.com/google/federated-compute/archive/de83f70c3b352eedc805aa25d804afc3398031f8.tar.gz",
 )
 
 http_archive(

@@ -15,9 +15,17 @@ def get_program_initialize_fn(
     max_concurrent_computation_calls=-1,
     use_elastic_composing_executor: bool = False,
     use_mergeable_execution_context: bool = False,
+    mergeable_execution_subrounds_multiplier: int = 0,
 ):
 
   def initialize():
+    num_subrounds = None
+    if (
+        mergeable_execution_subrounds_multiplier > 0
+        and len(worker_bns) > 0
+    ):
+      num_subrounds = len(worker_bns) * mergeable_execution_subrounds_multiplier
+
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
@@ -30,6 +38,7 @@ def get_program_initialize_fn(
             serialized_reference_values,
             max_concurrent_computation_calls,
             use_elastic_composing_executor,
+            num_subrounds=num_subrounds,
         )
     )
 
