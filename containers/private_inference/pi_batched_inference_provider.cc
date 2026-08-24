@@ -37,9 +37,22 @@ std::vector<absl::StatusOr<std::string>>
 PiBatchedInferenceEngine::DoBatchedInference(std::vector<std::string> prompts) {
   std::vector<absl::StatusOr<std::string>> results;
   results.reserve(prompts.size());
+
+  absl::Status init_status = pi_client_->Initialize();
+  if (!init_status.ok()) {
+    LOG(ERROR) << "Failed to initialize PiClient before batch processing: "
+               << init_status;
+    for (size_t i = 0; i < prompts.size(); ++i) {
+      results.push_back(init_status);
+    }
+    return results;
+  }
+
   for (const std::string& prompt : prompts) {
     results.push_back(pi_client_->Generate(prompt));
   }
+
+  pi_client_->Cleanup();
   return results;
 }
 

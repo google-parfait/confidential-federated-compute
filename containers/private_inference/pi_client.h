@@ -33,6 +33,12 @@ class PiClient {
   // If the server response contains no text (e.g., due to safety filters or
   // empty candidates), returns an empty string.
   virtual absl::StatusOr<std::string> Generate(const std::string& prompt) = 0;
+
+  // Initializes the secure connection and session to the model server.
+  virtual absl::Status Initialize() = 0;
+
+  // Cleans up resources, gRPC streams, and sessions.
+  virtual void Cleanup() = 0;
 };
 
 // TODO: This raw string client will be replaced by the private aratea feature

@@ -37,12 +37,19 @@ TEST(PiBatchedInferenceProviderTest, GetEngineFailsWhenPaicConfigMissing) {
 }
 
 TEST(PiBatchedInferenceProviderTest,
-     GetEngineWithPaicConfigFailsWhenServerUnreachable) {
+     DoBatchedInferenceFailsWhenServerUnreachable) {
   PiBatchedInferenceProvider provider("localhost:12345");
   InferenceConfiguration config;
   config.mutable_paic_config()->set_paic_feature_id(100);
   auto engine = provider.GetEngineForInferenceConfig(config);
-  EXPECT_EQ(engine, nullptr);
+
+  // The engine shouldn't be nullptr, it handles creation unconditionally since
+  // handshake happens in DoBatchedInference.
+  ASSERT_NE(engine, nullptr);
+
+  auto results = engine->DoBatchedInference({"test_prompt"});
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_FALSE(results[0].ok());
 }
 
 }  // namespace
