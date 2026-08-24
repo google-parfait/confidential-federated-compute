@@ -27,7 +27,6 @@ cc_library(
         ":inference_model",
         ":kms_session",
         ":private_state",
-        ":session_utils",
         "//containers:confidential_transform_server_base",
         "//containers:crypto",
         "//containers:session",
@@ -196,54 +195,11 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "session_utils_test",
-    srcs = ["session_utils_test.cc"],
-    deps = [
-        ":inference_model",
-        ":session_utils",
-        "//containers/fed_sql/testing:test_utils",
-        "//testing:parse_text_proto",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-    ],
-)
-
-cc_library(
-    name = "session_utils",
-    srcs = ["session_utils.cc"],
-    hdrs = ["session_utils.h"],
-    visibility = ["//containers:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:protobuf",
-        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
-        "@federated_compute//fcp/protos/confidentialcompute:sql_query_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:configuration_cc_proto",
-    ],
-)
-
 cc_library(
     name = "dp_unit",
     srcs = ["dp_unit.cc"],
     hdrs = ["dp_unit.h"],
     deps = [
-        ":session_utils",
         "//containers/common/intervals:interval_set",
         "//containers/common/io/tabular:row_set",
         "//containers/common/io/tabular:row_view",
@@ -268,7 +224,6 @@ cc_test(
     srcs = ["dp_unit_test.cc"],
     deps = [
         ":dp_unit",
-        ":session_utils",
         "//containers/common/io/tabular:input",
         "//containers/common/io/tabular:row_set",
         "//containers/common/sqlite:sqlite_adapter",
@@ -303,7 +258,6 @@ cc_library(
         ":partition_private_state",
         ":private_state",
         ":range_tracker",
-        ":session_utils",
         "//containers:big_endian",
         "//containers:session",
         "//containers/common:privacy_id_utils",

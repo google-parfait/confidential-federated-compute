@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -40,6 +41,7 @@ using ::google::protobuf::DescriptorPool;
 using ::google::protobuf::DynamicMessageFactory;
 using ::google::protobuf::FileDescriptorSet;
 using ::google::protobuf::Message;
+using ::tensorflow_federated::aggregation::CheckpointParser;
 using ::tensorflow_federated::aggregation::DataType;
 using ::tensorflow_federated::aggregation::Tensor;
 
@@ -181,6 +183,22 @@ void GetFlattenedSchema(const Descriptor* descriptor, std::string prefix,
     }
     current_path.pop_back();
   }
+}
+
+// Returns the privacy ID from the checkpoint if it exists, otherwise returns
+// std::nullopt. If the privacy ID tensor exists but is invalid, returns the
+// error status.
+absl::StatusOr<std::optional<std::string>> GetPrivacyIdIfPresent(
+    CheckpointParser* checkpoint) {
+  std::optional<std::string> privacy_id;
+  absl::StatusOr<std::string> pid_result = GetPrivacyId(*checkpoint);
+  if (pid_result.ok()) {
+    privacy_id = *std::move(pid_result);
+  } else if (!absl::IsNotFound(pid_result.status())) {
+    // The tensor exists but is invalid.
+    return pid_result.status();
+  }
+  return privacy_id;
 }
 
 }  // namespace
@@ -385,8 +403,8 @@ absl::StatusOr<std::vector<Tensor>> Input::MessageContents::MoveToTensors() && {
 }
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
-    tensorflow_federated::aggregation::CheckpointParser* checkpoint,
-    MessageFactory& message_factory, absl::string_view on_device_query_name) {
+    CheckpointParser* checkpoint, MessageFactory& message_factory,
+    absl::string_view on_device_query_name) {
   std::string column_prefix = absl::StrCat(on_device_query_name, "/");
   ABSL_ASSIGN_OR_RETURN(
       Tensor entry_tensor,
@@ -422,15 +440,8 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     messages.push_back(std::move(message));
   }
 
-  // Extract privacy ID if present
-  std::optional<std::string> privacy_id;
-  absl::StatusOr<std::string> pid_result = GetPrivacyId(*checkpoint);
-  if (pid_result.ok()) {
-    privacy_id = *std::move(pid_result);
-  } else if (!absl::IsNotFound(pid_result.status())) {
-    // The tensor exists but is invalid.
-    return pid_result.status();
-  }
+  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id,
+                        GetPrivacyIdIfPresent(checkpoint));
 
   std::vector<Tensor> system_columns;
   system_columns.reserve(1);
@@ -473,6 +484,30 @@ FileDescriptorSetMessageFactory::Create(
   return absl::WrapUnique(new FileDescriptorSetMessageFactory(
       std::move(descriptor_pool), std::move(dynamic_message_factory),
       prototype));
+}
+
+absl::StatusOr<Input> CreateFromFlatTableCheckpoint(
+    CheckpointParser* checkpoint) {
+  ABSL_ASSIGN_OR_RETURN(std::optional<std::string> privacy_id,
+                        GetPrivacyIdIfPresent(checkpoint));
+
+  // Load any other tensors from the checkpoint.
+  ABSL_ASSIGN_OR_RETURN(auto tensor_map, checkpoint->LoadAllTensors());
+
+  // Make sure that the privacy ID tensor is not included in the tensor_map.
+  // CreateFromTensors expects these tensors to form a flat table.
+  tensor_map.erase(
+      std::string(fcp::confidential_compute::kPrivacyIdColumnName));
+
+  // Convert the remaining map entries to a vector.
+  std::vector<Tensor> tensors;
+  tensors.reserve(tensor_map.size());
+  for (auto& [name, tensor] : tensor_map) {
+    tensors.push_back(std::move(tensor));
+  }
+
+  return Input::CreateFromTensors(std::move(tensors), /*metadata=*/"",
+                                  std::move(privacy_id));
 }
 
 }  // namespace confidential_federated_compute

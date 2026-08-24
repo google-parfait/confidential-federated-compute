@@ -61,6 +61,7 @@ cc_library(
         ":row_view",
         "//containers/common/io:checkpoint_utils",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",

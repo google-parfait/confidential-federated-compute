@@ -34,7 +34,6 @@
 #include "containers/common/sqlite/sqlite_adapter.h"
 #include "containers/fed_sql/any_bundle.h"
 #include "containers/fed_sql/private_state.h"
-#include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
@@ -294,38 +293,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     input = CreateFromMessageCheckpoint(parser->get(), *message_factory_,
                                         on_device_query_name_);
   } else {
-    auto model_inference_configuration =
-        inference_model_.GetInferenceConfiguration();
-    auto inference_config =
-        model_inference_configuration.has_value()
-            ? std::optional<InferenceConfiguration>(
-                  model_inference_configuration->initialize_configuration
-                      .inference_config())
-            : std::nullopt;
-    absl::StatusOr<std::vector<Tensor>> contents = Deserialize(
-        sql_configuration_->input_schema, parser->get(), inference_config);
-    if (!contents.ok()) {
-      return ToWriteFinishedResponse(
-          PrependMessage("Failed to deserialize checkpoint for "
-                         "AGGREGATION_TYPE_ACCUMULATE: ",
-                         contents.status()));
-    }
-
-    // Extract privacy ID from checkpoint if in time-window budget mode.
-    // TODO: Add a CreateFromTensorCheckpoint that's analogous to
-    // CreateFromMessageCheckpoint so we don't have to extract the privacy ID
-    // separately. CreateFromTensorCheckpoint would replace the separate calls
-    // to Deserialize and CreateFromTensors.
-    std::optional<std::string> privacy_id;
-    if (range_tracker_.GetAggregationWindow().has_value()) {
-      absl::StatusOr<std::string> pid = GetPrivacyId(**parser);
-      if (!pid.ok()) {
-        return ToWriteFinishedResponse(pid.status());
-      }
-      privacy_id = *std::move(pid);
-    }
-    input = Input::CreateFromTensors(std::move(contents.value()),
-                                     /*metadata=*/"", privacy_id);
+    input = CreateFromFlatTableCheckpoint(parser->get());
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(

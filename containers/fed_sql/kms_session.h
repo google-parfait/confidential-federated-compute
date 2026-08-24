@@ -30,7 +30,6 @@
 #include "containers/fed_sql/partition_private_state.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
-#include "containers/fed_sql/session_utils.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"

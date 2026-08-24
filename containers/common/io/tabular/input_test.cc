@@ -792,5 +792,33 @@ TEST(CreateFromMessageCheckpointTest, InvalidProtoFails) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(CreateFromFlatTableCheckpointTest, BasicSuccess) {
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor({1, 2}, "col1"));
+  tensors.push_back(Tensor({"foo", "bar"}, "col2"));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto input_result = CreateFromFlatTableCheckpoint(&parser);
+
+  ASSERT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 2);
+  EXPECT_FALSE(input_result->GetPrivacyId().has_value());
+}
+
+TEST(CreateFromFlatTableCheckpointTest, WithPrivacyId) {
+  std::vector<Tensor> tensors;
+  tensors.push_back(Tensor({1, 2}, "col1"));
+  tensors.push_back(Tensor("the_privacy_id", kPrivacyIdColumnName));
+
+  InMemoryCheckpointParser parser(std::move(tensors));
+  auto input_result = CreateFromFlatTableCheckpoint(&parser);
+
+  // The privacy_id value is still preserved on the Input.
+  ASSERT_THAT(input_result, IsOk());
+  EXPECT_EQ(input_result->GetRowCount(), 2);
+  ASSERT_TRUE(input_result->GetPrivacyId().has_value());
+  EXPECT_EQ(*input_result->GetPrivacyId(), "the_privacy_id");
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute

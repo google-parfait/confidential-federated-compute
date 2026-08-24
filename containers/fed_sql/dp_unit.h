@@ -25,7 +25,6 @@
 #include "containers/common/io/tabular/row_set.h"
 #include "containers/common/io/tabular/row_view.h"
 #include "containers/common/sqlite/sqlite_adapter.h"
-#include "containers/fed_sql/session_utils.h"
 #include "fcp/protos/confidentialcompute/windowing_schedule.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
