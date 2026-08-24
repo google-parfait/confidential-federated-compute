@@ -281,6 +281,11 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     tensorflow_federated::aggregation::CheckpointParser* checkpoint,
     MessageFactory& message_factory, absl::string_view on_device_query_name);
 
+// Creates an Input from a checkpoint containing an optional scalar privacy ID
+// and a flat table of data.
+absl::StatusOr<Input> CreateFromFlatTableCheckpoint(
+    tensorflow_federated::aggregation::CheckpointParser* checkpoint);
+
 }  // namespace confidential_federated_compute
 
 #endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_TABULAR_INPUT_H_

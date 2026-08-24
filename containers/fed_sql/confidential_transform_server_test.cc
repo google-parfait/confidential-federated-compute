@@ -2377,21 +2377,41 @@ TEST_F(FedSqlServerTest, SessionIgnoresInputThatCannotBeQueried) {
   grpc::ClientContext context;
   auto stream = ConfigureDefaultSession(&context);
 
+  // Write a request with a bad column name. The bad column is detected and
+  // ignored when Commit populates the SQLite table.
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
   header.set_access_policy_sha256(allowed_policy_hash_);
-  SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
+  SessionRequest write_request = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
       BuildFedSqlGroupByCheckpoint({9}, {7}, /*privacy_id=*/std::nullopt,
                                    /*key_col_name=*/"bad_key_col_name"),
       header.SerializeAsString());
-  SessionResponse write_response_1;
+  SessionResponse write_response;
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
 
-  ASSERT_TRUE(stream->Write(write_request_1));
-  ASSERT_TRUE(stream->Read(&write_response_1));
-  ASSERT_EQ(write_response_1.write().status().code(), Code::NOT_FOUND)
-      << write_response_1.write().status().message();
+  // Commit the range. The bad-column input is silently ignored.
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 2 }
+  )pb");
+  SessionRequest commit_request;
+  SessionResponse commit_response;
+  commit_request.mutable_commit()->mutable_configuration()->PackFrom(
+      commit_config);
+  ASSERT_TRUE(stream->Write(commit_request));
+  ASSERT_TRUE(stream->Read(&commit_response));
+
+  ASSERT_TRUE(commit_response.has_commit());
+  EXPECT_EQ(commit_response.commit().stats().num_inputs_committed(), 0);
+  ASSERT_EQ(commit_response.commit().stats().ignored_errors_size(), 1);
+  EXPECT_EQ(commit_response.commit().stats().ignored_errors(0).code(),
+            Code::INVALID_ARGUMENT);
+  EXPECT_THAT(
+      commit_response.commit().stats().ignored_errors(0).message(),
+      HasSubstr(
+          "Row does not contain a column present in the table schema: key"));
 }
 
 TEST_F(FedSqlServerTest, SessionIgnoresUndecryptableInputs) {
