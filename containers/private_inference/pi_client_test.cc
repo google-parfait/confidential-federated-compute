@@ -235,23 +235,29 @@ TEST(PiClientTest, RequestResponseDecryptionWithEmptyResponseSucceeds) {
             0);
 }
 
-TEST(PiClientTest, CreatePiClientFailsWhenServerIsUnreachable) {
+TEST(PiClientTest, InitializeFailsWhenServerIsUnreachable) {
   auto client_or = CreatePiClient("localhost:12345", 100);
 
-  // CreatePiClient now performs the handshake, so it should fail if
+  // Initialize now performs the handshake, so it should fail if
   // unreachable.
-  EXPECT_FALSE(client_or.ok());
-  EXPECT_THAT(client_or.status().message(),
+  ASSERT_TRUE(client_or.ok());
+  auto client = std::move(client_or.value());
+  auto init_status = client->Initialize();
+  EXPECT_FALSE(init_status.ok());
+  EXPECT_THAT(init_status.message(),
               testing::AnyOf(
                   testing::HasSubstr("ExchangeHandshakeMessages failed"),
                   testing::HasSubstr("Failed to open verification keys file"),
                   testing::HasSubstr("ClientSession::Create failed")));
 }
 
-TEST(PiClientTest, CreatePiClientDoesNotFailOnInvalidFeatureId) {
+TEST(PiClientTest, InitializeDoesNotFailOnInvalidFeatureId) {
   auto client_or = CreatePiClient("localhost:12345", 999);
-  EXPECT_FALSE(client_or.ok());
-  EXPECT_NE(client_or.status().code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_TRUE(client_or.ok());
+  auto client = std::move(client_or.value());
+  auto init_status = client->Initialize();
+  EXPECT_FALSE(init_status.ok());
+  EXPECT_NE(init_status.code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

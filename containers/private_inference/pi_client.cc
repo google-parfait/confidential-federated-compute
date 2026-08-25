@@ -75,10 +75,12 @@ class PiClientImpl : public PiClient {
 
   absl::Status Initialize() {
     // 1. Establish channel
-    LOG(INFO) << "Creating channel to PI server: " << server_address_;
-    channel_ = grpc::CreateChannel(server_address_,
-                                   grpc::InsecureChannelCredentials());
-    stub_ = oak::services::OakSessionV1Service::NewStub(channel_);
+    if (!channel_) {
+      LOG(INFO) << "Creating channel to PI server: " << server_address_;
+      channel_ = grpc::CreateChannel(server_address_,
+                                     grpc::InsecureChannelCredentials());
+      stub_ = oak::services::OakSessionV1Service::NewStub(channel_);
+    }
 
     stream_.reset();
     session_.reset();
@@ -142,12 +144,17 @@ class PiClientImpl : public PiClient {
     return absl::OkStatus();
   }
 
-  absl::StatusOr<std::string> Generate(const std::string& prompt) override {
-    // Session is already established and handshake completed during
-    // initialization.
+  void Cleanup() override {
+    if (stream_) {
+      stream_->WritesDone();
+      stream_->Finish().IgnoreError();
+      stream_.reset();
+    }
+    session_.reset();
+    context_.reset();
+  }
 
-    // 3. Send PcsGenerateContentRequest wrapped in a
-    // PcsPrivateArateaRequest.
+  absl::StatusOr<std::string> Generate(const std::string& prompt) override {
     PcsPrivateArateaRequest request;
     request.set_feature_name(feature_name_);
 
@@ -293,10 +300,6 @@ absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
 
   auto client =
       std::make_unique<PiClientImpl>(std::move(server_address), feature_name);
-  absl::Status status = client->Initialize();
-  if (!status.ok()) {
-    return status;
-  }
   return client;
 }
 
