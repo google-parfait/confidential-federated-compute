@@ -18,6 +18,7 @@
 #include <limits>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "containers/common/time_budget/budget.pb.h"
 
@@ -88,6 +89,16 @@ absl::flat_hash_set<std::string> Budget::GetKeys() const {
 }
 
 bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
+  // If time-based budget has already been consumed in this budget state,
+  // disallow fallback to legacy per-key budget to prevent double-consumption
+  // of blobs that omit time windows or bypass sessionization.
+  if (time_budget_.anchor_time().has_value()) {
+    LOG(WARNING)
+        << "Time-based budget has already been consumed. Denying per-key "
+           "budget usage.";
+    return false;
+  }
+
   auto it = per_key_budgets_.find(key);
 
   if (it == per_key_budgets_.end()) {
@@ -210,6 +221,13 @@ absl::Status Budget::UpdateBudget(const RangeTracker& range_tracker) {
     // When a time_window is provided, update only the time-based budget.
     ABSL_RETURN_IF_ERROR(time_budget_.UpdateBudget(time_window.value()));
   } else {
+    // Reject legacy key-based budget updates if time-based budget is already
+    // active.
+    if (time_budget_.anchor_time().has_value()) {
+      return absl::FailedPreconditionError(
+          "Cannot update per-key budget: pipeline has already transitioned to "
+          "time-based budget.");
+    }
     // Otherwise, update the legacy per-key budgets.
     ABSL_RETURN_IF_ERROR(
         UpdatePerKeyBudget(range_tracker.GetKeys(), range_tracker.GetRanges()));
