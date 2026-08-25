@@ -253,3 +253,21 @@ pkg_install(
     name = "install_release_binaries",
     srcs = [":release_binaries"],
 )
+
+# All release and testing binaries, along with their names in the destination
+# directory.
+_ALL_BINARIES = _RELEASE_BINARIES | {
+    # keep-sorted start
+    # keep-sorted end
+}
+
+pkg_files(
+    name = "all_binaries",
+    srcs = _ALL_BINARIES.keys(),
+    renames = _ALL_BINARIES,
+)
+
+pkg_install(
+    name = "install_all_binaries",
+    srcs = [":all_binaries"],
+)
