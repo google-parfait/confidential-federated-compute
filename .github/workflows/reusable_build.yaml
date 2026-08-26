@@ -20,7 +20,7 @@ jobs:
     permissions:
       contents: read
 
-    runs-on: large-4cpu-16gbRAM-150gbSSD-ubuntu24.04
+    runs-on: large-64cpu-256gbRAM-2040gbSSD-ubuntu24.04
 
     steps:
       - name: Checkout
