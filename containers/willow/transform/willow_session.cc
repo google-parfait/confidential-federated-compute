@@ -16,11 +16,11 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "containers/blob_metadata.h"
 #include "containers/session.h"
-#include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "transform/willow_messages.pb.h"
 #include "willow/api/server_accumulator.h"
@@ -77,7 +77,7 @@ absl::StatusOr<WriteFinishedResponse> WillowSession::Write(
     return Merge(std::move(unencrypted_data));
   } else {
     return ToWriteFinishedResponse(absl::InvalidArgumentError(absl::StrCat(
-        "SessWillowSessionion::Write: unexpected op: ", op.DebugString())));
+        "WillowSession::Write: unexpected op: ", op.DebugString())));
   }
 }
 
@@ -116,8 +116,8 @@ absl::StatusOr<CommitResponse> WillowSession::Commit(CommitRequest request,
   client_messages.mutable_nonce_range()->set_start(range_proto.start());
   client_messages.mutable_nonce_range()->set_end(range_proto.end());
 
-  FCP_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
-  FCP_RETURN_IF_ERROR(
+  ABSL_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
+  ABSL_RETURN_IF_ERROR(
       accumulator->ProcessClientMessages(std::move(client_messages)));
 
   return ToCommitResponse(absl::OkStatus(), num_client_messages);
@@ -125,11 +125,11 @@ absl::StatusOr<CommitResponse> WillowSession::Commit(CommitRequest request,
 
 absl::StatusOr<WriteFinishedResponse> WillowSession::Merge(
     std::string serialized_state) {
-  FCP_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
-  FCP_ASSIGN_OR_RETURN(std::unique_ptr<ServerAccumulator> other,
-                       ServerAccumulator::CreateFromSerializedState(
-                           std::move(serialized_state)));
-  FCP_RETURN_IF_ERROR(accumulator->Merge(std::move(other)));
+  ABSL_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ServerAccumulator> other,
+                        ServerAccumulator::CreateFromSerializedState(
+                            std::move(serialized_state)));
+  ABSL_RETURN_IF_ERROR(accumulator->Merge(std::move(other)));
   return ToWriteFinishedResponse(absl::OkStatus());
 }
 
@@ -142,9 +142,9 @@ absl::StatusOr<FinalizeResponse> WillowSession::Finalize(
   }
   std::string result;
   if (op.kind() == WillowOp::COMPACT) {
-    FCP_ASSIGN_OR_RETURN(result, Compact());
+    ABSL_ASSIGN_OR_RETURN(result, Compact());
   } else if (op.kind() == WillowOp::FINALIZE) {
-    FCP_ASSIGN_OR_RETURN(result, Finalize());
+    ABSL_ASSIGN_OR_RETURN(result, Finalize());
   } else {
     return absl::InvalidArgumentError(absl::StrCat(
         "WillowSession::Finalize: unexpected op ", op.DebugString()));
@@ -157,16 +157,16 @@ absl::StatusOr<FinalizeResponse> WillowSession::Finalize(
 }
 
 absl::StatusOr<std::string> WillowSession::Compact() {
-  FCP_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
-  FCP_ASSIGN_OR_RETURN(std::string serialized_state,
-                       accumulator->ToSerializedState());
+  ABSL_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
+  ABSL_ASSIGN_OR_RETURN(std::string serialized_state,
+                        accumulator->ToSerializedState());
   return serialized_state;
 }
 
 absl::StatusOr<std::string> WillowSession::Finalize() {
-  FCP_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
-  FCP_ASSIGN_OR_RETURN(FinalizedAccumulatorResult finalized_result,
-                       std::move(*accumulator).Finalize());
+  ABSL_ASSIGN_OR_RETURN(ServerAccumulator * accumulator, GetAccumulator());
+  ABSL_ASSIGN_OR_RETURN(FinalizedAccumulatorResult finalized_result,
+                        std::move(*accumulator).Finalize());
   return finalized_result.SerializeAsString();
 }
 

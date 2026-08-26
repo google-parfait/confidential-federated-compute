@@ -1,0 +1,21 @@
+# Removes oak_enclave_runtime_support/src/lib.rs's linking in of Oak-provided
+# LLVM libc and libc++ runtimes which Oak added in
+# https://github.com/project-oak/oak/commit/b46f5624eaf049cd6f32520c73d64c527e231bd7.
+# These runtimes otherwise conflict with TCP's use of oak_restricted_kernel_sdk
+# (which in turn depends on this oak_enclave_runtime_support library), because
+# while TCP uses those libraries, it is being compiled to target an Oak
+# Containers environment where a libc/libc++ runtime is already linked in
+# anyway.
+--- a/oak_enclave_runtime_support/src/lib.rs
++++ b/oak_enclave_runtime_support/src/lib.rs
+@@ -21,10 +21,9 @@
+ #[cfg(feature = "global_allocator")]
+ use heap::LockedGrowableHeap;
+ 
+ pub mod heap;
+ mod libm;
+-mod llvm_libc;
+ 
+ #[cfg(feature = "global_allocator")]
+ #[global_allocator]
+ static ALLOCATOR: LockedGrowableHeap = LockedGrowableHeap::empty();

@@ -15,13 +15,13 @@
 extern crate willow_committee_selector_service;
 
 mod test {
-    use slog::{o, Discard, Logger};
+    use slog::{Discard, Logger, o};
     use willow_committee_selector_service::apps::willow::committee_selector::service::{
         CommitteeSelectorSnapshot, CommitteeSnapshot, CommitteeStatus, EndorsementStatus,
         VolunteerKeyDigest,
     };
     use willow_committee_selector_service::selector::{
-        fingerprint, BloomFilter, CommitteeSelector,
+        BloomFilter, CommitteeSelector, fingerprint,
     };
 
     #[test]

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use oak_proto_rust::oak::attestation::v1::{Evidence, ReferenceValues, TeePlatform};
 use oak_sdk_containers::OrchestratorClient;
 use prost::Message;

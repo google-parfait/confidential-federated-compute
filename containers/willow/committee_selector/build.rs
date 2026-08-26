@@ -20,7 +20,7 @@ fn main() -> Result<()> {
         &["proto"],
         micro_rpc_build::CompileOptions {
             bytes: vec![
-                ".apps.willow.committee_selector.service.CommitteeSelectorSnapshot".to_string()
+                ".apps.willow.committee_selector.service.CommitteeSelectorSnapshot".to_string(),
             ],
             ..Default::default()
         },

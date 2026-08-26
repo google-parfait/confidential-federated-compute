@@ -17,8 +17,7 @@ use std::io::Result;
 use std::path::Path;
 
 fn main() -> Result<()> {
-    let protoc = std::env::var("PROTOC").expect("PROTOC must be set");
-    std::env::set_var("PROTOC", protoc);
+    let _protoc = std::env::var("PROTOC").expect("PROTOC must be set");
 
     let committee_selector_proto = std::env::var("COMMITTEE_SELECTOR_PROTO_FILE")
         .expect("COMMITTEE_SELECTOR_PROTO_FILE must be set");
@@ -53,13 +52,7 @@ fn main() -> Result<()> {
 
     micro_rpc_build::compile(
         &["proto/multi_decryptor.proto"],
-        &[
-            Path::new("proto"),
-            cs_dir,
-            rd_dir,
-            secure_aggregation_dir,
-            shell_encryption_dir,
-        ],
+        &[Path::new("proto"), cs_dir, rd_dir, secure_aggregation_dir, shell_encryption_dir],
         CompileOptions {
             extern_paths: vec![
                 ExternPath::new(
@@ -71,9 +64,7 @@ fn main() -> Result<()> {
                     "::willow_reputable_decryptor_service::apps::willow::reputable_decryptor::service",
                 ),
             ],
-            bytes: vec![
-                ".apps.willow.multi_decryptor.service.MultiDecryptorSnapshot".to_string(),
-            ],
+            bytes: vec![".apps.willow.multi_decryptor.service.MultiDecryptorSnapshot".to_string()],
             ..Default::default()
         },
     );

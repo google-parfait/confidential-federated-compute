@@ -46,6 +46,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -69,12 +70,14 @@ cc_library(
 cc_test(
     name = "willow_transform_service_test",
     srcs = ["willow_transform_service_test.cc"],
+    linkstatic = True,
     deps = [
         ":service",
         ":willow_messages_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:cord",
         "@confidential-federated-compute//containers:session",

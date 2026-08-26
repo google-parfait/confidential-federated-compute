@@ -20,7 +20,7 @@ use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use slog::{error, Logger};
+use slog::{Logger, error};
 
 /// The minimum number of volunteers a committee must collect before the
 /// selection phase can run.

@@ -20,22 +20,22 @@ extern crate willow_multi_decryptor;
 extern crate willow_reputable_decryptor_service;
 
 mod test {
-    use prost::bytes::Bytes;
     use prost::Message;
+    use prost::bytes::Bytes;
     use tcp_integration::harness::*;
     use tcp_proto::runtime::endpoint::out_message;
     use willow_committee_selector_service::apps::willow::committee_selector::service::{
-        committee_selector_request, committee_selector_response, CommitteeSelectorRequest,
-        CreateCommitteeRequest,
-    };
-    use willow_multi_decryptor::multi_decryptor::service::{
-        multi_decryptor_request, multi_decryptor_response, MultiDecryptorConfig,
-        MultiDecryptorRequest, MultiDecryptorResponse,
+        CommitteeSelectorRequest, CreateCommitteeRequest, committee_selector_request,
+        committee_selector_response,
     };
     use willow_multi_decryptor::MultiDecryptorActor;
+    use willow_multi_decryptor::multi_decryptor::service::{
+        MultiDecryptorConfig, MultiDecryptorRequest, MultiDecryptorResponse,
+        multi_decryptor_request, multi_decryptor_response,
+    };
     use willow_reputable_decryptor_service::apps::willow::reputable_decryptor::service::{
-        reputable_decryptor_request, reputable_decryptor_response, CreateSetupContributionRequest,
-        ReputableDecryptorRequest,
+        CreateSetupContributionRequest, ReputableDecryptorRequest, reputable_decryptor_request,
+        reputable_decryptor_response,
     };
 
     fn advance_until_response(

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(never_type)]
 
 extern crate alloc;
 extern crate prost;
@@ -23,8 +22,8 @@ extern crate tcp_runtime;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use oak_proto_rust::oak::attestation::v1::ReferenceValues;
-use prost::bytes::Bytes;
 use prost::Message;
+use prost::bytes::Bytes;
 use tcp_runtime::model::{
     Actor, ActorCommand, ActorContext, ActorError, ActorEvent, ActorEventContext, CommandOutcome,
     EventOutcome,
@@ -47,8 +46,9 @@ pub mod multi_decryptor {
 }
 
 use crate::multi_decryptor::service::{
-    multi_decryptor_event, multi_decryptor_request, multi_decryptor_response, MultiDecryptorConfig,
-    MultiDecryptorEvent, MultiDecryptorRequest, MultiDecryptorResponse, MultiDecryptorSnapshot,
+    MultiDecryptorConfig, MultiDecryptorEvent, MultiDecryptorRequest, MultiDecryptorResponse,
+    MultiDecryptorSnapshot, multi_decryptor_event, multi_decryptor_request,
+    multi_decryptor_response,
 };
 
 struct SharedActorContext {

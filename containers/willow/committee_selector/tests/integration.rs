@@ -18,16 +18,16 @@ extern crate tcp_proto;
 extern crate willow_committee_selector_service;
 
 mod test {
-    use prost::bytes::Bytes;
     use prost::Message;
+    use prost::bytes::Bytes;
     use tcp_integration::harness::*;
     use tcp_proto::runtime::endpoint::out_message;
     use willow_committee_selector_service::actor::CommitteeSelectorActor;
     use willow_committee_selector_service::apps::willow::committee_selector::service::{
-        committee_selector_request, committee_selector_response, CheckCommitteeStatusRequest,
-        CommitteeSelectorConfig, CommitteeSelectorRequest, CommitteeSelectorResponse,
-        CommitteeStatus, CreateCommitteeRequest, SampleCommitteeRequest,
+        CheckCommitteeStatusRequest, CommitteeSelectorConfig, CommitteeSelectorRequest,
+        CommitteeSelectorResponse, CommitteeStatus, CreateCommitteeRequest, SampleCommitteeRequest,
         VolunteerBatchForCommitteeRequest, VolunteerForCommitteeRequest,
+        committee_selector_request, committee_selector_response,
     };
 
     const DEFAULT_MAX_NUMBER_OF_COMMITTEES: usize = 128;

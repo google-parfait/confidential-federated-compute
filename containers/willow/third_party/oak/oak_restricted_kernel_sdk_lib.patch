@@ -1,0 +1,11 @@
+# Enables #![feature(doc_cfg)] at the top of oak_restricted_kernel_sdk/src/lib.rs for Rust compiler documentation feature compatibility.
+--- a/oak_restricted_kernel_sdk/src/lib.rs
++++ b/oak_restricted_kernel_sdk/src/lib.rs
+@@ -15,6 +15,7 @@
+ //
+ 
+ #![no_std]
++#![feature(doc_cfg)]
+ #![feature(never_type)]
+ #![feature(unwrap_infallible)]
+ 
