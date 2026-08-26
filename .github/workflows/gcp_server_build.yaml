@@ -48,11 +48,12 @@ jobs:
           ref: main
 
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
+        uses: bazel-contrib/setup-bazel@0.19.0
         with:
           module-root: containers/gcp
           bazelisk-cache: true
           disk-cache: server-${{ matrix.model }}
+          repository-cache: true
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2

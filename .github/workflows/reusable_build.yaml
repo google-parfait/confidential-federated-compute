@@ -26,11 +26,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
+        uses: bazel-contrib/setup-bazel@0.19.0
         with:
           module-root: ${{ inputs.module-root }}
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}-${{ inputs.name }}
+          repository-cache: true
       - name: Build
         run: |
           cd "${{ inputs.module-root }}" && bazelisk run -c opt --curses=no --noshow_progress --lockfile_mode=error //:install_release_binaries -- --destdir="${{ runner.temp }}/binaries"

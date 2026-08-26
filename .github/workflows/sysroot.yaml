@@ -20,7 +20,7 @@ jobs:
         with:
           sparse-checkout: toolchains/sysroot
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
+        uses: bazel-contrib/setup-bazel@0.19.0
         with:
           module-root: toolchains/sysroot
           bazelisk-cache: true
