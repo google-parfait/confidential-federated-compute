@@ -381,21 +381,24 @@ class KmsFedSqlSessionWriteTest : public Test {
       Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
       std::optional<RangeTracker> consumed_tracker = std::nullopt,
       absl::Cord autotuning_data = absl::Cord{},
-      uint64_t min_agg_window_minutes = 0) {
+      uint64_t min_agg_window_minutes = 0,
+      std::optional<std::string> custom_budget_state = std::nullopt) {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
     std::unique_ptr<CheckpointAggregator> checkpoint_aggregator =
         CheckpointAggregator::Create(DefaultConfiguration()).value();
-    BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
-      buckets { key: "key_foo" budget: 1 }
-      buckets { key: "key_bar" budget: 3 }
-      buckets { key: "key_baz" budget: 0 }
-      time_budget {
-        anchor_time: 120
-        intervals { start_index: 0 count: 10 remaining_budget: 0 }
-      }
-    )pb");
+    BudgetState budget_state;
+    if (custom_budget_state.has_value()) {
+      CHECK(budget_state.ParseFromString(custom_budget_state.value()));
+    } else {
+      budget_state = PARSE_TEXT_PROTO(R"pb(
+        buckets { key: "key_foo" budget: 1 }
+        buckets { key: "key_bar" budget: 3 }
+        buckets { key: "key_baz" budget: 0 }
+        time_budget {}
+      )pb");
+    }
     initial_private_state_ = budget_state.SerializeAsString();
     session_ = std::make_unique<KmsFedSqlSession>(
         std::move(checkpoint_aggregator), intrinsics_,
@@ -798,10 +801,7 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateCommitReportSucceeds) {
                 }
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
-                time_budget {
-                  anchor_time: 120
-                  intervals { count: 10 }
-                }
+                time_budget {}
               )pb"));
 
   FederatedComputeCheckpointParserFactory parser_factory;
@@ -1200,6 +1200,16 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateWithNoKeyBudgetFails) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateWithNoTimeBudgetFails) {
+  BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "key_foo" budget: 1 }
+    time_budget {
+      anchor_time: 120
+      intervals { start_index: 0 count: 10 remaining_budget: 0 }
+    }
+  )pb");
+  CreateSession(default_decryptor_, /*default_budget=*/5, std::nullopt,
+                absl::Cord{}, 0, budget_state.SerializeAsString());
+
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
@@ -1222,6 +1232,34 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateWithNoTimeBudgetFails) {
   EXPECT_THAT(write_result->status().code(), Code::FAILED_PRECONDITION);
   EXPECT_THAT(write_result->status().message(),
               HasSubstr("No time-window budget remaining"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateLegacyBlobFailsWhenTimeBudgetConsumed) {
+  BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "key_foo" budget: 1 }
+    time_budget {
+      anchor_time: 120
+      intervals { start_index: 0 count: 10 remaining_budget: 0 }
+    }
+  )pb");
+  CreateSession(default_decryptor_, /*default_budget=*/5, std::nullopt,
+                absl::Cord{}, 0, budget_state.SerializeAsString());
+
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::FAILED_PRECONDITION);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("No budget remaining for key id"));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateDeprecatedRecordHeader) {
@@ -1690,10 +1728,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportSucceeds) {
                 }
                 buckets { key: "key_bar" budget: 3 }
                 buckets { key: "key_baz" budget: 0 }
-                time_budget {
-                  anchor_time: 120
-                  intervals { count: 10 }
-                }
+                time_budget {}
               )pb"));
   auto parser = parser_factory.Create(absl::Cord(std::move(result_data)));
   ASSERT_THAT(parser, IsOk());
@@ -1865,10 +1900,7 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
                   consumed_range_start: 1
                   consumed_range_end: 10
                 }
-                time_budget {
-                  anchor_time: 120
-                  intervals { count: 10 }
-                }
+                time_budget {}
               )pb"));
 
   FedSqlContainerPartitionedOutputFinalizedState result;
@@ -1883,10 +1915,20 @@ TEST_F(KmsFedSqlSessionWriteTest, MergeReportPrivateStateSucceeds) {
 
 TEST_F(KmsFedSqlSessionWriteTest,
        MergeReportPrivateStateWithTimeWindowSucceeds) {
+  BudgetState initial_budget = PARSE_TEXT_PROTO(R"pb(
+    buckets { key: "key_foo" budget: 1 }
+    buckets { key: "key_bar" budget: 3 }
+    buckets { key: "key_baz" budget: 0 }
+    time_budget {
+      anchor_time: 120
+      intervals { start_index: 0 count: 10 remaining_budget: 0 }
+    }
+  )pb");
   CreateSession(default_decryptor_, /*default_budget=*/5,
                 /*consumed_tracker=*/std::nullopt,
                 /*autotuning_data=*/absl::Cord{},
-                /*min_agg_window_minutes=*/15);
+                /*min_agg_window_minutes=*/15,
+                initial_budget.SerializeAsString());
 
   PartitionPrivateStateProto private_state = PARSE_TEXT_PROTO(R"pb(
     symmetric_keys { id: 1 symmetric_key: "key1" }
@@ -2098,10 +2140,7 @@ TEST_F(KmsFedSqlSessionWriteTest,
                   consumed_range_start: 1
                   consumed_range_end: 10
                 }
-                time_budget {
-                  anchor_time: 120
-                  intervals { count: 10 }
-                }
+                time_budget {}
               )pb"));
 
   FedSqlContainerPartitionedOutputFinalizedState result;

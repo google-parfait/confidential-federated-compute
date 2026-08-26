@@ -94,9 +94,12 @@ struct BudgetInfo {
 // - Time-based budget: Tracked via time_budget_, using time windows.
 //
 // During the migration, when a time_window is provided to UpdateBudget, only
-// the TimeBudget is updated (per_key_budgets_ are not modified). When no
-// time_window is provided, only the legacy per_key_budgets_ are updated.
-// Expired keys are always cleaned up from per_key_budgets_ regardless.
+// the TimeBudget is updated (per_key_budgets_ are not modified). Once
+// time-based budget has been consumed, legacy per-key budget updates are
+// disallowed to prevent double-consumption of blobs.
+// If time-based budget is not consumed, the legacy per_key_budgets_ are
+// updated as normal. Expired keys are always cleaned up from per_key_budgets_
+// regardless.
 //
 // Once all callers have fully switched to time-based budgets, this class will
 // become redundant and can be deleted in favor of using TimeBudget directly.
@@ -135,7 +138,7 @@ class Budget {
   std::string SerializeAsString() const;
 
   // Checks whether any budget remains for the specified bucket key and
-  // range_key.
+  // range_key. Returns false if time-based budget has already been consumed.
   bool HasRemainingBudget(const std::string& key, uint64_t range_key);
 
   // Checks whether any time-based budget remains for the specified time window.
@@ -146,8 +149,10 @@ class Budget {
 
   // Update the budget by applying the data collected in the RangeTracker.
   // If the RangeTracker has an aggregation window set, only the time-based
-  // budget is updated (per_key_budgets_ are not modified). Expired keys are
-  // always cleaned up.
+  // budget is updated (per_key_budgets_ are not modified). If no aggregation
+  // window is set, updates the legacy per-key budgets unless time-based budget
+  // has already been consumed, in which case an error is returned. Expired keys
+  // are always cleaned up.
   absl::Status UpdateBudget(const RangeTracker& range_tracker);
 
   // Gets all the keys in the budget.

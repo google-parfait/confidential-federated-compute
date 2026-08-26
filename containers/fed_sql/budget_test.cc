@@ -693,5 +693,46 @@ TEST(BudgetTest, SerializeAndParseTimeBudget) {
               EqualsProtoIgnoringRepeatedFieldOrder(serialized));
 }
 
+TEST(BudgetTest, HasRemainingBudgetRejectsPerKeyWhenTimeBudgetConsumed) {
+  Budget budget(/*default_budget=*/3);
+  // Before time budget is consumed, key-based check is allowed.
+  EXPECT_TRUE(budget.HasRemainingBudget("foo", 100));
+
+  RangeTracker time_tracker;
+  time_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
+  EXPECT_THAT(budget.UpdateBudget(time_tracker), IsOk());
+
+  // After time budget is consumed, key-based check must return false.
+  EXPECT_FALSE(budget.HasRemainingBudget("foo", 100));
+
+  // Verify that this restriction persists across serialization and parsing.
+  BudgetState serialized = budget.Serialize();
+  Budget budget2(/*default_budget=*/3);
+  EXPECT_THAT(budget2.Parse(serialized), IsOk());
+  EXPECT_FALSE(budget2.HasRemainingBudget("foo", 100));
+}
+
+TEST(BudgetTest, UpdateBudgetRejectsPerKeyWhenTimeBudgetConsumed) {
+  Budget budget(/*default_budget=*/3);
+
+  RangeTracker time_tracker;
+  time_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
+  EXPECT_THAT(budget.UpdateBudget(time_tracker), IsOk());
+
+  RangeTracker key_tracker;
+  key_tracker.AddKey("foo");
+  EXPECT_TRUE(key_tracker.AddRange(1, 4));
+  EXPECT_THAT(budget.UpdateBudget(key_tracker),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Verify that updating with key_tracker also fails after parsing persisted
+  // state.
+  BudgetState serialized = budget.Serialize();
+  Budget budget2(/*default_budget=*/3);
+  EXPECT_THAT(budget2.Parse(serialized), IsOk());
+  EXPECT_THAT(budget2.UpdateBudget(key_tracker),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql
