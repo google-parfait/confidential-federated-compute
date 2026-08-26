@@ -1,0 +1,38 @@
+--- toolchain/cc_wrapper.sh.tpl
++++ toolchain/cc_wrapper.sh.tpl
+@@ -119,4 +119,5 @@
+ cmd=()
++sysroot_path=""
+ for ((i = 0; i <= $#; i++)); do
+   if [[ ${!i} == @* && -r "${!i:1}" ]]; then
+     # Create a new, sanitized file.
+@@ -129,4 +130,7 @@
+       )"
++      if [[ "${opt}" == --sysroot=* ]]; then
++        sysroot_path="${opt#--sysroot=}"
++      fi
+       parse_option "${opt}"
+       echo "${opt}" >>"${tmpfile}"
+     done <"${!i:1}"
+@@ -138,4 +142,7 @@
+     )"
++    if [[ "${opt}" == --sysroot=* ]]; then
++      sysroot_path="${opt#--sysroot=}"
++    fi
+     parse_option "${opt}"
+     cmd+=("${opt}")
+   fi
+@@ -143,4 +155,13 @@
+ done
+ 
++if [[ -n "${sysroot_path}" ]]; then
++  # HACK: find the path libc.so.* would be found in if we didn't inject the sysroot on the
++  # LD_LIBRARY_PATH. Then ensure that libraries that the host environment already has, like libc
++  # and libstdc++, are loaded from that path, and only if they can't be found there, that they are
++  # loaded from our sysroot.
++  existing_usr_lib_path="$(ldd ${cmd[0]} | grep -oP '=> \K.*(?=/libc\.so\.6)')"
++  export LD_LIBRARY_PATH="${existing_usr_lib_path}:${sysroot_path}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
++fi
++
+ # Call the C++ compiler.
+ "${cmd[@]}"
