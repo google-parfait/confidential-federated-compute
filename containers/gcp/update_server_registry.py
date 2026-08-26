@@ -20,14 +20,9 @@ a given digest, cryptographically verifies them using Sigstore, extracts the
 build parameters (model, alts, attestation type), and appends the entry
 to server_image_registry.json.
 
-Setup:
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install sigstore==4.4.0
-
 Usage:
-    python3 update_server_registry.py <sha256_digest>
-    python3 update_server_registry.py <sha256_digest> --overwrite
+    bazelisk run //:update_server_registry -- <sha256_digest>
+    bazelisk run //:update_server_registry -- <sha256_digest> --overwrite
 """
 
 import argparse
@@ -94,7 +89,10 @@ def update_registry(digest, overwrite=False):
     if "provenance" not in entry:
         provenance_lib.fail("No SLSA provenance bundle found in verified attestations. Cannot store provenance backup.")
 
-    registry_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), REGISTRY_PATH)
+    if "BUILD_WORKSPACE_DIRECTORY" in os.environ:
+        registry_file = os.path.join(os.environ["BUILD_WORKSPACE_DIRECTORY"], REGISTRY_PATH)
+    else:
+        registry_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), REGISTRY_PATH)
 
     try:
         with open(registry_file, 'r') as f:

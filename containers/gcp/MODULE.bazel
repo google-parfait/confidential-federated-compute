@@ -18,13 +18,11 @@ module(
     compatibility_level = 1,
 )
 
-curl_file = use_repo_rule("//:repo_rules.bzl", "curl_file")
-
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
-curl_file(
+http_file(
     name = "intel_jwks",
     url = "https://portal.trustauthority.intel.com/certs",
 )
@@ -57,7 +55,7 @@ bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "toolchains_llvm", version = "1.8.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "rules_python", version = "1.5.4")
 bazel_dep(name = "rules_proto", version = "7.1.0")
@@ -84,6 +82,15 @@ use_repo(python, "python_3_13")
 
 register_toolchains("@python_3_13//:all")
 
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    experimental_index_url = "https://pypi.org/simple",
+    hub_name = "pip",
+    python_version = "3.13",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "pip")
+
 archive_override(
     module_name = "rules_cuda",
     integrity = "sha256-1p+wq8uTeO1ZELmj03RqR9cKwpuK+idfkTrF4ZehfBw=",
@@ -93,8 +100,8 @@ archive_override(
 
 http_archive(
     name = "sysroot",
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
@@ -266,3 +273,8 @@ use_repo(crate, "crates")
 
 oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
 use_repo(oak_crates, "oak_crates_index")
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["//third_party/toolchains_llvm:cc_wrapper.patch"],
+)

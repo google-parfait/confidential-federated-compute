@@ -133,7 +133,7 @@ def verify_attestation_signatures(attestations, digest, repository="google-parfa
 
             print(f"  -> Attestation {idx+1}: Cryptographic signatures (Fulcio, Rekor, DSSE, OIDC Identity) VERIFIED.")
         except FileNotFoundError:
-            fail("sigstore module not found. Did you run 'pip install -r requirements.txt'?")
+            fail("sigstore module not found. Please ensure the tool is run via Bazelisk.")
         except Exception as e:
             fail(f"Error running sigstore: {e}")
         finally:

@@ -38,7 +38,7 @@ for arg in "$@"; do
     --gcs_bucket=*)   GCS_BUCKET="${arg#*=}" ;;
     --update_registry|--no-update_registry)
       echo "WARNING: The registry update flag is DEPRECATED and ignored." >&2
-      echo "WARNING: All registry updates must now go through update_server_registry.py." >&2
+      echo "WARNING: All registry updates must now go through 'bazelisk run //:update_server_registry'." >&2
       ;;
     --dry-run)        DRY_RUN=true ;;
     --help|-h)
@@ -51,8 +51,8 @@ for arg in "$@"; do
       echo "  --no-alts        Disable ALTS transport"
       echo "  --destination    Container registry path (default: us-docker.pkg.dev/private-inference/offloading)"
       echo "  --gcs_bucket     Override GCS bucket for model weights (e.g., gs://my-bucket)"
-      echo "  --update_registry    [DEPRECATED] Ignored. Use update_server_registry.py instead."
-      echo "  --no-update_registry [DEPRECATED] Ignored. Use update_server_registry.py instead."
+      echo "  --update_registry    [DEPRECATED] Ignored. Use 'bazelisk run //:update_server_registry' instead."
+      echo "  --no-update_registry [DEPRECATED] Ignored. Use 'bazelisk run //:update_server_registry' instead."
       echo "  --dry-run        Print what would be done without executing"
       exit 0
       ;;
@@ -201,5 +201,5 @@ echo ""
 
 # ─── Step 4: Update server_image_registry.json ───────────────────────────────
 echo "NOTE: Automatic registry updates are disabled."
-echo "Please run update_server_registry.py with the digest above to verify SLSA provenance"
+echo "Please run 'bazelisk run //:update_server_registry -- $DIGEST' to verify SLSA provenance"
 echo "and add it to server_image_registry.json."

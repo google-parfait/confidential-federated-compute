@@ -4,13 +4,18 @@ Filters registry entries by model, attestation flavor, and max age, then
 writes a policy file with the matching digests.
 
 Usage:
-    python3 generate_policy.py \
+    bazelisk run //:generate_policy -- \
         --registry=server_image_registry.json \
         --output=policy.textproto \
         --verifier_type=ITA \
         --model=gemma4_e4b \
         --attestation=ita_alts \
-        --max_age_days=60
+        --max_age_days=60 \
+        --max_sw_tcb_age_days=540 \
+        --max_hw_tcb_age_days=540
+
+This script is invoked as part of the bazel build in the directory, and its
+output incorporated into the other bazel targets in this directory.
 """
 
 import argparse

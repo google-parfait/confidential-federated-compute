@@ -16,13 +16,15 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
+load("@pip//:requirements.bzl", "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:install.bzl", "pkg_install")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 load(":build_defs.bzl", "generate_policy", "image_digest_flag", "int_flag")
 load(":model_targets.bzl", "gcp_model_targets")
@@ -43,10 +45,66 @@ py_proto_library(
     deps = [":attestation_policy_proto"],
 )
 
+compile_pip_requirements(
+    name = "requirements",
+    timeout = "long",
+    extra_args = [
+        "--allow-unsafe",
+        "--resolver=backtracking",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock.txt",
+)
+
+py_binary(
+    name = "generate_policy",
+    srcs = ["generate_policy.py"],
+)
+
 py_binary(
     name = "generate_client_metadata",
     srcs = ["generate_client_metadata.py"],
     deps = [":attestation_policy_py_proto"],
+)
+
+py_library(
+    name = "provenance_lib",
+    srcs = ["provenance_lib.py"],
+    deps = [
+        requirement("cryptography"),
+        requirement("sigstore"),
+    ],
+)
+
+py_binary(
+    name = "trace_digest",
+    srcs = ["trace_digest.py"],
+    deps = [
+        ":provenance_lib",
+        requirement("sigstore"),
+    ],
+)
+
+py_binary(
+    name = "update_server_registry",
+    srcs = ["update_server_registry.py"],
+    deps = [
+        ":provenance_lib",
+        requirement("sigstore"),
+    ],
+)
+
+py_test(
+    name = "verify_registry_test",
+    srcs = ["verify_registry_test.py"],
+    data = [
+        ":server_image_registry.json",
+    ],
+    deps = [
+        ":provenance_lib",
+        requirement("sigstore"),
+        "@rules_python//python/runfiles",
+    ],
 )
 
 cc_proto_library(
@@ -573,6 +631,12 @@ build_test(
     name = "build_test",
     targets = [
         ":batched_inference_gcp_main",
+        ":gen_policy_gca",
+        ":gen_policy_ita",
+        ":generate_client_metadata",
+        ":generate_policy",
         ":install_all_binaries",
+        ":trace_digest",
+        ":update_server_registry",
     ],
 )

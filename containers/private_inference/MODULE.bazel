@@ -28,8 +28,6 @@ single_version_override(
     version = "20260526.0",
 )
 
-http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
-
 bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
@@ -64,29 +62,12 @@ use_repo(python, "python_3_13")
 
 register_toolchains("@python_3_13//:all")
 
-http_file(
-    name = "libxml2_deb",
-    sha256 = "4460e39dda10a815881374217cde08474747cfa018358cd8612c14b390eff53b",
-    urls = ["https://deb.debian.org/debian/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3~deb12u6_amd64.deb"],
-)
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-http_file(
-    name = "libicu_deb",
-    sha256 = "f7f6f99c6d7b025914df2447fc93e11d22c44c0c8bdd8b6f36691c9e7ddcef88",  # Dummy SHA256
-    urls = ["https://deb.debian.org/debian/pool/main/i/icu/libicu72_72.1-3+deb12u1_amd64.deb"],
-)
-
-merged_sysroot = use_repo_rule("//:sysroot.bzl", "merged_sysroot")
-
-# Adding these to the sysroot works around https://github.com/bazel-contrib/toolchains_llvm/issues/657.
-# This workaround can be removed once https://github.com/llvm/llvm-project/commit/70cf763a42d55dcf89687c9e84478eb007561654
-# has been released and is available to us.
-merged_sysroot(
+http_archive(
     name = "sysroot",
-    deb_files = [
-        "@libxml2_deb//file:downloaded",
-        "@libicu_deb//file:downloaded",
-    ],
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
