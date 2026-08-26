@@ -13,26 +13,26 @@
 // limitations under the License.
 
 use crate::apps::willow::committee_selector::service::{
-    committee_selector_event, committee_selector_request, committee_selector_response,
     CheckCommitteeStatusRequest, CheckCommitteeStatusResponse, CommitteeSelectorConfig,
     CommitteeSelectorEvent, CommitteeSelectorRequest, CommitteeSelectorResponse,
     CommitteeSelectorSnapshot, CommitteeSelectorStatus, CreateCommitteeEvent,
     CreateCommitteeRequest, CreateCommitteeResponse, EndorsementStatus, SampleCommitteeEvent,
     SampleCommitteeRequest, VolunteerBatchForCommitteeEvent, VolunteerBatchForCommitteeRequest,
-    VolunteerBatchForCommitteeResponse,
+    VolunteerBatchForCommitteeResponse, committee_selector_event, committee_selector_request,
+    committee_selector_response,
 };
-use crate::selector::{fingerprint, CommitteeSelector};
+use crate::selector::{CommitteeSelector, fingerprint};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::{boxed::Box, vec::Vec};
 use micro_rpc::StatusCode;
 use oak_proto_rust::oak::attestation::v1::{
-    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
     ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
     KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
     ReferenceValues, RootLayerReferenceValues, SkipVerification, TextReferenceValue,
+    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
 };
-use prost::{bytes::Bytes, Message};
+use prost::{Message, bytes::Bytes};
 use slog::{debug, warn};
 use tcp_runtime::model::{
     Actor, ActorCommand, ActorContext, ActorError, ActorEvent, ActorEventContext, CommandOutcome,

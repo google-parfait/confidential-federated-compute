@@ -1,0 +1,13 @@
+# https://github.com/project-oak/oak/commit/a2953b1529321bab430ac77b5dbe40536da79e17
+# restricted oak_enclave_runtime_support to only x86_64-none, but TCP still uses
+# oak_restricted_kernel_sdk (which depends on it) on all platforms.
+--- a/oak_enclave_runtime_support/BUILD
++++ b/oak_enclave_runtime_support/BUILD
+@@ -27,7 +27,6 @@
+     crate_features = [
+         "no_std",
+     ],
+-    target_compatible_with = ["//:x86_64-none-setting"],
+     deps = [
+         "//oak_restricted_kernel_interface",
+         "@oak_crates_index//:libm",

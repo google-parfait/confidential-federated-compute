@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::apps::willow::reputable_decryptor::service::{
-    reputable_decryptor_event, reputable_decryptor_request, reputable_decryptor_response,
     CreateSetupContributionRequest, CreateSetupContributionResponse, DecryptionEvent,
     HandlePartialDecryptionRequest, HandlePartialDecryptionResponse, ReputableDecryptorConfig,
     ReputableDecryptorEvent, ReputableDecryptorRequest, ReputableDecryptorResponse,
     ReputableDecryptorSnapshot, ReputableDecryptorStatus, SetupEvent,
     VerifyAndAggregateKeyContributionsRequest, VerifyAndAggregateKeyContributionsResponse,
+    reputable_decryptor_event, reputable_decryptor_request, reputable_decryptor_response,
 };
-use crate::decryptor::{convert_from_prost, convert_to_prost, ReputableDecryptorState};
+use crate::decryptor::{ReputableDecryptorState, convert_from_prost, convert_to_prost};
 use ahe_traits::AheBase;
 use alloc::boxed::Box;
 use alloc::format;
@@ -29,13 +29,13 @@ use alloc::string::{String, ToString};
 use decryptor_traits::{SecureAggregationBaseMultiDecryptor, SecureAggregationReputableDecryptor};
 use micro_rpc::StatusCode;
 use oak_proto_rust::oak::attestation::v1::{
-    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
     ApplicationLayerReferenceValues, BinaryReferenceValue, InsecureReferenceValues,
     KernelBinaryReferenceValue, KernelLayerReferenceValues, OakRestrictedKernelReferenceValues,
     ReferenceValues, RootLayerReferenceValues, SkipVerification, TextReferenceValue,
+    binary_reference_value, kernel_binary_reference_value, reference_values, text_reference_value,
 };
 use prng_traits::SecurePrng;
-use prost::{bytes::Bytes, Message};
+use prost::{Message, bytes::Bytes};
 use proto_serialization_traits::{FromProto, ToProto};
 use shell_kahe::ShellKahe;
 use shell_vahe::ShellVahe;

@@ -18,91 +18,91 @@ module(
     compatibility_level = 1,
 )
 
+# `oak` must be declared before `rules_rust` so that Oak's registered Rust
+# toolchains take precedence over rules_rust's default 2021 toolchain during
+# Bzlmod toolchain resolution.
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
-bazel_dep(name = "boringssl", version = "0.20260211.0")
+bazel_dep(name = "boringssl", version = "0.20260413.0")
 bazel_dep(name = "confidential-federated-compute")
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
-bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "oak")
-bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "pybind11_abseil", version = "0.0.0")
 bazel_dep(name = "pybind11_bazel", version = "3.0.1")
-bazel_dep(name = "rules_cc", version = "0.2.14")
+bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "rules_distroless", version = "0.6.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "rules_python", version = "1.5.4")
-bazel_dep(name = "rules_rust", version = "0.69.0")
-bazel_dep(name = "rules_rust_bindgen", version = "0.69.0")
+bazel_dep(name = "rules_python", version = "2.0.2")
+bazel_dep(name = "rules_rust", version = "0.70.0")
+bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
 bazel_dep(name = "secure_aggregation", version = "0.0.0")
 bazel_dep(name = "shell-encryption", version = "0.0.0")
 bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
 
-single_version_override(
-    module_name = "rules_cc",
-    version = "0.2.14",
-)
-
-single_version_override(
-    module_name = "rules_python",
-    version = "1.5.4",
-)
-
-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.toolchain(
-    configure_coverage_tool = False,
-    ignore_root_user_error = True,
-    python_version = "3.11",
-)
-
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
 
 # Module overrides.
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,local_path_override,single_version_override
 archive_override(
     # Patches protobuf to make the Rust libraries visible. See
     # https://github.com/protocolbuffers/protobuf/issues/23866.
     module_name = "protobuf",
     integrity = "sha256-F4n12LZfTcM249HtTdCAw3iK35iU7Ei61GTtjK3cS4Y=",
-    patches = ["//third_party/protobuf:visibility.patch"],
+    patches = [
+        "//third_party/protobuf:syn.patch",
+        "//third_party/protobuf:visibility.patch",
+    ],
     strip_prefix = "protobuf-9151e03956a34b795ca0d58e19d8a9991904b459",
     urls = ["https://github.com/google/protobuf/archive/9151e03956a34b795ca0d58e19d8a9991904b459.zip"],
 )
 
-archive_override(
+single_version_override(
+    module_name = "abseil-cpp",
+    # Force 20260526.0 despite it having a lower compatibility_level than
+    # earlier versions. 20260526.0 stopped setting compatibility_level because
+    # it's deprecated starting in bazel 8.6.
+    version = "20260526.0",
+)
+
+local_path_override(
     module_name = "confidential-federated-compute",
-    integrity = "sha256-lMOjJOvADvYz/UGRL3BPuwmffH5LvyBuu4jSJTh+3Ko=",
-    strip_prefix = "confidential-federated-compute-199846cdd20b731a294886492cb9bce6a1e0fac4",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/archive/199846cdd20b731a294886492cb9bce6a1e0fac4.tar.gz"],
+    path = "../..",
 )
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-Lq4XdaOguJQ6qGbNTSKshZy0OYm7SjVFyW8IExoVPv8=",
-    strip_prefix = "federated-compute-cf87047132741a252cc29da444e1ffabb406a7a6",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/cf87047132741a252cc29da444e1ffabb406a7a6.tar.gz"],
+    integrity = "sha256-0ooO0raiPCQ7b6XwbeSPRaOeAK5oFtQSfMFINemTqE0=",
+    strip_prefix = "federated-compute-de83f70c3b352eedc805aa25d804afc3398031f8",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/de83f70c3b352eedc805aa25d804afc3398031f8.tar.gz"],
 )
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-pixFPDN0SkhA67jY9RmLL1YZODefPmpZfoJJP7kqpyM=",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    patch_strip = 1,
     patches = [
         "//third_party/oak:module.patch",
+        "//third_party/oak:oak_attestation_verification.patch",
+        "//third_party/oak:oak_enclave_runtime_support_build.patch",
+        "//third_party/oak:oak_enclave_runtime_support_lib.patch",
+        "//third_party/oak:oak_restricted_kernel_sdk_lib.patch",
         "//third_party/oak:session_binder.patch",
-        "//third_party/oak:rules_cc.patch",
+        "//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-7ad6bf3867bc969603f55ba8afff42a200e03745",
-    urls = ["https://github.com/project-oak/oak/archive/7ad6bf3867bc969603f55ba8afff42a200e03745.tar.gz"],
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
 archive_override(
@@ -116,10 +116,10 @@ archive_override(
 
 archive_override(
     module_name = "rules_rust_prost",
-    integrity = "sha256-u8dkwlLQYSgbI1knek1GSA4tz69yr8HObgCtpYzL/Uw=",
+    integrity = "sha256-X/2f8fby8U8gV7fLqpGl5qzZpMve1ayB2tm+s2hZYB4=",
     patches = ["//third_party/rules_rust:prost_deps.patch"],
     strip_prefix = "extensions/prost",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.69.0/rules_rust-0.69.0.tar.gz"],
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz"],
 )
 
 archive_override(
@@ -164,7 +164,6 @@ http_archive(
     strip_prefix = "trusted-computations-platform-ae07ab331d468c72844a8347adc13a8b500e8347",
     url = "https://github.com/google-parfait/trusted-computations-platform/archive/ae07ab331d468c72844a8347adc13a8b500e8347.tar.gz",
 )
-
 # go/keep-sorted end
 
 # Rust crates.
@@ -184,7 +183,7 @@ crate.annotation(
 crate.spec(
     artifact = "bin",
     package = "bindgen-cli",
-    version = "0.71.1",
+    version = "0.72.0",
 )
 crate.spec(
     package = "protoc-gen-prost",
@@ -225,31 +224,19 @@ oci.pull(
 )
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
-rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
-rust.toolchain(
-    edition = "2021",
-    sha256s = {
-        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
-        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
-        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
-        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
-        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
-    },
-    versions = ["nightly/2025-03-01"],
-)
-
 rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")
 rust_host_tools.host_tools(
     name = "rust_host_tools_nightly",
     edition = "2024",
     sha256s = {
-        "2025-03-01/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "9dfde3b932a240ed7adbef95f9d1437681137c6e0b71ad95b2579cada0623e26",
-        "2025-03-01/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "f5cb5053fee14e60bac386caf37a3542f6ac34fd73076e9329e4aac2e6caf640",
-        "2025-03-01/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "22ed657fa3092f172cda7ff2c68d560f03e312d0b0d643356d89f4254e858c92",
-        "2025-03-01/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "bbfecef0f783ff9fde8485c3739ca71f549e44d9633e58ed5086cf7a09da3fd9",
-        "2025-03-01/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "089b01d390bf42e40b2f1eb960033bba83b54c5b70c2d457e0a31ecb99e87f11",
+        "2026-04-11/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz": "b4c95336c94a70b33f5b7b471315c8b4ab0a10c5c936554d73101d8e9dd76444",
+        "2026-04-11/clippy-nightly-x86_64-unknown-linux-gnu.tar.xz": "658854d7dd8c4ed312ed703768578fed74509775a6053f3552663f4074c8c03f",
+        "2026-04-11/llvm-tools-nightly-x86_64-unknown-linux-gnu.tar.xz": "133a0d5c074964af93661ba86d1200b4363c16ab1cbcdb57d56818610a6d2ad7",
+        "2026-04-11/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz": "e438f81cb8340e1093d7e799c6e742eb76779b360146d178b7104b4f7a89b3e1",
+        "2026-04-11/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz": "6c32f2c2bf33b2d45a5f969f5d30c764f3c5c35179af65f7dae3448779bdfa89",
+        "2026-04-11/rustfmt-nightly-x86_64-unknown-linux-gnu.tar.xz": "f64247b36ca1de77472e194027c1d28a0b8fe1fa27c7fd25dd0f8715ef051f7a",
     },
-    version = "nightly/2025-03-01",
+    version = "nightly/2026-04-11",
 )
 use_repo(rust_host_tools, "rust_host_tools_nightly")
 

@@ -18,15 +18,16 @@ extern crate tcp_proto;
 extern crate willow_reputable_decryptor_service;
 
 mod test {
-    use prost::bytes::Bytes;
     use prost::Message;
+    use prost::bytes::Bytes;
     use tcp_integration::harness::*;
     use tcp_proto::runtime::endpoint::out_message;
     use willow_reputable_decryptor_service::actor::ReputableDecryptorActor;
     use willow_reputable_decryptor_service::apps::willow::reputable_decryptor::service::{
-        reputable_decryptor_request, reputable_decryptor_response, CreateSetupContributionRequest,
-        HandlePartialDecryptionRequest, ReputableDecryptorConfig, ReputableDecryptorRequest,
-        ReputableDecryptorResponse, VerifyAndAggregateKeyContributionsRequest,
+        CreateSetupContributionRequest, HandlePartialDecryptionRequest, ReputableDecryptorConfig,
+        ReputableDecryptorRequest, ReputableDecryptorResponse,
+        VerifyAndAggregateKeyContributionsRequest, reputable_decryptor_request,
+        reputable_decryptor_response,
     };
     use willow_reputable_decryptor_service::secure_aggregation::willow::ShellAhePartialDecCiphertext as ProstShellAhePartialDecCiphertext;
     use willow_reputable_decryptor_service::secure_aggregation::willow::{

@@ -19,6 +19,7 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "containers/session.h"
@@ -123,7 +124,7 @@ absl::Status WillowTransformService::StreamInitializeImpl(
       return absl::FailedPreconditionError(
           "StreamInitialize can only be called once.");
     }
-    FCP_RETURN_IF_ERROR(InitializeTransform(configuration.value()));
+    ABSL_RETURN_IF_ERROR(InitializeTransform(configuration.value()));
     session_tracker_.emplace(max_num_sessions);
   }
 
@@ -206,7 +207,7 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
     }
   }
 
-  FCP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<confidential_federated_compute::Session> session,
       CreateSession());
 
@@ -222,7 +223,7 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
         // successful response.
         SessionResponse response;
         response.mutable_configure();
-        FCP_RETURN_IF_ERROR(stream->Write(response));
+        ABSL_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
@@ -231,21 +232,21 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
         std::string data;
         absl::CopyCordToString(request->write().data(), &data);
         request->mutable_write()->clear_data();
-        FCP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             WriteFinishedResponse write_response,
             session->Write(request->write(), std::move(data), context));
         SessionResponse response;
         *response.mutable_write() = std::move(write_response);
-        FCP_RETURN_IF_ERROR(stream->Write(response));
+        ABSL_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
       case SessionRequest::kCommit: {
-        FCP_ASSIGN_OR_RETURN(CommitResponse commit_response,
-                             session->Commit(request->commit(), context));
+        ABSL_ASSIGN_OR_RETURN(CommitResponse commit_response,
+                              session->Commit(request->commit(), context));
         SessionResponse response;
         *response.mutable_commit() = std::move(commit_response);
-        FCP_RETURN_IF_ERROR(stream->Write(response));
+        ABSL_RETURN_IF_ERROR(stream->Write(response));
         break;
       }
 
@@ -254,9 +255,9 @@ absl::Status WillowTransformService::SessionImpl(SessionStream* stream) {
         // requires the result_blob_metadata argument.
         BlobMetadata result_blob_metadata;
         result_blob_metadata.mutable_unencrypted();
-        FCP_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
-                             session->Finalize(request->finalize(),
-                                               result_blob_metadata, context));
+        ABSL_ASSIGN_OR_RETURN(FinalizeResponse finalize_response,
+                              session->Finalize(request->finalize(),
+                                                result_blob_metadata, context));
         SessionResponse response;
         *response.mutable_finalize() = std::move(finalize_response);
         return stream->Write(response);

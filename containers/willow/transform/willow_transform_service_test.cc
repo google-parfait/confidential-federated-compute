@@ -21,6 +21,7 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.grpc.pb.h"
@@ -231,12 +232,12 @@ class WillowTransformServiceTest : public Test {
     MetricData metric_data;
     metric_data["metric1"] = std::move(metrics);
 
-    FCP_ASSIGN_OR_RETURN(auto encoded_data,
-                         codec_->Encode(group_by_data, metric_data));
+    ABSL_ASSIGN_OR_RETURN(auto encoded_data,
+                          codec_->Encode(group_by_data, metric_data));
 
     // Generate client contribution, encrypted towards public key with
     // the provided nonce.
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto client_message,
         secure_aggregation::GenerateClientContribution(
             aggregation_config_, encoded_data, public_key_, nonce));
@@ -251,17 +252,17 @@ class WillowTransformServiceTest : public Test {
     FinalizedAccumulatorResult finalized_result;
     EXPECT_TRUE(finalized_result.ParseFromString(finalized_data));
 
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto final_result_decryptor,
         FinalResultDecryptor::CreateFromSerialized(std::move(
             *finalized_result.mutable_final_result_decryptor_state())));
 
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto decryption_response,
         decryptor_->GenerateSerializedPartialDecryptionResponse(
             finalized_result.decryption_request()));
 
-    FCP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto decrypted_encoded_result,
         final_result_decryptor->Decrypt(std::move(decryption_response)));
 

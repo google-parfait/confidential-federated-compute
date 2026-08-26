@@ -1,0 +1,10 @@
+--- MODULE.bazel
++++ MODULE.bazel
+@@ -204,5 +204,6 @@
+ crate.spec(
+     package = "syn",
+-    version = ">=2",
++    version = ">=2, <3",
++    features = ["full"],
+ )
+ crate.from_specs()
