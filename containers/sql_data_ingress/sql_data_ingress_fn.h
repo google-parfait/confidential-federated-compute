@@ -20,7 +20,7 @@
 
 #include "absl/status/statusor.h"
 #include "containers/fns/fn_factory.h"
-#include "google/protobuf/any.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute::sql_data_ingress {
 

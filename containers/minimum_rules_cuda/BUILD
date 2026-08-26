@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 load("@rules_oci//oci:defs.bzl", "oci_image")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")

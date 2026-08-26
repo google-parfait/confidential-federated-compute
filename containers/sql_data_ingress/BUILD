@@ -31,6 +31,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@federated_compute//fcp/protos/confidentialcompute:message_description_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sql_data_ingress_config_cc_proto",

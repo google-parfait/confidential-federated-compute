@@ -30,12 +30,8 @@ bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
 bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.70.0", repo_name = None)
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 # go/keep-sorted end
-
-# We must use 1.7.0 rather than 1.8.0 because the latter breaks some Rust build scripts. See
-# https://github.com/bazel-contrib/toolchains_llvm/issues/771. A fix was applied but hasn't been
-# released yet, so presumably the next version after 1.8.0 will be OK.
-bazel_dep(name = "toolchains_llvm", version = "1.7.0")
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
@@ -98,7 +94,7 @@ archive_override(
 
 single_version_override(
     module_name = "toolchains_llvm",
-    patches = ["//third_party/toolchains_llvm:cc_wrapper.patch"],
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
 )
 # go/keep-sorted end
 

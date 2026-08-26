@@ -51,7 +51,7 @@ bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_python", version = "2.0.2")
 bazel_dep(name = "rules_rust", version = "0.70.0")
-bazel_dep(name = "toolchains_llvm", version = "1.8.0")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 
 local_path_override(
     module_name = "confidential-federated-compute",
@@ -145,5 +145,5 @@ use_repo(oak_crates, "oak_crates_index")
 # libraries (like libc and libstdc++).
 single_version_override(
     module_name = "toolchains_llvm",
-    patches = ["//third_party/toolchains_llvm:cc_wrapper.patch"],
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
 )

@@ -1,12 +1,24 @@
 --- toolchain/cc_wrapper.sh.tpl
 +++ toolchain/cc_wrapper.sh.tpl
-@@ -119,4 +119,5 @@
+@@ -113,4 +113,11 @@
+     printf "%s" "${parts[0]}=$(dirname_shim "$(dirname_shim "$(dirname_shim "${script_dir}")")")/${parts[1]}"
++  elif [[ ${opt} == *lib/clang/* ]]; then
++    # Rewrite relative `external/<llvm_repo>/lib/clang/...` paths (such as `-resource-dir` and
++    # `-idirafter .../include`) to use `toolchain_path_prefix`, which is resolved relative to
++    # `cc_wrapper.sh` itself. This is needed when rules_rust Cargo build scripts (e.g. `ring`)
++    # invoke `cc_wrapper.sh` from a `.runfiles` working directory where `external/` does not exist
++    # relative to `$PWD`.
++    printf "%s" "${toolchain_path_prefix}lib/clang/${opt#*lib/clang/}"
+   else
+     printf "%s" "${opt}"
+   fi
+@@ -119,4 +126,5 @@
  cmd=()
 +sysroot_path=""
  for ((i = 0; i <= $#; i++)); do
    if [[ ${!i} == @* && -r "${!i:1}" ]]; then
      # Create a new, sanitized file.
-@@ -129,4 +130,7 @@
+@@ -129,4 +137,7 @@
        )"
 +      if [[ "${opt}" == --sysroot=* ]]; then
 +        sysroot_path="${opt#--sysroot=}"
@@ -14,7 +26,7 @@
        parse_option "${opt}"
        echo "${opt}" >>"${tmpfile}"
      done <"${!i:1}"
-@@ -138,4 +142,7 @@
+@@ -138,4 +149,7 @@
      )"
 +    if [[ "${opt}" == --sysroot=* ]]; then
 +      sysroot_path="${opt#--sysroot=}"
@@ -22,7 +34,7 @@
      parse_option "${opt}"
      cmd+=("${opt}")
    fi
-@@ -143,4 +155,13 @@
+@@ -143,4 +157,13 @@
  done
  
 +if [[ -n "${sysroot_path}" ]]; then

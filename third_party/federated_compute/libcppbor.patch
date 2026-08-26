@@ -1,3 +1,4 @@
+diff --git fcp/confidentialcompute/BUILD fcp/confidentialcompute/BUILD
 --- fcp/confidentialcompute/BUILD
 +++ fcp/confidentialcompute/BUILD
 @@ -116,7 +116,7 @@ config_setting(
@@ -9,3 +10,63 @@
      ],
      "//conditions:default": [
      ],
+diff --git fcp/patches/libcppbor.patch fcp/patches/libcppbor.patch
+--- fcp/patches/libcppbor.patch
++++ fcp/patches/libcppbor.patch
+@@ -1,12 +1,48 @@
++diff --git include/cppbor/cppbor.h include/cppbor/cppbor.h
++--- include/cppbor/cppbor.h
+++++ include/cppbor/cppbor.h
++@@ -28,2 +28,30 @@
++ #include <algorithm>
+++
+++namespace std {
+++template <>
+++struct char_traits<unsigned char> : char_traits<char> {
+++    using char_type = unsigned char;
+++    static constexpr int compare(const char_type* s1, const char_type* s2, size_t n) noexcept {
+++        return __builtin_memcmp(s1, s2, n);
+++    }
+++    static constexpr size_t length(const char_type* s) noexcept {
+++        return char_traits<char>::length(reinterpret_cast<const char*>(s));
+++    }
+++    static constexpr void assign(char_type& r, const char_type& a) noexcept { r = a; }
+++    static constexpr char_type* assign(char_type* s, size_t n, char_type a) noexcept {
+++        return static_cast<char_type*>(__builtin_memset(s, a, n));
+++    }
+++    static constexpr char_type* copy(char_type* s1, const char_type* s2, size_t n) noexcept {
+++        return static_cast<char_type*>(__builtin_memcpy(s1, s2, n));
+++    }
+++    static constexpr char_type* move(char_type* s1, const char_type* s2, size_t n) noexcept {
+++        return static_cast<char_type*>(__builtin_memmove(s1, s2, n));
+++    }
+++    static constexpr const char_type* find(const char_type* s, size_t n, const char_type& a) noexcept {
+++        return static_cast<char_type*>(__builtin_memchr(s, a, n));
+++    }
+++    static constexpr char_type to_char_type(int_type c) noexcept { return static_cast<char_type>(c); }
+++    static constexpr int_type to_int_type(char_type c) noexcept { return static_cast<int_type>(c); }
+++};
+++}  // namespace std
++ 
++diff --git src/cppbor.cpp src/cppbor.cpp
+ --- src/cppbor.cpp
+ +++ src/cppbor.cpp
+ @@ -21,1 +21,2 @@
+  #include <cstdint>
+ +#include <limits>
+ 
++diff --git src/cppbor_parse.cpp src/cppbor_parse.cpp
+ --- src/cppbor_parse.cpp
+ +++ src/cppbor_parse.cpp
+ @@ -18,2 +18,3 @@
+ 
+ +#include <limits>
+  #include <sstream>
+diff --git third_party/libcppbor.BUILD.bzl third_party/libcppbor.BUILD.bzl
+--- third_party/libcppbor.BUILD.bzl
++++ third_party/libcppbor.BUILD.bzl
+@@ -28,3 +28,3 @@
+     includes = ["include/cppbor"],
+-    local_defines = ["__TRUSTY__"],
++    local_defines = ["__TRUSTY__", "__has_feature(x)=false"],
+     visibility = ["//visibility:public"],
