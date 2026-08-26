@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Define rule for generating PYTHONPATH"""
 
 def _gen_python_path_impl(ctx):
@@ -20,6 +19,9 @@ def _gen_python_path_impl(ctx):
     This rule is designed to work with a cc_binary calling python library via pybind.
     The Python dependencies used by the python library are expected to be introduced
     via Bzlmod. The output is a text file which is used as ENV file for an oci_image.
+    In addition to Bzlmod pip packages (whose paths come from PyInfo.imports),
+    this rule also discovers repo-root paths for normal Bazel deps (e.g.
+    @federated_compute//fcp/...) by inspecting transitive source short_paths.
     """
     output_file = ctx.actions.declare_file(ctx.attr.name)
     main = ctx.attr.cc_binary_name
@@ -33,15 +35,36 @@ def _gen_python_path_impl(ctx):
 
     # Construct the PYTHONPATH from the provided py deps and source repos.
     python_path = "PYTHONPATH={}:".format(py_script_dir)
+
+    # 1) Add paths from PyInfo.imports (covers pip/Bzlmod packages).
     dep_imports = [dep[PyInfo].imports for dep in ctx.attr.py_deps]
     for path in depset(transitive = dep_imports).to_list():
         python_path += runfiles_dir + path + ":"
+
+    # 2) Add repo-root paths from transitive sources (covers normal Bazel deps
+    #    like @federated_compute//fcp/...).
+    #
+    #    For external repos, File.short_path has the form:
+    #        ../<canonical_repo_name>/package/file.py
+    #    The runfiles-relative path is short_path with "../" stripped:
+    #        <canonical_repo_name>/package/file.py
+    #    The canonical_repo_name includes any Bzlmod suffix (e.g. "~1.0.0",
+    #    "+1.0.0"), and the runfiles tree uses the same name, so this is safe.
+    all_sources = [dep[PyInfo].transitive_sources for dep in ctx.attr.py_deps]
+    repo_roots = {}
+    for src in depset(transitive = all_sources).to_list():
+        short = src.short_path
+        if short.startswith("../"):
+            runfiles_rel = short[3:]  # strip "../" to get runfiles-relative path
+            repo_root = runfiles_rel.split("/")[0]  # first component = repo dir
+            if repo_root not in repo_roots:
+                repo_roots[repo_root] = True
+                python_path += runfiles_dir + repo_root + ":"
     python_path += "$PYTHONPATH"
     ctx.actions.write(
         output = output_file,
         content = python_path,
     )
-
     return [DefaultInfo(files = depset([output_file]))]
 
 gen_python_path = rule(
