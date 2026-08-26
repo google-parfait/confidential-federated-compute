@@ -30,8 +30,12 @@ bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
 bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.70.0", repo_name = None)
-bazel_dep(name = "toolchains_llvm", version = "1.6.0")
 # go/keep-sorted end
+
+# We must use 1.7.0 rather than 1.8.0 because the latter breaks some Rust build scripts. See
+# https://github.com/bazel-contrib/toolchains_llvm/issues/771. A fix was applied but hasn't been
+# released yet, so presumably the next version after 1.8.0 will be OK.
+bazel_dep(name = "toolchains_llvm", version = "1.7.0")
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains")
@@ -90,6 +94,11 @@ archive_override(
     strip_prefix = "extensions/prost",
     urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz"],
 )
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
 # go/keep-sorted end
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -108,8 +117,8 @@ http_archive(
     name = "sysroot",
     # Build provenance available at https://search.sigstore.dev/?hash=<sha256>.
     # To make this lookup easier, we use `sha256` instead of `integrity`.
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 http_archive(
@@ -159,7 +168,7 @@ use_repo(aliased_crates_repository, "oak_crates_index")
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
 llvm.toolchain(
     name = "llvm_toolchain",
-    llvm_version = "14.0.0",
+    llvm_version = "19.1.0",
 )
 llvm.sysroot(
     name = "llvm_toolchain",
