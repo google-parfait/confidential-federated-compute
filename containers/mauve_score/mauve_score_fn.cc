@@ -227,7 +227,7 @@ absl::Status MauveScoreFn::FinalizeReplica(Any config, FnContext& context) {
   std::string dst_state = budget_.SerializeAsString();
 
   // Emit the result via EmitReleasable.
-  if (!context.EmitReleasable(/*reencryption_key_index=*/1,
+  if (!context.EmitReleasable(/*reencryption_key_index=*/0,
                               Session::KV(std::move(serialized_result_)),
                               budget_.GetInitialState(), dst_state)) {
     return absl::InternalError("Failed to emit MAUVE score result.");
