@@ -45,6 +45,18 @@ will use differential privacy to produce anonymized results. We expect
 Google Application's use of confidential federated computations to evolve over
 time, and any changes to these details will be reflected here.
 
+## Pixel search
+
+[Pixel search](https://play.google.com/store/apps/details?id=com.google.android.apps.pixel.launcherconnector)
+uses the values in
+[`pixel_search.txtpb`](pixel_search.txtpb)
+to validate access policy endorsements.
+
+Processing of Pixel search data with TEE-hosted confidential federated computations
+will use differential privacy to produce anonymized results. We expect
+Pixel search's use of confidential federated computations to evolve over
+time, and any changes to these details will be reflected here.
+
 ## Private Compute Services
 
 [Private Compute Services](https://play.google.com/store/apps/details?id=com.google.android.as.oss)
