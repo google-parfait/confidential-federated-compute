@@ -62,5 +62,28 @@ TEST(ExtractAssociatedMetadataTest,
   EXPECT_EQ(unpacked.blob_id(), "test_blob");
 }
 
+TEST(ExtractAssociatedMetadataTest,
+     ExtractsDirectBlobHeaderFromHpkeWithKmsAssociatedData) {
+  BlobHeader header;
+  header.set_blob_id("test_blob");
+  header.set_key_id("test_key_id");
+  BlobMetadata metadata;
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->set_type_url("type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->set_value(header.SerializeAsString());
+
+  AssociatedMetadata result = ExtractAssociatedMetadata(metadata);
+  ASSERT_EQ(result.metadata_size(), 1);
+  BlobHeader unpacked;
+  EXPECT_TRUE(result.metadata(0).UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "test_blob");
+  EXPECT_EQ(unpacked.key_id(), "test_key_id");
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::fns

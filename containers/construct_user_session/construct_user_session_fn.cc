@@ -25,6 +25,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +37,7 @@
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/util/time_util.h"
@@ -61,6 +63,23 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
 
+// Extracts the key ID from the BlobHeader contained within AssociatedMetadata,
+// if present.
+absl::StatusOr<std::string> ExtractKeyId(
+    const std::optional<fcp::confidentialcompute::AssociatedMetadata>&
+        associated_metadata) {
+  if (!associated_metadata.has_value()) {
+    return absl::InvalidArgumentError("associated_metadata is not present.");
+  }
+  for (const auto& entry : associated_metadata->metadata()) {
+    fcp::confidentialcompute::BlobHeader header;
+    if (entry.UnpackTo(&header) && !header.key_id().empty()) {
+      return header.key_id();
+    }
+  }
+  return absl::NotFoundError("key_id is not found in associated_metadata.");
+}
+
 // Returns true if any column tensor in `checkpoint` has a dtype that
 // conflicts with a previously recorded dtype in `column_dtypes`.
 bool HasDtypeConflict(
@@ -75,10 +94,16 @@ bool HasDtypeConflict(
   return false;
 }
 
+// Checkpoints and key IDs for a single privacy ID.
+struct PrivacyIdGroup {
+  std::vector<Checkpoint> checkpoints;
+  absl::flat_hash_set<std::string> key_ids;
+};
+
 // Result of parsing, validating, and grouping all input checkpoints.
 struct IngestionResult {
-  // Checkpoints grouped by privacy ID.
-  absl::flat_hash_map<std::string, std::vector<Checkpoint>> groups;
+  // Checkpoints and key IDs grouped by privacy ID.
+  absl::flat_hash_map<std::string, PrivacyIdGroup> groups;
   // Observed column name -> dtype, used to drive GatherSessionRows.
   absl::flat_hash_map<std::string, DataType> column_dtypes;
 };
@@ -116,7 +141,9 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
 
   // Emits the serialized session output encrypted.
   // Returns a non-OK status only for fatal failures.
-  absl::Status EmitSessionOutput(std::string output_data, DoContext& context);
+  absl::Status EmitSessionOutput(
+      std::string output_data, const absl::flat_hash_set<std::string>& key_ids,
+      DoContext& context);
 
   const absl::Time window_start_;
   const absl::Time window_end_;
@@ -130,11 +157,11 @@ absl::Status ConstructUserSessionFn::Do(
   IngestionResult ingestion_result =
       IngestAndGroupCheckpoints(std::move(accumulated_inputs), context);
 
-  for (auto& [privacy_id, checkpoints] : ingestion_result.groups) {
+  for (auto& [privacy_id, group] : ingestion_result.groups) {
     // Filter rows against the session window and gather surviving tensors.
-    absl::flat_hash_map<std::string, Tensor> output_tensors =
-        GatherSessionRows(checkpoints, event_time_tensor_name_, window_start_,
-                          window_end_, ingestion_result.column_dtypes);
+    absl::flat_hash_map<std::string, Tensor> output_tensors = GatherSessionRows(
+        group.checkpoints, event_time_tensor_name_, window_start_, window_end_,
+        ingestion_result.column_dtypes);
 
     // If no rows survive across all input checkpoints, don't bother emitting
     // empty output for this privacy ID.
@@ -142,11 +169,13 @@ absl::Status ConstructUserSessionFn::Do(
       continue;
     }
 
-    std::string output_data = BuildSessionOutput(
-        checkpoints[0].take_privacy_id_tensor(), std::move(output_tensors));
+    std::string output_data =
+        BuildSessionOutput(group.checkpoints[0].take_privacy_id_tensor(),
+                           std::move(output_tensors));
 
     // Return if there's a fatal failure that should abort the pipeline.
-    ABSL_RETURN_IF_ERROR(EmitSessionOutput(std::move(output_data), context));
+    ABSL_RETURN_IF_ERROR(
+        EmitSessionOutput(std::move(output_data), group.key_ids, context));
   }
 
   return absl::OkStatus();
@@ -194,9 +223,19 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
       result.column_dtypes.try_emplace(name, tensor.dtype());
     }
 
+    absl::StatusOr<std::string> key_id = ExtractKeyId(kv.associated_metadata);
+    if (!key_id.ok()) {
+      LOG(WARNING) << "Skipping checkpoint: failed to extract key ID: "
+                   << key_id.status();
+      context.IncrementCounter("key_id_extraction_error_count");
+      continue;
+    }
+
     // Group by privacy ID.
     std::string pid(checkpoint->privacy_id());
-    result.groups[std::move(pid)].push_back(*std::move(checkpoint));
+    auto& group = result.groups[std::move(pid)];
+    group.key_ids.insert(std::move(*key_id));
+    group.checkpoints.push_back(*std::move(checkpoint));
   }
 
   return result;
@@ -222,14 +261,16 @@ std::string ConstructUserSessionFn::BuildSessionOutput(
   return std::string(output_data->Flatten());
 }
 
-absl::Status ConstructUserSessionFn::EmitSessionOutput(std::string output_data,
-                                                       DoContext& context) {
+absl::Status ConstructUserSessionFn::EmitSessionOutput(
+    std::string output_data, const absl::flat_hash_set<std::string>& key_ids,
+    DoContext& context) {
   // Create the associated metadata with the session window timestamps.
   fcp::confidentialcompute::SessionTimeWindowMetadata time_window_metadata;
   *time_window_metadata.mutable_session_window_start() =
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_start_));
   *time_window_metadata.mutable_session_window_end() =
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_end_));
+  time_window_metadata.mutable_key_ids()->Add(key_ids.begin(), key_ids.end());
 
   context.PackMetadata(time_window_metadata);
   // Emit the session output encrypted.

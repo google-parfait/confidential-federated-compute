@@ -31,6 +31,7 @@
 #include "containers/fns/fn_factory.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
 #include "gmock/gmock.h"
@@ -50,6 +51,7 @@ using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConstructUserSessionInitConfig;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
@@ -71,6 +73,7 @@ using ::testing::HasSubstr;
 using ::testing::Return;
 using ::testing::StrictMock;
 using ::testing::Test;
+using ::testing::UnorderedElementsAre;
 
 constexpr absl::string_view kQueryName = "test_query";
 
@@ -133,11 +136,21 @@ Any MakeValidConfig(
 // Helper to call Write on the Fn with a given checkpoint string and blob_id.
 absl::StatusOr<WriteFinishedResponse> DoWrite(
     fns::Fn& fn, MockContext& context, const std::string& checkpoint_data,
-    const std::string& blob_id = "blob_1") {
+    const std::string& blob_id = "blob_1",
+    const std::string& key_id = "key_1") {
+  BlobHeader header;
+  header.set_key_id(key_id);
+
   WriteRequest write_request;
-  write_request.mutable_first_request_metadata()
-      ->mutable_unencrypted()
-      ->set_blob_id(blob_id);
+  auto* hpke = write_request.mutable_first_request_metadata()
+                   ->mutable_hpke_plus_aead_data();
+  hpke->set_blob_id(blob_id);
+  hpke->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->set_type_url("type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+  hpke->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->set_value(header.SerializeAsString());
   return fn.Write(write_request, checkpoint_data, context);
 }
 
@@ -262,7 +275,7 @@ TEST_F(ConstructUserSessionFnTest, SingleBlobWithInWindowRowsPassesThrough) {
   std::string checkpoint = BuildCheckpoint("user_1", {EventTimeAt(Hours(12))},
                                            kQueryName, {{"score", {42}}});
 
-  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint), IsOk());
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_id", "key_id"), IsOk());
 
   // Commit should emit exactly one checkpoint that is a pass-through of the
   // input (column order in the serialized bytes may differ).
@@ -281,6 +294,17 @@ TEST_F(ConstructUserSessionFnTest, SingleBlobWithInWindowRowsPassesThrough) {
             "user_1");
   EXPECT_THAT(tensors.at(absl::StrCat(kQueryName, "/score")).AsSpan<int32_t>(),
               ElementsAre(42));
+
+  SessionTimeWindowMetadata time_window;
+  ASSERT_TRUE(
+      emitted_kv.associated_metadata->metadata(0).UnpackTo(&time_window));
+
+  // Default config uses Hours(0) to Hours(24) (see MakeValidConfig).
+  EXPECT_EQ(time_window.session_window_start(),
+            TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(0))));
+  EXPECT_EQ(time_window.session_window_end(),
+            TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(24))));
+  EXPECT_THAT(time_window.key_ids(), UnorderedElementsAre("key_id"));
 }
 
 TEST_F(ConstructUserSessionFnTest, DuplicateBlobIdIsSkipped) {
@@ -375,11 +399,14 @@ TEST_F(ConstructUserSessionFnTest, AllRowsFilteredByTimeWindowDiscardsBlob) {
   ASSERT_THAT(commit_result, IsOk());
 }
 
-// Matches a Session::KV whose checkpoint has the given privacy ID and whose
-// score column (kQueryName/score) satisfies the given int32 matcher.
-MATCHER_P2(HasCheckpointFor, privacy_id, score_matcher,
+// Matches a Session::KV whose checkpoint has the given privacy ID, whose
+// score column (kQueryName/score) satisfies the given int32 matcher, and whose
+// associated SessionTimeWindowMetadata contains key IDs matching
+// key_ids_matcher.
+MATCHER_P3(HasCheckpointFor, privacy_id, score_matcher, key_ids_matcher,
            absl::StrCat("checkpoint for '", privacy_id, "' with scores ",
-                        testing::PrintToString(score_matcher))) {
+                        testing::PrintToString(score_matcher), " and key IDs ",
+                        testing::PrintToString(key_ids_matcher))) {
   auto tensors = ParseCheckpoint(arg.data);
   if (tensors.at(std::string(kPrivacyIdColumnName))
           .template AsScalar<absl::string_view>() != privacy_id) {
@@ -387,9 +414,21 @@ MATCHER_P2(HasCheckpointFor, privacy_id, score_matcher,
   }
   std::string score_col = absl::StrCat(kQueryName, "/score");
   auto span = tensors.at(score_col).template AsSpan<int32_t>();
-  return testing::ExplainMatchResult(
-      score_matcher, std::vector<int32_t>(span.begin(), span.end()),
-      result_listener);
+  if (!testing::ExplainMatchResult(
+          score_matcher, std::vector<int32_t>(span.begin(), span.end()),
+          result_listener)) {
+    return false;
+  }
+  if (!arg.associated_metadata.has_value() ||
+      arg.associated_metadata->metadata_size() != 1) {
+    return false;
+  }
+  SessionTimeWindowMetadata time_window;
+  if (!arg.associated_metadata->metadata(0).UnpackTo(&time_window)) {
+    return false;
+  }
+  return testing::ExplainMatchResult(key_ids_matcher, time_window.key_ids(),
+                                     result_listener);
 }
 
 TEST_F(ConstructUserSessionFnTest, MultipleBlobsSamePrivacyIdMerged) {
@@ -403,9 +442,11 @@ TEST_F(ConstructUserSessionFnTest, MultipleBlobsSamePrivacyIdMerged) {
   std::string checkpoint_a2 = BuildCheckpoint(
       "user_A", {EventTimeAt(Hours(14))}, kQueryName, {{"score", {20}}});
 
-  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_a1, "blob_a1"), IsOk());
-  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_b, "blob_b"), IsOk());
-  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_a2, "blob_a2"), IsOk());
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_a1, "blob_a1", "key_a1"),
+              IsOk());
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_b, "blob_b", "key_b"), IsOk());
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint_a2, "blob_a2", "key_a2"),
+              IsOk());
 
   // Should emit two checkpoints total: one merged checkpoint for user_A and
   // one for user_B.
@@ -422,14 +463,15 @@ TEST_F(ConstructUserSessionFnTest, MultipleBlobsSamePrivacyIdMerged) {
   ASSERT_EQ(emitted_kvs.size(), 2);
 
   // user_A's two non-consecutive blobs should have been merged into one
-  // checkpoint with both rows.
+  // checkpoint with both rows and combined key IDs.
   EXPECT_THAT(emitted_kvs,
               Contains(HasCheckpointFor(
-                  "user_A", testing::UnorderedElementsAre(10, 20))));
+                  "user_A", testing::UnorderedElementsAre(10, 20),
+                  testing::UnorderedElementsAre("key_a1", "key_a2"))));
 
   // user_B's single blob should be present unchanged.
-  EXPECT_THAT(emitted_kvs,
-              Contains(HasCheckpointFor("user_B", ElementsAre(99))));
+  EXPECT_THAT(emitted_kvs, Contains(HasCheckpointFor("user_B", ElementsAre(99),
+                                                     ElementsAre("key_b"))));
 }
 
 TEST_F(ConstructUserSessionFnTest, StateIsClearedAfterCommit) {
@@ -482,7 +524,7 @@ TEST_F(ConstructUserSessionFnTest, EmittedKvHasTimeWindowMetadata) {
   std::string checkpoint = BuildCheckpoint("user_1", {EventTimeAt(Hours(12))},
                                            kQueryName, {{"score", {42}}});
 
-  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint), IsOk());
+  ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_1", "key_1"), IsOk());
 
   Session::KV emitted_kv;
   EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
@@ -509,6 +551,7 @@ TEST_F(ConstructUserSessionFnTest, EmittedKvHasTimeWindowMetadata) {
             TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(0))));
   EXPECT_EQ(time_window.session_window_end(),
             TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(Hours(24))));
+  EXPECT_THAT(time_window.key_ids(), ElementsAre("key_1"));
 }
 
 }  // namespace

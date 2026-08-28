@@ -34,11 +34,22 @@ fcp::confidentialcompute::AssociatedMetadata ExtractAssociatedMetadata(
     const fcp::confidentialcompute::BlobMetadata& metadata) {
   fcp::confidentialcompute::AssociatedMetadata result;
   if (metadata.has_hpke_plus_aead_data() &&
-      metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
-    metadata.hpke_plus_aead_data()
-        .kms_symmetric_key_associated_data()
-        .associated_metadata()
-        .UnpackTo(&result);
+      metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data() &&
+      metadata.hpke_plus_aead_data()
+          .kms_symmetric_key_associated_data()
+          .has_associated_metadata()) {
+    const auto& aad = metadata.hpke_plus_aead_data()
+                          .kms_symmetric_key_associated_data()
+                          .associated_metadata();
+    // First try to unpack as an AssociatedMetadata message.
+    bool success = aad.UnpackTo(&result);
+    if (!success) {
+      // If the above fails, pack the associated metadata into the
+      // bag of AssociatedMetadata messages.
+      // This can happen when a BlobHeader is passed directly to the
+      // associated_metadata field (e.g. from client devices directly).
+      *result.add_metadata() = aad;
+    }
   }
   return result;
 }
