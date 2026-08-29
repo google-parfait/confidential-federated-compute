@@ -1616,6 +1616,120 @@ TEST_F(FedSqlServerTest, StreamInitializeInconsistentTotalSizeBytes) {
                          "expected size.")));
 }
 
+TEST_F(FedSqlServerTest, StreamInitializeGemma4E2BConfiguration) {
+  FedSqlContainerInitializeConfiguration init_config =
+      DefaultFedSqlContainerConfig();
+  *init_config.mutable_inference_init_config() = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      gemma_config {
+        tokenizer_file: "/path/to/tokenizer"
+        model_weight_file: "/path/to/model_weight"
+        model: GEMMA4_E2B
+        model_training: GEMMA_IT
+        tensor_type: GEMMA_SFP
+        weight_type: WEIGHT_TYPE_SBS
+      }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "gemma_tokenizer_id"
+      model_weight_configuration_id: "gemma_model_weight_id"
+    }
+  )pb");
+  InitializeRequest initialize_request =
+      CreateInitializeRequest(std::move(init_config));
+  InitializeResponse response;
+  grpc::ClientContext context;
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+
+  StreamInitializeRequest tokenizer_write_config;
+  ConfigurationMetadata* tokenizer_metadata =
+      tokenizer_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
+  tokenizer_metadata->set_total_size_bytes(0);
+  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
+
+  StreamInitializeRequest model_weight_write_config;
+  ConfigurationMetadata* model_weight_metadata =
+      model_weight_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  model_weight_metadata->set_configuration_id("gemma_model_weight_id");
+  model_weight_metadata->set_total_size_bytes(0);
+  model_weight_write_config.mutable_write_configuration()->set_commit(true);
+
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(model_weight_write_config));
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      IsOk());
+}
+
+TEST_F(FedSqlServerTest, StreamInitializeGemma4E4BConfiguration) {
+  FedSqlContainerInitializeConfiguration init_config =
+      DefaultFedSqlContainerConfig();
+  *init_config.mutable_inference_init_config() = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {{transcript}}" }
+      }
+      gemma_config {
+        tokenizer_file: "/path/to/tokenizer"
+        model_weight_file: "/path/to/model_weight"
+        model: GEMMA4_E4B
+        model_training: GEMMA_IT
+        tensor_type: GEMMA_SFP
+        weight_type: WEIGHT_TYPE_SBS
+      }
+    }
+    gemma_init_config {
+      tokenizer_configuration_id: "gemma_tokenizer_id"
+      model_weight_configuration_id: "gemma_model_weight_id"
+    }
+  )pb");
+  InitializeRequest initialize_request =
+      CreateInitializeRequest(std::move(init_config));
+  InitializeResponse response;
+  grpc::ClientContext context;
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+
+  StreamInitializeRequest tokenizer_write_config;
+  ConfigurationMetadata* tokenizer_metadata =
+      tokenizer_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  tokenizer_metadata->set_configuration_id("gemma_tokenizer_id");
+  tokenizer_metadata->set_total_size_bytes(0);
+  tokenizer_write_config.mutable_write_configuration()->set_commit(true);
+
+  StreamInitializeRequest model_weight_write_config;
+  ConfigurationMetadata* model_weight_metadata =
+      model_weight_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  model_weight_metadata->set_configuration_id("gemma_model_weight_id");
+  model_weight_metadata->set_total_size_bytes(0);
+  model_weight_write_config.mutable_write_configuration()->set_commit(true);
+
+  ASSERT_TRUE(writer->Write(tokenizer_write_config));
+  ASSERT_TRUE(writer->Write(model_weight_write_config));
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      IsOk());
+}
+
 TEST_F(FedSqlServerTest, ConfigureSessionBeforeInitialize) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;

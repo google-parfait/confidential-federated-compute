@@ -85,18 +85,18 @@ archive_override(
 
 archive_override(
     module_name = "gemma",
-    integrity = "sha256-nJsct9hZ1G+26LO4FIGBEVJrwja7Jp10lsumnzkv5cE=",
+    integrity = "sha256-X1U/fYuoUEWcPempko07YZhNTCL68xcquoLO9srjC7c=",
     patches = ["//third_party/gemma:module.patch"],
-    strip_prefix = "gemma.cpp-73f1140dca92b42a5a5cf620ad3b6d9c0c35155e",
-    urls = ["https://github.com/google/gemma.cpp/archive/73f1140dca92b42a5a5cf620ad3b6d9c0c35155e.tar.gz"],
+    strip_prefix = "gemma.cpp-22f5f68c099faaeab00dbd9de9f8eb1a09eb7db6",
+    urls = ["https://github.com/google/gemma.cpp/archive/22f5f68c099faaeab00dbd9de9f8eb1a09eb7db6.tar.gz"],
 )
 
 archive_override(
     module_name = "highway",
     # gemma requires a more recent version of highway.
-    integrity = "sha256-i9++XA+1SLKEUFqlL+OVtQFC79Spmd7SDWcqJo2OKNE=",
-    strip_prefix = "highway-1d16731233de45a365b43867f27d0a5f73925300",
-    urls = ["https://github.com/google/highway/archive/1d16731233de45a365b43867f27d0a5f73925300.tar.gz"],
+    integrity = "sha256-Va2EnJTqd+1VdTgHcQMWEMmWKfFudJ59OE4HCcvk+0c=",
+    strip_prefix = "highway-9d5b12611fcfe145f988771c45e7bae9f78cb7fa",
+    urls = ["https://github.com/google/highway/archive/9d5b12611fcfe145f988771c45e7bae9f78cb7fa.tar.gz"],
 )
 
 archive_override(

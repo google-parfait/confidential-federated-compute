@@ -1,6 +1,25 @@
---- MODULE.bazel
-+++ MODULE.bazel
-@@ -36,5 +36,5 @@
+--- MODULE.bazel	2026-08-28 06:36:40.545393870 -0700
++++ MODULE.bazel	2026-08-28 06:36:40.545467221 -0700
+@@ -28,7 +28,7 @@
+ # OneDNN v3.11 for BRGeMM micro-kernel support (optional, x86-64 only).
+ http_archive(
+     name = "onednn",
+-    build_file = "@//bazel:onednn.BUILD",
++    build_file = "//bazel:onednn.BUILD",
+     sha256 = "04df98b18300daf6c3aa7cc2d5e7ce8a8f430fed1787151daed0254d8dd4e64e",
+     strip_prefix = "oneDNN-3.11",
+     urls = [
+@@ -46,7 +46,7 @@
+ # actually compiles.
+ http_archive(
+     name = "onednn_tp",
+-    build_file = "@//bazel:onednn_threadpool.BUILD",
++    build_file = "//bazel:onednn_threadpool.BUILD",
+     sha256 = "04df98b18300daf6c3aa7cc2d5e7ce8a8f430fed1787151daed0254d8dd4e64e",
+     strip_prefix = "oneDNN-3.11",
+     urls = [
+@@ -65,9 +65,9 @@
+ 
  http_archive(
      name = "com_google_sentencepiece",
 -    build_file = "@//bazel:sentencepiece.bazel",
@@ -8,3 +27,6 @@
      patch_args = ["-p1"],
 -    patches = ["@//bazel:sentencepiece.patch"],
 +    patches = ["//bazel:sentencepiece.patch"],
+     sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
+     strip_prefix = "sentencepiece-0.1.96",
+     urls = ["https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip"],

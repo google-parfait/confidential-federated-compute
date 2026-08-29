@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <string>
 
 #include "absl/status/status.h"
@@ -98,12 +99,6 @@ class InferenceModel {
     std::unique_ptr<gcpp::Gemma> gemma_;
     std::unique_ptr<gcpp::MatMulEnv> env_;
     std::unique_ptr<gcpp::ThreadingContext> ctx_;
-    std::mt19937 gen_;
-
-    GemmaCppModel() {
-      std::random_device rd;
-      gen_.seed(rd());
-    }
   };
   struct LlamaCppModel {
    private:
