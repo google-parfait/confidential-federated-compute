@@ -135,15 +135,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-0ooO0raiPCQ7b6XwbeSPRaOeAK5oFtQSfMFINemTqE0=",
+    integrity = "sha256-c6y4H8THI/0Ptzo8tzfydA1fdpumvmGFnnpaiUDzlpQ=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-de83f70c3b352eedc805aa25d804afc3398031f8",
-    url = "https://github.com/google/federated-compute/archive/de83f70c3b352eedc805aa25d804afc3398031f8.tar.gz",
+    strip_prefix = "federated-compute-d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5",
+    url = "https://github.com/google-parfait/federated-compute/archive/d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5.tar.gz",
 )
 
 http_archive(

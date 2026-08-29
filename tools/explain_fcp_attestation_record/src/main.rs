@@ -18,24 +18,46 @@
 use std::io::{self, Read};
 use std::{fs, path::PathBuf};
 
+use access_policy_proto::fcp::confidentialcompute::DataAccessPolicy;
 use anyhow::Context;
 use clap::Parser;
 use prost::Message;
-use verification_record_proto::{
-    access_policy_proto::fcp::confidentialcompute::DataAccessPolicy,
-    fcp::confidentialcompute::AttestationVerificationRecord,
-};
+use verification_record_proto::fcp::confidentialcompute::AttestationVerificationRecord;
 
 #[derive(Parser, Debug)]
-#[group(required = true, multiple = false)]
 struct Params {
+    /// Mutually exclusive target object to inspect (`--record`,
+    /// `--access-policy`, or `--signed-payload`).
+    ///
+    /// Extracted into a flattened `TargetParam` struct with a clap group so
+    /// that the required mutual exclusivity is enforced across target types
+    /// without conflicting with independent test arguments like
+    /// `--test-unix-socket`.
+    #[command(flatten)]
+    pub target: TargetParam,
+
+    /// Path to a Unix domain socket to connect to instead of the public
+    /// transparency service (for testing only).
+    #[arg(long, hide = true)]
+    pub test_unix_socket: Option<PathBuf>,
+
+    /// Path to a root certificate PEM file to trust (for testing only).
+    #[arg(long, hide = true)]
+    pub test_root_cert: Option<PathBuf>,
+}
+
+/// Mutually exclusive target object options for the CLI tool. Exactly one
+/// target must be specified.
+#[derive(clap::Args, Debug)]
+#[group(required = true, multiple = false)]
+struct TargetParam {
     /// Path to the serialized AttestationVerificationRecord proto to inspect,
     /// or '-' to read from stdin.
     ///
     /// E.g. this can be one of the files output by a previous invocation of the
     /// "extract_attestation_records" tool from the FCP repository (see
     /// https://github.com/google-parfait/federated-compute/tree/main/fcp/client/attestation).
-    #[arg(long, value_parser = parse_path_or_stdin, conflicts_with = "access_policy", conflicts_with = "signed_payload")]
+    #[arg(long, value_parser = parse_path_or_stdin)]
     pub record: Option<PathOrStdin>,
 
     /// Path to the serialized DataAccessPolicy proto to inspect, or '-' to
@@ -66,8 +88,20 @@ enum PathOrStdin {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let params = Params::parse();
-    match params {
-        Params { record: Some(record_param), .. } => {
+    let client = if let Some(socket) = &params.test_unix_socket {
+        let mut builder = reqwest::Client::builder().unix_socket(socket.clone());
+        if let Some(cert_path) = &params.test_root_cert {
+            let cert_bytes = fs::read(cert_path)?;
+            let cert = reqwest::Certificate::from_pem(&cert_bytes)?;
+            builder = builder.add_root_certificate(cert);
+        }
+        builder.build()?
+    } else {
+        reqwest::Client::new()
+    };
+
+    match params.target {
+        TargetParam { record: Some(record_param), .. } => {
             let mut serialized_record: Vec<u8>;
             match record_param {
                 PathOrStdin::Path(record_path) => {
@@ -91,16 +125,12 @@ async fn main() -> anyhow::Result<()> {
                 .context("failed to parse record")?;
 
             let mut explanation = String::new();
-            explain_fcp_attestation_record::explain_record(
-                &mut explanation,
-                &record,
-                &reqwest::Client::new(),
-            )
-            .await
-            .context("failed to explain record")?;
+            explain_fcp_attestation_record::explain_record(&mut explanation, &record, &client)
+                .await
+                .context("failed to explain record")?;
             println!("{}", explanation);
         }
-        Params { access_policy: Some(access_policy_param), .. } => {
+        TargetParam { access_policy: Some(access_policy_param), .. } => {
             let mut serialized_policy: Vec<u8>;
             match access_policy_param {
                 PathOrStdin::Path(policy_path) => {
@@ -125,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
                 .context("failed to explain policy")?;
             println!("{}", explanation);
         }
-        Params { signed_payload: Some(signed_payload_param), .. } => {
+        TargetParam { signed_payload: Some(signed_payload_param), .. } => {
             let mut signed_payload_sig_structure: Vec<u8>;
             match signed_payload_param {
                 PathOrStdin::Path(payload_path) => {
@@ -148,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
             explain_fcp_attestation_record::explain_signed_payload(
                 &mut explanation,
                 &signed_payload_sig_structure,
-                &reqwest::Client::new(),
+                &client,
             )
             .await
             .context("failed to explain signed payload")?;

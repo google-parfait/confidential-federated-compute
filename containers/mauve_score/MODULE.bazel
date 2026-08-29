@@ -56,9 +56,9 @@ archive_override(
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-0ooO0raiPCQ7b6XwbeSPRaOeAK5oFtQSfMFINemTqE0=",
-    strip_prefix = "federated-compute-de83f70c3b352eedc805aa25d804afc3398031f8",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/de83f70c3b352eedc805aa25d804afc3398031f8.tar.gz"],
+    integrity = "sha256-c6y4H8THI/0Ptzo8tzfydA1fdpumvmGFnnpaiUDzlpQ=",
+    strip_prefix = "federated-compute-d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5.tar.gz"],
 )
 
 internal_configure = use_extension("@pybind11_bazel//:internal_configure.bzl", "internal_configure_extension")

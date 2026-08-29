@@ -1,12 +1,14 @@
 ---
 source: tools/explain_fcp_attestation_record/tests/snapshot_tests.rs
-expression: "output.replace(record_file_path, \"{TMP_RECORD_FILE}\")"
+expression: "output.replace(&record_file_path, \"{TMP_RECORD_FILE}\")"
 ---
 Inspecting AttestationVerificationRecord at {TMP_RECORD_FILE}.
 
 ========================================
 ======= KMS ATTESTATION EVIDENCE =======
 ========================================
+
+Downloading attestation evidence from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:6eede2f7dbae51e058078c068bc01d36a3399a6ad2b168b1e60f40ee3bf6782b.
 
 Oak Containers Stack in a AMD SEV-SNP TEE
 
@@ -260,5 +262,7 @@ Note: this layer describes the "KMS" application binary, which is generally a bu
 ========================================
 ========== DATA ACCESS POLICY ==========
 ========================================
+
+Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
 
 The data access policy allows 0 data transformations and defines 0 shared access budgets.
