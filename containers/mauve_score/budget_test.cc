@@ -31,10 +31,11 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 
 TEST(BudgetTest, FirstRunWithEmptyState) {
-  auto budget = Budget::Create(/*initial_state=*/"", /*access_budget_times=*/5);
+  auto budget =
+      Budget::Create(/*initial_state=*/std::nullopt, /*access_budget_times=*/5);
   ASSERT_THAT(budget, IsOk());
 
-  EXPECT_EQ(budget->GetInitialState(), "");
+  EXPECT_EQ(budget->GetInitialState(), std::nullopt);
   budget->DecrementBudget();
   // dst_state should have remaining_budget = 4 (5 - 1).
   MauveBudgetState dst;
@@ -63,8 +64,9 @@ TEST(BudgetTest, SubsequentRunParsesState) {
 }
 
 TEST(BudgetTest, BudgetExhaustedOnFirstRun) {
-  EXPECT_THAT(Budget::Create(/*initial_state=*/"", /*access_budget_times=*/0),
-              StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_THAT(
+      Budget::Create(/*initial_state=*/std::nullopt, /*access_budget_times=*/0),
+      StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 TEST(BudgetTest, BudgetExhaustedOnSubsequentRun) {
@@ -78,7 +80,8 @@ TEST(BudgetTest, BudgetExhaustedOnSubsequentRun) {
 }
 
 TEST(BudgetTest, SingleBudgetDecrementsToZero) {
-  auto budget = Budget::Create(/*initial_state=*/"", /*access_budget_times=*/1);
+  auto budget =
+      Budget::Create(/*initial_state=*/std::nullopt, /*access_budget_times=*/1);
   ASSERT_THAT(budget, IsOk());
 
   budget->DecrementBudget();

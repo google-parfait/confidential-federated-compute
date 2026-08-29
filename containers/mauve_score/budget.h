@@ -41,21 +41,23 @@ class Budget {
  public:
   // Creates a Budget with the given initial state received from KMS
   // (empty string for first run) and access budget from config constraints.
-  static absl::StatusOr<Budget> Create(std::string initial_state,
+  static absl::StatusOr<Budget> Create(std::optional<std::string> initial_state,
                                        uint32_t access_budget_times);
 
   void DecrementBudget();
 
   // Returns the initial state received at construction.
-  const std::string& GetInitialState() const { return initial_state_; }
+  const std::optional<std::string>& GetInitialState() const {
+    return initial_state_;
+  }
   std::string SerializeAsString() const;
 
  private:
-  Budget(std::string initial_state, uint32_t remaining_budget)
+  Budget(std::optional<std::string> initial_state, uint32_t remaining_budget)
       : initial_state_(std::move(initial_state)),
         remaining_budget_(remaining_budget) {};
 
-  std::string initial_state_;
+  std::optional<std::string> initial_state_;
   uint32_t remaining_budget_;
 };
 

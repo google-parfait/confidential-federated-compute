@@ -83,7 +83,8 @@ class MauveScoreFn : public BatchDoFn {
  public:
   static absl::StatusOr<std::unique_ptr<MauveScoreFn>> Create(
       const std::vector<Embedding>& synthetic_data_embeddings,
-      uint32_t access_budget_times, std::string initial_pipeline_state);
+      uint32_t access_budget_times,
+      std::optional<std::string> initial_pipeline_state);
 
   absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
                   DoContext& context) override;
@@ -105,7 +106,7 @@ class MauveScoreFnFactory : public FnFactory {
  public:
   MauveScoreFnFactory(std::vector<Embedding> synthetic_data_embeddings,
                       uint32_t access_budget_times,
-                      std::string initial_pipeline_state)
+                      std::optional<std::string> initial_pipeline_state)
       : synthetic_data_embeddings_(std::move(synthetic_data_embeddings)),
         access_budget_times_(access_budget_times),
         initial_pipeline_state_(std::move(initial_pipeline_state)) {}
@@ -118,12 +119,13 @@ class MauveScoreFnFactory : public FnFactory {
  private:
   const std::vector<Embedding> synthetic_data_embeddings_;
   const uint32_t access_budget_times_;
-  const std::string initial_pipeline_state_;
+  std::optional<std::string> initial_pipeline_state_;
 };
 
 absl::StatusOr<std::unique_ptr<MauveScoreFn>> MauveScoreFn::Create(
     const std::vector<Embedding>& synthetic_data_embeddings,
-    uint32_t access_budget_times, std::string initial_pipeline_state) {
+    uint32_t access_budget_times,
+    std::optional<std::string> initial_pipeline_state) {
   ABSL_ASSIGN_OR_RETURN(
       Budget budget,
       Budget::Create(std::move(initial_pipeline_state), access_budget_times));
@@ -269,9 +271,11 @@ absl::StatusOr<std::unique_ptr<FnFactory>> ProvideMauveScoreFnFactory(
         absl::StrCat("Failed to open file for reading: ", private_state_path));
   }
   auto state_size = std::filesystem::file_size(private_state_path);
-  std::string initial_pipeline_state(state_size, '\0');
+  std::optional<std::string> initial_state = std::nullopt;
   if (state_size > 0) {
+    std::string initial_pipeline_state(state_size, '\0');
     private_state_file.read(initial_pipeline_state.data(), state_size);
+    initial_state = std::move(initial_pipeline_state);
   }
 
   // Parse the config constraints to get the access budget.
@@ -299,8 +303,7 @@ absl::StatusOr<std::unique_ptr<FnFactory>> ProvideMauveScoreFnFactory(
   LOG(INFO) << "Loaded " << embeddings.size() << " synthetic embeddings.";
 
   return std::make_unique<MauveScoreFnFactory>(
-      std::move(embeddings), access_budget_times,
-      std::move(initial_pipeline_state));
+      std::move(embeddings), access_budget_times, std::move(initial_state));
 }
 
 fns::FnFactoryProvider CreateMauveScoreFnFactoryProvider() {

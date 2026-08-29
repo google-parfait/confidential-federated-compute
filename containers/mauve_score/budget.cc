@@ -24,12 +24,12 @@
 
 namespace confidential_federated_compute::mauve_score {
 
-absl::StatusOr<Budget> Budget::Create(std::string initial_state,
+absl::StatusOr<Budget> Budget::Create(std::optional<std::string> initial_state,
                                       uint32_t access_budget_times) {
   uint32_t remaining_budget = access_budget_times;
-  if (!initial_state.empty()) {
+  if (initial_state.has_value()) {
     MauveBudgetState state;
-    if (!state.ParseFromString(initial_state)) {
+    if (!state.ParseFromString(*initial_state)) {
       return absl::InvalidArgumentError(
           "Failed to parse pipeline state as MauveBudgetState.");
     }
