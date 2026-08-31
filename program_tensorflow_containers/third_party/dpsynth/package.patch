@@ -12,7 +12,7 @@ new file mode 100644
 index 0000000..2222222
 --- /dev/null
 +++ dpsynth/BUILD
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,28 @@
 +load("@rules_python//python:defs.bzl", "py_library")
 +
 +package(
@@ -26,7 +26,9 @@ index 0000000..2222222
 +        "@mbi//:mbi",
 +        "@pypi//absl_py",
 +        "@pypi//attrs",
++        "@pypi//cattrs",
 +        "@dp_accounting//dp_accounting",
++        "@pypi//etils",
 +        "@pypi//jax",
 +        "@pypi//jaxlib",
 +        "@pypi//more_itertools",

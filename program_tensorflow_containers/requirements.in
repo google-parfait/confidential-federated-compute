@@ -5,8 +5,10 @@
 absl-py>=2.0,<3
 attrs~=23.2
 cachetools~=5.3
+cattrs
 chex
 dm-tree==0.1.9
+etils[epath]
 googleapis-common-protos==1.70.0
 jax==0.10.0
 jaxlib==0.10.0
