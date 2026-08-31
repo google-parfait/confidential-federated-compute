@@ -109,7 +109,7 @@ http_archive(
 
 http_archive(
     name = "dp_accounting",
-    integrity = "sha256-HTqLPg95HE7UX6/hOWX+uJ+MIYnHZPDU4RnKyRiPlXg=",
+    integrity = "sha256-f8hYyetawUCMKxAAey6keU05fliYmI0R1tIgc/z0XZw=",
     patch_cmds = [
         # The upstream repo ships BUILD.bazel files (which take precedence over
         # BUILD) that reference repos not present here (@accounting_py_pip_deps).
@@ -119,18 +119,18 @@ http_archive(
     patches = [
         "//third_party/dp_accounting:package.patch",
     ],
-    strip_prefix = "differential-privacy-1831388336306c831e9592d9f00f5174b017d94d/python/dp_accounting",
-    url = "https://github.com/google/differential-privacy/archive/1831388336306c831e9592d9f00f5174b017d94d.tar.gz",
+    strip_prefix = "differential-privacy-f080bfcfbc471aa57c54de22e0514c7bad690b54/python/dp_accounting",
+    url = "https://github.com/google/differential-privacy/archive/f080bfcfbc471aa57c54de22e0514c7bad690b54.tar.gz",
 )
 
 http_archive(
     name = "dpsynth",
-    integrity = "sha256-O+DNG1LeMrjJBrS9OwLLrd7Peboh+ELeR8JGw2baAl8=",
+    integrity = "sha256-SJVng27jw4A8nh43Moc9sgSIw3fzy5TzBoZ201nKTlQ=",
     patches = [
         "//third_party/dpsynth:package.patch",
     ],
-    strip_prefix = "dpsynth-88c03636b83a28409b10c34a897e86fc8b6905a4",
-    url = "https://github.com/google/dpsynth/archive/88c03636b83a28409b10c34a897e86fc8b6905a4.tar.gz",
+    strip_prefix = "dpsynth-ab397c40cc44517ab320ae031b45d0f7769a9e18",
+    url = "https://github.com/google/dpsynth/archive/ab397c40cc44517ab320ae031b45d0f7769a9e18.tar.gz",
 )
 
 http_archive(
@@ -192,12 +192,12 @@ git_repository(
 
 http_archive(
     name = "mbi",
-    integrity = "sha256-bNpc7u3aLXm2qDFUiZw7xHRVljrSMYxAn9z7JjMxqxc=",
+    integrity = "sha256-h3mC2iThSG1RXUcuyKsI9AD/p4YfRlAoQvA/1aL5OUo=",
     patches = [
         "//third_party/mbi:package.patch",
     ],
-    strip_prefix = "mbi-6e18f598d27b909dcfdf80fc810e606150e7a3e3",
-    url = "https://github.com/ryan112358/mbi/archive/6e18f598d27b909dcfdf80fc810e606150e7a3e3.tar.gz",
+    strip_prefix = "mbi-b46389c66f5df7f8ffb5768616849a10d1a3a4a1",
+    url = "https://github.com/ryan112358/mbi/archive/b46389c66f5df7f8ffb5768616849a10d1a3a4a1.tar.gz",
 )
 
 http_archive(
