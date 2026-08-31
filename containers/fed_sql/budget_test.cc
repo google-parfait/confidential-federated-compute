@@ -165,6 +165,46 @@ TEST(BudgetTest, HasRemainingBudgetWithPartialRange) {
   EXPECT_FALSE(budget.HasRemainingBudget("c", 100));  // budget 0
 }
 
+TEST(BudgetTest, HasRemainingBudgetWithoutRangeKey) {
+  BudgetState state = PARSE_TEXT_PROTO(
+      R"pb(
+        buckets { key: "a" budget: 2 }
+        buckets {
+          key: "b"
+          budget: 0
+          consumed_range_start: 10
+          consumed_range_end: 20
+        }
+        buckets { key: "c" budget: 0 }
+      )pb");
+  Budget budget(/*default_budget=*/5);
+  EXPECT_THAT(budget.Parse(state), IsOk());
+
+  // Key with budget > 0 has remaining budget.
+  EXPECT_TRUE(budget.HasRemainingBudget("a", std::nullopt));
+  EXPECT_TRUE(budget.HasRemainingBudget("a"));
+
+  // Key with budget == 0 does not have remaining budget when range_key is
+  // nullopt, even if a partial range exists.
+  EXPECT_FALSE(budget.HasRemainingBudget("b", std::nullopt));
+  EXPECT_FALSE(budget.HasRemainingBudget("b"));
+
+  // Key with budget == 0 has no remaining budget.
+  EXPECT_FALSE(budget.HasRemainingBudget("c", std::nullopt));
+  EXPECT_FALSE(budget.HasRemainingBudget("c"));
+
+  // Key not in budget state uses default budget.
+  EXPECT_TRUE(budget.HasRemainingBudget("unknown", std::nullopt));
+  EXPECT_TRUE(budget.HasRemainingBudget("unknown"));
+
+  Budget budget_zero_default(/*default_budget=*/0);
+  EXPECT_FALSE(budget_zero_default.HasRemainingBudget("unknown", std::nullopt));
+
+  Budget budget_infinite_default(/*default_budget=*/std::nullopt);
+  EXPECT_TRUE(
+      budget_infinite_default.HasRemainingBudget("unknown", std::nullopt));
+}
+
 TEST(BudgetTest, HasRemainingBudgetWithInfiniteDefaultBudget) {
   BudgetState state = PARSE_TEXT_PROTO(
       R"pb(
@@ -691,25 +731,6 @@ TEST(BudgetTest, SerializeAndParseTimeBudget) {
   EXPECT_TRUE(budget2.HasRemainingBudget(Interval<uint64_t>(1200, 2400)));
   EXPECT_THAT(budget2.Serialize(),
               EqualsProtoIgnoringRepeatedFieldOrder(serialized));
-}
-
-TEST(BudgetTest, HasRemainingBudgetRejectsPerKeyWhenTimeBudgetConsumed) {
-  Budget budget(/*default_budget=*/3);
-  // Before time budget is consumed, key-based check is allowed.
-  EXPECT_TRUE(budget.HasRemainingBudget("foo", 100));
-
-  RangeTracker time_tracker;
-  time_tracker.MergeAggWindow(Interval<uint64_t>(1200, 2400));
-  EXPECT_THAT(budget.UpdateBudget(time_tracker), IsOk());
-
-  // After time budget is consumed, key-based check must return false.
-  EXPECT_FALSE(budget.HasRemainingBudget("foo", 100));
-
-  // Verify that this restriction persists across serialization and parsing.
-  BudgetState serialized = budget.Serialize();
-  Budget budget2(/*default_budget=*/3);
-  EXPECT_THAT(budget2.Parse(serialized), IsOk());
-  EXPECT_FALSE(budget2.HasRemainingBudget("foo", 100));
 }
 
 TEST(BudgetTest, UpdateBudgetRejectsPerKeyWhenTimeBudgetConsumed) {

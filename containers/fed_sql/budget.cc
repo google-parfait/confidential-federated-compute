@@ -18,7 +18,6 @@
 #include <limits>
 #include <string>
 
-#include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "containers/common/time_budget/budget.pb.h"
 
@@ -88,17 +87,8 @@ absl::flat_hash_set<std::string> Budget::GetKeys() const {
   return keys;
 }
 
-bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
-  // If time-based budget has already been consumed in this budget state,
-  // disallow fallback to legacy per-key budget to prevent double-consumption
-  // of blobs that omit time windows or bypass sessionization.
-  if (time_budget_.anchor_time().has_value()) {
-    LOG(WARNING)
-        << "Time-based budget has already been consumed. Denying per-key "
-           "budget usage.";
-    return false;
-  }
-
+bool Budget::HasRemainingBudget(const std::string& key,
+                                std::optional<uint64_t> range_key) {
   auto it = per_key_budgets_.find(key);
 
   if (it == per_key_budgets_.end()) {
@@ -117,13 +107,14 @@ bool Budget::HasRemainingBudget(const std::string& key, uint64_t range_key) {
   }
 
   if (budget_info.budget == 0) {
-    // If budget is exactly 0, we must check the partially consumed range.
-    if (budget_info.consumed_range.has_value()) {
+    // If budget is exactly 0 and a range_key is specified, we must check the
+    // partially consumed range.
+    if (range_key.has_value() && budget_info.consumed_range.has_value()) {
       // A partially consumed range exists. The blob is allowed only if it falls
       // *outside* this range.
       bool is_outside_consumed_range =
-          range_key < budget_info.consumed_range->start() ||
-          range_key >= budget_info.consumed_range->end();
+          *range_key < budget_info.consumed_range->start() ||
+          *range_key >= budget_info.consumed_range->end();
       return is_outside_consumed_range;
     }
   }

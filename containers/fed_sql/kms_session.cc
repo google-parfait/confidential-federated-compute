@@ -223,6 +223,13 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
               absl::StrCat("No time-window budget remaining for interval: [",
                            time_window.start(), ", ", time_window.end(), ")"));
         }
+        for (const auto& key_id : time_window_metadata.key_ids()) {
+          if (!private_state_->budget.HasRemainingBudget(key_id)) {
+            return absl::FailedPreconditionError(
+                absl::StrCat("No budget remaining for key id: ",
+                             absl::BytesToHexString(key_id)));
+          }
+        }
         range_tracker_.MergeAggWindow(time_window);
         return absl::OkStatus();
       }

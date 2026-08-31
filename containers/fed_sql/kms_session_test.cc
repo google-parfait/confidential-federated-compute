@@ -254,14 +254,17 @@ BlobMetadata MakeBlobMetadata(absl::string_view data, uint64_t blob_id,
   kms_associated_data->mutable_associated_metadata()->PackFrom(blob_header);
   return metadata;
 }
-BlobMetadata MakeBlobMetadataWithTimeWindow(absl::string_view data,
-                                            uint64_t blob_id,
-                                            google::protobuf::Timestamp start,
-                                            google::protobuf::Timestamp end) {
+BlobMetadata MakeBlobMetadataWithTimeWindow(
+    absl::string_view data, uint64_t blob_id, google::protobuf::Timestamp start,
+    google::protobuf::Timestamp end,
+    const std::vector<std::string>& key_ids = {}) {
   AssociatedMetadata associated_metadata;
   SessionTimeWindowMetadata time_window_metadata;
   *time_window_metadata.mutable_session_window_start() = start;
   *time_window_metadata.mutable_session_window_end() = end;
+  for (const auto& key_id : key_ids) {
+    time_window_metadata.add_key_ids(key_id);
+  }
   associated_metadata.add_metadata()->PackFrom(time_window_metadata);
 
   BlobMetadata metadata;
@@ -1235,25 +1238,25 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateWithNoTimeBudgetFails) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
-       AccumulateLegacyBlobFailsWhenTimeBudgetConsumed) {
-  BudgetState budget_state = PARSE_TEXT_PROTO(R"pb(
-    buckets { key: "key_foo" budget: 1 }
-    time_budget {
-      anchor_time: 120
-      intervals { start_index: 0 count: 10 remaining_budget: 0 }
-    }
-  )pb");
-  CreateSession(default_decryptor_, /*default_budget=*/5, std::nullopt,
-                absl::Cord{}, 0, budget_state.SerializeAsString());
-
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+       AccumulateWithTimeWindowAndExhaustedKeyBudgetFails) {
+  // Use the default budget state which has key_baz with budget 0.
+  std::string privacy_id(16, '\x01');
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
   WriteRequest write_request;
   write_request.mutable_first_request_configuration()->PackFrom(config);
+  // key_baz has budget 0, so per-key budget check should fail even though
+  // time-based budget is still available.
   *write_request.mutable_first_request_metadata() =
-      MakeBlobMetadata(data, 1, "key_foo");
+      MakeBlobMetadataWithTimeWindow(data, 1, start, end, {"key_baz"});
 
   auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());

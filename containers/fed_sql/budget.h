@@ -138,8 +138,9 @@ class Budget {
   std::string SerializeAsString() const;
 
   // Checks whether any budget remains for the specified bucket key and
-  // range_key. Returns false if time-based budget has already been consumed.
-  bool HasRemainingBudget(const std::string& key, uint64_t range_key);
+  // optional range_key.
+  bool HasRemainingBudget(const std::string& key,
+                          std::optional<uint64_t> range_key = std::nullopt);
 
   // Checks whether any time-based budget remains for the specified time window.
   bool HasRemainingBudget(Interval<uint64_t> time_window);
