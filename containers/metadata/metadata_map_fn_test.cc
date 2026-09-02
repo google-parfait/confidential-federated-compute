@@ -510,5 +510,37 @@ TEST_F(MetadataMapFnTest, MapFailsIfEventTimeHasWrongShape) {
               HasSubstr("`test_query/confidential_compute_event_time` tensor "
                         "must have one dimension"));
 }
+
+TEST_F(MetadataMapFnTest,
+       MapWithUnspecifiedEventTimeGranularityDoesNotSetEventTimeRange) {
+  MetadataContainerConfig config = PARSE_TEXT_PROTO(R"pb(
+    metadata_configs {
+      key: "test_config"
+      value {
+        num_partitions: 10
+        event_time_range_granularity: EVENT_TIME_GRANULARITY_UNSPECIFIED
+      }
+    }
+  )pb");
+  std::unique_ptr<fns::Fn> fn =
+      CreateMetadataMapFn(config, on_device_query_name_);
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1", {"2025-01-01T12:00:00+00:00"}, on_device_query_name_);
+
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
+  absl::StatusOr<WriteFinishedResponse> result =
+      fn->Write(WriteRequest(), checkpoint, context_);
+  ASSERT_THAT(result, IsOk());
+
+  PayloadMetadataSet metadata_set;
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
+  const auto& tee_metadata = metadata_set.metadata().at("test_config");
+
+  // Verify event time range is not set.
+  EXPECT_FALSE(tee_metadata.has_event_time_range());
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::metadata

@@ -174,7 +174,9 @@ class MetadataMapFn final : public confidential_federated_compute::fns::MapFn {
       TeePayloadMetadata tee_payload_metadata;
       tee_payload_metadata.set_partition_key(partition_key);
 
-      if (min_max_event_times.has_value()) {
+      if (metadata_config.event_time_range_granularity() !=
+              EventTimeGranularity::EVENT_TIME_GRANULARITY_UNSPECIFIED &&
+          min_max_event_times.has_value()) {
         ABSL_ASSIGN_OR_RETURN(
             EventTimeRange event_time_range,
             GetCoarseEventTimeRange(
