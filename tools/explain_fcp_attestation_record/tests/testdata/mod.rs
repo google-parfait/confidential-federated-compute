@@ -12,38 +12,81 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use access_policy_proto::fcp::confidentialcompute::{
+    AccessBudget, ApplicationMatcher, DataAccessPolicy, StructMatcher, ValueMatcher, access_budget,
+    data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
+    value_matcher::NumberMatcher,
+};
+use access_policy_proto::reference_value_proto::oak::attestation::v1::{
+    AmdSevReferenceValues, BinaryReferenceValue, ContainerLayerReferenceValues,
+    KernelBinaryReferenceValue, KernelLayerReferenceValues, OakContainersReferenceValues,
+    ReferenceValues, RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
+    TcbVersionReferenceValue, TextReferenceValue, binary_reference_value,
+    kernel_binary_reference_value, reference_values, tcb_version_reference_value,
+    text_reference_value,
+};
+use access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion;
+use messages_proto::oak::session::v1::EndorsedEvidence;
 use prost::Message as _;
 use rustls::pki_types::pem::PemObject as _;
+use sha2::{Digest as _, Sha256};
+use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
 use verification_record_proto::{
-    access_policy_proto::fcp::confidentialcompute::{
-        AccessBudget, ApplicationMatcher, DataAccessPolicy, StructMatcher, ValueMatcher,
-        access_budget, data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
-        value_matcher::NumberMatcher,
-    },
-    access_policy_proto::reference_value_proto::oak::attestation::v1::{
-        AmdSevReferenceValues, BinaryReferenceValue, ContainerLayerReferenceValues,
-        KernelBinaryReferenceValue, KernelLayerReferenceValues, OakContainersReferenceValues,
-        ReferenceValues, RootLayerReferenceValues, SkipVerification, SystemLayerReferenceValues,
-        TcbVersionReferenceValue, TextReferenceValue, binary_reference_value,
-        kernel_binary_reference_value, reference_values, tcb_version_reference_value,
-        text_reference_value,
-    },
-    access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion,
-    evidence_proto::oak::attestation::v1::Evidence,
     fcp::confidentialcompute::AttestationVerificationRecord,
+    payload_transparency_proto::fcp::confidentialcompute::{SignedPayload, signed_payload},
 };
+
+/// Helper to construct an [`AttestationVerificationRecord`] with
+/// `SignedPayload`s and return the raw CAS payload bytes.
+fn wrap_in_record(
+    evidence_bytes: &[u8],
+    access_policy: DataAccessPolicy,
+) -> (AttestationVerificationRecord, Vec<u8>, Vec<u8>) {
+    let access_policy_bytes = access_policy.encode_to_vec();
+    let evidence_proto =
+        messages_proto::evidence_proto::oak::attestation::v1::Evidence::decode(evidence_bytes)
+            .expect("must be valid evidence proto");
+    let endorsed_evidence_bytes =
+        EndorsedEvidence { evidence: Some(evidence_proto), endorsements: None }.encode_to_vec();
+
+    let record = AttestationVerificationRecord {
+        encryption_key: Some(SignedPayload {
+            signatures: vec![signed_payload::Signature {
+                headers: signed_payload::signature::Headers {
+                    oak_application_signature: Some(signed_payload::Signature {
+                        headers: signed_payload::signature::Headers {
+                            endorsed_evidence_sha256: Sha256::digest(&endorsed_evidence_bytes)
+                                .to_vec(),
+                            ..Default::default()
+                        }
+                        .encode_to_vec(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        pipeline_configuration: Some(SignedPayload {
+            payload: PipelineConfiguration {
+                access_policy_sha256: Sha256::digest(&access_policy_bytes).to_vec(),
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        }),
+    };
+    (record, access_policy_bytes, endorsed_evidence_bytes)
+}
 
 /// Returns an [`AttestationVerificationRecord`] with valid KMS attestation
 /// evidence but with an empty data access policy.
-pub fn record_with_empty_access_policy() -> AttestationVerificationRecord {
-    let evidence = Evidence::decode(&include_bytes!("kms_evidence.pb")[..])
-        .expect("must be a valid evidence proto");
-    AttestationVerificationRecord {
-        attestation_evidence: Some(evidence),
-        attestation_endorsements: None,
-        data_access_policy: Some(DataAccessPolicy { ..Default::default() }),
-        ..Default::default()
-    }
+pub fn record_with_empty_access_policy() -> (AttestationVerificationRecord, Vec<u8>, Vec<u8>) {
+    wrap_in_record(
+        include_bytes!("kms_evidence.binarypb"),
+        DataAccessPolicy { ..Default::default() },
+    )
 }
 
 /// Returns an [`AttestationVerificationRecord`] with the same KMS
@@ -51,12 +94,8 @@ pub fn record_with_empty_access_policy() -> AttestationVerificationRecord {
 /// access policy that contains a few transforms and access budgets. Most of the
 /// transforms use Oak [`ReferenceValues`] which skip most checks, while one of
 /// the transforms doesn't specify any reference values at all.
-pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
-    let mut record = record_with_empty_access_policy();
-
-    // Let's populate the data access policy with some transforms and access
-    // budgets, so the tool output for policies can be tested.
-    let data_access_policy = record.data_access_policy.as_mut().unwrap();
+pub fn record_with_nonempty_access_policy() -> (AttestationVerificationRecord, Vec<u8>, Vec<u8>) {
+    let mut data_access_policy = DataAccessPolicy { ..Default::default() };
 
     // Define a few shared access budgets.
     //
@@ -140,20 +179,23 @@ pub fn record_with_nonempty_access_policy() -> AttestationVerificationRecord {
         shared_access_budget_indices: vec![0],
     });
 
-    record
+    wrap_in_record(include_bytes!("kms_evidence.binarypb"), data_access_policy)
 }
 
-/// Returns an [`AttestationVerificationRecord`] with valid ledger attestation
-/// evidence but with an empty data access policy.
-pub fn record_with_ledger_evidence() -> AttestationVerificationRecord {
-    let evidence = Evidence::decode(&include_bytes!("ledger_evidence.pb")[..])
-        .expect("must be a valid evidence proto");
-    AttestationVerificationRecord {
-        attestation_evidence: Some(evidence),
-        attestation_endorsements: None,
-        data_access_policy: Some(DataAccessPolicy { ..Default::default() }),
-        ..Default::default()
-    }
+/// Returns the bytes of a legacy [`AttestationVerificationRecord`] (serialized
+/// at commit `f5e8cfc6d3e20f3dcfe63ff8f8f11647ca2fd0f9`) that contains
+/// unsupported Oak Restricted Kernel (ledger) evidence and no signed_payload
+/// fields.
+pub fn verification_record_with_ledger_evidence_without_signed_payload_bytes() -> &'static [u8] {
+    include_bytes!("verification_record_with_ledger_evidence_without_signed_payload.binarypb")
+}
+
+/// Returns the bytes of a legacy [`AttestationVerificationRecord`] (serialized
+/// at commit `f5e8cfc6d3e20f3dcfe63ff8f8f11647ca2fd0f9`) that contains Oak
+/// Containers (KMS) evidence directly in legacy inline fields without
+/// signed_payload fields.
+pub fn verification_record_with_kms_evidence_without_signed_payload_bytes() -> &'static [u8] {
+    include_bytes!("verification_record_with_kms_evidence_without_signed_payload.binarypb")
 }
 
 /// Returns a self-signed test root CA certificate and a rustls ServerConfig for

@@ -6,6 +6,8 @@ expression: buf
 ======= KMS ATTESTATION EVIDENCE =======
 ========================================
 
+Downloading attestation evidence from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:6eede2f7dbae51e058078c068bc01d36a3399a6ad2b168b1e60f40ee3bf6782b.
+
 Oak Containers Stack in a AMD SEV-SNP TEE
 
 _____ Root Layer _____
@@ -258,6 +260,8 @@ Note: this layer describes the "KMS" application binary, which is generally a bu
 ========================================
 ========== DATA ACCESS POLICY ==========
 ========================================
+
+Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:531d52aa02120d38babd7e60a59749b91cee397b97400d301e18853a0231632c.
 
 The data access policy allows 3 data transformations and defines 2 shared access budgets.
 

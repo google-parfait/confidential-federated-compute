@@ -12,15 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
+load("//:proto_data.bzl", "proto_data")
 
 package(features = ["layering_check"])
+
+proto_data(
+    name = "kms_evidence",
+    src = "tests/testdata/kms_evidence.txtpb",
+    out = "tests/testdata/kms_evidence.binarypb",
+    proto_deps = ["@oak//proto/attestation:evidence_proto"],
+    proto_name = "oak.attestation.v1.Evidence",
+)
+
+proto_data(
+    name = "verification_record_with_kms_evidence_without_signed_payload",
+    src = "tests/testdata/verification_record_with_kms_evidence_without_signed_payload.txtpb",
+    out = "tests/testdata/verification_record_with_kms_evidence_without_signed_payload.binarypb",
+    proto_deps = [":legacy_verification_record_proto"],
+    proto_name = "fcp.confidentialcompute.LegacyAttestationVerificationRecord",
+)
+
+proto_data(
+    name = "verification_record_with_ledger_evidence_without_signed_payload",
+    src = "tests/testdata/verification_record_with_ledger_evidence_without_signed_payload.txtpb",
+    out = "tests/testdata/verification_record_with_ledger_evidence_without_signed_payload.binarypb",
+    proto_deps = [":legacy_verification_record_proto"],
+    proto_name = "fcp.confidentialcompute.LegacyAttestationVerificationRecord",
+)
 
 rust_binary(
     name = "main",
     srcs = ["src/main.rs"],
     deps = [
+        ":access_policy_prost_proto",
         ":explain_fcp_attestation_record",
         ":verification_record_prost_proto",
         "@crates//:clap",
@@ -39,6 +66,7 @@ rust_library(
     ),
     tags = ["no-clippy"],
     deps = [
+        ":access_policy_prost_proto",
         ":fed_sql_container_config_prost_proto",
         ":messages_prost_proto",
         ":signed_endorsements_prost_proto",
@@ -59,11 +87,36 @@ rust_library(
     ],
 )
 
+rust_library(
+    name = "testdata",
+    testonly = True,
+    srcs = ["tests/testdata/mod.rs"],
+    compile_data = [
+        ":kms_evidence",
+        ":verification_record_with_kms_evidence_without_signed_payload",
+        ":verification_record_with_ledger_evidence_without_signed_payload",
+    ] + glob([
+        "tests/testdata/*.pem",
+    ]),
+    crate_root = "tests/testdata/mod.rs",
+    tags = ["no-clippy"],
+    deps = [
+        ":access_policy_prost_proto",
+        ":messages_prost_proto",
+        ":signed_endorsements_prost_proto",
+        ":verification_record_prost_proto",
+        "@crates//:reqwest",
+        "@crates//:rustls",
+        "@oak//oak_proto_rust",
+        "@oak_crates_index//:prost",
+        "@oak_crates_index//:sha2",
+    ],
+)
+
 rust_test(
     name = "snapshot_tests",
-    srcs = glob(["tests/**/*.rs"]),
+    srcs = ["tests/snapshot_tests.rs"],
     compile_data = glob([
-        "tests/**/*.pb",
         "tests/**/*.pem",
     ]),
     crate_root = "tests/snapshot_tests.rs",
@@ -74,9 +127,11 @@ rust_test(
     },
     tags = ["no-clippy"],
     deps = [
+        ":access_policy_prost_proto",
         ":explain_fcp_attestation_record",
         ":messages_prost_proto",
         ":signed_endorsements_prost_proto",
+        ":testdata",
         ":verification_record_prost_proto",
         "@crates//:assert_cmd",
         "@crates//:axum",
@@ -86,6 +141,7 @@ rust_test(
         "@crates//:rustls",
         "@crates//:tempfile",
         "@crates//:tokio",
+        "@oak//oak_proto_rust",
         "@oak_crates_index//:anyhow",
         "@oak_crates_index//:hex",
         "@oak_crates_index//:mockall",
@@ -97,6 +153,11 @@ rust_test(
 rust_prost_library(
     name = "verification_record_prost_proto",
     proto = "@federated_compute//fcp/protos/confidentialcompute:verification_record_proto",
+)
+
+rust_prost_library(
+    name = "access_policy_prost_proto",
+    proto = "@federated_compute//fcp/protos/confidentialcompute:access_policy_proto",
 )
 
 rust_prost_library(
@@ -112,4 +173,13 @@ rust_prost_library(
 rust_prost_library(
     name = "signed_endorsements_prost_proto",
     proto = "@federated_compute//fcp/protos/confidentialcompute:signed_endorsements_proto",
+)
+
+proto_library(
+    name = "legacy_verification_record_proto",
+    srcs = ["tests/testdata/legacy_verification_record.proto"],
+    deps = [
+        "@federated_compute//fcp/protos/confidentialcompute:access_policy_proto",
+        "@oak//proto/attestation:evidence_proto",
+    ],
 )

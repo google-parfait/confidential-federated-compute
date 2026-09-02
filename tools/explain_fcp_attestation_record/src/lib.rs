@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use access_policy_proto::fcp::confidentialcompute::{
+    AccessBudget, DataAccessPolicy, PipelineVariantPolicy, access_budget::Kind, data_access_policy,
+    pipeline_variant_policy,
+};
 use anyhow::{Context, bail, ensure};
 use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 use futures_util::TryFutureExt as _;
@@ -19,18 +23,12 @@ use integer_encoding::VarIntReader;
 use messages_proto::oak::session::v1::EndorsedEvidence;
 use oak_attestation_explain::{HumanReadableExplanation, HumanReadableTitle};
 use oak_proto_rust::oak::attestation::v1::{
-    Evidence, OakContainersData, OakRestrictedKernelData, ReferenceValues,
-    extracted_evidence::EvidenceValues,
+    Evidence, OakContainersData, ReferenceValues, extracted_evidence::EvidenceValues,
 };
 use prost::Message;
-use prost_types::Any;
 use sha2::{Digest, Sha256};
 use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
 use verification_record_proto::{
-    access_policy_proto::fcp::confidentialcompute::{
-        AccessBudget, DataAccessPolicy, PipelineVariantPolicy, access_budget::Kind,
-        data_access_policy, pipeline_variant_policy,
-    },
     fcp::confidentialcompute::AttestationVerificationRecord,
     payload_transparency_proto::fcp::confidentialcompute::{SignedPayload, signed_payload},
 };
@@ -46,17 +44,17 @@ pub async fn explain_record(
     writeln!(buf, "======= KMS ATTESTATION EVIDENCE =======")?;
     writeln!(buf, "========================================")?;
     writeln!(buf)?;
-    // Both `encryption_key` and `attestation_evidence` provide equivalent
-    // information about the KMS, but only one will be set.
+    // Use `encryption_key` to retrieve and explain the KMS attestation evidence.
     if let Some(encryption_key) = &record.encryption_key {
         explain_encryption_key(buf, encryption_key, client)
             .await
             .context("failed to explain encryption key")?;
-    } else if let Some(attestation_evidence) = &record.attestation_evidence {
-        explain_attestation_evidence(buf, attestation_evidence)
-            .context("failed to explain attestation evidence")?;
     } else {
-        bail!("record is missing attestation evidence");
+        bail!(
+            "Record is missing encryption key. Older attestation verification records may only \
+            be processable with older versions of this tool. Please try rerunning this tool at \
+            or before commit f5e8cfc6d3e20f3dcfe63ff8f8f11647ca2fd0f9."
+        );
     }
 
     writeln!(buf)?;
@@ -64,17 +62,17 @@ pub async fn explain_record(
     writeln!(buf, "========== DATA ACCESS POLICY ==========")?;
     writeln!(buf, "========================================")?;
     writeln!(buf)?;
-    // Both `pipeline_configuration` and `data_access_policy` provide equivalent
-    // information about the pipeline, but only one will be set.
+    // Use `pipeline_configuration` to retrieve and explain the data access policy.
     if let Some(pipeline_configuration) = &record.pipeline_configuration {
         explain_pipeline_configuration(buf, pipeline_configuration, client)
             .await
             .context("failed to explain pipeline configuration")?;
-    } else if let Some(data_access_policy) = &record.data_access_policy {
-        explain_data_access_policy(buf, data_access_policy)
-            .context("failed to explain data access policy")?;
     } else {
-        bail!("record is missing data access policy");
+        bail!(
+            "Record is missing pipeline configuration. Older attestation verification records \
+            may only be processable with older versions of this tool. Please try rerunning this \
+            tool at or before commit f5e8cfc6d3e20f3dcfe63ff8f8f11647ca2fd0f9."
+        );
     }
     Ok(())
 }
@@ -83,7 +81,7 @@ pub async fn explain_record(
 /// the given buffer.
 fn explain_attestation_evidence(
     buf: &mut dyn std::fmt::Write,
-    evidence: &verification_record_proto::evidence_proto::oak::attestation::v1::Evidence,
+    evidence: &messages_proto::evidence_proto::oak::attestation::v1::Evidence,
 ) -> anyhow::Result<()> {
     let evidence = Evidence::decode(evidence.encode_to_vec().as_slice())?;
     let extracted_evidence = oak_attestation_verification::extract_evidence(&evidence)
