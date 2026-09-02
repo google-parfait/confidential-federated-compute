@@ -105,14 +105,30 @@ using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
 
 // Attempts to unpack a BlobHeader from the kms_associated_data. Tries the
-// associated_metadata field first, then falls back to the deprecated
+// associated_metadata field first (either directly as a BlobHeader, or inside
+// an AssociatedMetadata wrapper), then falls back to the deprecated
 // record_header field.
 bool UnpackAssociatedBlobHeader(
     const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
         kms_associated_data,
     BlobHeader* blob_header) {
   if (kms_associated_data.has_associated_metadata()) {
-    return kms_associated_data.associated_metadata().UnpackTo(blob_header);
+    // Try to unpack the BlobHeader directly.
+    if (kms_associated_data.associated_metadata().UnpackTo(blob_header)) {
+      return true;
+    }
+
+    // Else try to unpack as AssociatedMetadata and look for a BlobHeader.
+    AssociatedMetadata associated_metadata;
+    if (kms_associated_data.associated_metadata().UnpackTo(
+            &associated_metadata)) {
+      for (const auto& entry : associated_metadata.metadata()) {
+        if (entry.UnpackTo(blob_header)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
   // Fall back to the deprecated record_header field.
   return blob_header->ParseFromString(kms_associated_data.record_header());
@@ -234,9 +250,6 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
         return absl::OkStatus();
       }
     }
-    return absl::InvalidArgumentError(
-        "No SessionTimeWindowMetadata found in "
-        "kms_associated_data.associated_metadata");
   }
 
   // Try to unpack as a BlobHeader from either associated_metadata or the
