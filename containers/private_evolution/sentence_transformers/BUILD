@@ -131,8 +131,6 @@ cc_library(
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
         "@confidential-federated-compute//containers/fns:fns",
-        "@federated-compute//fcp/base",
-        "@federated-compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated-compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",

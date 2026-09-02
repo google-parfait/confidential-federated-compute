@@ -23,7 +23,6 @@
 #include "absl/strings/string_view.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
-#include "containers/fns/map_fn.h"
 #include "fcp/base/monitoring.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -47,7 +46,6 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::bazel::tools::cpp::runfiles::Runfiles;
 using ::confidential_federated_compute::fns::Fn;
-using ::confidential_federated_compute::fns::MapFn;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
@@ -316,9 +314,8 @@ TEST_F(EmbeddingMapFnTest, MapFailsWhenGenerateEmbeddingFails) {
 
   auto checkpoint = CreateInputCheckpoint({input});
   CHECK_OK(checkpoint);
-  auto result = fn->Write(request, *checkpoint, context_);
-  EXPECT_EQ(result->status().code(),
-            static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(fn->Write(request, *checkpoint, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(EmbeddingMapFnTest, EmitFailed) {
@@ -342,9 +339,8 @@ TEST_F(EmbeddingMapFnTest, EmitFailed) {
 
   auto checkpoint = CreateInputCheckpoint({input});
   CHECK_OK(checkpoint);
-  auto result = fn->Write(request, *checkpoint, context_);
-  EXPECT_EQ(result->status().code(),
-            static_cast<int32_t>(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(fn->Write(request, *checkpoint, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
