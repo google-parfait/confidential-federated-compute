@@ -24,10 +24,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "archive_utils.h"
+#include "containers/fns/do_fn.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -38,16 +38,12 @@
 namespace confidential_federated_compute::sentence_transformers {
 namespace {
 
+using ::confidential_federated_compute::fns::DoFn;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
-using ::fcp::confidentialcompute::BlobHeader;
-using ::fcp::confidentialcompute::BlobMetadata;
-using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::
     SentenceTransformersContainerInitializeConfiguration;
-using ::fcp::confidentialcompute::WriteFinishedResponse;
-using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_STRING;
 using ::tensorflow_federated::aggregation::
@@ -55,27 +51,9 @@ using ::tensorflow_federated::aggregation::
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 
-absl::StatusOr<std::string> ExtractBlobId(const BlobMetadata& blob_metadata) {
-  if (!blob_metadata.has_hpke_plus_aead_data()) {
-    return absl::InvalidArgumentError(
-        "Blob meta data doesn't contain HPKE plus AEAD data.");
-  }
-  if (!blob_metadata.hpke_plus_aead_data().blob_id().empty()) {
-    return blob_metadata.hpke_plus_aead_data().blob_id();
-  }
-  auto associated_data =
-      blob_metadata.hpke_plus_aead_data().ciphertext_associated_data();
-  BlobHeader header;
-  if (!header.ParseFromString(associated_data)) {
-    return absl::InvalidArgumentError(
-        "Cipher text associated data is not a valid BlobHeader.");
-  }
-  return header.blob_id();
-}
-
-// Implementation of Fn interface that generates embeddings for input data.
+// Implementation of DoFn interface that generates embeddings for input data.
 // Not thread-safe.
-class EmbeddingFn final : public Fn {
+class EmbeddingFn final : public DoFn {
  public:
   EmbeddingFn(absl::string_view model_artifact_path,
               std::optional<std::string> prompt,
@@ -88,16 +66,7 @@ class EmbeddingFn final : public Fn {
   // Finalize python runtime when needed.
   absl::Status FinalizeReplica(Any config, FnContext& context) override;
 
-  absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
-      fcp::confidentialcompute::WriteRequest write_request,
-      std::string unencrypted_data, Context& context) override final;
-
-  // No-op.
-  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
-      fcp::confidentialcompute::CommitRequest commit_request,
-      Context& context) override final {
-    return fcp::confidentialcompute::CommitResponse();
-  }
+  absl::Status Do(KV input, DoContext& context) override;
 
  private:
   // Generate embeddings for a given batch of input sequences.
@@ -136,30 +105,16 @@ absl::Status EmbeddingFn::FinalizeReplica(Any config, FnContext& context) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<WriteFinishedResponse> EmbeddingFn::Write(
-    WriteRequest write_request, std::string unencrypted_data,
-    Context& context) {
-  int64_t unencrypted_data_size = unencrypted_data.size();
-  absl::StatusOr<std::string> output = Process(std::move(unencrypted_data));
-  if (!output.ok()) {
-    return ToWriteFinishedResponse(output.status());
-  }
+absl::Status EmbeddingFn::Do(KV input, DoContext& context) {
+  ABSL_ASSIGN_OR_RETURN(std::string output, Process(std::move(input.data)));
 
-  absl::StatusOr<std::string> blob_id =
-      ExtractBlobId(std::move(write_request.first_request_metadata()));
-  if (!blob_id.ok()) {
-    return ToWriteFinishedResponse(blob_id.status());
-  }
   if (!context.EmitEncrypted(
           /*reencryption_key_index=*/0,
-          Session::KV(std::move(write_request.first_request_configuration()),
-                      std::move(*output), std::move(*blob_id)))) {
-    return ToWriteFinishedResponse(absl::InvalidArgumentError("Emit failed."));
+          Session::KV(std::move(input.key), std::move(output),
+                      std::move(input.blob_id)))) {
+    return absl::InvalidArgumentError("Emit failed.");
   }
-
-  WriteFinishedResponse response;
-  response.set_committed_size_bytes(unencrypted_data_size);
-  return response;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> EmbeddingFn::Process(std::string unencrypted_data) {
