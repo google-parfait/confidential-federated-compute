@@ -1295,6 +1295,38 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateDeprecatedRecordHeader) {
       << write_result->status().message();
 }
 
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateBlobHeaderWrappedInAssociatedMetadata) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+
+  BlobHeader blob_header;
+  *blob_header.mutable_blob_id() = StoreBigEndian(absl::MakeUint128(1, 0));
+  *blob_header.mutable_key_id() = "key_foo";
+  AssociatedMetadata associated_metadata;
+  associated_metadata.add_metadata()->PackFrom(blob_header);
+
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(data.size());
+  auto* hpke_plus_aead_data = metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id(blob_header.blob_id());
+  auto* kms_associated_data =
+      hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data();
+  kms_associated_data->mutable_associated_metadata()->PackFrom(
+      associated_metadata);
+
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK)
+      << write_result->status().message();
+}
+
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
