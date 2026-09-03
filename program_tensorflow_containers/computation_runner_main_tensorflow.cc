@@ -41,11 +41,11 @@ ABSL_FLAG(
     "Whether to use ElasticComposingExecutor instead of ComposingExecutor.");
 ABSL_FLAG(bool, use_mergeable_execution_context, false,
           "Whether to use MergeableCompExecutionContext.");
-
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
   return tensorflow_federated::CreateTensorFlowExecutor(
-      absl::GetFlag(FLAGS_max_concurrent_computation_calls));
+      absl::GetFlag(FLAGS_max_concurrent_computation_calls),
+      /*synchronous_value_creation=*/true);
 }
 
 int main(int argc, char* argv[]) {

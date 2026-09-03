@@ -62,7 +62,7 @@ absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>> CreateExecutor(
               << max_concurrent_computation_calls;
   }
   return tensorflow_federated::CreateTensorFlowExecutor(
-      max_concurrent_computation_calls);
+      max_concurrent_computation_calls, /*synchronous_value_creation=*/true);
 }
 
 void RunServer() {

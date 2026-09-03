@@ -102,9 +102,9 @@ http_archive(
 
 http_archive(
     name = "confidential_federated_compute_program",
-    integrity = "sha256-IShstPK69AO+OTUB8OnIZvX7A8jP+Ssiot7HAceSIew=",
-    strip_prefix = "confidential-federated-compute-0e79b42ee9ab2ca624b167468b7903d61afe82a0/program_containers",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/0e79b42ee9ab2ca624b167468b7903d61afe82a0.tar.gz",
+    integrity = "sha256-jzEkUpVXOSkvnnSkT6XpRAQewKAfXKjjVjwbLY+4KpE=",
+    strip_prefix = "confidential-federated-compute-634d10650cf7be38312fb1b367a70fedf1fd80dd/program_containers",
+    url = "https://github.com/google-parfait/confidential-federated-compute/archive/634d10650cf7be38312fb1b367a70fedf1fd80dd.tar.gz",
 )
 
 http_archive(
@@ -157,9 +157,9 @@ http_archive(
         "@federated_language_pypi": "@pypi",
         "@protobuf": "@com_google_protobuf",
     },
-    sha256 = "30c3a4861e63b4ac2b4d17251527763a9a0cd5e049a5b10038ed4e09c4374862",
-    strip_prefix = "federated-language-0.5.3",
-    url = "https://github.com/google-parfait/federated-language/archive/refs/tags/v0.5.3.tar.gz",
+    sha256 = "d99f3a4cc88f816391777fc53cdc094d9abd72bdd7a6fe2bdccfa43235f351db",
+    strip_prefix = "federated-language-0.5.4",
+    url = "https://github.com/google-parfait/federated-language/archive/refs/tags/v0.5.4.tar.gz",
 )
 
 http_archive(
@@ -241,9 +241,9 @@ http_archive(
         "@confidential_federated_compute_program//third_party/org_tensorflow_federated:mergeable_comp_overrides.patch",
     ],
     repo_mapping = {"@pypi": "@pypi_compat"},
-    sha256 = "f15dc44c219b9c319fa80096b951c37156a738b6545434623a6c0c8d8699b6b4",
-    strip_prefix = "tensorflow-federated-c0f0d33fac4c6215d60203ccd5a3c318e631b1b4",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/c0f0d33fac4c6215d60203ccd5a3c318e631b1b4.tar.gz",
+    sha256 = "4c7f735769e4fb36389c676a0f5dce68a8ab99bafaf5dc1d08d86a0c9341f74c",
+    strip_prefix = "tensorflow-federated-bc14789a9e0a73b03dd0a7006e9da49d589c322a",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/bc14789a9e0a73b03dd0a7006e9da49d589c322a.tar.gz",
 )
 
 http_archive(

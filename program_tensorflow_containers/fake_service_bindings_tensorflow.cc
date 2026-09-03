@@ -29,7 +29,9 @@ namespace py = pybind11;
 
 absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>
 CreateExecutor() {
-  return tensorflow_federated::CreateTensorFlowExecutor();
+  return tensorflow_federated::CreateTensorFlowExecutor(
+      /*max_concurrent_computation_calls=*/-1,
+      /*synchronous_value_creation=*/true);
 }
 
 PYBIND11_MODULE(fake_service_bindings_tensorflow, m) {
