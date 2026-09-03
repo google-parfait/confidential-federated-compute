@@ -199,7 +199,7 @@ ComputationRunner::CreateDistributedExecutor(
       client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
           CreateRemoteExecutor(std::make_unique<NoiseExecutorStub>(
                                    noise_client_sessions_[i].get()),
-                               cardinality_map),
+                               cardinality_map, /*buffered_dispose=*/true),
           cardinality_map)));
     }
   } else {
@@ -214,7 +214,8 @@ ComputationRunner::CreateDistributedExecutor(
       client_executors.emplace_back(TFF_TRY(ComposingChild::Make(
           CreateStreamingRemoteExecutor(std::make_unique<NoiseExecutorStub>(
                                             noise_client_sessions_[i].get()),
-                                        cardinality_map),
+                                        cardinality_map,
+                                        /*buffered_dispose=*/true),
           cardinality_map)));
       remaining_clients -= clients_for_executor;
     }
@@ -272,7 +273,7 @@ grpc::Status ComputationRunner::Execute(
       executor =
           CreateRemoteExecutor(std::make_unique<NoiseExecutorStub>(
                                    noise_client_sessions_[worker_idx].get()),
-                               cardinality_map);
+                               cardinality_map, /*buffered_dispose=*/true);
     } else {
       // Execution on the local server stack (e.g. for merge, after_merge, or
       // single-node).
