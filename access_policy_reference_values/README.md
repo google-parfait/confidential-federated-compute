@@ -29,9 +29,13 @@ uses the values in
 to validate access policy endorsements.
 
 Processing of Gboard data with TEE-hosted confidential federated computations
-will use differential privacy to produce anonymized results. We expect
-Gboard's use of confidential federated computations to evolve over
-time, and any changes to these details will be reflected here.
+will use differential privacy to produce anonymized results. These computations
+may also release a limited set of non-sensitive summary or aggregate metrics to
+which differential privacy is not applied, such as model eval or data
+similarity metrics.
+
+We expect Gboard's use of confidential federated computations to
+evolve over time, and any changes to these details will be reflected here.
 
 ## Google Application
 
@@ -41,9 +45,13 @@ uses the values in
 to validate access policy endorsements.
 
 Processing of Google Application data with TEE-hosted confidential federated computations
-will use differential privacy to produce anonymized results. We expect
-Google Application's use of confidential federated computations to evolve over
-time, and any changes to these details will be reflected here.
+will use differential privacy to produce anonymized results. These computations
+may also release a limited set of non-sensitive summary or aggregate metrics to
+which differential privacy is not applied, such as model eval or data
+similarity metrics.
+
+We expect Google Application's use of confidential federated computations to
+evolve over time, and any changes to these details will be reflected here.
 
 ## Pixel search
 
@@ -53,9 +61,13 @@ uses the values in
 to validate access policy endorsements.
 
 Processing of Pixel search data with TEE-hosted confidential federated computations
-will use differential privacy to produce anonymized results. We expect
-Pixel search's use of confidential federated computations to evolve over
-time, and any changes to these details will be reflected here.
+will use differential privacy to produce anonymized results. These computations
+may also release a limited set of non-sensitive summary or aggregate metrics to
+which differential privacy is not applied, such as model eval or data
+similarity metrics.
+
+We expect Pixel search's use of confidential federated computations to
+evolve over time, and any changes to these details will be reflected here.
 
 ## Private Compute Services
 
@@ -65,7 +77,10 @@ uses the values in
 to validate access policy endorsements.
 
 Processing of Private Compute Services data with TEE-hosted confidential federated computations
-will use differential privacy to produce anonymized results.
+will use differential privacy to produce anonymized results. These computations
+may also release a limited set of non-sensitive summary or aggregate metrics to
+which differential privacy is not applied, such as model eval or data
+similarity metrics.
 
 In certain cases, such as when processing data that originates from features
 that are powered by Google's
@@ -88,6 +103,10 @@ uses the values in
 to validate access policy endorsements.
 
 Processing of Recorder data with TEE-hosted confidential federated computations
-will use differential privacy to produce anonymized results. We expect
-Recorder's use of confidential federated computations to evolve over
-time, and any changes to these details will be reflected here.
+will use differential privacy to produce anonymized results. These computations
+may also release a limited set of non-sensitive summary or aggregate metrics to
+which differential privacy is not applied, such as model eval or data
+similarity metrics.
+
+We expect Recorder's use of confidential federated computations to
+evolve over time, and any changes to these details will be reflected here.
