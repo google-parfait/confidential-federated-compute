@@ -26,12 +26,11 @@ grpc::Status NoiseExecutorStub::GetExecutor(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::GetExecutorRequest& request,
     tensorflow_federated::v0::GetExecutorResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_get_executor_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -46,7 +45,7 @@ grpc::Status NoiseExecutorStub::GetExecutor(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected GetExecutorResponse.");
   }
-  *response = result.get_executor_response();
+  *response = std::move(*result.mutable_get_executor_response());
   return grpc::Status::OK;
 }
 
@@ -54,12 +53,11 @@ grpc::Status NoiseExecutorStub::CreateValue(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::CreateValueRequest& request,
     tensorflow_federated::v0::CreateValueResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_create_value_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -74,7 +72,7 @@ grpc::Status NoiseExecutorStub::CreateValue(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected GetCreateValueResponse.");
   }
-  *response = result.create_value_response();
+  *response = std::move(*result.mutable_create_value_response());
   return grpc::Status::OK;
 }
 
@@ -82,12 +80,11 @@ grpc::Status NoiseExecutorStub::CreateCall(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::CreateCallRequest& request,
     tensorflow_federated::v0::CreateCallResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_create_call_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -102,7 +99,7 @@ grpc::Status NoiseExecutorStub::CreateCall(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected GetCreateCallResponse.");
   }
-  *response = result.create_call_response();
+  *response = std::move(*result.mutable_create_call_response());
   return grpc::Status::OK;
 }
 
@@ -110,12 +107,11 @@ grpc::Status NoiseExecutorStub::CreateStruct(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::CreateStructRequest& request,
     tensorflow_federated::v0::CreateStructResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_create_struct_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -130,7 +126,7 @@ grpc::Status NoiseExecutorStub::CreateStruct(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected GetCreateStructResponse.");
   }
-  *response = result.create_struct_response();
+  *response = std::move(*result.mutable_create_struct_response());
   return grpc::Status::OK;
 }
 
@@ -138,12 +134,11 @@ grpc::Status NoiseExecutorStub::CreateSelection(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::CreateSelectionRequest& request,
     tensorflow_federated::v0::CreateSelectionResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_create_selection_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -158,7 +153,7 @@ grpc::Status NoiseExecutorStub::CreateSelection(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected GetCreateSelectionResponse.");
   }
-  *response = result.create_selection_response();
+  *response = std::move(*result.mutable_create_selection_response());
   return grpc::Status::OK;
 }
 
@@ -166,12 +161,11 @@ grpc::Status NoiseExecutorStub::Compute(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::ComputeRequest& request,
     tensorflow_federated::v0::ComputeResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_compute_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -186,7 +180,7 @@ grpc::Status NoiseExecutorStub::Compute(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected ComputeResponse.");
   }
-  *response = result.compute_response();
+  *response = std::move(*result.mutable_compute_response());
   return grpc::Status::OK;
 }
 
@@ -194,12 +188,11 @@ grpc::Status NoiseExecutorStub::Dispose(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::DisposeRequest& request,
     tensorflow_federated::v0::DisposeResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_dispose_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -214,7 +207,7 @@ grpc::Status NoiseExecutorStub::Dispose(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected DisposeResponse.");
   }
-  *response = result.dispose_response();
+  *response = std::move(*result.mutable_dispose_response());
   return grpc::Status::OK;
 }
 
@@ -222,12 +215,11 @@ grpc::Status NoiseExecutorStub::DisposeExecutor(
     grpc::ClientContext* context,
     const tensorflow_federated::v0::DisposeExecutorRequest& request,
     tensorflow_federated::v0::DisposeExecutorResponse* response) {
-  absl::MutexLock lock(&mutex_);
-
   executor_wrapper::ExecutorGroupRequest executor_group_request;
   *executor_group_request.mutable_dispose_executor_request() = request;
   PlaintextMessage plaintext_request;
-  plaintext_request.set_plaintext(executor_group_request.SerializeAsString());
+  executor_group_request.SerializeToString(
+      plaintext_request.mutable_plaintext());
   absl::StatusOr<PlaintextMessage> plaintext_response =
       noise_client_session_->DelegateComputation(plaintext_request);
   if (!plaintext_response.ok()) {
@@ -242,7 +234,7 @@ grpc::Status NoiseExecutorStub::DisposeExecutor(
     return grpc::Status(grpc::StatusCode::INTERNAL,
                         "Expected DisposeExecutorResponse.");
   }
-  *response = result.dispose_executor_response();
+  *response = std::move(*result.mutable_dispose_executor_response());
   return grpc::Status::OK;
 }
 

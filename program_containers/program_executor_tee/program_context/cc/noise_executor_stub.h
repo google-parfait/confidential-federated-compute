@@ -192,7 +192,6 @@ class NoiseExecutorStub final
 
  private:
   NoiseClientSessionInterface* noise_client_session_;  // Not owned.
-  absl::Mutex mutex_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee
