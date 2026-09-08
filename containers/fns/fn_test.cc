@@ -20,6 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "containers/fns/testing/mock_fn.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -49,20 +50,6 @@ using ::testing::DoAll;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::StrictMock;
-
-class MockFn : public Fn {
- public:
-  MOCK_METHOD(absl::Status, InitializeReplica,
-              (Any config, ConfigureContext& context), (override));
-  MOCK_METHOD(absl::Status, FinalizeReplica, (Any config, FnContext& context),
-              (override));
-  MOCK_METHOD(absl::StatusOr<WriteFinishedResponse>, Write,
-              (WriteRequest write_request, std::string unencrypted_data,
-               Context& context),
-              (override));
-  MOCK_METHOD(absl::StatusOr<CommitResponse>, Commit,
-              (CommitRequest commit_request, Context& context), (override));
-};
 
 AssociatedMetadata CreateMetadata(const std::string& blob_id,
                                   const std::string& key_id) {

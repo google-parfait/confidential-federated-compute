@@ -65,6 +65,7 @@ cc_test(
         ":fns",
         "//containers:crypto_test_utils",
         "//containers:session",
+        "//containers/fns/testing",
         "//testing:matchers",
         "//testing:parse_text_proto",
         "@com_github_grpc_grpc//:grpc++",
@@ -137,6 +138,7 @@ cc_test(
     deps = [
         ":fns",
         "//containers:session",
+        "//containers/fns/testing",
         "//containers/testing",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

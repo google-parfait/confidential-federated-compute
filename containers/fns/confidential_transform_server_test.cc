@@ -33,6 +33,7 @@
 #include "cc/crypto/encryption_key.h"
 #include "containers/crypto_test_utils.h"
 #include "containers/fns/fn.h"
+#include "containers/fns/testing/mock_fn.h"
 #include "containers/session.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
@@ -88,25 +89,6 @@ absl::Status WriteInitializeRequest(
   }
   return FromGrpcStatus(stream->Finish());
 }
-
-class MockFn : public Fn {
- public:
-  MOCK_METHOD((absl::Status), InitializeReplica,
-              (google::protobuf::Any config, ConfigureContext& context),
-              (override));
-  MOCK_METHOD((absl::Status), FinalizeReplica,
-              (google::protobuf::Any config, FnContext& context), (override));
-  MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>),
-              Write,
-              (fcp::confidentialcompute::WriteRequest request,
-               std::string unencrypted_data, Context& context),
-              (override));
-  MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::CommitResponse>),
-              Commit,
-              (fcp::confidentialcompute::CommitRequest request,
-               Context& context),
-              (override));
-};
 
 class MockFnFactory : public FnFactory {
  public:
