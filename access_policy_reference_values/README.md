@@ -34,6 +34,16 @@ may also release a limited set of non-sensitive summary or aggregate metrics to
 which differential privacy is not applied, such as model eval or data
 similarity metrics.
 
+In certain cases, such as when processing data that originates from features
+that are powered by Google's
+[Private AI Compute](https://blog.google/innovation-and-ai/products/google-private-ai-compute/)
+(PAIC) system, the confidential federated computations may call back into the
+PAIC system to process that data. The results of these PAIC calls will still be
+processed with differential privacy to produce anonymized results. For example,
+inputs might be
+[summarized](https://research.google/blog/toward-provably-private-insights-into-ai-use/)
+using TPU-powered LLMs before performing a DP histogram aggregation.
+
 We expect Gboard's use of confidential federated computations to
 evolve over time, and any changes to these details will be reflected here.
 
