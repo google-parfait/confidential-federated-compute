@@ -223,7 +223,22 @@ class TrustedContext(federated_language.program.FederatedContext):
     Returns:
       A deserialized result.
     """
-    if self._mergeable_context is not None and self._worker_bns:
+    # Only partition computations across workers if they take client-placed
+    # inputs to partition into subrounds. Pure server computations (e.g.
+    # initialize() with no arguments or computations with only server-placed
+    # parameters) execute directly on the root container via _invoke_unpartitioned.
+    has_clients_parameter = (
+        comp.type_signature.parameter is not None
+        and execution_context_helper.contains_clients_placement(
+            comp.type_signature.parameter
+        )
+    )
+
+    if (
+        self._mergeable_context is not None
+        and self._worker_bns
+        and has_clients_parameter
+    ):
       try:
         compiled_comp = self._mergeable_comp_compiler_fn(comp)
       except Exception as e:

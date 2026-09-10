@@ -65,6 +65,7 @@ py_library(
 
 py_test(
     name = "execution_context_jax_test",
+    size = "large",
     srcs = ["execution_context_jax_test.py"],
     data = ["//program_executor_tee/program_context/cc:computation_runner_binary_xla"],
     tags = ["noasan"],
