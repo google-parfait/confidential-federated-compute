@@ -312,6 +312,43 @@ class ResilientSubroundsTest(unittest.IsolatedAsyncioTestCase):
     )
     self.assertEqual(result, 30)
 
+  async def test_run_resilient_subrounds_decouples_dispatch_from_postprocessing(
+      self,
+  ):
+    """Verifies subround 2 is dispatched before subround 1 finishes postprocessing."""
+    timeline = []
+
+    async def _coro(arg, ctx):
+      timeline.append(f"worker_dispatched_{arg}")
+      return arg
+
+    def mock_task(arg, ctx):
+      return asyncio.create_task(_coro(arg, ctx))
+
+    async def slow_postprocessing(acc, val, ctx):
+      timeline.append(f"merge_started_{val}")
+      await asyncio.sleep(0.05)
+      timeline.append(f"merge_finished_{val}")
+      return (acc or 0) + val
+
+    # With only 1 worker context, subround 2 could not be dispatched under the
+    # old synchronous loop until subround 1's postprocessing finished.
+    result, _ = await execution_context_helper.run_resilient_subrounds(
+        mock_task,
+        [1, 2],
+        ["ctx1"],
+        initial_result=None,
+        postprocessing=slow_postprocessing,
+    )
+
+    self.assertEqual(result, 3)
+    # Confirm worker 2 was dispatched while subround 1 was still in postprocessing.
+    self.assertLess(
+        timeline.index("worker_dispatched_2"),
+        timeline.index("merge_finished_1"),
+    )
+
+
 
 class RunnerAsyncContextTest(unittest.IsolatedAsyncioTestCase):
   """Tests for RunnerAsyncContext.invoke."""

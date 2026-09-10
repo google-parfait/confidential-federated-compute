@@ -179,7 +179,7 @@ async def run_resilient_subrounds(
   available_contexts = set(execution_contexts)
   print(
       f"run_resilient_subrounds: starting with {len(arg_list)} subrounds"
-      f" and {len(execution_contexts)} contexts."
+      f" and {len(execution_contexts)} contexts with background merge."
       f" max_retries_per_subround: {max_retries_per_subround}."
   )
   pending_tasks = {}  # task -> (context, subround_idx, subround_arg)
@@ -190,7 +190,34 @@ async def run_resilient_subrounds(
   last_exception = None
   done = set()
 
+  # Asynchronous background queue for postprocessing/merge.
+  # This decouples worker subround dispatch from postprocessing execution:
+  # as soon as a worker subround task finishes, its context is immediately
+  # returned to `available_contexts` and re-dispatched to the next subround,
+  # without waiting for `postprocessing` (e.g., merge on root) to finish.
+  merge_queue = asyncio.Queue()
+  sentinel = object()
+
+  async def _postprocessing_consumer():
+    nonlocal accumulated_result, last_ctx
+    while True:
+      item = await merge_queue.get()
+      if item is sentinel:
+        merge_queue.task_done()
+        break
+      partial_result, ctx = item
+      try:
+        last_ctx = ctx
+        accumulated_result = await postprocessing(
+            accumulated_result, partial_result, ctx
+        )
+      finally:
+        merge_queue.task_done()
+
+  consumer_task = asyncio.create_task(_postprocessing_consumer())
+
   def _cleanup_tasks():
+    consumer_task.cancel()
     for t in set(pending_tasks) | set(done):
       if not t.done():
         t.cancel()
@@ -207,11 +234,17 @@ async def run_resilient_subrounds(
 
     if not pending_tasks:
       if work_queue:
+        _cleanup_tasks()
         raise RuntimeError(
             "All execution contexts failed: no available worker contexts"
             f" remaining to execute subrounds. Last error: {last_exception}"
         )
       break
+
+    # If the background consumer encountered an exception, fail fast.
+    if consumer_task.done():
+      _cleanup_tasks()
+      consumer_task.result()
 
     # Wait for the first subround task(s) to complete.
     done, _ = await asyncio.wait(
@@ -222,12 +255,18 @@ async def run_resilient_subrounds(
       ctx, subround_idx, subround_arg = pending_tasks.pop(done_task)
       try:
         partial_result = done_task.result()
-        last_ctx = ctx
+        # Immediately mark the worker context available for the next subround
+        # without waiting for postprocessing to finish.
         available_contexts.add(ctx)
         context_handling_counts[ctx] += 1
-        accumulated_result = await postprocessing(
-            accumulated_result, partial_result, ctx
-        )
+        # Offload postprocessing/merge onto the background consumer.
+        # Note: `ctx` is passed to satisfy the TFF `postprocessing` / `_merge_results`
+        # callback signature. When `ctx.invoke(comp.merge, ...)` is invoked,
+        # `RunnerAsyncContext` checks `contains_clients_placement(comp.type_signature)`.
+        # Since `merge` operates purely on server/accumulator state and has no
+        # CLIENTS placement, `target_worker_bns` is empty and the merge executes
+        # locally on the root container without delegating to or blocking any remote worker.
+        merge_queue.put_nowait((partial_result, ctx))
       except Exception as e:  # pylint: disable=broad-exception-caught
         last_exception = e
         # Re-queue subround arg for retry on any exception if retry budget allows.
@@ -251,8 +290,13 @@ async def run_resilient_subrounds(
           )
         work_queue.append((subround_idx, subround_arg))
 
+  # Signal the background consumer to finish and wait for all merges to complete.
+  await merge_queue.put(sentinel)
+  await consumer_task
+
   print(
       f"run_resilient_subrounds: completed. Context handling counts:"
       f" {[context_handling_counts[ctx] for ctx in execution_contexts]}"
   )
   return accumulated_result, last_ctx
+
