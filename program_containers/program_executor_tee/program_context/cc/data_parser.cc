@@ -25,6 +25,8 @@
 #include "containers/crypto.h"
 #include "fcp/base/digest.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "google/protobuf/any.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -38,6 +40,7 @@ namespace confidential_federated_compute::program_executor_tee {
 
 using ::confidential_federated_compute::Decryptor;
 using ::fcp::confidentialcompute::BlobHeader;
+using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::outgoing::IntermediateResult;
 using ::fcp::confidentialcompute::outgoing::ReadRequest;
 using ::fcp::confidentialcompute::outgoing::ReadResponse;
@@ -54,9 +57,7 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<CheckpointParser>> GetCheckpointParser(
     fcp::confidentialcompute::outgoing::DataReadWrite::StubInterface* stub,
-    Decryptor* blob_decryptor,
-    const std::set<std::string>& authorized_logical_pipeline_policies_hashes,
-    std::string blob_id) {
+    Decryptor* blob_decryptor, std::string blob_id) {
   ReadRequest read_request;
   read_request.set_blob_id(blob_id);
 
@@ -81,34 +82,13 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>> GetCheckpointParser(
   if (combined_read_response.first_response_metadata().has_unencrypted()) {
     checkpoint_cord = combined_data;
   } else {
-    // Parse the BlobHeader to get the access policy hash and key ID.
-    BlobHeader blob_header;
-    if (!blob_header.ParseFromString(
-            combined_read_response.first_response_metadata()
-                .hpke_plus_aead_data()
-                .kms_symmetric_key_associated_data()
-                .record_header())) {
-      return absl::InvalidArgumentError(
-          "kms_symmetric_key_associated_data.record_header() cannot be "
-          "parsed to BlobHeader.");
-    }
-
-    // Verify that the access policy hash matches one of the authorized
-    // logical pipeline policy hashes returned by KMS before returning
-    // the key ID.
-    if (authorized_logical_pipeline_policies_hashes.find(
-            blob_header.access_policy_sha256()) ==
-        authorized_logical_pipeline_policies_hashes.end()) {
-      return absl::InvalidArgumentError(
-          "BlobHeader.access_policy_sha256 does not match any "
-          "authorized_logical_pipeline_policies_hashes returned by "
-          "KMS.");
-    }
-
     ABSL_ASSIGN_OR_RETURN(std::string fc_checkpoint,
                           blob_decryptor->DecryptBlob(
                               combined_read_response.first_response_metadata(),
-                              combined_data.Flatten(), blob_header.key_id()));
+                              combined_data.Flatten(),
+                              combined_read_response.first_response_metadata()
+                                  .hpke_plus_aead_data()
+                                  .key_id()));
 
     checkpoint_cord = absl::Cord(std::move(fc_checkpoint));
   }
@@ -122,11 +102,9 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>> GetCheckpointParser(
 DataParser::DataParser(
     confidential_federated_compute::Decryptor* blob_decryptor,
     std::string outgoing_server_address,
-    std::vector<std::string> reencryption_keys,
-    std::string reencryption_policy_hash, std::string kms_public_key,
+    std::vector<std::string> reencryption_keys, std::string kms_public_key,
     std::string invocation_id, PrivateState* private_state,
-    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle,
-    std::set<std::string> authorized_logical_pipeline_policies_hashes)
+    std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle)
     : blob_decryptor_(blob_decryptor),
       private_state_(private_state),
       signing_key_handle_(signing_key_handle) {
@@ -138,17 +116,6 @@ DataParser::DataParser(
     std::string decoded_reencryption_key;
     absl::Base64Unescape(reencryption_key, &decoded_reencryption_key);
     reencryption_keys_.push_back(decoded_reencryption_key);
-  }
-
-  std::string decoded_reencryption_policy_hash;
-  absl::Base64Unescape(reencryption_policy_hash,
-                       &decoded_reencryption_policy_hash);
-  reencryption_policy_hash_ = decoded_reencryption_policy_hash;
-
-  for (const auto& hash : authorized_logical_pipeline_policies_hashes) {
-    std::string decoded_hash;
-    absl::Base64Unescape(hash, &decoded_hash);
-    authorized_logical_pipeline_policies_hashes_.insert(decoded_hash);
   }
 
   grpc::ChannelArguments args;
@@ -163,9 +130,7 @@ absl::StatusOr<TensorProto> DataParser::ResolveBlobIdToTensor(
     std::string blob_id, std::string key) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
-      GetCheckpointParser(stub_.get(), blob_decryptor_,
-                          authorized_logical_pipeline_policies_hashes_,
-                          blob_id));
+      GetCheckpointParser(stub_.get(), blob_decryptor_, blob_id));
   ABSL_ASSIGN_OR_RETURN(Tensor agg_tensor, parser->GetTensor(key));
   return agg_tensor.ToProto();
 }
@@ -175,9 +140,7 @@ absl::StatusOr<
 DataParser::ResolveBlobIdToDict(std::string blob_id) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
-      GetCheckpointParser(stub_.get(), blob_decryptor_,
-                          authorized_logical_pipeline_policies_hashes_,
-                          blob_id));
+      GetCheckpointParser(stub_.get(), blob_decryptor_, blob_id));
   return parser->LoadAllTensors();
 }
 
@@ -187,8 +150,7 @@ absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,
   ABSL_RETURN_IF_ERROR(CreateWriteRequestForRelease(
       &write_request, *signing_key_handle_,
       reencryption_keys_[kReleaseValueEncryptionKeyIndex], key, data,
-      reencryption_policy_hash_, private_state_->GetState(),
-      private_state_->CommitNewState()));
+      private_state_->GetState(), private_state_->CommitNewState()));
 
   ClientContext client_context;
   WriteResponse response;
@@ -237,7 +199,7 @@ absl::Status DataParser::SaveRecoveryInfo(
   ABSL_RETURN_IF_ERROR(CreateWriteRequestForEncryptedValue(
       &write_request, &blob_id, *signing_key_handle_,
       reencryption_keys_[kRecoveryInfoEncryptionKeyIndex], recovery_key,
-      recovery_info.SerializeAsString(), reencryption_policy_hash_));
+      recovery_info.SerializeAsString()));
   ClientContext client_context;
   WriteResponse response;
   std::unique_ptr<::grpc::ClientWriterInterface<WriteRequest>> writer =
@@ -271,7 +233,7 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
   auto reader = stub_->Read(&client_context, read_request);
   ReadResponse response;
   absl::Cord combined_data;
-  fcp::confidentialcompute::BlobMetadata first_response_metadata;
+  BlobMetadata first_response_metadata;
   bool is_first = true;
   while (reader->Read(&response)) {
     if (is_first) {
@@ -285,14 +247,15 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
   }
   ABSL_RETURN_IF_ERROR(fcp::base::FromGrpcStatus(reader->Finish()));
 
-  // Parse the BlobHeader to get the access policy hash and key ID.
+  // Parse the BlobHeader to get the blob ID.
   BlobHeader blob_header;
-  if (!blob_header.ParseFromString(first_response_metadata.hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
+  if (!first_response_metadata.hpke_plus_aead_data()
+           .kms_symmetric_key_associated_data()
+           .associated_metadata()
+           .UnpackTo(&blob_header)) {
     return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data.record_header() cannot be "
-        "parsed to BlobHeader.");
+        "Failed to unpack BlobHeader from "
+        "kms_symmetric_key_associated_data.associated_metadata.");
   }
 
   IntermediateResult intermediate_result;
@@ -302,10 +265,11 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
   }
 
   absl::Cord intermediate_data = intermediate_result.data();
-  ABSL_ASSIGN_OR_RETURN(std::string decrypted_data,
-                        blob_decryptor_->DecryptBlob(
-                            first_response_metadata,
-                            intermediate_data.Flatten(), blob_header.key_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      std::string decrypted_data,
+      blob_decryptor_->DecryptBlob(
+          first_response_metadata, intermediate_data.Flatten(),
+          first_response_metadata.hpke_plus_aead_data().key_id()));
 
   // Hash the decrypted data before verification to match the signing side
   // (kms_helper.cc), which pre-hashes data before sending it to the Oak

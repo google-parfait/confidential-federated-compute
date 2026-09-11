@@ -33,6 +33,7 @@
 #include "fcp/protos/confidentialcompute/data_read_write.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/any.pb.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
@@ -120,16 +121,19 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
   ASSERT_TRUE(reader->Read(&read_response));
   ASSERT_TRUE(read_response.has_first_response_metadata());
   BlobHeader blob_header;
-  EXPECT_TRUE(
-      blob_header.ParseFromString(read_response.first_response_metadata()
-                                      .hpke_plus_aead_data()
-                                      .kms_symmetric_key_associated_data()
-                                      .record_header()));
+  EXPECT_TRUE(read_response.first_response_metadata()
+                  .hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .associated_metadata()
+                  .UnpackTo(&blob_header));
   absl::Cord read_response_data = read_response.data();
-  EXPECT_THAT(input_blob_decryptor_->DecryptBlob(
-                  read_response.first_response_metadata(),
-                  read_response_data.Flatten(), blob_header.key_id()),
-              message);
+  EXPECT_THAT(
+      input_blob_decryptor_->DecryptBlob(
+          read_response.first_response_metadata(), read_response_data.Flatten(),
+          read_response.first_response_metadata()
+              .hpke_plus_aead_data()
+              .key_id()),
+      message);
 
   // Check that the DataReadWrite service logged the blob_id.
   std::vector<std::string> requested_ids =
@@ -257,13 +261,11 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForReleaseData) {
   NiceMock<MockSigningKeyHandle> mock_signing_key_handle_;
   ASSERT_TRUE(CreateWriteRequestForRelease(
                   &write_request_1, mock_signing_key_handle_, result_public_key,
-                  "key_1", "write_request_1", kAccessPolicyHash, "state_a",
-                  "state_b")
+                  "key_1", "write_request_1", "state_a", "state_b")
                   .ok());
   ASSERT_TRUE(CreateWriteRequestForRelease(
                   &write_request_2, mock_signing_key_handle_, result_public_key,
-                  "key_2", "write_request_2", kAccessPolicyHash, "state_b",
-                  "state_c")
+                  "key_2", "write_request_2", "state_b", "state_c")
                   .ok());
 
   for (const auto& write_request : {write_request_1, write_request_2}) {
@@ -311,8 +313,7 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
   std::string blob_id;
   ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
                   &write_request, &blob_id, mock_signing_key_handle_,
-                  result_public_key, "key_1", "intermediate_data",
-                  kAccessPolicyHash)
+                  result_public_key, "key_1", "intermediate_data")
                   .ok());
 
   ClientContext client_context;
@@ -346,16 +347,16 @@ TEST_F(FakeDataReadWriteServiceTest, WriteRequestSuccessForIntermediateData) {
 
   ASSERT_TRUE(read_response.has_first_response_metadata());
   BlobHeader blob_header;
-  ASSERT_TRUE(
-      blob_header.ParseFromString(read_response.first_response_metadata()
-                                      .hpke_plus_aead_data()
-                                      .kms_symmetric_key_associated_data()
-                                      .record_header()));
+  ASSERT_TRUE(read_response.first_response_metadata()
+                  .hpke_plus_aead_data()
+                  .kms_symmetric_key_associated_data()
+                  .associated_metadata()
+                  .UnpackTo(&blob_header));
 
   absl::Cord intermediate_result_data = intermediate_result.data();
   auto plaintext_result = blob_decryptor->DecryptBlob(
       intermediate_result.metadata(), intermediate_result_data.Flatten(),
-      blob_header.key_id());
+      intermediate_result.metadata().hpke_plus_aead_data().key_id());
 
   ASSERT_TRUE(plaintext_result.ok());
   ASSERT_EQ(*plaintext_result, "intermediate_data");

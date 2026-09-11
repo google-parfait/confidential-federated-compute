@@ -35,11 +35,11 @@ TEST(KmsHelperTest, CreateWriteRequestForRelease) {
       crypto_test_utils::GenerateKeyPair(kKeyId);
   NiceMock<MockSigningKeyHandle> mock_signing_key_handle;
   WriteRequest write_request;
-  ASSERT_TRUE(CreateWriteRequestForRelease(
-                  &write_request, mock_signing_key_handle,
-                  public_private_key_pair.first, "my_key", "my_data",
-                  "my_access_policy_hash", "src_state", "dst_state")
-                  .ok());
+  ASSERT_TRUE(
+      CreateWriteRequestForRelease(&write_request, mock_signing_key_handle,
+                                   public_private_key_pair.first, "my_key",
+                                   "my_data", "src_state", "dst_state")
+          .ok());
 
   auto blob_decryptor =
       std::make_unique<confidential_federated_compute::Decryptor>(
@@ -72,8 +72,7 @@ TEST(KmsHelperTest, CreateWriteRequestForEncryptedValue) {
 
   ASSERT_TRUE(CreateWriteRequestForEncryptedValue(
                   &write_request, &blob_id, mock_signing_key_handle,
-                  public_private_key_pair.first, "my_key", "my_data",
-                  "my_access_policy_hash")
+                  public_private_key_pair.first, "my_key", "my_data")
                   .ok());
 
   auto blob_decryptor =

@@ -30,6 +30,7 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/any.pb.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/sync_stream.h"
@@ -156,19 +157,18 @@ grpc::Status FakeDataReadWriteService::Write(
   // in the released_data_ map.
   BlobMetadata metadata = requests[0].first_request_metadata();
   absl::Cord ciphertext = requests[0].data();
-  BlobHeader blob_header;
-  blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                  .kms_symmetric_key_associated_data()
-                                  .record_header());
+  const std::string& symmetric_key_associated_data =
+      metadata.hpke_plus_aead_data()
+          .kms_symmetric_key_associated_data()
+          .associated_metadata()
+          .value();
   absl::StatusOr<std::string> plaintext_message = message_decryptor_.Decrypt(
       ciphertext.Flatten(),
       metadata.hpke_plus_aead_data().ciphertext_associated_data(),
       metadata.hpke_plus_aead_data().encrypted_symmetric_key(),
-      metadata.hpke_plus_aead_data()
-          .kms_symmetric_key_associated_data()
-          .record_header(),
+      symmetric_key_associated_data,
       metadata.hpke_plus_aead_data().encapsulated_public_key(),
-      blob_header.key_id());
+      metadata.hpke_plus_aead_data().key_id());
   if (!plaintext_message.ok()) {
     return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                         "Decryption failed: " +
@@ -198,7 +198,6 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
   BlobHeader header;
   header.set_blob_id(std::string(blob_id));
   header.set_key_id(kInputKeyId);
-  header.set_access_policy_sha256(kAccessPolicyHash);
   std::string associated_data = header.SerializeAsString();
 
   MessageEncryptor encryptor;
@@ -206,6 +205,9 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
       EncryptMessageResult encrypt_result,
       encryptor.Encrypt(message, input_public_private_key_pair_.first,
                         associated_data));
+
+  google::protobuf::Any associated_metadata_any;
+  associated_metadata_any.PackFrom(header);
 
   BlobMetadata metadata;
   metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
@@ -216,8 +218,9 @@ absl::Status FakeDataReadWriteService::StoreEncryptedMessageForKms(
   encryption_metadata->set_encrypted_symmetric_key(
       encrypt_result.encrypted_symmetric_key);
   encryption_metadata->set_encapsulated_public_key(encrypt_result.encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
+  *encryption_metadata->mutable_kms_symmetric_key_associated_data()
+       ->mutable_associated_metadata() = std::move(associated_metadata_any);
+  encryption_metadata->set_key_id(header.key_id());
 
   ReadResponse response;
   *response.mutable_first_response_metadata() = std::move(metadata);
