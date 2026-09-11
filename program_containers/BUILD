@@ -36,6 +36,8 @@ compile_pip_requirements(
 _RELEASE_BINARIES = {
     # keep-sorted start
     "//program_executor_tee:root_basic_oci_runtime_bundle.tar": "program_executor_root_basic/container.tar",
+    "//program_executor_tee:root_xla_oci_runtime_bundle.tar": "program_executor_root_jax/container.tar",
+    "//program_executor_tee:worker_xla_oci_runtime_bundle.tar": "program_executor_worker_jax/container.tar",
     # keep-sorted end
 }
 
