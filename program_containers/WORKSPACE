@@ -223,9 +223,9 @@ http_archive(
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    sha256 = "4c7f735769e4fb36389c676a0f5dce68a8ab99bafaf5dc1d08d86a0c9341f74c",
-    strip_prefix = "tensorflow-federated-bc14789a9e0a73b03dd0a7006e9da49d589c322a",
-    url = "https://github.com/google-parfait/tensorflow-federated/archive/bc14789a9e0a73b03dd0a7006e9da49d589c322a.tar.gz",
+    sha256 = "3575c62e79a65c667ebfe64d412805c566360df97da6b6fb5e1c8823cac260de",
+    strip_prefix = "tensorflow-federated-f6dec819824dd90c3428aba429535272247591f8",
+    url = "https://github.com/google-parfait/tensorflow-federated/archive/f6dec819824dd90c3428aba429535272247591f8.tar.gz",
 )
 
 http_archive(
