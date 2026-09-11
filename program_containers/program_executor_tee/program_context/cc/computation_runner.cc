@@ -270,10 +270,10 @@ grpc::Status ComputationRunner::Execute(
       CardinalityMap cardinality_map;
       cardinality_map[tensorflow_federated::kClientsUri] =
           session_request.num_clients();
-      executor =
-          CreateRemoteExecutor(std::make_unique<NoiseExecutorStub>(
-                                   noise_client_sessions_[worker_idx].get()),
-                               cardinality_map, /*buffered_dispose=*/true);
+      executor = CreateStreamingRemoteExecutor(
+          std::make_unique<NoiseExecutorStub>(
+              noise_client_sessions_[worker_idx].get()),
+          cardinality_map, /*buffered_dispose=*/true);
     } else {
       // Execution on the local server stack (e.g. for merge, after_merge, or
       // single-node).
