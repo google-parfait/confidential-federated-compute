@@ -426,8 +426,9 @@ pkg_tar(
 oci_image(
     name = "worker_xla_oci_image",
     base = "@distroless_cc_debian12",
-    entrypoint = ["/main"],
+    entrypoint = ["program_executor_tee/worker_main_xla"],
     tars = [":worker_xla_tar"],
+    workdir = "/worker_main_xla.runfiles/__main__/",
 )
 
 oci_runtime_bundle(

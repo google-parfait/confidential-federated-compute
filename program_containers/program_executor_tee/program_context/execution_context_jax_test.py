@@ -242,6 +242,39 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.assertEqual(result, 10)
 
+  async def test_server_only_comp_skips_workers(self):
+    """Server-only computations should execute on root, not dispatch to workers.
+
+    When a federated computation has no @CLIENTS-placed parameters (e.g.
+    initialize()), it should bypass MergeableCompExecutionContext and execute
+    directly via _invoke_unpartitioned. We verify this by checking that no
+    work was dispatched to any workers.
+    """
+    self._skip_unless_resilient()
+    with federated_language.framework.get_context_stack().install(self.context):
+      @federated_language.federated_computation
+      def federated_init_comp():
+        return federated_language.federated_value(
+            10, federated_language.SERVER
+        )
+
+      self.computation_delegation_service.reset_worker_call_counts()
+      result = federated_init_comp()
+
+    self.assertEqual(result, 10)
+    # Verify no workers were dispatched to. If MergeableCompExecutionContext
+    # were used, it would dispatch subrounds to workers even for server-only
+    # computations.
+    for bns in self.worker_bns:
+      self.assertEqual(
+          self.computation_delegation_service.get_worker_successful_call_count(
+              bns
+          ),
+          0,
+          f'Worker {bns} should not have been called for a server-only'
+          ' computation.',
+      )
+
   async def test_execution_context_arg(self):
     with federated_language.framework.get_context_stack().install(self.context):
       client_data_type = federated_language.FederatedType(
