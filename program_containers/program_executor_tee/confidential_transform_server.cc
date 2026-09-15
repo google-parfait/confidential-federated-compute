@@ -116,9 +116,8 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
 
   pybind11::class_<DataParser>(m, "DataParser")
       .def(pybind11::init<Decryptor*, std::string, std::vector<std::string>,
-                          std::string, std::string, std::string, PrivateState*,
-                          std::shared_ptr<oak::crypto::SigningKeyHandle>,
-                          std::set<std::string>>())
+                          std::string, std::string, PrivateState*,
+                          std::shared_ptr<oak::crypto::SigningKeyHandle>>())
       .def("resolve_blob_id_to_tensor",
            [](DataParser& self, std::string& blob_id, std::string& key) {
              pybind11::gil_scoped_release release;
@@ -215,10 +214,6 @@ ProgramExecutorTeeSession::Finalize(
     for (const auto& key : reencryption_keys_) {
       escaped_reencryption_keys.push_back(absl::Base64Escape(key));
     }
-    std::set<std::string> authorized_hashes_set;
-    for (const auto& hash : authorized_logical_pipeline_policies_hashes_) {
-      authorized_hashes_set.insert(absl::Base64Escape(hash));
-    }
     pybind11::list client_ids;
     for (const auto& blob_id : initialize_config_.blob_ids()) {
       client_ids.append(pybind11::bytes(blob_id));
@@ -227,11 +222,9 @@ ProgramExecutorTeeSession::Finalize(
         pybind11::module::import("data_parser")
             .attr("DataParser")(
                 blob_decryptor_, initialize_config_.outgoing_server_address(),
-                escaped_reencryption_keys,
-                absl::Base64Escape(reencryption_policy_hash_),
-                absl::Base64Escape(kms_public_key_),
+                escaped_reencryption_keys, absl::Base64Escape(kms_public_key_),
                 absl::Base64Escape(invocation_id_), private_state_,
-                signing_key_handle_, authorized_hashes_set);
+                signing_key_handle_);
 
     // Load the python function for running the program.
     auto run_program =
@@ -327,8 +320,6 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
         absl::StrFormat("Expected exactly %d re-encryption keys, but got %d",
                         kNumEncryptionKeys, reencryption_keys_.size()));
   }
-  reencryption_policy_hash_ =
-      *GetAuthorizedLogicalPipelinePoliciesHashes().begin();
 
   return InitializePrivateState();
 }
@@ -438,8 +429,8 @@ ProgramExecutorTeeConfidentialTransform::CreateSession() {
   return std::make_unique<ProgramExecutorTeeSession>(
       initialize_config_, model_id_to_zip_file_, blob_decryptor,
       GetKmsPublicKey(), GetInvocationId(), reencryption_keys_,
-      reencryption_policy_hash_, private_state_.get(), GetOakSigningKeyHandle(),
-      GetAuthorizedLogicalPipelinePoliciesHashes(), get_program_initialize_fn);
+      private_state_.get(), GetOakSigningKeyHandle(),
+      get_program_initialize_fn);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

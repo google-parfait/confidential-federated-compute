@@ -29,14 +29,12 @@ constexpr size_t kBlobIdSize = 16;
 absl::Status CreateWriteRequestForEncryptedValue(
     fcp::confidentialcompute::outgoing::WriteRequest* write_request,
     std::string* blob_id, oak::crypto::SigningKeyHandle& signing_key,
-    absl::string_view encryption_key, std::string key, std::string data,
-    std::string access_policy_hash);
+    absl::string_view encryption_key, std::string key, std::string data);
 
 absl::Status CreateWriteRequestForRelease(
     fcp::confidentialcompute::outgoing::WriteRequest* write_request,
     oak::crypto::SigningKeyHandle& signing_key,
     absl::string_view encryption_key, std::string key, std::string data,
-    std::string access_policy_hash,
     std::optional<std::string> src_state = std::nullopt,
     std::string dst_state = "");
 

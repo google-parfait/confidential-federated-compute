@@ -43,15 +43,13 @@ static constexpr int kNumEncryptionKeys = 2;
 
 class DataParser {
  public:
-  DataParser(
-      confidential_federated_compute::Decryptor* blob_decryptor,
-      std::string outgoing_server_address,
-      std::vector<std::string> reencryption_keys,
-      std::string reencryption_policy_hash, std::string kms_public_key,
-      std::string invocation_id, PrivateState* private_state = nullptr,
-      std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle =
-          nullptr,
-      std::set<std::string> authorized_logical_pipeline_policies_hashes = {});
+  DataParser(confidential_federated_compute::Decryptor* blob_decryptor,
+             std::string outgoing_server_address,
+             std::vector<std::string> reencryption_keys,
+             std::string kms_public_key, std::string invocation_id,
+             PrivateState* private_state = nullptr,
+             std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle =
+                 nullptr);
 
   // Retrieves the TensorProto that is described by the provided blob id and
   // FcCheckpoint key.
@@ -85,14 +83,10 @@ class DataParser {
   std::string invocation_id_;
 
   std::vector<std::string> reencryption_keys_;
-  // The policy hash used to re-encrypt the final blobs with.
-  std::string reencryption_policy_hash_;
   // Private state.
   PrivateState* private_state_;
   // The signing key handle used to sign the final result.
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
-  // The authorized logical policy hashes for this container.
-  std::set<std::string> authorized_logical_pipeline_policies_hashes_;
 };
 
 }  // namespace confidential_federated_compute::program_executor_tee

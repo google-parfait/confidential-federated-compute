@@ -23,6 +23,7 @@
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/data_read_write.pb.h"
+#include "google/protobuf/any.pb.h"
 #include "openssl/rand.h"
 
 namespace confidential_federated_compute::program_executor_tee {
@@ -36,8 +37,7 @@ using ::fcp::confidentialcompute::outgoing::WriteRequest;
 
 namespace {
 
-absl::StatusOr<BlobHeader> CreateBlobHeader(
-    absl::string_view encryption_key, absl::string_view access_policy_hash) {
+absl::StatusOr<BlobHeader> CreateBlobHeader(absl::string_view encryption_key) {
   ABSL_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(encryption_key));
   BlobHeader header;
   std::string blob_id(kBlobIdSize, '\0');
@@ -45,12 +45,18 @@ absl::StatusOr<BlobHeader> CreateBlobHeader(
                    blob_id.size());
   header.set_blob_id(blob_id);
   header.set_key_id(okp_key.key_id);
-  header.set_access_policy_sha256(std::string(access_policy_hash));
   return header;
 }
 
+google::protobuf::Any PackBlobHeader(const BlobHeader& blob_header) {
+  google::protobuf::Any any;
+  any.PackFrom(blob_header);
+  return any;
+}
+
 absl::Status CreateWriteRequest(WriteRequest* write_request,
-                                absl::string_view serialized_blob_header,
+                                google::protobuf::Any associated_metadata_any,
+                                absl::string_view key_id,
                                 EncryptMessageResult encrypted_message,
                                 std::string key) {
   BlobMetadata metadata;
@@ -58,14 +64,16 @@ absl::Status CreateWriteRequest(WriteRequest* write_request,
   metadata.set_total_size_bytes(encrypted_message.ciphertext.size());
   BlobMetadata::HpkePlusAeadMetadata* hpke_plus_aead_metadata =
       metadata.mutable_hpke_plus_aead_data();
+
   hpke_plus_aead_metadata->set_ciphertext_associated_data(
-      std::string(serialized_blob_header));
+      associated_metadata_any.value());
   hpke_plus_aead_metadata->set_encrypted_symmetric_key(
       encrypted_message.encrypted_symmetric_key);
   hpke_plus_aead_metadata->set_encapsulated_public_key(
       encrypted_message.encapped_key);
-  hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(std::string(serialized_blob_header));
+  *hpke_plus_aead_metadata->mutable_kms_symmetric_key_associated_data()
+       ->mutable_associated_metadata() = std::move(associated_metadata_any);
+  hpke_plus_aead_metadata->set_key_id(std::string(key_id));
 
   *write_request->mutable_first_request_metadata() = std::move(metadata);
   write_request->set_commit(true);
@@ -80,17 +88,17 @@ absl::Status CreateWriteRequest(WriteRequest* write_request,
 absl::Status CreateWriteRequestForEncryptedValue(
     WriteRequest* write_request, std::string* blob_id,
     oak::crypto::SigningKeyHandle& signing_key,
-    absl::string_view encryption_key, std::string key, std::string data,
-    std::string access_policy_hash) {
+    absl::string_view encryption_key, std::string key, std::string data) {
   ABSL_ASSIGN_OR_RETURN(BlobHeader blob_header,
-                        CreateBlobHeader(encryption_key, access_policy_hash));
+                        CreateBlobHeader(encryption_key));
   blob_id->assign(blob_header.blob_id());
 
+  google::protobuf::Any associated_metadata_any = PackBlobHeader(blob_header);
   MessageEncryptor message_encryptor;
   ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor.Encrypt(data, encryption_key,
-                                blob_header.SerializeAsString()));
+                                associated_metadata_any.value()));
 
   // Hash the data before signing to avoid sending large payloads over the
   // gRPC channel to the Oak orchestrator's Sign RPC, which has a default
@@ -99,23 +107,24 @@ absl::Status CreateWriteRequestForEncryptedValue(
   ABSL_ASSIGN_OR_RETURN(auto signature, signing_key.Sign(data_digest));
   *write_request->mutable_signature() = signature.signature();
 
-  return CreateWriteRequest(write_request, blob_header.SerializeAsString(),
-                            std::move(encrypted_message), key);
+  return CreateWriteRequest(write_request, std::move(associated_metadata_any),
+                            blob_header.key_id(), std::move(encrypted_message),
+                            key);
 }
 
 absl::Status CreateWriteRequestForRelease(
     WriteRequest* write_request, oak::crypto::SigningKeyHandle& signing_key,
     absl::string_view encryption_key, std::string key, std::string data,
-    std::string access_policy_hash, std::optional<std::string> src_state,
-    std::string dst_state) {
+    std::optional<std::string> src_state, std::string dst_state) {
   ABSL_ASSIGN_OR_RETURN(BlobHeader blob_header,
-                        CreateBlobHeader(encryption_key, access_policy_hash));
+                        CreateBlobHeader(encryption_key));
 
+  google::protobuf::Any associated_metadata_any = PackBlobHeader(blob_header);
   MessageEncryptor message_encryptor;
   ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor.EncryptForRelease(
-          data, encryption_key, blob_header.SerializeAsString(), src_state,
+          data, encryption_key, associated_metadata_any.value(), src_state,
           dst_state,
           [&signing_key](
               absl::string_view message) -> absl::StatusOr<std::string> {
@@ -125,8 +134,9 @@ absl::Status CreateWriteRequestForRelease(
 
   write_request->set_release_token(encrypted_message.release_token);
 
-  return CreateWriteRequest(write_request, blob_header.SerializeAsString(),
-                            std::move(encrypted_message), key);
+  return CreateWriteRequest(write_request, std::move(associated_metadata_any),
+                            blob_header.key_id(), std::move(encrypted_message),
+                            key);
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

@@ -247,7 +247,7 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     associated_data.mutable_config_constraints()->PackFrom(
         CreateProgramExecutorTeeConfigConstraints(program));
     associated_data.add_authorized_logical_pipeline_policies_hashes(
-        kAccessPolicyHash);
+        "access_policy_hash");
     associated_data.set_cluster_public_key(
         fake_data_read_write_service_.GetKmsPublicKey());
     associated_data.set_invocation_id(kTestInvocationId);

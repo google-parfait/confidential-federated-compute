@@ -87,12 +87,11 @@ class DataParserTest : public ::testing::Test {
 
     data_parser_ = std::make_unique<DataParser>(
         input_blob_decryptor_.get(), data_read_write_server_address_,
-        reencryption_keys_, absl::Base64Escape(kAccessPolicyHash),
+        reencryption_keys_,
         absl::Base64Escape(fake_data_read_write_service_->GetKmsPublicKey()),
         absl::Base64Escape(kTestInvocationId), private_state_.get(),
         std::shared_ptr<oak::crypto::SigningKeyHandle>(
-            fake_data_read_write_service_->GetOakSigningKeyHandle()),
-        std::set<std::string>({absl::Base64Escape(kAccessPolicyHash)}));
+            fake_data_read_write_service_->GetOakSigningKeyHandle()));
   }
 
   void TearDown() override { fake_data_read_write_server_->Shutdown(); }

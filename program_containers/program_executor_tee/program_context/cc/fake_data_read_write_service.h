@@ -32,7 +32,6 @@
 namespace confidential_federated_compute::program_executor_tee {
 
 constexpr char kInputKeyId[] = "input";
-constexpr char kAccessPolicyHash[] = "access_policy_hash";
 constexpr char kTestInvocationId[] = "test_invocation_id";
 
 // Fake DataReadWrite service that retains information about past requests
