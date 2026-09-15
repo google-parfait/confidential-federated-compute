@@ -22,8 +22,9 @@
 namespace confidential_federated_compute {
 
 // Returns the `key_id` from the BlobMetadata if it is present.
-// To get the key_id, the implementation assumes that the associated data in the
-// BlobMetadata can be parsed into `fcp::confidentialcompute::BlobHeader`.
+// The `key_id` is read from `hpke_plus_aead_data.key_id`. An empty string is
+// returned for unencrypted blobs. Returns an INVALID_ARGUMENT error if the
+// blob is encrypted but `hpke_plus_aead_data.key_id` is empty.
 absl::StatusOr<std::string> GetKeyIdFromMetadata(
     const fcp::confidentialcompute::BlobMetadata& metadata);
 }  // namespace confidential_federated_compute

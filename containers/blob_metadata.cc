@@ -16,11 +16,9 @@
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 
 namespace confidential_federated_compute {
 
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 absl::StatusOr<std::string> GetKeyIdFromMetadata(
@@ -30,35 +28,11 @@ absl::StatusOr<std::string> GetKeyIdFromMetadata(
     return "";
   }
 
-  // GetKeyId is only supported for KMS-enabled transforms.
-  if (!metadata.hpke_plus_aead_data().has_kms_symmetric_key_associated_data()) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data is not present.");
+  if (metadata.hpke_plus_aead_data().key_id().empty()) {
+    return absl::InvalidArgumentError("hpke_plus_aead_data.key_id is empty.");
   }
 
-  // Try to get the key id from `metadata.hpke_plus_aead_data()`.
-  if (!metadata.hpke_plus_aead_data().key_id().empty()) {
-    return metadata.hpke_plus_aead_data().key_id();
-  }
-
-  // If the above key_id was not present, fallback to parsing the
-  // `kms_symmetric_key_associated_data.record_header()`. This would be the
-  // case for legacy blobs.
-  fcp::confidentialcompute::BlobHeader blob_header;
-  if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
-                                       .kms_symmetric_key_associated_data()
-                                       .record_header())) {
-    return absl::InvalidArgumentError(
-        "kms_symmetric_key_associated_data.record_header() cannot be "
-        "parsed to BlobHeader.");
-  }
-
-  if (blob_header.key_id().empty()) {
-    return absl::InvalidArgumentError(
-        "Parsed BlobHeader has an empty 'key_id'");
-  }
-
-  return blob_header.key_id();
+  return metadata.hpke_plus_aead_data().key_id();
 }
 
 }  // namespace confidential_federated_compute

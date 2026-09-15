@@ -118,13 +118,9 @@ absl::StatusOr<std::string> Decryptor::DecryptBlob(const BlobMetadata& metadata,
       const auto& kms_associated_data =
           metadata.hpke_plus_aead_data().kms_symmetric_key_associated_data();
       // Use the payload bytes of the `associated_metadata` Any message as the
-      // AAD for decryption if present. The `type_url` is not included in the
-      // AAD. Fall back to the deprecated `record_header` field if
-      // `associated_metadata` is not set.
+      // AAD for decryption. The `type_url` is not included in the AAD.
       const std::string& symmetric_key_associated_data =
-          kms_associated_data.has_associated_metadata()
-              ? kms_associated_data.associated_metadata().value()
-              : kms_associated_data.record_header();
+          kms_associated_data.associated_metadata().value();
       ABSL_ASSIGN_OR_RETURN(
           decrypted,
           message_decryptor_.Decrypt(

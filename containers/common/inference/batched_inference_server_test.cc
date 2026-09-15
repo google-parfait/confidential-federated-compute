@@ -225,7 +225,14 @@ class BatchedInferenceServerTest : public ::testing::Test {
     hpke->set_ciphertext_associated_data(aad);
     hpke->set_encrypted_symmetric_key(encrypt_res.encrypted_symmetric_key);
     hpke->set_encapsulated_public_key(encrypt_res.encapped_key);
-    hpke->mutable_kms_symmetric_key_associated_data()->set_record_header(aad);
+    hpke->set_key_id(kKeyId);
+    hpke->mutable_kms_symmetric_key_associated_data()
+        ->mutable_associated_metadata()
+        ->set_type_url(
+            "type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+    hpke->mutable_kms_symmetric_key_associated_data()
+        ->mutable_associated_metadata()
+        ->set_value(aad);
 
     ASSERT_TRUE(session_stream->Write(write_req));
   }

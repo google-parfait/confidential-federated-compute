@@ -1265,7 +1265,7 @@ TEST_F(KmsFedSqlSessionWriteTest,
               HasSubstr("No budget remaining for key id"));
 }
 
-TEST_F(KmsFedSqlSessionWriteTest, AccumulateDeprecatedRecordHeader) {
+TEST_F(KmsFedSqlSessionWriteTest, AccumulateFailsWithoutAssociatedMetadata) {
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
@@ -1273,26 +1273,17 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateDeprecatedRecordHeader) {
   WriteRequest write_request;
   write_request.mutable_first_request_configuration()->PackFrom(config);
 
-  // Manually construct metadata with only the deprecated record_header field
-  BlobHeader blob_header;
-  *blob_header.mutable_blob_id() = StoreBigEndian(absl::MakeUint128(1, 0));
-  *blob_header.mutable_key_id() = "key_foo";
-
   BlobMetadata metadata;
   metadata.set_total_size_bytes(data.size());
   auto* hpke_plus_aead_data = metadata.mutable_hpke_plus_aead_data();
-  hpke_plus_aead_data->set_blob_id(blob_header.blob_id());
-  auto* kms_associated_data =
-      hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data();
-  *kms_associated_data->mutable_record_header() =
-      blob_header.SerializeAsString();
-
+  hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data();
   *write_request.mutable_first_request_metadata() = metadata;
 
   auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());
-  EXPECT_EQ(write_result->status().code(), Code::OK)
-      << write_result->status().message();
+  EXPECT_EQ(write_result->status().code(), Code::INVALID_ARGUMENT);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("Failed to parse kms_associated_data"));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,

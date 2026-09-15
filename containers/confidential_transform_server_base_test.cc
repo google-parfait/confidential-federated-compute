@@ -322,8 +322,13 @@ class ConfidentialTransformServerBaseTest : public Test {
         encrypt_result.value().encrypted_symmetric_key);
     encryption_metadata->set_encapsulated_public_key(
         encrypt_result.value().encapped_key);
-    encryption_metadata->mutable_kms_symmetric_key_associated_data()
-        ->set_record_header(associated_data);
+    encryption_metadata->set_key_id(std::string(kKeyId));
+    auto* kms_associated_data =
+        encryption_metadata->mutable_kms_symmetric_key_associated_data();
+    kms_associated_data->mutable_associated_metadata()->set_type_url(
+        "type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+    kms_associated_data->mutable_associated_metadata()->set_value(
+        associated_data);
 
     return {metadata, encrypt_result.value().ciphertext};
   }

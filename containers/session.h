@@ -89,8 +89,7 @@ class Session {
     // Optional metadata to cryptographically bind as AEAD associated data
     // when encrypting. When set, the AssociatedMetadata is serialized for
     // use as AAD and packed into a google.protobuf.Any on
-    // KmsAssociatedData.associated_metadata. The deprecated record_header
-    // field is left empty.
+    // KmsAssociatedData.associated_metadata.
     //
     // When not set, encryption falls back to the BlobHeader-based AAD path.
     std::optional<fcp::confidentialcompute::AssociatedMetadata>

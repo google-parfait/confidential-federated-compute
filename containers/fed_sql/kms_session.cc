@@ -105,38 +105,40 @@ using ::tensorflow_federated::aggregation::InMemoryCheckpointParser;
 using ::tensorflow_federated::aggregation::Intrinsic;
 using ::tensorflow_federated::aggregation::Tensor;
 
-// Attempts to unpack a BlobHeader from the kms_associated_data. Tries the
-// associated_metadata field first (either directly as a BlobHeader, or inside
-// an AssociatedMetadata wrapper), then falls back to the deprecated
-// record_header field.
+// Attempts to unpack a BlobHeader from the kms_associated_data's
+// associated_metadata field, either directly as a BlobHeader or from inside an
+// AssociatedMetadata wrapper.
+// Returns false if associated_metadata isn't set, or if it doesn't hold a
+// BlobHeader either directly or within an AssociatedMetadata wrapper.
 bool UnpackAssociatedBlobHeader(
     const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
         kms_associated_data,
     BlobHeader* blob_header) {
-  if (kms_associated_data.has_associated_metadata()) {
-    // Try to unpack the BlobHeader directly.
-    if (kms_associated_data.associated_metadata().UnpackTo(blob_header)) {
-      return true;
-    }
-
-    // Else try to unpack as AssociatedMetadata and look for a BlobHeader.
-    AssociatedMetadata associated_metadata;
-    if (kms_associated_data.associated_metadata().UnpackTo(
-            &associated_metadata)) {
-      for (const auto& entry : associated_metadata.metadata()) {
-        if (entry.UnpackTo(blob_header)) {
-          return true;
-        }
-      }
-    }
+  if (!kms_associated_data.has_associated_metadata()) {
     return false;
   }
-  // Fall back to the deprecated record_header field.
-  return blob_header->ParseFromString(kms_associated_data.record_header());
+  // Try to unpack the BlobHeader directly.
+  if (kms_associated_data.associated_metadata().UnpackTo(blob_header)) {
+    return true;
+  }
+
+  // Else try to unpack as AssociatedMetadata and look for a BlobHeader.
+  AssociatedMetadata associated_metadata;
+  if (kms_associated_data.associated_metadata().UnpackTo(
+          &associated_metadata)) {
+    for (const auto& entry : associated_metadata.metadata()) {
+      if (entry.UnpackTo(blob_header)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // Attempts to unpack an AssociatedMetadata from the kms_associated_data's
 // associated_metadata field.
+// Returns false if associated_metadata isn't set or doesn't hold an
+// AssociatedMetadata message.
 bool UnpackAssociatedMetadata(
     const BlobMetadata::HpkePlusAeadMetadata::KmsAssociatedData&
         kms_associated_data,
@@ -253,8 +255,8 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
     }
   }
 
-  // Try to unpack as a BlobHeader from either associated_metadata or the
-  // deprecated record_header field for per-key budget checking.
+  // Try to unpack a BlobHeader from associated_metadata for per-key budget
+  // checking.
   BlobHeader header;
   if (UnpackAssociatedBlobHeader(kms_associated_data, &header)) {
     auto blob_id = LoadBigEndian<absl::uint128>(header.blob_id());

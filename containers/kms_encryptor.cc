@@ -87,8 +87,7 @@ BlobMetadata KmsEncryptor::CreateMetadata(
   BlobMetadata metadata = BuildCommonMetadata(encrypted_message, blob_id,
                                               associated_metadata.value());
 
-  // Pack associated_metadata into KmsAssociatedData.associated_metadata. The
-  // deprecated record_header field is intentionally left empty.
+  // Pack associated_metadata into KmsAssociatedData.associated_metadata.
   *metadata.mutable_hpke_plus_aead_data()
        ->mutable_kms_symmetric_key_associated_data()
        ->mutable_associated_metadata() = std::move(associated_metadata);

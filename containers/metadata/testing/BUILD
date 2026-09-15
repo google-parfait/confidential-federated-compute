@@ -28,6 +28,7 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@federated_compute//fcp/confidentialcompute:constants",
         "@federated_compute//fcp/confidentialcompute:crypto",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
         "@googletest//:gtest",

@@ -23,6 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/crypto.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
@@ -36,6 +37,7 @@ using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidential_compute::MessageEncryptor;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::tensorflow_federated::aggregation::CreateTestData;
 using ::tensorflow_federated::aggregation::DataType;
@@ -95,8 +97,15 @@ std::pair<BlobMetadata, std::string> EncryptWithKmsKeys(
       encrypt_result->encrypted_symmetric_key);
   encryption_metadata->set_encapsulated_public_key(
       encrypt_result->encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
+  BlobHeader header;
+  CHECK(header.ParseFromString(associated_data));
+  encryption_metadata->set_key_id(header.key_id());
+  auto* kms_associated_data =
+      encryption_metadata->mutable_kms_symmetric_key_associated_data();
+  kms_associated_data->mutable_associated_metadata()->set_type_url(
+      "type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+  kms_associated_data->mutable_associated_metadata()->set_value(
+      associated_data);
   return std::make_pair(metadata, encrypt_result->ciphertext);
 }
 

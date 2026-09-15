@@ -105,36 +105,6 @@ TEST(CryptoTest, KeyedHashBothEmpty) {
   EXPECT_TRUE(*result != input);
 }
 
-TEST(CryptoTest, EncryptAndDecryptBlobWithRecordHeader) {
-  std::string message = "some plaintext message";
-  std::string key_id = "some key id";
-  auto [public_key, private_key] = crypto_test_utils::GenerateKeyPair(key_id);
-  std::string associated_data = "associated_data";
-
-  MessageEncryptor encryptor;
-  absl::StatusOr<EncryptMessageResult> encrypt_result =
-      encryptor.Encrypt(message, public_key, associated_data);
-  ASSERT_THAT(encrypt_result, IsOk());
-
-  BlobMetadata metadata;
-  metadata.set_compression_type(BlobMetadata::COMPRESSION_TYPE_NONE);
-  metadata.set_total_size_bytes(encrypt_result.value().ciphertext.size());
-  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->set_ciphertext_associated_data(associated_data);
-  encryption_metadata->set_encrypted_symmetric_key(
-      encrypt_result.value().encrypted_symmetric_key);
-  encryption_metadata->set_encapsulated_public_key(
-      encrypt_result.value().encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
-
-  Decryptor decryptor({private_key});
-  EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
-                                    key_id),
-              IsOkAndHolds(message));
-}
-
 TEST(CryptoTest, EncryptAndDecryptBlobWithAssociatedMetadata) {
   std::string message = "some plaintext message";
   std::string key_id = "some key id";
@@ -156,8 +126,8 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithAssociatedMetadata) {
       encrypt_result.value().encrypted_symmetric_key);
   encryption_metadata->set_encapsulated_public_key(
       encrypt_result.value().encapped_key);
-  // Set the associated_data via the associated_metadata Any field instead of
-  // record_header. Only the value bytes of the Any are used as AAD.
+  // Set the associated_data via the associated_metadata Any field. Only the
+  // value bytes of the Any are used as AAD.
   google::protobuf::Any any;
   any.set_type_url("type.googleapis.com/some.Type");
   any.set_value(associated_data);
@@ -209,8 +179,11 @@ TEST(CryptoTest, EncryptAndDecryptBlobWithGzipCompression) {
       encrypt_result.value().encrypted_symmetric_key);
   encryption_metadata->set_encapsulated_public_key(
       encrypt_result.value().encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
+  google::protobuf::Any any;
+  any.set_type_url("type.googleapis.com/some.Type");
+  any.set_value(associated_data);
+  *encryption_metadata->mutable_kms_symmetric_key_associated_data()
+       ->mutable_associated_metadata() = any;
 
   Decryptor decryptor({private_key});
   EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,
@@ -241,8 +214,11 @@ TEST(CryptoTest, EncryptAndDecryptBlobWrongKeyId) {
       encrypt_result.value().encrypted_symmetric_key);
   encryption_metadata->set_encapsulated_public_key(
       encrypt_result.value().encapped_key);
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(associated_data);
+  google::protobuf::Any any;
+  any.set_type_url("type.googleapis.com/some.Type");
+  any.set_value(associated_data);
+  *encryption_metadata->mutable_kms_symmetric_key_associated_data()
+       ->mutable_associated_metadata() = any;
 
   Decryptor decryptor({private_key});
   EXPECT_THAT(decryptor.DecryptBlob(metadata, encrypt_result.value().ciphertext,

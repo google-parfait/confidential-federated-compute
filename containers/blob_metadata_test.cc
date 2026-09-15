@@ -14,14 +14,12 @@
 #include "containers/blob_metadata.h"
 
 #include "absl/status/status_matchers.h"
-#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace confidential_federated_compute {
 namespace {
 
-using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
 TEST(GetKeyIdFromMetadata, SuccessUnencrypted) {
@@ -34,42 +32,15 @@ TEST(GetKeyIdFromMetadata, SuccessEncrypted) {
   BlobMetadata metadata;
   BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
       metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->mutable_kms_symmetric_key_associated_data();
   encryption_metadata->set_key_id("key_id");
-
   EXPECT_EQ(GetKeyIdFromMetadata(metadata).value(), "key_id");
 }
 
-TEST(GetKeyIdFromMetadata, SuccessEncryptedWithKeyIdInRecordHeader) {
-  BlobHeader header;
-  header.set_blob_id("blob_id");
-  header.set_key_id("key_id");
+TEST(GetKeyIdFromMetadata, MissingKeyId) {
   BlobMetadata metadata;
   BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
       metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header(header.SerializeAsString());
-
-  EXPECT_EQ(GetKeyIdFromMetadata(metadata).value(), "key_id");
-}
-
-TEST(GetKeyIdFromMetadata, InvalidAssociatedData) {
-  BlobMetadata metadata;
-  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  encryption_metadata->mutable_kms_symmetric_key_associated_data()
-      ->set_record_header("invalid!!!");
-
-  EXPECT_EQ(GetKeyIdFromMetadata(metadata).status().code(),
-            absl::StatusCode::kInvalidArgument);
-}
-
-TEST(GetKeyIdFromMetadata, NoKmsAssociatedData) {
-  BlobMetadata metadata;
-  BlobMetadata::HpkePlusAeadMetadata* encryption_metadata =
-      metadata.mutable_hpke_plus_aead_data();
-  // No `kms_symmetric_key_associated_data` set.
-
+  // No `key_id` set.
   EXPECT_EQ(GetKeyIdFromMetadata(metadata).status().code(),
             absl::StatusCode::kInvalidArgument);
 }

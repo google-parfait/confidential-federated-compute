@@ -72,12 +72,6 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultGeneratesCorrectMetadata) {
   // key_id should be set directly on HpkePlusAeadMetadata.
   EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
 
-  // record_header should be empty (deprecated).
-  EXPECT_TRUE(metadata.hpke_plus_aead_data()
-                  .kms_symmetric_key_associated_data()
-                  .record_header()
-                  .empty());
-
   // associated_metadata Any should be set and contain a BlobHeader.
   ASSERT_TRUE(metadata.hpke_plus_aead_data()
                   .kms_symmetric_key_associated_data()
@@ -150,12 +144,6 @@ TEST(KmsEncryptorTest,
 
   // key_id should be set directly on HpkePlusAeadMetadata.
   EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
-
-  // record_header should be empty (deprecated for new path).
-  EXPECT_TRUE(metadata.hpke_plus_aead_data()
-                  .kms_symmetric_key_associated_data()
-                  .record_header()
-                  .empty());
 
   // associated_metadata Any should be set and contain AssociatedMetadata.
   ASSERT_TRUE(metadata.hpke_plus_aead_data()
@@ -230,12 +218,6 @@ TEST(KmsEncryptorTest, EncryptReleasableResultGeneratesCorrectMetadata) {
 
   // key_id should be set directly on HpkePlusAeadMetadata.
   EXPECT_EQ(metadata.hpke_plus_aead_data().key_id(), "key_1");
-
-  // record_header should be empty (deprecated).
-  EXPECT_TRUE(metadata.hpke_plus_aead_data()
-                  .kms_symmetric_key_associated_data()
-                  .record_header()
-                  .empty());
 
   // associated_metadata Any should be set and contain a BlobHeader.
   ASSERT_TRUE(metadata.hpke_plus_aead_data()

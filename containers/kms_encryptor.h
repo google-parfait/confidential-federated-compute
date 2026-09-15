@@ -54,7 +54,6 @@ class KmsEncryptor {
   // Encrypts an intermediate result using AssociatedMetadata as the AEAD
   // associated data. The AssociatedMetadata is serialized for use as AAD and
   // packed into a google.protobuf.Any on KmsAssociatedData.associated_metadata.
-  // The deprecated record_header field is left empty.
   //
   // This overload is intended for TEE-to-TEE intermediate outputs where
   // BlobHeader is not applicable.
@@ -84,7 +83,7 @@ class KmsEncryptor {
 
   // Creates BlobMetadata with the Any associated_metadata .
   // KmsAssociatedData.associated_metadata is set to the provided
-  // associated_metadata; the deprecated record_header is left empty.
+  // associated_metadata.
   // key_id is set directly on HpkePlusAeadMetadata.
   fcp::confidentialcompute::BlobMetadata CreateMetadata(
       const fcp::confidential_compute::EncryptMessageResult& encrypted_message,

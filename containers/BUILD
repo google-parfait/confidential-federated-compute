@@ -83,7 +83,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status:statusor",
-        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],
 )
@@ -96,7 +95,6 @@ cc_test(
         ":blob_metadata",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
-        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],

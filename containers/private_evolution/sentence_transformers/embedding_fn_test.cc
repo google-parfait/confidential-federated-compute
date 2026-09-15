@@ -182,8 +182,13 @@ BlobMetadata CreateBlobMetadata(const BlobHeader& header) {
   encryption_metadata->set_blob_id(header.blob_id());
   *encryption_metadata->mutable_ciphertext_associated_data() =
       header.SerializeAsString();
+  encryption_metadata->set_key_id(header.key_id());
+  encryption_metadata->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->set_type_url("type.googleapis.com/fcp.confidentialcompute.BlobHeader");
   *encryption_metadata->mutable_kms_symmetric_key_associated_data()
-       ->mutable_record_header() = header.SerializeAsString();
+       ->mutable_associated_metadata()
+       ->mutable_value() = header.SerializeAsString();
   encryption_metadata->set_encrypted_symmetric_key(
       std::string(kEncryptedSymmetricKey));
   encryption_metadata->set_encapsulated_public_key(

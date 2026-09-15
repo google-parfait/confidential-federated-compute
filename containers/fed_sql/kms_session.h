@@ -164,8 +164,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // 2. If associated_metadata contains an AssociatedMetadata containing
   //    SessionTimeWindowMetadata, checks the time-window budget and merges
   //    the time window.
-  // 3. Otherwise, falls back to parsing the deprecated record_header field to
-  //    check the per-key budget and add the key to the range tracker.
   absl::Status CheckBudgetAndUpdateRangeTracker(
       const fcp::confidentialcompute::BlobMetadata::HpkePlusAeadMetadata::
           KmsAssociatedData& kms_associated_data);
