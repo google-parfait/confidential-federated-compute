@@ -1365,8 +1365,12 @@ TEST_F(KmsFedSqlSessionWriteTest,
   write_request.mutable_first_request_configuration()->PackFrom(config);
   *write_request.mutable_first_request_metadata() =
       MakeBlobMetadataWithTimeWindow(data, 1, start, end);
-  EXPECT_DEATH(session_->Write(write_request, data, context_),
-               "Privacy ID is required in time-window budget mode.");
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::NOT_FOUND);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("No aggregation tensor found for name "
+                        "confidential_compute_privacy_id"));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateTimeWindowDuplicatePrivacyIdFails) {
