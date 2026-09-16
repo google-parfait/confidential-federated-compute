@@ -107,7 +107,6 @@ class TestConcatServerTest : public Test {
     protected_response.add_result_encryption_keys(public_key_);
     protected_response.add_decryption_keys(public_private_key_pair.second);
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-    associated_data.add_authorized_logical_pipeline_policies_hashes("hash");
     auto encrypted_request =
         oak_client_encryptor_
             ->Encrypt(protected_response.SerializeAsString(),

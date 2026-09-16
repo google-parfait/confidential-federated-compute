@@ -40,7 +40,6 @@ constexpr absl::string_view kBlobId = "blob_id";
 constexpr absl::string_view kConfigId = "config_id";
 constexpr absl::string_view kEncryptedSymmetricKey = "encrypted_key";
 constexpr absl::string_view kEncapsulatedPublicKey = "encapped_key";
-constexpr absl::string_view kReencryptionPolicyHash = "policy_hash";
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
@@ -255,7 +254,6 @@ TEST_F(EmbeddingMapFnTest, WriteSuccess) {
   BlobHeader header;
   header.set_blob_id(kBlobId);
   header.set_key_id(kKeyId);
-  header.set_access_policy_sha256(kReencryptionPolicyHash);
   *request.mutable_first_request_metadata() = CreateBlobMetadata(header);
 
   auto checkpoint = CreateInputCheckpoint({input});
@@ -284,7 +282,6 @@ TEST_F(EmbeddingMapFnTest, MapSuccessWithPrompt) {
   BlobHeader header;
   header.set_blob_id(kBlobId);
   header.set_key_id(kKeyId);
-  header.set_access_policy_sha256(kReencryptionPolicyHash);
   *request.mutable_first_request_metadata() = CreateBlobMetadata(header);
 
   auto checkpoint = CreateInputCheckpoint({input});
@@ -309,7 +306,6 @@ TEST_F(EmbeddingMapFnTest, MapFailsWhenGenerateEmbeddingFails) {
   BlobHeader header;
   header.set_blob_id(kBlobId);
   header.set_key_id(kKeyId);
-  header.set_access_policy_sha256(kReencryptionPolicyHash);
   *request.mutable_first_request_metadata() = CreateBlobMetadata(header);
 
   auto checkpoint = CreateInputCheckpoint({input});
@@ -334,7 +330,6 @@ TEST_F(EmbeddingMapFnTest, EmitFailed) {
   BlobHeader header;
   header.set_blob_id(kBlobId);
   header.set_key_id(kKeyId);
-  header.set_access_policy_sha256(kReencryptionPolicyHash);
   *request.mutable_first_request_metadata() = CreateBlobMetadata(header);
 
   auto checkpoint = CreateInputCheckpoint({input});

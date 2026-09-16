@@ -256,8 +256,6 @@ class ConfidentialTransformServerBaseTest : public Test {
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
     associated_data.set_cluster_public_key(kKmsPublicKey);
     associated_data.set_invocation_id(kInvocationId);
-    associated_data.add_authorized_logical_pipeline_policies_hashes(
-        "policy_hash");
     associated_data.add_omitted_decryption_key_ids("omitted_key_id");
     associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
     auto encrypted_request =
@@ -302,13 +300,11 @@ class ConfidentialTransformServerBaseTest : public Test {
     return stream;
   }
 
-  std::pair<BlobMetadata, std::string> Encrypt(
-      std::string blob_id, std::string message,
-      std::string policy_hash = "policy_hash") {
+  std::pair<BlobMetadata, std::string> Encrypt(std::string blob_id,
+                                               std::string message) {
     BlobHeader header;
     header.set_blob_id(blob_id);
     header.set_key_id(std::string(kKeyId));
-    header.set_access_policy_sha256(policy_hash);
     std::string associated_data = header.SerializeAsString();
 
     MessageEncryptor encryptor;

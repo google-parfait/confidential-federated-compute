@@ -103,12 +103,6 @@ class ConfidentialTransformBase
     return GetKeyIdFromMetadata(metadata);
   }
 
-  // Returns the authorized logical policy hashes for this container.
-  absl::flat_hash_set<std::string>&
-  GetAuthorizedLogicalPipelinePoliciesHashes() {
-    return authorized_logical_pipeline_policies_hashes_;
-  }
-
   // Returns the KMS public key provided during initialization.
   std::string GetKmsPublicKey() const { return kms_public_key_; }
 
@@ -175,7 +169,6 @@ class ConfidentialTransformBase
   std::optional<KmsEncryptor> kms_encryptor_;
   std::shared_ptr<oak::crypto::SigningKeyHandle> oak_signing_key_handle_;
   std::unique_ptr<oak::crypto::EncryptionKeyHandle> oak_encryption_key_handle_;
-  absl::flat_hash_set<std::string> authorized_logical_pipeline_policies_hashes_;
   std::string kms_public_key_;
   std::string invocation_id_;
   // Tracks the keys ids that are still active i.e. not expired.

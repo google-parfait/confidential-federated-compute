@@ -123,7 +123,6 @@ class MetadataConfidentialTransformInitializeTest : public Test {
   }
 
   std::string key_id_ = "key_id";
-  std::string allowed_policy_hash_ = "hash_1";
   std::string public_key_;
   std::string private_key_;
   std::unique_ptr<FnConfidentialTransform> service_;
@@ -137,8 +136,6 @@ TEST_F(MetadataConfidentialTransformInitializeTest,
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       MetadataContainerConfig());
-  associated_data.add_authorized_logical_pipeline_policies_hashes(
-      allowed_policy_hash_);
 
   MetadataContainerInitializationConfig init_config;
   init_config.set_on_device_query_name("test_query");
@@ -175,8 +172,6 @@ TEST_F(MetadataConfidentialTransformInitializeTest,
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "result_encryption_key";
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-  associated_data.add_authorized_logical_pipeline_policies_hashes(
-      allowed_policy_hash_);
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -207,8 +202,6 @@ class MetadataConfidentialTransformSessionTest
           }
         )pb");
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-    associated_data.add_authorized_logical_pipeline_policies_hashes(
-        allowed_policy_hash_);
     associated_data.mutable_config_constraints()->PackFrom(config);
     ClientContext context;
 
@@ -257,7 +250,6 @@ TEST_F(MetadataConfidentialTransformSessionTest, CreateSessionSucceeds) {
   BlobHeader header;
   header.set_blob_id("blob_id");
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   std::pair<BlobMetadata, std::string> checkpoint = BuildEncryptedCheckpoint(
       "privacy_id", {"2025-01-01T12:00:00+00:00", "2025-01-02T12:00:00+00:00"},
       public_key_, header.SerializeAsString(), on_device_query_name_);

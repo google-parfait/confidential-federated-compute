@@ -91,7 +91,6 @@ using ::testing::Return;
 using ::testing::Test;
 
 static const std::string kKeyId = "test_key_id";
-static const std::string kPolicyHash = "hash_1";
 
 class MockBatchedInferenceEngine : public BatchedInferenceEngine {
  public:
@@ -162,8 +161,6 @@ class BatchedInferenceServerTest : public ::testing::Test {
     protected_resp.add_decryption_keys(session_priv_key_cose);
 
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
-    associated_data.add_authorized_logical_pipeline_policies_hashes(
-        kPolicyHash);
 
     auto encrypted_handshake =
         handshake_encryptor
@@ -203,7 +200,6 @@ class BatchedInferenceServerTest : public ::testing::Test {
                                    const std::string& inference_data) {
     BlobHeader header;
     header.set_blob_id(blob_id);
-    header.set_access_policy_sha256(kPolicyHash);
     header.set_key_id(kKeyId);
     std::string aad = header.SerializeAsString();
 

@@ -235,10 +235,6 @@ absl::Status ConfidentialTransformBase::HandleInitialize(
     return absl::InvalidArgumentError(
         "Failed to parse AssociatedData from decrypted data.");
   }
-  if (associated_data.authorized_logical_pipeline_policies_hashes_size() == 0) {
-    return absl::InvalidArgumentError(
-        "Expected at least one policy hash but none were supplied.");
-  }
 
   active_key_ids_include_all_keysets_ =
       associated_data.omitted_decryption_key_ids_include_all_keysets();
@@ -247,10 +243,6 @@ absl::Status ConfidentialTransformBase::HandleInitialize(
           protected_response.result_encryption_keys().begin(),
           protected_response.result_encryption_keys().end()),
       oak_signing_key_handle_);
-  for (const auto& policy_hash :
-       associated_data.authorized_logical_pipeline_policies_hashes()) {
-    authorized_logical_pipeline_policies_hashes_.insert(policy_hash);
-  }
   ABSL_RETURN_IF_ERROR(
       SetActiveKeyIds({protected_response.decryption_keys().begin(),
                        protected_response.decryption_keys().end()},

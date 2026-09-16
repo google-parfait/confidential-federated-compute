@@ -78,8 +78,7 @@ class KmsEncryptor {
   absl::StatusOr<absl::string_view> GetReencryptionKey(
       int reencryption_key_index) const;
 
-  // Creates an Any packed with a BlobHeader with the given
-  // key_id, blob_id, and the encryptor's reencryption_policy_hash.
+  // Creates an Any packed with a BlobHeader with the given key_id and blob_id.
   google::protobuf::Any PackBlobHeader(absl::string_view key_id,
                                        absl::string_view blob_id) const;
 

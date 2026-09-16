@@ -151,7 +151,6 @@ absl::StatusOr<EncryptedRequest> CreateEncryptedProtectedResponse(
     Any config_constraints = Any()) {
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   *associated_data.mutable_config_constraints() = config_constraints;
-  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   protected_response.add_result_encryption_keys(result_encryption_key);

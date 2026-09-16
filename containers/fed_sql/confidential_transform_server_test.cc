@@ -494,8 +494,6 @@ class FedSqlServerTest : public Test {
     protected_response.add_decryption_keys(public_private_key_pair.second);
     AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
     associated_data.mutable_config_constraints()->PackFrom(config_constraints);
-    associated_data.add_authorized_logical_pipeline_policies_hashes(
-        allowed_policy_hash_);
     associated_data.add_omitted_decryption_key_ids("foo");
     associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
     auto encrypted_request =
@@ -604,7 +602,6 @@ class FedSqlServerTest : public Test {
   std::unique_ptr<ConfidentialTransform::Stub> stub_;
   std::unique_ptr<ClientEncryptor> oak_client_encryptor_;
   std::string key_id_ = "key_id";
-  std::string allowed_policy_hash_ = "hash_1";
   std::string public_key_;
   std::unique_ptr<Decryptor> decryptor_;
 };
@@ -982,7 +979,6 @@ TEST_F(FedSqlServerTest, StreamInitializeWithEncryptedAutotuningSuccess) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
 
   auto [metadata, ciphertext] =
       Encrypt(bundled_data, header.SerializeAsString(), key_pair.first);
@@ -1048,7 +1044,6 @@ TEST_F(FedSqlServerTest, StreamInitializeInvalidConfigConstraints) {
   google::protobuf::Value value;
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(value);
-  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   associated_data.set_omitted_decryption_key_ids_include_all_keysets(true);
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
@@ -1075,7 +1070,6 @@ TEST_F(FedSqlServerTest, StreamInitializeActiveKeysDoNotIncludeAllKeysets) {
   AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
   associated_data.mutable_config_constraints()->PackFrom(
       DefaultFedSqlConfigConstraints());
-  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
   auto encrypted_request = oak_client_encryptor_
                                ->Encrypt(protected_response.SerializeAsString(),
                                          associated_data.SerializeAsString())
@@ -1771,7 +1765,6 @@ TEST_F(FedSqlServerTest, ConfigureWriteReportEncryptedInput) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest request_0 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, message_0, header.SerializeAsString());
   SessionResponse response_0;
@@ -1947,7 +1940,6 @@ TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
       BuildFedSqlGroupByCheckpoint({7, 9}, {10, 12}),
@@ -1979,7 +1971,6 @@ TEST_F(FedSqlServerTest, RemoveExpiredKeysFromBudget) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   auto request1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}),
       header.SerializeAsString());
@@ -2121,7 +2112,6 @@ TEST_F(FedSqlServerTest, SessionWriteWithMetadataMessagesSuccess) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest request = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, *message, header.SerializeAsString());
   SessionResponse response;
@@ -2139,7 +2129,6 @@ TEST_F(FedSqlServerTest, SessionExecutesSqlQueryAndAggregation) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
       BuildFedSqlGroupByCheckpoint({1, 1, 2}, {1, 2, 5}),
@@ -2205,7 +2194,6 @@ TEST_F(FedSqlServerTest, SessionAccumulatesAndSerializes) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({9}, {1}),
       header.SerializeAsString());
@@ -2301,7 +2289,6 @@ TEST_F(FedSqlServerTest, SessionMergesAndReports) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(10, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_MERGE, blob, header.SerializeAsString());
   SessionResponse write_response;
@@ -2425,7 +2412,6 @@ TEST_F(FedSqlServerTest, SessionIgnoresUnparseableInputs) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({8}, {7}),
       header.SerializeAsString());
@@ -2494,7 +2480,6 @@ TEST_F(FedSqlServerTest, SessionIgnoresInputThatCannotBeQueried) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE,
       BuildFedSqlGroupByCheckpoint({9}, {7}, /*privacy_id=*/std::nullopt,
@@ -2517,7 +2502,6 @@ TEST_F(FedSqlServerTest, SessionIgnoresUndecryptableInputs) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  header.set_access_policy_sha256(allowed_policy_hash_);
   SessionRequest write_request_1 = CreateDefaultEncryptedWriteRequest(
       AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({42}, {2}),
       header.SerializeAsString());
