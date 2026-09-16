@@ -235,6 +235,30 @@ TEST_F(MetadataMapFnTest, MapSucceedsWithTimezone) {
               EqualsEventTimeRange(2025, 1, 1, 2025, 1, 3));
 }
 
+TEST_F(MetadataMapFnTest, MapSucceedsWithFractionalSeconds) {
+  // Event times formatted with absl::RFC3339_full may contain fractional
+  // seconds (e.g., when the absl::Time has sub-second precision).
+  std::string checkpoint = BuildCheckpoint(
+      "16byteprivacyid1",
+      {"2025-01-01T12:00:00.123+00:00", "2025-01-02T12:00:00.456789+00:00"},
+      on_device_query_name_);
+
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
+  absl::StatusOr<WriteFinishedResponse> result =
+      fn_->Write(WriteRequest(), checkpoint, context_);
+  ASSERT_THAT(result, IsOk());
+
+  PayloadMetadataSet metadata_set;
+  ASSERT_TRUE(emitted_kv.key.UnpackTo(&metadata_set));
+  const auto& tee_metadata = metadata_set.metadata().at("test_config");
+  // Fractional seconds should be truncated; the day-level range is the same
+  // as if the event times had no fractional part.
+  EXPECT_THAT(tee_metadata.event_time_range(),
+              EqualsEventTimeRange(2025, 1, 1, 2025, 1, 3));
+}
+
 TEST_F(MetadataMapFnTest, MapFailsIfCheckpointIsInvalid) {
   absl::StatusOr<WriteFinishedResponse> result =
       fn_->Write(WriteRequest(), "invalid checkpoint", context_);
