@@ -139,6 +139,45 @@ TEST_F(InferenceModelInternalTest,
               IsOkAndHolds(expected_prompt));
 }
 
+TEST_F(InferenceModelInternalTest,
+       PopulatePromptTemplateWithPrependSystemInstructions) {
+  Prompt prompt;
+  prompt.set_prompt_template("User: {user}");
+  prompt.set_parser(Prompt::PARSER_AUTO_PREFIX_EXPERIMENTAL);
+
+  absl::StatusOr<Tensor> user_tensor = CreateStringTensor({"John"}, "user");
+  ASSERT_THAT(user_tensor, IsOk());
+  std::vector<Tensor> columns;
+  columns.push_back(std::move(*user_tensor));
+  absl::StatusOr<Input> input = Input::CreateFromTensors(std::move(columns));
+  ASSERT_THAT(input, IsOk());
+  absl::StatusOr<RowView> row = input->GetRow(0);
+  ASSERT_THAT(row, IsOk());
+
+  const std::string column_names[] = {"user"};
+  const size_t indices[] = {0};
+  const std::string output_column_name = "output";
+  const size_t max_prompt_size = 1000;
+  InferencePromptProcessor prompt_processor;
+
+  std::string expected_prompt = absl::StrCat(
+      "***System Instruction***\n",
+      "You must respond with a valid JSON object. The key of the JSON object "
+      "must be '",
+      output_column_name,
+      "' and its value must be a JSON array. Do not include any other text or "
+      "explanation outside of the JSON object.\n",
+      "Example format:\n", "```json\n", "{\n", "  \"", output_column_name,
+      "\": [\"", output_column_name, "_val_0\", \"", output_column_name,
+      "_val_1\", \"", output_column_name, "_val_2\" ...]\n", "}\n", "```\n",
+      "User: John\nJSON output:");
+
+  EXPECT_THAT(prompt_processor.PopulatePromptTemplate(
+                  prompt, *row, column_names, indices, output_column_name,
+                  max_prompt_size),
+              IsOkAndHolds(expected_prompt));
+}
+
 TEST_F(InferenceModelInternalTest, PopulatePromptTemplateTruncation) {
   Prompt prompt;
   prompt.set_prompt_template("User: {user}");
@@ -267,6 +306,23 @@ TEST_F(InferenceModelInternalTest, ProcessInferenceOutputSuccess) {
   InferenceOutputProcessor processor;
   Prompt prompt;
   prompt.set_parser(Prompt::PARSER_AUTO);
+  std::string output_string = R"({"topic": ["foo", "bar"]})";
+  std::string output_column_name = "topic";
+  auto output_string_data = std::make_unique<MutableStringData>(0);
+  auto result = processor.ProcessInferenceOutput(
+      prompt, std::move(output_string), output_column_name,
+      output_string_data.get());
+  ASSERT_THAT(result, IsOkAndHolds(2));
+  const auto* data_ptr =
+      static_cast<const absl::string_view*>(output_string_data->data());
+  EXPECT_THAT(absl::MakeSpan(data_ptr, *result), ElementsAre("foo", "bar"));
+}
+
+TEST_F(InferenceModelInternalTest,
+       ProcessInferenceOutputPrefixExperimentalSuccess) {
+  InferenceOutputProcessor processor;
+  Prompt prompt;
+  prompt.set_parser(Prompt::PARSER_AUTO_PREFIX_EXPERIMENTAL);
   std::string output_string = R"({"topic": ["foo", "bar"]})";
   std::string output_column_name = "topic";
   auto output_string_data = std::make_unique<MutableStringData>(0);

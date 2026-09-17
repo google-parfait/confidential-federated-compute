@@ -33,9 +33,9 @@ class InferenceOutputProcessor {
  public:
   InferenceOutputProcessor();
 
-  // Applies JSON parsing (if PARSER_AUTO) and regex matching to the inference
-  // output and writes the results directly to `output_string_data`. Returns the
-  // number of values added.
+  // Applies JSON parsing (if PARSER_AUTO or PARSER_AUTO_PREFIX_EXPERIMENTAL)
+  // and regex matching to the inference output and writes the results directly
+  // to `output_string_data`. Returns the number of values added.
   absl::StatusOr<size_t> ProcessInferenceOutput(
       const fcp::confidentialcompute::Prompt& prompt,
       std::string&& inference_output, const std::string& output_column_name,
@@ -59,10 +59,15 @@ class InferencePromptProcessor {
       const std::string& output_column_name, size_t max_prompt_size);
 
  private:
-  // A helper function to append system instructions to the prompt if the prompt
-  // config is set to PARSER_AUTO.
+  // Appends system instructions after the prompt (PARSER_AUTO).
   void AppendSystemInstructions(std::string& prompt,
                                 const std::string& output_column_name);
+
+  // Prepends system instructions before the prompt and appends a short
+  // recency-focus suffix (PARSER_AUTO_PREFIX_EXPERIMENTAL). This enables
+  // prefix caching by placing the static instructions at the beginning.
+  void PrependSystemInstructions(std::string& prompt,
+                                 const std::string& output_column_name);
 };
 
 // Duplicates rows in a vector/column of tensors according to

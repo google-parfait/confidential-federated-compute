@@ -81,6 +81,22 @@ void DuplicateStringData(const Tensor& original_column,
   }
 }
 
+// Builds the system instruction text for JSON output format.
+std::string BuildSystemInstructions(const std::string& output_column_name) {
+  return absl::StrCat(
+      "***System Instruction***\n",
+      "You must respond with a valid JSON object. The key of the JSON "
+      "object "
+      "must be '",
+      output_column_name,
+      "' and its value must be a JSON array. Do not include any other text "
+      "or "
+      "explanation outside of the JSON object.\n",
+      "Example format:\n", "```json\n", "{\n", "  \"", output_column_name,
+      "\": [\"", output_column_name, "_val_0\", \"", output_column_name,
+      "_val_1\", \"", output_column_name, "_val_2\" ...]\n", "}\n", "```");
+}
+
 }  // namespace
 
 InferenceOutputProcessor::InferenceOutputProcessor() {}
@@ -126,6 +142,7 @@ absl::StatusOr<size_t> InferenceOutputProcessor::ProcessInferenceOutput(
       }
       return values.size();
     }
+    case Prompt::PARSER_AUTO_PREFIX_EXPERIMENTAL:
     case Prompt::PARSER_AUTO: {
       std::string json_string = std::move(inference_output);
       std::regex json_block_regex("```json\\s*\\n?([\\s\\S]*?)\\n?```");
@@ -207,20 +224,13 @@ InferencePromptProcessor::InferencePromptProcessor() {}
 
 void InferencePromptProcessor::AppendSystemInstructions(
     std::string& prompt, const std::string& output_column_name) {
-  // Modifies a prompt to include instructions for the model to generate
-  // output in a JSON format that can be parsed automatically.
-  absl::StrAppend(
-      &prompt, "\n***System Instruction***\n",
-      "You must respond with a valid JSON object. The key of the JSON "
-      "object "
-      "must be '",
-      output_column_name,
-      "' and its value must be a JSON array. Do not include any other text "
-      "or "
-      "explanation outside of the JSON object.\n",
-      "Example format:\n", "```json\n", "{\n", "  \"", output_column_name,
-      "\": [\"", output_column_name, "_val_0\", \"", output_column_name,
-      "_val_1\", \"", output_column_name, "_val_2\" ...]\n", "}\n", "```");
+  absl::StrAppend(&prompt, "\n", BuildSystemInstructions(output_column_name));
+}
+
+void InferencePromptProcessor::PrependSystemInstructions(
+    std::string& prompt, const std::string& output_column_name) {
+  prompt = absl::StrCat(BuildSystemInstructions(output_column_name), "\n",
+                        prompt, "\nJSON output:");
 }
 
 absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
@@ -256,6 +266,8 @@ absl::StatusOr<std::string> InferencePromptProcessor::PopulatePromptTemplate(
   }
   if (prompt.parser() == Prompt::PARSER_AUTO) {
     AppendSystemInstructions(populated_prompt, output_column_name);
+  } else if (prompt.parser() == Prompt::PARSER_AUTO_PREFIX_EXPERIMENTAL) {
+    PrependSystemInstructions(populated_prompt, output_column_name);
   }
   return populated_prompt;
 }

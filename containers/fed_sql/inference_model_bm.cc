@@ -30,7 +30,6 @@
 #include "containers/fed_sql/inference_model.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
-#include "inference_model.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 
 ABSL_FLAG(std::string, tokenizer_path, "/saved_model/tokenizer.spm",
@@ -43,6 +42,7 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::confidential_federated_compute::Input;
+using ::fcp::confidentialcompute::Prompt;
 using ::tensorflow_federated::aggregation::Tensor;
 
 // Synthetic dataset transcripts from gen_checkpoints_main.cc
@@ -61,14 +61,15 @@ const std::vector<std::string> kSyntheticTranscripts = {
 
 constexpr char kPromptTemplate[] =
     "Below is the transcript between a user and the user's virtual "
-    "assistant.\n"
+    "assistant:\n"
     "\n"
-    "{{transcript}}\n"
+    "{transcript}\n"
     "\n"
     "\n"
     "What is the topic of this transcript? Topic should be less than 3 "
     "words.\n";
 
+template <Prompt::Parser kParser>
 class GemmaInferenceBenchmark : public benchmark::Fixture {
  public:
   InferenceModel* model() const { return model_.get(); }
@@ -78,15 +79,11 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
     std::string model_weight_path = absl::GetFlag(FLAGS_model_path);
 
     int batch_size = state.range(0);
-    int max_generated_tokens = state.range(1);
 
     SessionInferenceConfiguration inference_configuration;
     inference_configuration.initialize_configuration.mutable_inference_config()
         ->mutable_runtime_config()
         ->set_max_batch_size(batch_size);
-    inference_configuration.initialize_configuration.mutable_inference_config()
-        ->mutable_runtime_config()
-        ->set_max_generated_tokens(max_generated_tokens);
 
     auto* inference_task = inference_configuration.initialize_configuration
                                .mutable_inference_config()
@@ -97,8 +94,7 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
 
     // Match the exact prompt template from inference_config_gemma_cpp.textproto
     inference_task->mutable_prompt()->set_prompt_template(kPromptTemplate);
-    inference_task->mutable_prompt()->set_parser(
-        fcp::confidentialcompute::Prompt::PARSER_AUTO);
+    inference_task->mutable_prompt()->set_parser(kParser);
 
     inference_configuration.initialize_configuration
         .mutable_gemma_init_config()
@@ -123,47 +119,89 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
 
   void TearDown(::benchmark::State& state) override { model_.reset(); }
 
+  // Create an input tensor with the given batch size.
+  absl::StatusOr<Input> CreateInput(int batch_size) {
+    std::vector<std::string> prompt_inputs(batch_size);
+    for (int i = 0; i < batch_size; ++i) {
+      prompt_inputs[i] =
+          kSyntheticTranscripts[i % kSyntheticTranscripts.size()];
+    }
+    std::vector<Tensor> columns;
+    columns.push_back(Tensor(std::move(prompt_inputs), "transcript"));
+    return Input::CreateFromTensors(std::move(columns));
+  }
+
+  void RunBenchmark(benchmark::State& state) {
+    constexpr int kInputSize = 16;
+
+    for (auto _ : state) {
+      auto input = CreateInput(kInputSize);
+      if (!input.ok()) {
+        state.SkipWithError("Failed to create input tensors.");
+        break;
+      }
+
+      auto inference_status = model()->RunInference(*input);
+      if (!inference_status.ok()) {
+        state.SkipWithError(
+            (std::string("Inference failed: ") + inference_status.ToString())
+                .c_str());
+        break;
+      }
+    }
+
+    state.SetItemsProcessed(kInputSize * state.iterations());
+  }
+
  private:
   std::unique_ptr<InferenceModel> model_;
 };
 
-BENCHMARK_DEFINE_F(GemmaInferenceBenchmark,
+// Benchmark without system instructions.
+class GemmaInferenceWithoutSystemInstructionsBenchmark
+    : public GemmaInferenceBenchmark<Prompt::PARSER_NONE> {};
+
+BENCHMARK_DEFINE_F(GemmaInferenceWithoutSystemInstructionsBenchmark,
                    BM_GemmaInference)(benchmark::State& state) {
-  constexpr int kInputSize = 16;
-  std::vector<std::string> prompt_inputs(kInputSize);
-  for (int i = 0; i < prompt_inputs.size(); ++i) {
-    prompt_inputs[i] = kSyntheticTranscripts[i % kSyntheticTranscripts.size()];
-  }
-  std::vector<Tensor> columns;
-  columns.push_back(Tensor(std::move(prompt_inputs), "transcript"));
-  auto input = Input::CreateFromTensors(std::move(columns));
-  if (!input.ok()) {
-    state.SkipWithError("Failed to create input tensors.");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto inference_status = model()->RunInference(*input);
-    if (!inference_status.ok()) {
-      state.SkipWithError(
-          (std::string("Inference failed: ") + inference_status.ToString())
-              .c_str());
-      break;
-    }
-  }
-
-  state.SetItemsProcessed(kInputSize * state.iterations());
+  RunBenchmark(state);
 }
 
-// The first parameter is the batch size.
-// The second parameter is `max_generated_tokens`.
-BENCHMARK_REGISTER_F(GemmaInferenceBenchmark, BM_GemmaInference)
-    ->Args({1, 32})
-    ->Args({1, 128})
-    ->Args({4, 32})
-    ->Args({4, 128})
-    ->Args({16, 32})
-    ->Args({16, 128});
+// Benchmark with PARSER_AUTO system instructions (appended at the end).
+class GemmaInferenceParserAutoBenchmark
+    : public GemmaInferenceBenchmark<Prompt::PARSER_AUTO> {};
+
+BENCHMARK_DEFINE_F(GemmaInferenceParserAutoBenchmark,
+                   BM_GemmaInference)(benchmark::State& state) {
+  RunBenchmark(state);
+}
+
+// Benchmark with PARSER_AUTO_PREFIX_EXPERIMENTAL system instructions
+// (prepended at the beginning to enable prefix caching).
+class GemmaInferenceParserAutoPrefixBenchmark
+    : public GemmaInferenceBenchmark<Prompt::PARSER_AUTO_PREFIX_EXPERIMENTAL> {
+};
+
+BENCHMARK_DEFINE_F(GemmaInferenceParserAutoPrefixBenchmark,
+                   BM_GemmaInference)(benchmark::State& state) {
+  RunBenchmark(state);
+}
+
+// The parameter is the batch size.
+BENCHMARK_REGISTER_F(GemmaInferenceWithoutSystemInstructionsBenchmark,
+                     BM_GemmaInference)
+    ->Arg(1)
+    ->Arg(4)
+    ->Arg(16);
+
+BENCHMARK_REGISTER_F(GemmaInferenceParserAutoBenchmark, BM_GemmaInference)
+    ->Arg(1)
+    ->Arg(4)
+    ->Arg(16);
+
+BENCHMARK_REGISTER_F(GemmaInferenceParserAutoPrefixBenchmark, BM_GemmaInference)
+    ->Arg(1)
+    ->Arg(4)
+    ->Arg(16);
 
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql
