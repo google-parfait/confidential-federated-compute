@@ -76,6 +76,11 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorData;
 using ::tensorflow_federated::aggregation::TensorShape;
 
+// The max prompt size to use when RuntimeConfig.max_prompt_size is unset (0).
+// This matches the default used by the fed_sql container's InferenceRunner, so
+// that inference configs written for fed_sql behave the same here.
+constexpr size_t kDefaultMaxPromptSize = 8192;
+
 // Represents a work item at the level of a single inference call.
 struct CallLevelWorkItem {
   explicit CallLevelWorkItem(std::string prompt) : prompt(std::move(prompt)) {}
@@ -398,6 +403,10 @@ absl::StatusOr<std::vector<size_t>> CartesianExpand(
 // 3. Any non-empty associated metadata on an input blob is attached to the
 //    corresponding output blob.
 //
+// Note that unlike the fed_sql container, tasks are independent: every task
+// runs against the original input rows rather than against the rows produced
+// by the preceding task.
+//
 // FUTURE WORK: Relax these restrictions, and port over the logic used in
 // the FedSql container. Possibly make this behavior configurable.
 class BatchedInferenceFn final
@@ -526,10 +535,15 @@ BatchedInferenceFn::PrepareBlob(Session::KV kv) {
     blob_item->input = std::make_unique<Input>(std::move(*input_or));
   }
 
+  // An unset (0) max_prompt_size means "use the default", rather than
+  // truncating every prompt to zero bytes.
+  const size_t max_prompt_size =
+      inference_config_.runtime_config().max_prompt_size() > 0
+          ? inference_config_.runtime_config().max_prompt_size()
+          : kDefaultMaxPromptSize;
   for (auto& task_item : blob_item->task_items) {
-    absl::Status call_unpack_status = UnpackCallsForTask(
-        *blob_item->input, inference_config_.runtime_config().max_prompt_size(),
-        task_item.get());
+    absl::Status call_unpack_status =
+        UnpackCallsForTask(*blob_item->input, max_prompt_size, task_item.get());
     if (!call_unpack_status.ok()) {
       // Preserve the status code, since UnpackCallsForTask distinguishes
       // invalid inputs (InvalidArgument) from unexpected failures (Internal).

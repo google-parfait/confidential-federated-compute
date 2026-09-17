@@ -185,9 +185,15 @@ class BatchedInferenceEngineProviderImpl
         jwks_payload_(jwks_payload),
         dump_jwt_(dump_jwt) {}
 
-  std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
-      const fcp::confidentialcompute::InferenceConfiguration& inference_config)
-      override {
+  absl::StatusOr<std::shared_ptr<BatchedInferenceEngine>>
+  GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceInitializeConfiguration&
+          init_config,
+      const fns::WriteConfigurationMap& write_configuration_map) override {
+    // This backend proxies inference out to a host process, so it has no use
+    // for the model weight blobs streamed during StreamInitialize.
+    const fcp::confidentialcompute::InferenceConfiguration& inference_config =
+        init_config.inference_config();
     LOG(INFO)
         << "BatchedInferenceEngineProviderImpl::GetEngineForInferenceConfig "
            "called with the following inference config:\n"

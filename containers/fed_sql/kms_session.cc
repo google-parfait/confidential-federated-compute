@@ -171,10 +171,10 @@ KmsFedSqlSession::KmsFedSqlSession(
   CHECK_OK(SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(config.expired_key_ids);
   if (config.inference_configuration.has_value()) {
-    auto model_or =
-        InferenceModel::BuildModel(config.inference_configuration.value());
-    CHECK_OK(model_or.status());
-    inference_model_ = std::move(*model_or);
+    auto runner_or =
+        InferenceRunner::BuildModel(config.inference_configuration.value());
+    CHECK_OK(runner_or.status());
+    inference_runner_ = std::move(*runner_or);
   }
 };
 
@@ -311,9 +311,9 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                                         on_device_query_name_);
   } else {
     auto inference_config =
-        inference_model_.has_value()
+        inference_runner_.has_value()
             ? std::optional<InferenceConfiguration>(
-                  inference_model_->GetInferenceConfiguration()
+                  inference_runner_->GetInferenceConfiguration()
                       .initialize_configuration.inference_config())
             : std::nullopt;
     absl::StatusOr<std::vector<Tensor>> contents = Deserialize(
@@ -346,8 +346,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
         input.status()));
   }
-  if (inference_model_.has_value()) {
-    ABSL_RETURN_IF_ERROR(inference_model_->RunInference(*input));
+  if (inference_runner_.has_value()) {
+    ABSL_RETURN_IF_ERROR(inference_runner_->RunInference(*input));
   }
 
   // Uniqueness check: use privacy ID in time-window budget mode, blob ID

@@ -15,10 +15,12 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_BATCHED_INFERENCE_ENGINE_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_BATCHED_INFERENCE_ENGINE_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "containers/fns/fn_factory.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 
 namespace confidential_federated_compute::inference {
@@ -35,9 +37,16 @@ class BatchedInferenceEngineProvider {
  public:
   virtual ~BatchedInferenceEngineProvider() {}
 
-  virtual std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
-      const fcp::confidentialcompute::InferenceConfiguration&
-          inference_config) = 0;
+  // Returns the engine to use for the given initialization configuration.
+  //
+  // `write_configuration_map` maps configuration ids to the on-disk paths of
+  // the blobs streamed during StreamInitialize, which is how backends that
+  // load model weights in-process find them.
+  virtual absl::StatusOr<std::shared_ptr<BatchedInferenceEngine>>
+  GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceInitializeConfiguration&
+          init_config,
+      const fns::WriteConfigurationMap& write_configuration_map) = 0;
 };
 
 }  // namespace confidential_federated_compute::inference

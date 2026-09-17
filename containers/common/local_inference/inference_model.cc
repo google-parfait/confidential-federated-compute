@@ -12,33 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/inference_model.h"
+#include "containers/common/local_inference/inference_model.h"
 
 #include <algorithm>
 #include <random>
 #include <regex>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "common/common.h"  // From @llama_cpp.
-#include "containers/common/inference/inference_model_helper.h"
-#include "containers/common/io/tabular/input.h"
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
 #include "include/llama-cpp.h"
 #include "include/llama.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::local_inference {
 namespace {
 
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
-using ::fcp::confidentialcompute::Prompt;
 using ::fcp::confidentialcompute::RuntimeConfig;
 using ::gcpp::Gemma;
 using ::gcpp::InferenceArgs;
@@ -49,13 +47,7 @@ using ::gcpp::ThreadingArgs;
 using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
 using ::gcpp::WrapAndTokenize;
-using ::tensorflow_federated::aggregation::DataType;
-using ::tensorflow_federated::aggregation::MutableStringData;
-using ::tensorflow_federated::aggregation::Tensor;
-using ::tensorflow_federated::aggregation::TensorShape;
 
-// The max prompt size is set to match the gemma.cpp default seq_len value.
-constexpr size_t kMaxPromptSize = 8192;
 // Set the default max_output_tokens to 128. This can be overridden by the
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
@@ -127,6 +119,9 @@ absl::StatusOr<InferenceModel> InferenceModel::BuildModel(
   switch (inference_configuration.initialize_configuration
               .model_init_config_case()) {
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
+      // TODO: remove the ability to 'share' a GemmaCppModel across multiple
+      // InferenceModel instances (which only fed_sql makes use of). This would
+      // simplify the initialization code path further.
       if (inference_configuration.shared_gemma_model != nullptr) {
         if (inference_configuration.shared_gemma_model->gemma == nullptr) {
           return absl::InvalidArgumentError(
@@ -158,18 +153,10 @@ absl::StatusOr<InferenceModel> InferenceModel::BuildModel(
   }
 }
 
-absl::StatusOr<InferenceModel::InferenceOutput>
-InferenceModel::RunGemmaCppInference(
-    const Prompt& prompt, const Input& input,
-    absl::Span<const size_t> input_column_indices,
-    const std::string& output_column_name) {
-  if (input_column_indices.empty()) {
-    ABSL_ASSIGN_OR_RETURN(Tensor tensor,
-                          Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                                         std::make_unique<MutableStringData>(0),
-                                         output_column_name));
-    return InferenceOutput{std::move(tensor), std::vector<size_t>()};
-  }
+std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatchGemmaCpp(
+    absl::Span<const std::string> prompts) {
+  std::vector<absl::StatusOr<std::string>> results;
+  results.reserve(prompts.size());
 
   GemmaCppModel& gemma_model =
       *std::get<std::shared_ptr<GemmaCppModel>>(model_);
@@ -178,9 +165,6 @@ InferenceModel::RunGemmaCppInference(
   RuntimeConfig inference_runtime_config =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config();
-  size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
-                               ? inference_runtime_config.max_prompt_size()
-                               : kMaxPromptSize;
   size_t config_max_output_tokens =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config()
@@ -190,13 +174,6 @@ InferenceModel::RunGemmaCppInference(
                                  : kMaxOutputTokens;
   float temperature = 1.0 + inference_runtime_config.temperature_diff();
 
-  const size_t row_count = input.GetRowCount();
-  std::unique_ptr<MutableStringData> output_string_data =
-      std::make_unique<MutableStringData>(static_cast<long>(row_count));
-  size_t num_output_rows = 0;
-  std::vector<size_t> per_row_output_counts;
-  per_row_output_counts.reserve(row_count);
-
   gcpp::MatMulEnv* env_ptr = gemma_model.env.get();
   gcpp::Allocator* allocator_ptr = &gemma_model.ctx->allocator;
   TimingInfo timing_info;
@@ -205,10 +182,12 @@ InferenceModel::RunGemmaCppInference(
                               ? inference_runtime_config.max_batch_size()
                               : kDefaultMaxBatchSize;
 
-  // Process rows in batches of max_batch_size.
-  for (size_t batch_start = 0; batch_start < row_count;
+  // Process prompts in batches of max_batch_size (see GenerateBatch() in
+  // inference_model.h).
+  for (size_t batch_start = 0; batch_start < prompts.size();
        batch_start += max_batch_size) {
-    const size_t batch_end = std::min(batch_start + max_batch_size, row_count);
+    const size_t batch_end =
+        std::min(batch_start + max_batch_size, prompts.size());
     const size_t batch_size = batch_end - batch_start;
 
     // Tokenize all prompts in this batch.
@@ -216,12 +195,7 @@ InferenceModel::RunGemmaCppInference(
     std::vector<gcpp::PromptTokens> prompt_tokens(batch_size);
     std::vector<size_t> prompt_sizes(batch_size);
     for (size_t i = 0; i < batch_size; ++i) {
-      ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(batch_start + i));
-      ABSL_ASSIGN_OR_RETURN(
-          std::string combined_prompt,
-          prompt_processor_.PopulatePromptTemplate(
-              prompt, row, input.GetColumnNames(), input_column_indices,
-              output_column_name, max_prompt_size));
+      std::string combined_prompt = prompts[batch_start + i];
       size_t generated = 0;
       all_tokens[i] =
           WrapAndTokenize(gemma->Tokenizer(), gemma->ChatTemplate(),
@@ -274,45 +248,33 @@ InferenceModel::RunGemmaCppInference(
         .batch_stream_token = batch_stream_token,
     };
     // Serialize GenerateBatch calls on this model's thread pool / MatMulEnv.
+    std::optional<std::string> chunk_error;
     {
       absl::MutexLock lock(&gemma_model.mutex);
       try {
         gemma->GenerateBatch(runtime_config, all_queries, *env_ptr,
                              timing_info);
       } catch (const std::exception& e) {
-        return absl::InternalError(
-            absl::StrCat("gemma.cpp batched inference failed: ", e.what()));
+        chunk_error = e.what();
       }
+    }
+    if (chunk_error.has_value()) {
+      // All prompts in a chunk share a single GenerateBatch call, so a failure
+      // there invalidates the whole chunk. Other chunks are unaffected.
+      for (size_t i = 0; i < batch_size; ++i) {
+        results.push_back(absl::InternalError(absl::StrCat(
+            "gemma.cpp batched inference failed: ", *chunk_error)));
+      }
+      continue;
     }
 
     // Collect outputs from stream callbacks.
     for (size_t i = 0; i < batch_size; ++i) {
-      std::string output_string = output_streams[i].str();
-      absl::StatusOr<size_t> num_rows_added_status =
-          output_processor_.ProcessInferenceOutput(
-              prompt, std::move(output_string), output_column_name,
-              output_string_data.get());
-      if (!num_rows_added_status.ok()) {
-        LOG(WARNING) << "Failed to process inference output: "
-                     << num_rows_added_status.status()
-                     << ". Outputting empty string.";
-        output_string_data->Add("");
-        num_output_rows++;
-        per_row_output_counts.push_back(1);
-      } else {
-        num_output_rows += *num_rows_added_status;
-        per_row_output_counts.push_back(*num_rows_added_status);
-      }
+      results.push_back(output_streams[i].str());
     }
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      Tensor output_tensor,
-      Tensor::Create(DataType::DT_STRING,
-                     TensorShape({static_cast<long>(num_output_rows)}),
-                     std::move(output_string_data), output_column_name));
-  return InferenceOutput{std::move(output_tensor),
-                         std::move(per_row_output_counts)};
+  return results;
 }
 
 absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
@@ -448,189 +410,39 @@ absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
   return output_stream.str();
 }
 
-absl::StatusOr<InferenceModel::InferenceOutput>
-InferenceModel::RunLlamaCppInference(
-    const Prompt& prompt, const Input& input,
-    absl::Span<const size_t> input_column_indices,
-    const std::string& output_column_name) {
-  if (input_column_indices.empty()) {
-    ABSL_ASSIGN_OR_RETURN(Tensor tensor,
-                          Tensor::Create(DataType::DT_STRING, TensorShape({0}),
-                                         std::make_unique<MutableStringData>(0),
-                                         output_column_name));
-    return InferenceOutput{std::move(tensor), std::vector<size_t>()};
-  }
+std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatchLlamaCpp(
+    absl::Span<const std::string> prompts) {
   LlamaCppModel& llama_model = std::get<LlamaCppModel>(model_);
   const llama_vocab* vocab = llama_model_get_vocab(llama_model.llama_.get());
   if (!vocab) {
-    return absl::InternalError("Failed to get llama vocab");
-  }
-  RuntimeConfig inference_runtime_config =
-      inference_configuration_.initialize_configuration.inference_config()
-          .runtime_config();
-  size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
-                               ? inference_runtime_config.max_prompt_size()
-                               : kMaxPromptSize;
-
-  std::unique_ptr<MutableStringData> output_string_data =
-      std::make_unique<MutableStringData>(
-          static_cast<long>(input.GetRowCount()));
-  size_t num_output_rows = 0;
-  std::vector<size_t> per_row_output_counts;
-  per_row_output_counts.reserve(input.GetRowCount());
-  // For each row of the input columns, we first populate the prompt template
-  // to create a combined prompt matching the column values, then run inference
-  // over the combined prompt. Each element in the output tensor corresponds
-  // to the inference result of one row of the input columns.
-  for (int i = 0; i < input.GetRowCount(); ++i) {
-    ABSL_ASSIGN_OR_RETURN(RowView row, input.GetRow(i));
-    ABSL_ASSIGN_OR_RETURN(
-        std::string combined_prompt,
-        prompt_processor_.PopulatePromptTemplate(
-            prompt, row, input.GetColumnNames(), input_column_indices,
-            output_column_name, max_prompt_size));
-    // Generate inference output for a row.
-    ABSL_ASSIGN_OR_RETURN(
-        std::string output_string,
-        RunLlamaCppInferencePerRow(combined_prompt, llama_model, vocab));
-
-    absl::StatusOr<size_t> num_rows_added_status =
-        output_processor_.ProcessInferenceOutput(
-            prompt, std::move(output_string), output_column_name,
-            output_string_data.get());
-    if (!num_rows_added_status.ok()) {
-      LOG(WARNING) << "Failed to process inference output: "
-                   << num_rows_added_status.status()
-                   << ". Outputting empty string.";
-      output_string_data->Add("");
-      num_output_rows++;
-      per_row_output_counts.push_back(1);
-    } else {
-      num_output_rows += *num_rows_added_status;
-      per_row_output_counts.push_back(*num_rows_added_status);
-    }
+    return std::vector<absl::StatusOr<std::string>>(
+        prompts.size(), absl::InternalError("Failed to get llama vocab"));
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      Tensor output_tensor,
-      Tensor::Create(DataType::DT_STRING,
-                     TensorShape({static_cast<long>(num_output_rows)}),
-                     std::move(output_string_data), output_column_name));
-  return InferenceOutput{std::move(output_tensor),
-                         std::move(per_row_output_counts)};
+  std::vector<absl::StatusOr<std::string>> results;
+  results.reserve(prompts.size());
+  // llama.cpp has no batched generation API here, so each prompt is run on its
+  // own. Each element of the output corresponds to one input prompt.
+  for (const std::string& prompt : prompts) {
+    results.push_back(RunLlamaCppInferencePerRow(prompt, llama_model, vocab));
+  }
+  return results;
 }
 
-absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
-    Input& input, std::map<std::string, Tensor>& output_columns,
-    const std::map<std::string, std::vector<size_t>>&
-        per_row_output_counts_map) {
-  if (output_columns.size() != 1) {
-    // This function is called per-task, so there is always one output column.
-    return absl::InternalError(
-        "DuplicateColumnsForMultipleRows called with multiple output columns");
+std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatch(
+    absl::Span<const std::string> prompts) {
+  if (prompts.empty()) {
+    return {};
   }
-  const size_t original_row_count = input.GetRowCount();
-  if (original_row_count == 0) {
-    return absl::OkStatus();
+  if (std::holds_alternative<std::shared_ptr<GemmaCppModel>>(model_)) {
+    return GenerateBatchGemmaCpp(prompts);
   }
-
-  std::string metadata = std::string(input.GetMetadata());
-  std::optional<std::string> original_privacy_id = input.GetPrivacyId();
-
-  ABSL_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
-                        std::move(input).MoveToTensors());
-
-  const auto& per_row_output_counts = per_row_output_counts_map.begin()->second;
-
-  // Use the shared helper for tensor row duplication.
-  ABSL_ASSIGN_OR_RETURN(
-      std::vector<Tensor> final_columns,
-      inference::DuplicateTensorRows(original_columns, original_row_count,
-                                     per_row_output_counts));
-
-  ABSL_ASSIGN_OR_RETURN(
-      Input new_input,
-      Input::CreateFromTensors(std::move(final_columns), std::move(metadata),
-                               std::move(original_privacy_id)));
-  input = std::move(new_input);
-  return absl::OkStatus();
-}
-
-absl::Status InferenceModel::RunInference(Input& input) {
-  for (const auto& inference_task :
-       inference_configuration_.initialize_configuration.inference_config()
-           .inference_task()) {
-    if (!inference_task.has_prompt()) {
-      return absl::InvalidArgumentError(
-          "Prompt not found when running inference. Only prompt-based "
-          "inference is supported.");
-    }
-    std::vector<std::string> input_column_names;
-    if (!inference_task.column_config().input_column_names().empty()) {
-      input_column_names.insert(
-          input_column_names.end(),
-          inference_task.column_config().input_column_names().begin(),
-          inference_task.column_config().input_column_names().end());
-    } else {
-      return absl::InvalidArgumentError(
-          "No input column names found when running inference.");
-    }
-    const std::string& output_column_name =
-        inference_task.column_config().output_column_name();
-
-    // Find the indices that correspond to the input columns.
-    absl::Span<const std::string> column_names = input.GetColumnNames();
-    std::vector<size_t> input_column_indices;
-    for (const auto& input_column_name : input_column_names) {
-      const auto it = std::find(column_names.begin(), column_names.end(),
-                                input_column_name);
-      if (it == column_names.end()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Couldn't find an input column ", input_column_name,
-                         " to run inference on."));
-      }
-      input_column_indices.push_back(it - column_names.begin());
-    }
-
-    InferenceOutput inference_output;
-    if (std::holds_alternative<std::shared_ptr<GemmaCppModel>>(model_)) {
-      ABSL_ASSIGN_OR_RETURN(
-          inference_output,
-          RunGemmaCppInference(inference_task.prompt(), input,
-                               input_column_indices, output_column_name));
-    } else if (std::holds_alternative<LlamaCppModel>(model_)) {
-      ABSL_ASSIGN_OR_RETURN(
-          inference_output,
-          RunLlamaCppInference(inference_task.prompt(), input,
-                               input_column_indices, output_column_name));
-    } else {
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported inference model type."));
-    }
-
-    std::map<std::string, Tensor> current_output_column;
-    current_output_column.emplace(output_column_name,
-                                  std::move(inference_output.tensor));
-
-    // If any of the rows generated multiple outputs, duplicate the columns to
-    // match the new row count.
-    if (std::any_of(inference_output.per_row_output_counts.begin(),
-                    inference_output.per_row_output_counts.end(),
-                    [](size_t count) { return count != 1; })) {
-      std::map<std::string, std::vector<size_t>> per_row_output_counts_map;
-      per_row_output_counts_map.emplace(
-          output_column_name,
-          std::move(inference_output.per_row_output_counts));
-
-      ABSL_RETURN_IF_ERROR(DuplicateColumnsForMultipleRows(
-          input, current_output_column, per_row_output_counts_map));
-    }
-
-    ABSL_RETURN_IF_ERROR(
-        input.AddColumn(std::move(current_output_column.begin()->second)));
+  if (std::holds_alternative<LlamaCppModel>(model_)) {
+    return GenerateBatchLlamaCpp(prompts);
   }
-
-  return absl::OkStatus();
+  return std::vector<absl::StatusOr<std::string>>(
+      prompts.size(),
+      absl::UnimplementedError("Unsupported inference model type."));
 }
 
 const SessionInferenceConfiguration& InferenceModel::GetInferenceConfiguration()
@@ -646,4 +458,4 @@ std::shared_ptr<GemmaCppModel> InferenceModel::GetGemmaCppModel() const {
   return nullptr;
 }
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::local_inference

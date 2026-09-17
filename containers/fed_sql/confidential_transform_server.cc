@@ -55,6 +55,12 @@ namespace confidential_federated_compute::fed_sql {
 
 namespace {
 
+using ::confidential_federated_compute::local_inference::InferenceModel;
+using ::confidential_federated_compute::local_inference::
+    SessionGemmaCppConfiguration;
+using ::confidential_federated_compute::local_inference::
+    SessionLlamaCppConfiguration;
+
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::AccessBudget;
 using ::fcp::confidentialcompute::BlobHeader;

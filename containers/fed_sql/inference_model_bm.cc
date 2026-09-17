@@ -27,7 +27,8 @@
 #include "absl/time/time.h"
 #include "benchmark/benchmark.h"
 #include "containers/common/io/tabular/input.h"
-#include "containers/fed_sql/inference_model.h"
+#include "containers/common/local_inference/inference_model.h"
+#include "containers/fed_sql/inference_runner.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
@@ -42,6 +43,8 @@ namespace confidential_federated_compute::fed_sql {
 namespace {
 
 using ::confidential_federated_compute::Input;
+using ::confidential_federated_compute::local_inference::
+    SessionInferenceConfiguration;
 using ::fcp::confidentialcompute::Prompt;
 using ::tensorflow_federated::aggregation::Tensor;
 
@@ -72,7 +75,7 @@ constexpr char kPromptTemplate[] =
 template <Prompt::Parser kParser>
 class GemmaInferenceBenchmark : public benchmark::Fixture {
  public:
-  InferenceModel* model() const { return model_.get(); }
+  InferenceRunner* model() const { return model_.get(); }
 
   void SetUp(::benchmark::State& state) override {
     std::string tokenizer_path = absl::GetFlag(FLAGS_tokenizer_path);
@@ -107,14 +110,14 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
         model_weight_path;
 
     absl::Time start_time = absl::Now();
-    auto model_or = InferenceModel::BuildModel(inference_configuration);
+    auto model_or = InferenceRunner::BuildModel(inference_configuration);
     if (!model_or.ok()) {
       state.SkipWithError((std::string("Failed to build model: ") +
                            model_or.status().ToString())
                               .c_str());
       return;
     }
-    model_ = std::make_unique<InferenceModel>(std::move(*model_or));
+    model_ = std::make_unique<InferenceRunner>(std::move(*model_or));
     LOG(INFO) << "Initializing model took " << absl::Now() - start_time;
   }
 
@@ -155,7 +158,7 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
   }
 
  private:
-  std::unique_ptr<InferenceModel> model_;
+  std::unique_ptr<InferenceRunner> model_;
 };
 
 // Benchmark without system instructions.

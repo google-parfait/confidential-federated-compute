@@ -55,8 +55,8 @@ bazel_dep(name = "sqlite3", version = "3.46.1", dev_dependency = True)
 bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
 # go/keep-sorted end
 
-cfc_dev_deps = use_extension("//:extensions.bzl", "cfc_dev_deps", dev_dependency = True)
-use_repo(cfc_dev_deps, "llama_cpp")
+llama_cpp_deps = use_extension("//containers/common/local_inference:llama_cpp_deps.bzl", "llama_cpp_deps", dev_dependency = True)
+use_repo(llama_cpp_deps, "llama_cpp")
 
 # Module overrides.
 # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,single_version_override

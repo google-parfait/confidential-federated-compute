@@ -31,7 +31,6 @@
 #include "containers/fed_sql/partition_private_state.pb.h"
 #include "containers/fed_sql/private_state.h"
 #include "containers/fed_sql/range_tracker.h"
-#include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"

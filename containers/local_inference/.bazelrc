@@ -1,0 +1,6 @@
+import %workspace%/../../.bazelrc.common
+
+# gemma.cpp's bf16 conversions make clang 19 emit calls to compiler builtins
+# like __truncsfbf2, which the sysroot's (old) libgcc doesn't provide. Use
+# compiler-rt's builtins instead (while still unwinding via libgcc).
+build --linkopt=-rtlib=compiler-rt --linkopt=-unwindlib=libgcc

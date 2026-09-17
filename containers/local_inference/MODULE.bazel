@@ -1,0 +1,139 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+module(
+    name = "local_inference",
+    version = "0.0.1",
+    compatibility_level = 1,
+)
+
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20260526.0",
+)
+
+single_version_override(
+    module_name = "rules_python",
+    version = "2.0.2",
+)
+
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "boringssl", version = "0.20260413.0")
+bazel_dep(name = "confidential-federated-compute")
+bazel_dep(name = "confidential-federated-compute-sysroot")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
+bazel_dep(name = "gemma", version = "0.0.1")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2", repo_name = "com_google_googletest")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "highway", version = "1.2.0")
+
+# `oak` must be declared before `rules_rust` so that Oak's registered Rust
+# toolchains take precedence over rules_rust's default 2021 toolchain during
+# Bzlmod toolchain resolution.
+bazel_dep(name = "oak")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_python", version = "2.0.2")
+bazel_dep(name = "rules_rust", version = "0.70.0")
+bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+
+local_path_override(
+    module_name = "confidential-federated-compute",
+    path = "../..",
+)
+
+archive_override(
+    module_name = "confidential-federated-compute-sysroot",
+    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>,
+    # where <sha256> is base16 encoded, not base64 as required by `integrity`.
+    integrity = "sha256-hsz56iNgI37K0BYzqG1WbtFuE32vmGMg75HsKV6l9nk=",
+    urls = ["https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz"],
+)
+
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
+    patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
+    strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz"],
+)
+
+archive_override(
+    module_name = "gemma",
+    integrity = "sha256-X1U/fYuoUEWcPempko07YZhNTCL68xcquoLO9srjC7c=",
+    patches = ["//third_party/gemma:module.patch"],
+    strip_prefix = "gemma.cpp-22f5f68c099faaeab00dbd9de9f8eb1a09eb7db6",
+    urls = ["https://github.com/google/gemma.cpp/archive/22f5f68c099faaeab00dbd9de9f8eb1a09eb7db6.tar.gz"],
+)
+
+archive_override(
+    module_name = "highway",
+    integrity = "sha256-Va2EnJTqd+1VdTgHcQMWEMmWKfFudJ59OE4HCcvk+0c=",
+    strip_prefix = "highway-9d5b12611fcfe145f988771c45e7bae9f78cb7fa",
+    urls = ["https://github.com/google/highway/archive/9d5b12611fcfe145f988771c45e7bae9f78cb7fa.tar.gz"],
+)
+
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
+)
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.defaults(python_version = "3.13")
+python.toolchain(python_version = "3.13")
+use_repo(python, "python_3_13")
+
+register_toolchains("@python_3_13//:all")
+
+llama_cpp_deps = use_extension("@confidential-federated-compute//containers/common/local_inference:llama_cpp_deps.bzl", "llama_cpp_deps")
+use_repo(llama_cpp_deps, "llama_cpp")
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "19.1.0",
+    stdlib = {"linux-x86_64": "stdc++"},
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@confidential-federated-compute-sysroot//:sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
+
+# Rust crates.
+oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
+use_repo(oak_crates, "oak_crates_index")

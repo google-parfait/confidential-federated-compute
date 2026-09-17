@@ -12,23 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Loads dependencies for Confidential Federated Compute."""
+"""Loads llama_cpp dependency for Confidential Federated Compute."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-visibility(["//..."])
+visibility("public")
 
-def _cfc_dev_deps_impl(ctx):  # buildifier: disable=unused-variable
+def _llama_cpp_deps_impl(ctx):  # buildifier: disable=unused-variable
     # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=http_archive
     http_archive(
         name = "llama_cpp",
-        build_file = "//third_party/llama_cpp:llama_cpp.BUILD.bzl",
+        build_file = "@confidential-federated-compute//containers/common/local_inference:llama_cpp.BUILD.bzl",
         integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
         patch_args = ["-p1"],
-        patches = ["//third_party/llama_cpp:add_build_info.patch"],
+        patches = ["@confidential-federated-compute//containers/common/local_inference:add_build_info.patch"],
         strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
         url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
     )
     # go/keep-sorted end
 
-cfc_dev_deps = module_extension(implementation = _cfc_dev_deps_impl)
+llama_cpp_deps = module_extension(implementation = _llama_cpp_deps_impl)

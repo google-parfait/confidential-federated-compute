@@ -26,28 +26,31 @@
 namespace confidential_federated_compute::private_inference {
 namespace {
 
-using ::fcp::confidentialcompute::InferenceConfiguration;
+using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 
 TEST(PiBatchedInferenceProviderTest, GetEngineFailsWhenPaicConfigMissing) {
   PiBatchedInferenceProvider provider("localhost:12345");
-  InferenceConfiguration config;
+  InferenceInitializeConfiguration init_config;
   // Test with no paic_config, which should fail validation.
-  auto engine = provider.GetEngineForInferenceConfig(config);
-  EXPECT_EQ(engine, nullptr);
+  auto engine = provider.GetEngineForInferenceConfig(init_config, {});
+  EXPECT_EQ(engine.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST(PiBatchedInferenceProviderTest,
      DoBatchedInferenceFailsWhenServerUnreachable) {
   PiBatchedInferenceProvider provider("localhost:12345");
-  InferenceConfiguration config;
-  config.mutable_paic_config()->set_paic_feature_id(100);
-  auto engine = provider.GetEngineForInferenceConfig(config);
+  InferenceInitializeConfiguration init_config;
+  init_config.mutable_inference_config()
+      ->mutable_paic_config()
+      ->set_paic_feature_id(100);
+  auto engine = provider.GetEngineForInferenceConfig(init_config, {});
 
   // The engine shouldn't be nullptr, it handles creation unconditionally since
   // handshake happens in DoBatchedInference.
-  ASSERT_NE(engine, nullptr);
+  ASSERT_TRUE(engine.ok()) << engine.status();
+  ASSERT_NE(*engine, nullptr);
 
-  auto results = engine->DoBatchedInference({"test_prompt"});
+  auto results = (*engine)->DoBatchedInference({"test_prompt"});
   ASSERT_EQ(results.size(), 1);
   EXPECT_FALSE(results[0].ok());
 }

@@ -25,6 +25,7 @@ cc_library(
     srcs = [],
     hdrs = ["batched_inference_engine.h"],
     deps = [
+        "//containers/fns",
         "@com_google_absl//absl/status:statusor",
         "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
     ],

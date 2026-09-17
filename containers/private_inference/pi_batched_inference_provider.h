@@ -45,10 +45,13 @@ class PiBatchedInferenceProvider
   explicit PiBatchedInferenceProvider(std::string server_address);
   ~PiBatchedInferenceProvider() override = default;
 
-  std::shared_ptr<
-      ::confidential_federated_compute::inference::BatchedInferenceEngine>
+  absl::StatusOr<std::shared_ptr<
+      ::confidential_federated_compute::inference::BatchedInferenceEngine>>
   GetEngineForInferenceConfig(
-      const fcp::confidentialcompute::InferenceConfiguration& config) override;
+      const fcp::confidentialcompute::InferenceInitializeConfiguration&
+          init_config,
+      const ::confidential_federated_compute::fns::WriteConfigurationMap&
+          write_configuration_map) override;
 
  private:
   std::string server_address_;

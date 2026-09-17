@@ -12,27 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INFERENCE_MODEL_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INFERENCE_MODEL_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_LOCAL_INFERENCE_INFERENCE_MODEL_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_LOCAL_INFERENCE_INFERENCE_MODEL_H_
 
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "containers/common/inference/inference_model_helper.h"
-#include "containers/common/io/tabular/input.h"
+#include "absl/types/span.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
 #include "include/llama.h"
 #include "ops/matmul.h"
 #include "util/threading_context.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute::local_inference {
 
 // Holds Gemma model weights (read-only after init) along with its
 // ThreadingContext and MatMulEnv, whose access is serialized via mutex.
@@ -89,8 +89,18 @@ struct SessionInferenceConfiguration {
   std::shared_ptr<GemmaCppModel> shared_gemma_model;
 };
 
-// An LLM model that can be invoked to run inference before the per-client
-// query step.
+// An LLM model that can be invoked to generate text from already-rendered
+// prompts.
+//
+// This class is a pure generation engine: it owns model weights and turns
+// prompts into raw model output. It deliberately knows nothing about prompt
+// templating, output parsing, or tabular data. Callers that need those
+// behaviors layer them on top (see fed_sql::InferenceRunner for the tabular
+// wrapper, and BatchedInferenceFn for the batched-inference pipeline).
+//
+// InferenceModel is thread-safe when a GemmaCppModel is used (all
+// GenerateBatch calls will effectively be serialized). It is not thread-safe
+// when used with a LlamaCppModel.
 class InferenceModel {
  public:
   virtual ~InferenceModel() = default;
@@ -103,18 +113,24 @@ class InferenceModel {
 
   static absl::StatusOr<InferenceModel> BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
-  // Runs inference on the given input. The input is expected to contain the
-  // columns required by the inference task. The output column produced by
-  // the inference model will be added to the input.
-  absl::Status RunInference(Input& input);
+  // Runs the model over already-rendered prompts. Performs no templating, no
+  // parsing, and no row expansion: returns exactly one result per input
+  // prompt, in the same order. A failure that affects only part of the input
+  // is reported per entry rather than failing the whole call.
+  //
+  // May chunk internally by RuntimeConfig.max_batch_size (only the
+  // GemmaCppModel model code path supports it).
+  //
+  // NOTE: This inner chunking is needed for fed_sql::InferenceRunner, which
+  // passes all prompts for a blob in a single call and relies on GenerateBatch
+  // to bound how many prompts (and thus concurrent KVCache instances in
+  // gemma.cpp) are active at once. When driven by BatchedInferenceFn, the
+  // caller has already capped `prompts` at max_batch_size, so the chunk loop
+  // runs once.
+  virtual std::vector<absl::StatusOr<std::string>> GenerateBatch(
+      absl::Span<const std::string> prompts);
   const SessionInferenceConfiguration& GetInferenceConfiguration() const;
   std::shared_ptr<GemmaCppModel> GetGemmaCppModel() const;
-
-  struct InferenceOutput {
-    ::tensorflow_federated::aggregation::Tensor tensor;
-    // Number of output rows generated for each input row.
-    std::vector<size_t> per_row_output_counts;
-  };
 
  protected:
   InferenceModel(
@@ -130,33 +146,17 @@ class InferenceModel {
   static absl::StatusOr<LlamaCppModel> BuildLlamaCppModel(
       const SessionLlamaCppConfiguration& llama_config);
 
-  // Runs inference with the gemma.cpp model using given prompt over all rows
-  // and returns an InferenceOutput containing the results representing the
-  // output column.
-  virtual absl::StatusOr<InferenceOutput> RunGemmaCppInference(
-      const fcp::confidentialcompute::Prompt& prompt, const Input& input,
-      absl::Span<const size_t> input_column_indices,
-      const std::string& output_column_name);
+  // Generates text with the gemma.cpp model for each of the given prompts,
+  // processing them in chunks of RuntimeConfig.max_batch_size. Returns one
+  // result per prompt, in order. A chunk that fails yields a failed status for
+  // each of its own entries only; other chunks are unaffected.
+  std::vector<absl::StatusOr<std::string>> GenerateBatchGemmaCpp(
+      absl::Span<const std::string> prompts);
 
-  // Runs inference with the llama.cpp model using given prompt over all rows
-  // and returns an InferenceOutput containing the results representing the
-  // output column.
-  virtual absl::StatusOr<InferenceOutput> RunLlamaCppInference(
-      const fcp::confidentialcompute::Prompt& prompt, const Input& input,
-      absl::Span<const size_t> input_column_indices,
-      const std::string& output_column_name);
-
-  // Duplicates rows in the input columns to match the number of rows in the
-  // output columns, which may be greater than one per input row. For now, only
-  // one output column duplication is supported (only supports a single output
-  // column in the per_row_output_counts_map). Once this is extended to multiple
-  // output columns, this will handle the cartesian product of multiple outputs.
-  absl::Status DuplicateColumnsForMultipleRows(
-      Input& input,
-      std::map<std::string, ::tensorflow_federated::aggregation::Tensor>&
-          output_columns,
-      const std::map<std::string, std::vector<size_t>>&
-          per_row_output_counts_map);
+  // Generates text with the llama.cpp model for each of the given prompts, one
+  // prompt at a time. Returns one result per prompt, in order.
+  std::vector<absl::StatusOr<std::string>> GenerateBatchLlamaCpp(
+      absl::Span<const std::string> prompts);
 
   // Helpter function that runs inference with the llama.cpp model using
   // given prompt over a single row.
@@ -166,10 +166,8 @@ class InferenceModel {
 
   SessionInferenceConfiguration inference_configuration_;
   std::variant<std::shared_ptr<GemmaCppModel>, LlamaCppModel> model_;
-  inference::InferencePromptProcessor prompt_processor_;
-  inference::InferenceOutputProcessor output_processor_;
 };
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute::local_inference
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_INFERENCE_MODEL_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_LOCAL_INFERENCE_INFERENCE_MODEL_H_
