@@ -45,6 +45,9 @@ const OPEN_TELEMETRY_ADDR: &str = "http://10.0.2.100:8080";
 /// but the host forwarding rules specify a different port.
 const OAK_SESSION_SERVICE_ADDR: &str = "http://10.0.2.100:8008";
 
+/// Maximum gRPC message size (64 MiB).
+const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
 fn get_reference_values(evidence: &Evidence) -> anyhow::Result<ReferenceValues> {
     match evidence.root_layer.as_ref().map(|rl| rl.platform.try_into()) {
         Some(Ok(TeePlatform::AmdSevSnp)) => {
@@ -169,7 +172,11 @@ async fn main() {
     tonic::transport::Server::builder()
         .layer(oak_observer.create_monitoring_layer())
         .add_service(AttestationTransparencyServiceServer::new(attestation_transparency_service))
-        .add_service(KeyManagementServiceServer::new(key_management_service))
+        .add_service(
+            KeyManagementServiceServer::new(key_management_service)
+                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE),
+        )
         .add_service(EndpointServiceServer::new(endpoint_service))
         .serve("[::]:8080".parse().expect("failed to parse address"))
         .await
