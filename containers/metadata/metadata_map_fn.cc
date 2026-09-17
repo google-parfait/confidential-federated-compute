@@ -133,8 +133,10 @@ absl::StatusOr<std::optional<MinMaxEventTimes>> GetMinMaxEventTimes(
   // Iterate over the event times and find the min and max.
   for (const absl::string_view event_time :
        event_times_tensor.AsSpan<absl::string_view>()) {
-    ABSL_ASSIGN_OR_RETURN(absl::CivilSecond civil_time,
-                          ConvertEventTimeToCivilSecond(event_time));
+    ABSL_ASSIGN_OR_RETURN(
+        absl::CivilSecond civil_time,
+        ConvertEventTimeToCivilSecond(event_time,
+                                      /*allow_fractional_seconds=*/true));
     min_max_event_times.min = std::min(min_max_event_times.min, civil_time);
     min_max_event_times.max = std::max(min_max_event_times.max, civil_time);
   }
