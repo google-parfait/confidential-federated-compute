@@ -28,14 +28,18 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "budget.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/time_budget/budget.pb.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/confidentialcompute/private_state.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.h"
 #include "gtest/gtest.h"
-#include "mauve_budget_state.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 
 namespace confidential_federated_compute::mauve_score {
@@ -43,12 +47,16 @@ namespace confidential_federated_compute::mauve_score {
 // Forward declarations for testing — these are internal to mauve_score_fn.cc.
 using ReadRecordFn = absl::AnyInvocable<absl::StatusOr<
     std::vector<fcp::confidentialcompute::Embedding>>(absl::string_view)>;
+using ComputeMauveFn =
+    std::function<absl::StatusOr<fcp::confidentialcompute::MauveScoreResult>(
+        const std::vector<std::vector<float>>&,
+        const std::vector<std::vector<float>>&)>;
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> ProvideMauveScoreFnFactory(
     const google::protobuf::Any& configuration,
     const google::protobuf::Any& config_constraints,
     const confidential_federated_compute::fns::WriteConfigurationMap&
         write_configuration_map,
-    ReadRecordFn read_record_fn);
+    ReadRecordFn read_record_fn, ComputeMauveFn compute_mauve_fn = nullptr);
 
 namespace {
 
@@ -61,11 +69,14 @@ using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
+using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
 using ::fcp::confidentialcompute::ReadResponse;
+using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_FLOAT;
@@ -119,10 +130,12 @@ Any CreateValidInitConfig() {
   return config;
 }
 
-Any CreateValidConfigConstraints(uint32_t budget_times = 5) {
+Any CreateValidConfigConstraints(uint32_t budget_times = 5,
+                                 uint64_t min_agg_window_minutes = 0) {
   Any constraints;
   MauveScoreContainerConfigConstraints mauve_constraints;
   mauve_constraints.mutable_access_budget()->set_times(budget_times);
+  mauve_constraints.set_min_agg_window_minutes(min_agg_window_minutes);
   constraints.PackFrom(mauve_constraints);
   return constraints;
 }
@@ -171,6 +184,19 @@ std::string BuildCheckpoint(int batch, int dim) {
   auto ckpt = builder->Build();
   CHECK_OK(ckpt);
   return std::string(*ckpt);
+}
+
+ComputeMauveFn CreateFakeComputeMauveFn() {
+  return [](const std::vector<std::vector<float>>& real_embeddings,
+            const std::vector<std::vector<float>>& synth_embeddings)
+             -> absl::StatusOr<MauveScoreResult> {
+    MauveScoreResult result;
+    result.set_mauve_auc(0.95f);
+    result.set_num_clusters(10);
+    result.set_recall(0.9f);
+    result.set_precision(0.92f);
+    return result;
+  };
 }
 
 TEST(MauveScoreFnFactoryTest, InvalidConfig) {
@@ -283,13 +309,77 @@ class MauveScoreFnTest : public testing::Test {
         CreateWriteConfigurationMap(private_state_path);
     auto fn_factory = ProvideMauveScoreFnFactory(
         config, constraints, write_configuration_map,
-        CreateSyntheticReadRecordFn(kNumSynthetic, kDim));
+        CreateSyntheticReadRecordFn(kNumSynthetic, kDim),
+        CreateFakeComputeMauveFn());
     ASSERT_THAT(fn_factory, IsOk());
     factory_ = std::move(*fn_factory);
 
     auto fn = factory_->CreateFn();
     ASSERT_THAT(fn, IsOk());
     fn_ = std::move(*fn);
+
+    EXPECT_CALL(context_, GetCounters())
+        .WillRepeatedly(::testing::ReturnRef(counters_));
+  }
+
+  std::unique_ptr<Fn> CreateFnWithState(absl::string_view initial_state,
+                                        uint32_t budget_times = 5,
+                                        uint64_t min_agg_window_minutes = 0) {
+    std::string private_state_path = CreateTempPrivateStateFile(initial_state);
+    auto write_configuration_map =
+        CreateWriteConfigurationMap(private_state_path);
+    auto fn_factory = ProvideMauveScoreFnFactory(
+        CreateValidInitConfig(),
+        CreateValidConfigConstraints(budget_times, min_agg_window_minutes),
+        write_configuration_map,
+        CreateSyntheticReadRecordFn(kNumSynthetic, kDim),
+        CreateFakeComputeMauveFn());
+    CHECK_OK(fn_factory);
+    fn_.reset();
+    factory_ = std::move(*fn_factory);
+    auto fn = factory_->CreateFn();
+    CHECK_OK(fn);
+    return std::move(*fn);
+  }
+
+  static WriteRequest CreateKeyIdWriteRequest(absl::string_view blob_id,
+                                              absl::string_view key_id) {
+    WriteRequest request;
+    BlobHeader header;
+    header.set_key_id(std::string(key_id));
+    request.mutable_first_request_metadata()
+        ->mutable_hpke_plus_aead_data()
+        ->set_blob_id(std::string(blob_id));
+    request.mutable_first_request_metadata()
+        ->mutable_hpke_plus_aead_data()
+        ->mutable_kms_symmetric_key_associated_data()
+        ->mutable_associated_metadata()
+        ->PackFrom(header);
+    return request;
+  }
+
+  static WriteRequest CreateTimeWindowWriteRequest(
+      absl::string_view blob_id, int64_t start_seconds, int64_t end_seconds,
+      absl::string_view key_id = "") {
+    WriteRequest request;
+    SessionTimeWindowMetadata time_window_metadata;
+    time_window_metadata.mutable_session_window_start()->set_seconds(
+        start_seconds);
+    time_window_metadata.mutable_session_window_end()->set_seconds(end_seconds);
+    if (!key_id.empty()) {
+      time_window_metadata.add_key_ids(std::string(key_id));
+    }
+    AssociatedMetadata assoc_metadata;
+    assoc_metadata.add_metadata()->PackFrom(time_window_metadata);
+    request.mutable_first_request_metadata()
+        ->mutable_hpke_plus_aead_data()
+        ->set_blob_id(std::string(blob_id));
+    request.mutable_first_request_metadata()
+        ->mutable_hpke_plus_aead_data()
+        ->mutable_kms_symmetric_key_associated_data()
+        ->mutable_associated_metadata()
+        ->PackFrom(assoc_metadata);
+    return request;
   }
 
   std::unique_ptr<FnFactory> factory_;
@@ -366,16 +456,109 @@ TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedKeyBasedBlobAndSucceeds) {
+  BudgetState state;
+  auto* bucket = state.add_buckets();
+  bucket->set_key("exhausted-key");
+  bucket->set_budget(0);
+
+  auto fn = CreateFnWithState(state.SerializeAsString());
+
+  // Blob 1 has exhausted budget (10 embeddings) -> should be ignored.
+  ASSERT_THAT(fn->Write(CreateKeyIdWriteRequest("blob-1", "exhausted-key"),
+                        BuildCheckpoint(/*batch=*/10, kDim), context_),
+              IsOk());
+  // Blob 2 has valid budget (50 embeddings) -> should be processed.
+  ASSERT_THAT(fn->Write(CreateKeyIdWriteRequest("blob-2", "valid-key"),
+                        BuildCheckpoint(/*batch=*/50, kDim), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn->Commit(commit_request, context_), IsOk());
+  EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
+  EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
+}
+
+TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedTimeBasedBlobAndSucceeds) {
+  auto budget =
+      Budget::Create(/*initial_state=*/std::nullopt, /*default_budget=*/1);
+  ASSERT_THAT(budget, IsOk());
+  ASSERT_THAT(budget->UpdateTimeBudget(Interval<uint64_t>(0, 3600)), IsOk());
+
+  auto fn = CreateFnWithState(budget->SerializeAsString(), /*budget_times=*/1);
+
+  // Blob 1 has exhausted time window [0, 3600) (10 embeddings) -> ignored.
+  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600),
+                        BuildCheckpoint(/*batch=*/10, kDim), context_),
+              IsOk());
+  // Blob 2 has valid time window [3600, 7200) (50 embeddings) -> processed.
+  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-2", 3600, 7200),
+                        BuildCheckpoint(/*batch=*/50, kDim), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn->Commit(commit_request, context_), IsOk());
+  EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
+  EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
+}
+
+TEST_F(MauveScoreFnTest, CommitFailsWhenAllKeyBasedBlobsHaveExhaustedBudget) {
+  BudgetState exhausted_state;
+  auto* bucket = exhausted_state.add_buckets();
+  bucket->set_key("key-1");
+  bucket->set_budget(0);
+
+  auto fn = CreateFnWithState(exhausted_state.SerializeAsString());
+
+  ASSERT_THAT(fn->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                        BuildCheckpoint(/*batch=*/10, kDim), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
+}
+
+TEST_F(MauveScoreFnTest, CommitFailsWhenAllTimeBasedBlobsHaveExhaustedBudget) {
+  auto budget =
+      Budget::Create(/*initial_state=*/std::nullopt, /*default_budget=*/1);
+  ASSERT_THAT(budget, IsOk());
+  ASSERT_THAT(budget->UpdateTimeBudget(Interval<uint64_t>(0, 3600)), IsOk());
+
+  auto fn = CreateFnWithState(budget->SerializeAsString(), /*budget_times=*/1);
+
+  ASSERT_THAT(
+      fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600, "key-1"),
+                BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsTimeWindowTooShort) {
+  auto fn = CreateFnWithState(/*initial_state=*/"", /*budget_times=*/5,
+                              /*min_agg_window_minutes=*/60);
+
+  // 30 minutes < 60 minutes required.
+  ASSERT_THAT(
+      fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 1800, "key-1"),
+                BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   // Write enough embeddings for MAUVE to work (need >= 2).
   std::string ckpt = BuildCheckpoint(/*batch=*/50, kDim);
   WriteRequest request;
   ASSERT_THAT(fn_->Write(request, ckpt, context_), IsOk());
-
-  // Set up expectations for Commit (which calls Do()). Since we now emit
-  // in FinalizeReplica instead of Do, no Emit calls during Commit.
-  EXPECT_CALL(context_, GetCounters())
-      .WillRepeatedly(::testing::ReturnRef(counters_));
 
   // Commit should compute MAUVE and store the result.
   fcp::confidentialcompute::CommitRequest commit_request;
@@ -387,20 +570,20 @@ TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   EXPECT_EQ(counters_["mauve-synth-embeddings-count"], kNumSynthetic);
 
   // Finalize should emit the result via EmitReleasable.
-  EXPECT_CALL(context_, EmitReleasable(1, _, _, _, _))
+  EXPECT_CALL(context_, EmitReleasable(0, _, _, _, _))
       .WillOnce(
           [](int, Session::KV kv, std::optional<absl::string_view> src_state,
              absl::string_view dst_state, std::string& release_token) -> bool {
-            // First run: src_state should be the empty string.
-            EXPECT_TRUE(src_state.has_value());
-            if (src_state.has_value()) {
-              EXPECT_EQ(*src_state, "");
-            }
-            // Verify the dst_state contains a valid MauveBudgetState.
-            MauveBudgetState dst;
+            // First run: src_state should be nullopt.
+            EXPECT_FALSE(src_state.has_value());
+            // Verify the dst_state contains a valid BudgetState.
+            BudgetState dst;
             EXPECT_TRUE(dst.ParseFromString(std::string(dst_state)));
             // First run with access_budget=5: remaining = 5-1 = 4
-            EXPECT_EQ(dst.remaining_budget(), 4);
+            EXPECT_EQ(dst.buckets_size(), 1);
+            if (dst.buckets_size() == 1) {
+              EXPECT_EQ(dst.buckets(0).budget(), 4);
+            }
             release_token = "test-release-token";
             return true;
           });

@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,13 +32,16 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "budget.h"
+#include "containers/common/intervals/interval.h"
+#include "containers/common/time_budget/budget.pb.h"
 #include "containers/fns/batch_do_fn.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/confidentialcompute/private_state.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
 #include "fcp/protos/confidentialcompute/sentence_transformers_config.pb.h"
 #include "google/protobuf/any.h"
-#include "mauve_budget_state.pb.h"
 #include "py_mauve_delegate.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "utils.h"
@@ -46,6 +50,11 @@ namespace confidential_federated_compute::mauve_score {
 
 using ReadRecordFn = absl::AnyInvocable<absl::StatusOr<
     std::vector<fcp::confidentialcompute::Embedding>>(absl::string_view)>;
+
+using ComputeMauveFn =
+    std::function<absl::StatusOr<fcp::confidentialcompute::MauveScoreResult>(
+        const std::vector<std::vector<float>>&,
+        const std::vector<std::vector<float>>&)>;
 
 namespace {
 
@@ -56,15 +65,36 @@ using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
+using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_FLOAT;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
+
+// Key used for budget tracking, either a time interval or a set of active key
+// ids.
+struct BudgetKey {
+  absl::flat_hash_set<std::string> active_keys;
+  std::optional<Interval<uint64_t>> agg_window;
+};
+
+bool HasTimeWindowMetadata(const Session::KV& kv) {
+  if (!kv.associated_metadata.has_value()) {
+    return false;
+  }
+  for (const auto& entry : kv.associated_metadata->metadata()) {
+    if (entry.Is<SessionTimeWindowMetadata>()) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // MauveScoreFn extends BatchDoFn to compute the MAUVE score over
 // accumulated real embeddings.
@@ -76,15 +106,17 @@ using ::tensorflow_federated::aggregation::Tensor;
 //   Write() (BatchDoFn): Accumulates raw checkpoint blobs
 //   Commit() (BatchDoFn): Calls Do() with all accumulated blobs
 //   Do(): Parses all checkpoints → checks for duplicate blob IDs →
-//         computes MAUVE → stores result for FinalizeReplica
+//         validates and updates budget → computes MAUVE → stores result for
+//         FinalizeReplica
 //   FinalizeReplica(): Emits the stored result via EmitReleasable with
 //                      budget state tracking
 class MauveScoreFn : public BatchDoFn {
  public:
   static absl::StatusOr<std::unique_ptr<MauveScoreFn>> Create(
       const std::vector<Embedding>& synthetic_data_embeddings,
-      uint32_t access_budget_times,
-      std::optional<std::string> initial_pipeline_state);
+      uint32_t access_budget_times, uint64_t min_agg_window_minutes,
+      std::optional<std::string> initial_pipeline_state,
+      ComputeMauveFn compute_mauve_fn);
 
   absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
                   DoContext& context) override;
@@ -93,44 +125,167 @@ class MauveScoreFn : public BatchDoFn {
 
  private:
   MauveScoreFn(const std::vector<Embedding>& synthetic_data_embeddings,
-               Budget budget)
+               Budget budget, uint64_t min_agg_window_minutes,
+               ComputeMauveFn compute_mauve_fn)
       : synthetic_data_embeddings_(synthetic_data_embeddings),
-        budget_(std::move(budget)) {};
+        budget_(std::move(budget)),
+        min_agg_window_minutes_(min_agg_window_minutes),
+        compute_mauve_fn_(std::move(compute_mauve_fn)) {}
+
+  absl::StatusOr<std::vector<Session::KV>>
+  FilterInputsWithRemainingTimeWindowBudget(
+      std::vector<Session::KV> accumulated_inputs, DoContext& context);
+  absl::StatusOr<std::vector<Session::KV>> FilterInputsWithRemainingKeyIdBudget(
+      std::vector<Session::KV> accumulated_inputs, DoContext& context);
+
   const std::vector<Embedding>& synthetic_data_embeddings_;
   Budget budget_;
+  const uint64_t min_agg_window_minutes_;
+  ComputeMauveFn compute_mauve_fn_;
   // Stored result from Do(), to be emitted in FinalizeReplica().
   std::string serialized_result_;
+  BudgetKey budget_key_;
 };
 
 class MauveScoreFnFactory : public FnFactory {
  public:
   MauveScoreFnFactory(std::vector<Embedding> synthetic_data_embeddings,
                       uint32_t access_budget_times,
-                      std::optional<std::string> initial_pipeline_state)
+                      uint64_t min_agg_window_minutes,
+                      std::optional<std::string> initial_pipeline_state,
+                      ComputeMauveFn compute_mauve_fn)
       : synthetic_data_embeddings_(std::move(synthetic_data_embeddings)),
         access_budget_times_(access_budget_times),
-        initial_pipeline_state_(std::move(initial_pipeline_state)) {}
+        min_agg_window_minutes_(min_agg_window_minutes),
+        initial_pipeline_state_(std::move(initial_pipeline_state)),
+        compute_mauve_fn_(std::move(compute_mauve_fn)) {}
 
   absl::StatusOr<std::unique_ptr<Fn>> CreateFn() const override {
     return MauveScoreFn::Create(synthetic_data_embeddings_,
-                                access_budget_times_, initial_pipeline_state_);
+                                access_budget_times_, min_agg_window_minutes_,
+                                initial_pipeline_state_, compute_mauve_fn_);
   }
 
  private:
   const std::vector<Embedding> synthetic_data_embeddings_;
   const uint32_t access_budget_times_;
+  const uint64_t min_agg_window_minutes_;
   std::optional<std::string> initial_pipeline_state_;
+  ComputeMauveFn compute_mauve_fn_;
 };
 
 absl::StatusOr<std::unique_ptr<MauveScoreFn>> MauveScoreFn::Create(
     const std::vector<Embedding>& synthetic_data_embeddings,
-    uint32_t access_budget_times,
-    std::optional<std::string> initial_pipeline_state) {
+    uint32_t access_budget_times, uint64_t min_agg_window_minutes,
+    std::optional<std::string> initial_pipeline_state,
+    ComputeMauveFn compute_mauve_fn) {
   ABSL_ASSIGN_OR_RETURN(
       Budget budget,
       Budget::Create(std::move(initial_pipeline_state), access_budget_times));
   return absl::WrapUnique(
-      new MauveScoreFn(synthetic_data_embeddings, std::move(budget)));
+      new MauveScoreFn(synthetic_data_embeddings, std::move(budget),
+                       min_agg_window_minutes, std::move(compute_mauve_fn)));
+}
+
+absl::StatusOr<std::vector<Session::KV>>
+MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
+    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
+  std::optional<Interval<uint64_t>> agg_window;
+  std::vector<Session::KV> valid_inputs;
+
+  for (auto& kv : accumulated_inputs) {
+    SessionTimeWindowMetadata time_window_metadata;
+    bool found = false;
+    if (kv.associated_metadata.has_value()) {
+      for (const auto& entry : kv.associated_metadata->metadata()) {
+        if (entry.UnpackTo(&time_window_metadata)) {
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found) {
+      return absl::InvalidArgumentError(
+          "Missing SessionTimeWindowMetadata in time-window budget mode.");
+    }
+
+    Interval<uint64_t> window(
+        time_window_metadata.session_window_start().seconds(),
+        time_window_metadata.session_window_end().seconds());
+    bool has_budget = budget_.HasRemainingBudget(window);
+    for (const auto& kid : time_window_metadata.key_ids()) {
+      if (!budget_.HasRemainingBudget(kid)) {
+        has_budget = false;
+        break;
+      }
+    }
+    if (!has_budget) {
+      context.IncrementCounter("mauve-ignored-exhausted-budget-blobs-count");
+      continue;
+    }
+
+    agg_window =
+        agg_window.has_value()
+            ? Interval<uint64_t>(std::min(agg_window->start(), window.start()),
+                                 std::max(agg_window->end(), window.end()))
+            : window;
+    valid_inputs.push_back(std::move(kv));
+  }
+
+  if (valid_inputs.empty()) {
+    return absl::FailedPreconditionError(
+        "No real embeddings remaining after filtering blobs with exhausted "
+        "budget.");
+  }
+
+  uint64_t window_duration_minutes =
+      (agg_window->end() - agg_window->start()) / 60;
+  if (window_duration_minutes < min_agg_window_minutes_) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "The aggregation window duration (", window_duration_minutes,
+        " minutes) is less than the minimum required (",
+        min_agg_window_minutes_, " minutes)."));
+  }
+
+  budget_key_.agg_window = agg_window;
+  return valid_inputs;
+}
+
+absl::StatusOr<std::vector<Session::KV>>
+MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
+    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
+  absl::flat_hash_set<std::string> active_keys;
+  std::vector<Session::KV> valid_inputs;
+
+  for (auto& kv : accumulated_inputs) {
+    std::string key_id = "";
+    if (kv.associated_metadata.has_value()) {
+      for (const auto& entry : kv.associated_metadata->metadata()) {
+        BlobHeader blob_header;
+        if (entry.UnpackTo(&blob_header)) {
+          key_id = blob_header.key_id();
+          break;
+        }
+      }
+    }
+
+    if (!budget_.HasRemainingBudget(key_id)) {
+      context.IncrementCounter("mauve-ignored-exhausted-budget-blobs-count");
+      continue;
+    }
+
+    active_keys.insert(key_id);
+    valid_inputs.push_back(std::move(kv));
+  }
+
+  if (valid_inputs.empty()) {
+    return absl::FailedPreconditionError(
+        "No real embeddings remaining after filtering blobs with exhausted "
+        "budget.");
+  }
+
+  budget_key_.active_keys = std::move(active_keys);
+  return valid_inputs;
 }
 
 absl::Status MauveScoreFn::Do(Any config,
@@ -148,9 +303,28 @@ absl::Status MauveScoreFn::Do(Any config,
     }
   }
 
-  // Phase 1: Parse all accumulated checkpoint blobs into flat float vectors.
+  if (accumulated_inputs.empty()) {
+    return absl::InvalidArgumentError("No real embeddings received.");
+  }
+  if (synthetic_data_embeddings_.empty()) {
+    return absl::InvalidArgumentError("No synthetic embeddings loaded.");
+  }
+
+  // Phase 1: Filter blobs by budget and update budget state.
+  std::vector<Session::KV> valid_inputs;
+  if (HasTimeWindowMetadata(accumulated_inputs.front())) {
+    ABSL_ASSIGN_OR_RETURN(valid_inputs,
+                          FilterInputsWithRemainingTimeWindowBudget(
+                              std::move(accumulated_inputs), context));
+  } else {
+    ABSL_ASSIGN_OR_RETURN(valid_inputs,
+                          FilterInputsWithRemainingKeyIdBudget(
+                              std::move(accumulated_inputs), context));
+  }
+
+  // Phase 2: Parse valid checkpoint blobs into flat float vectors.
   std::vector<std::vector<float>> real_embeddings;
-  for (auto& kv : accumulated_inputs) {
+  for (auto& kv : valid_inputs) {
     FederatedComputeCheckpointParserFactory parser_factory;
     ABSL_ASSIGN_OR_RETURN(
         auto parser, parser_factory.Create(absl::Cord(std::move(kv.data))));
@@ -175,14 +349,6 @@ absl::Status MauveScoreFn::Do(Any config,
     }
   }
 
-  // Phase 2: Validate inputs.
-  if (real_embeddings.empty()) {
-    return absl::InvalidArgumentError("No real embeddings received.");
-  }
-  if (synthetic_data_embeddings_.empty()) {
-    return absl::InvalidArgumentError("No synthetic embeddings loaded.");
-  }
-
   LOG(INFO) << "Computing MAUVE score with " << real_embeddings.size()
             << " real and " << synthetic_data_embeddings_.size()
             << " synthetic embeddings.";
@@ -194,10 +360,9 @@ absl::Status MauveScoreFn::Do(Any config,
     synth_embeddings.emplace_back(emb.values().begin(), emb.values().end());
   }
 
-  // Phase 4: Compute MAUVE score via Python (pybind11).
-  ABSL_ASSIGN_OR_RETURN(
-      MauveScoreResult result,
-      ComputeMauveViaPython(real_embeddings, synth_embeddings));
+  // Phase 4: Compute MAUVE score.
+  ABSL_ASSIGN_OR_RETURN(MauveScoreResult result,
+                        compute_mauve_fn_(real_embeddings, synth_embeddings));
 
   LOG(INFO) << "MAUVE AUC: " << result.mauve_auc()
             << ", clusters: " << result.num_clusters()
@@ -206,9 +371,6 @@ absl::Status MauveScoreFn::Do(Any config,
 
   // Phase 5: Store the serialized result for FinalizeReplica.
   serialized_result_ = result.SerializeAsString();
-
-  // Decrement budget
-  budget_.DecrementBudget();
 
   context.IncrementCounter("mauve-score-computed");
   context.IncrementCounterBy("mauve-real-embeddings-count",
@@ -223,6 +385,12 @@ absl::Status MauveScoreFn::FinalizeReplica(Any config, FnContext& context) {
   if (serialized_result_.empty()) {
     return absl::FailedPreconditionError(
         "No MAUVE result available. Was Do() called successfully?");
+  }
+
+  if (budget_key_.agg_window.has_value()) {
+    ABSL_RETURN_IF_ERROR(budget_.UpdateTimeBudget(*budget_key_.agg_window));
+  } else {
+    ABSL_RETURN_IF_ERROR(budget_.UpdatePerKeyBudget(budget_key_.active_keys));
   }
 
   // Compute the destination state.
@@ -243,7 +411,10 @@ absl::Status MauveScoreFn::FinalizeReplica(Any config, FnContext& context) {
 absl::StatusOr<std::unique_ptr<FnFactory>> ProvideMauveScoreFnFactory(
     const Any& configuration, const Any& config_constraints,
     const WriteConfigurationMap& write_configuration_map,
-    ReadRecordFn read_record_fn) {
+    ReadRecordFn read_record_fn, ComputeMauveFn compute_mauve_fn = nullptr) {
+  if (!compute_mauve_fn) {
+    compute_mauve_fn = ComputeMauveViaPython;
+  }
   MauveScoreContainerInitializeConfiguration init_config;
   if (!configuration.UnpackTo(&init_config)) {
     return absl::InvalidArgumentError(
@@ -295,6 +466,7 @@ absl::StatusOr<std::unique_ptr<FnFactory>> ProvideMauveScoreFnFactory(
     return absl::InvalidArgumentError(
         "Access budget must be greater than zero.");
   }
+  uint64_t min_agg_window_minutes = mauve_constraints.min_agg_window_minutes();
 
   std::string path = write_configuration_map.at(
       init_config.synthetic_data_embeddings_configuration_id());
@@ -303,7 +475,8 @@ absl::StatusOr<std::unique_ptr<FnFactory>> ProvideMauveScoreFnFactory(
   LOG(INFO) << "Loaded " << embeddings.size() << " synthetic embeddings.";
 
   return std::make_unique<MauveScoreFnFactory>(
-      std::move(embeddings), access_budget_times, std::move(initial_state));
+      std::move(embeddings), access_budget_times, min_agg_window_minutes,
+      std::move(initial_state), std::move(compute_mauve_fn));
 }
 
 fns::FnFactoryProvider CreateMauveScoreFnFactoryProvider() {

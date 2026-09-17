@@ -15,8 +15,6 @@
 """BUILD rules for the MAUVE score container."""
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@confidential-federated-compute//containers/bazel:gen_python_path.bzl", "gen_python_path")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
@@ -85,26 +83,21 @@ cc_library(
     ],
 )
 
-proto_library(
-    name = "mauve_budget_state_proto",
-    srcs = ["mauve_budget_state.proto"],
-)
-
-cc_proto_library(
-    name = "mauve_budget_state_cc_proto",
-    deps = [":mauve_budget_state_proto"],
-)
-
 cc_library(
     name = "budget",
     srcs = ["budget.cc"],
     hdrs = ["budget.h"],
     deps = [
-        ":mauve_budget_state_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@confidential-federated-compute//containers/common/intervals:interval",
+        "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
+        "@confidential-federated-compute//containers/common/time_budget:time_budget",
     ],
 )
 
@@ -113,9 +106,11 @@ cc_test(
     srcs = ["budget_test.cc"],
     deps = [
         ":budget",
-        ":mauve_budget_state_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@confidential-federated-compute//containers/common/intervals:interval",
+        "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
@@ -143,7 +138,6 @@ cc_library(
     hdrs = ["mauve_score_fn.h"],
     deps = [
         ":budget",
-        ":mauve_budget_state_cc_proto",
         ":py_mauve_delegate",
         ":utils",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -157,8 +151,12 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
+        "@confidential-federated-compute//containers/common/intervals:interval",
+        "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
         "@confidential-federated-compute//containers/fns:fns",
         "@federated_compute//fcp/confidentialcompute:private_state",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:construct_user_session_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
@@ -189,7 +187,7 @@ cc_test(
         "--gtest_filter=-MauveScoreFnTest.FullLifecycleSuccess",
     ],
     deps = [
-        ":mauve_budget_state_cc_proto",
+        ":budget",
         ":mauve_score_fn",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -200,8 +198,12 @@ cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
+        "@confidential-federated-compute//containers/common/intervals:interval",
+        "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
         "@confidential-federated-compute//containers/fns:fns",
         "@federated_compute//fcp/confidentialcompute:private_state",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:construct_user_session_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sentence_transformers_config_cc_proto",
         "@googletest//:gtest",

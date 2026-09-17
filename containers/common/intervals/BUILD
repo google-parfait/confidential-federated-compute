@@ -19,6 +19,7 @@ package(default_visibility = ["//containers:__subpackages__"])
 cc_library(
     name = "interval",
     hdrs = ["interval.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log:check",
     ],
