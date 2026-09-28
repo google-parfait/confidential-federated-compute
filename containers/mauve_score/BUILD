@@ -124,6 +124,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",

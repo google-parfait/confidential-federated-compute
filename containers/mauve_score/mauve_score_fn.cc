@@ -322,6 +322,20 @@ absl::Status MauveScoreFn::Do(Any config,
                               std::move(accumulated_inputs), context));
   }
 
+  // All embeddings (real and synthetic) must share the same dimension, which
+  // is determined by the synthetic embeddings.
+  const size_t expected_emb_dim = synthetic_data_embeddings_[0].values_size();
+  if (expected_emb_dim == 0) {
+    return absl::InvalidArgumentError(
+        "Synthetic embeddings must have a non-zero dimension.");
+  }
+  for (const auto& emb : synthetic_data_embeddings_) {
+    if (emb.values_size() != expected_emb_dim) {
+      return absl::InvalidArgumentError(
+          "All synthetic embeddings must have the same dimension.");
+    }
+  }
+
   // Phase 2: Parse valid checkpoint blobs into flat float vectors.
   std::vector<std::vector<float>> real_embeddings;
   for (auto& kv : valid_inputs) {
@@ -339,14 +353,28 @@ absl::Status MauveScoreFn::Do(Any config,
       return absl::InvalidArgumentError(
           "The input tensor is not a two-dimensional tensor.");
     }
-    int32_t batch_dim = dims[0];
-    int32_t emb_dim = dims[1];
+    int64_t batch_dim = dims[0];
+    int64_t emb_dim = dims[1];
+    if (batch_dim < 0 || emb_dim != static_cast<int64_t>(expected_emb_dim)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("The input tensor has embedding dimension ", emb_dim,
+                       " but the synthetic embeddings have dimension ",
+                       expected_emb_dim, "."));
+    }
     absl::Span<const float> data = tensor.AsSpan<float>();
+    if (data.size() != static_cast<size_t>(batch_dim * emb_dim)) {
+      return absl::InvalidArgumentError(
+          "The input tensor data size does not match its shape.");
+    }
 
-    for (int i = 0; i < batch_dim; i++) {
+    for (int64_t i = 0; i < batch_dim; i++) {
       auto emb_span = data.subspan(i * emb_dim, emb_dim);
       real_embeddings.emplace_back(emb_span.begin(), emb_span.end());
     }
+  }
+
+  if (real_embeddings.empty()) {
+    return absl::InvalidArgumentError("No real embeddings received.");
   }
 
   LOG(INFO) << "Computing MAUVE score with " << real_embeddings.size()

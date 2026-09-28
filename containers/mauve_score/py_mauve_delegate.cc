@@ -23,6 +23,7 @@
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
@@ -32,15 +33,20 @@ namespace confidential_federated_compute::mauve_score {
 namespace {
 
 // Flattens a vector of float vectors into a contiguous bytes buffer
-// suitable for passing to Python via pybind11::bytes.
-pybind11::bytes FlattenToBytes(
-    const std::vector<std::vector<float>>& embeddings) {
+// suitable for passing to Python via pybind11::bytes. Every embedding must have
+// exactly `dim` elements.
+absl::StatusOr<pybind11::bytes> FlattenToBytes(
+    const std::vector<std::vector<float>>& embeddings, size_t dim) {
   const size_t n_rows = embeddings.size();
-  const size_t dim = embeddings[0].size();
-  std::vector<float> flat(n_rows * dim);
-  for (size_t i = 0; i < n_rows; i++) {
-    std::copy(embeddings[i].begin(), embeddings[i].end(),
-              flat.begin() + i * dim);
+  std::vector<float> flat;
+  flat.reserve(n_rows * dim);
+  for (const auto& embedding : embeddings) {
+    if (embedding.size() != dim) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("All embeddings must have dimension ", dim, ", got ",
+                       embedding.size(), "."));
+    }
+    flat.insert(flat.end(), embedding.begin(), embedding.end());
   }
   return pybind11::bytes(reinterpret_cast<const char*>(flat.data()),
                          flat.size() * sizeof(float));
@@ -87,13 +93,19 @@ ComputeMauveViaPython(const std::vector<std::vector<float>>& real_embeddings,
 
     // Pass raw float bytes + dimensions to Python.
     // Python handles numpy array construction via np.frombuffer().reshape().
-    pybind11::bytes real_bytes = FlattenToBytes(real_embeddings);
-    pybind11::bytes synth_bytes = FlattenToBytes(synth_embeddings);
-    int32_t embedding_dim = real_embeddings[0].size();
-    if (embedding_dim != synth_embeddings[0].size()) {
+    if (real_embeddings.empty() || synth_embeddings.empty()) {
+      return absl::InvalidArgumentError(
+          "Real and synthetic embeddings must be non-empty.");
+    }
+    const size_t embedding_dim = real_embeddings[0].size();
+    if (embedding_dim == 0 || embedding_dim != synth_embeddings[0].size()) {
       return absl::InvalidArgumentError(
           "Real and synthetic embedding dimensions must match.");
     }
+    ABSL_ASSIGN_OR_RETURN(pybind11::bytes real_bytes,
+                          FlattenToBytes(real_embeddings, embedding_dim));
+    ABSL_ASSIGN_OR_RETURN(pybind11::bytes synth_bytes,
+                          FlattenToBytes(synth_embeddings, embedding_dim));
 
     // Call Python function that builds numpy arrays, computes MAUVE,
     // and returns serialized proto bytes.

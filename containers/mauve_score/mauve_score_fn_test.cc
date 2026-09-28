@@ -436,6 +436,41 @@ TEST_F(MauveScoreFnTest, CommitWithoutWriteReturnsError) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(MauveScoreFnTest, CommitRejectsEmbeddingDimMismatchWithSynthetic) {
+  ASSERT_THAT(fn_->Write(WriteRequest(),
+                         BuildCheckpoint(/*batch=*/10, kDim + 1), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsInconsistentEmbeddingDimsAcrossBlobs) {
+  // First checkpoint has the expected dimension, second one is much larger.
+  // Previously this caused a heap buffer overflow when flattening embeddings.
+  ASSERT_THAT(
+      fn_->Write(WriteRequest(), BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+  ASSERT_THAT(fn_->Write(WriteRequest(),
+                         BuildCheckpoint(/*batch=*/10, kDim * 100), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsEmptyBatch) {
+  ASSERT_THAT(
+      fn_->Write(WriteRequest(), BuildCheckpoint(/*batch=*/0, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
   std::string ckpt = BuildCheckpoint(/*batch=*/10, kDim);
 
