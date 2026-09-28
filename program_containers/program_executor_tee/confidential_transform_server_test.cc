@@ -210,6 +210,39 @@ TYPED_TEST(ProgramExecutorTeeTest,
                         "ones specified in the policy"));
 }
 
+TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsDuplicateBlobIds) {
+  grpc::ClientContext context;
+  InitializeResponse response;
+
+  InitializeRequest request;
+  request.mutable_configuration()->PackFrom(
+      CreateProgramExecutorTeeInitializeConfig(
+          "my_program", /*blob_ids=*/{"blob_1", "blob_2", "blob_1"}));
+  request.set_max_num_sessions(kMaxNumSessions);
+
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
+  *protected_response.add_result_encryption_keys() = "recovery_info_key";
+  *protected_response.add_result_encryption_keys() = "release_value_key";
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  associated_data.mutable_config_constraints()->PackFrom(
+      CreateProgramExecutorTeeConfigConstraints("my_program"));
+  associated_data.add_authorized_logical_pipeline_policies_hashes("hash_1");
+  auto encrypted_request = this->oak_client_encryptor_
+                               ->Encrypt(protected_response.SerializeAsString(),
+                                         associated_data.SerializeAsString())
+                               .value();
+  *request.mutable_protected_response() = encrypted_request;
+
+  auto writer = this->stub_->StreamInitialize(&context, &response);
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), /*state=*/""));
+  absl::Status status =
+      WriteInitializeRequest(std::move(writer), std::move(request));
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  ASSERT_THAT(
+      status.message(),
+      HasSubstr("Duplicate blob_id found in initialize_config: blob_1"));
+}
+
 TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
   grpc::ClientContext context;
   InitializeResponse response;

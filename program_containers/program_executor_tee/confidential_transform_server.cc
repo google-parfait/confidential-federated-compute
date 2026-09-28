@@ -24,6 +24,7 @@
 #include <string>
 #include <thread>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
@@ -31,6 +32,7 @@
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "containers/blob_metadata.h"
 #include "containers/crypto.h"
@@ -285,6 +287,14 @@ absl::Status ProgramExecutorTeeConfidentialTransform::StreamInitializeTransform(
         "Cannot unpack ProgramExecutorTeeInitializeConfig.");
   }
   initialize_config_ = std::move(program_executor_config);
+
+  absl::flat_hash_set<absl::string_view> seen_blob_ids;
+  for (const auto& blob_id : initialize_config_.blob_ids()) {
+    if (!seen_blob_ids.insert(blob_id).second) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate blob_id found in initialize_config: ", blob_id));
+    }
+  }
 
   worker_bns_addresses_.reserve(
       initialize_config_.worker_bns_addresses().size());
