@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ANY_BUNDLE_H_
-#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ANY_BUNDLE_H_
+#ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_ANY_BUNDLE_H_
+#define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_ANY_BUNDLE_H_
 
 #include <string>
 
@@ -23,7 +23,7 @@
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 
 // This functions provide a way to bundle and unbundle a message with a
 // "payload" data into a single Cord, which can be stored and transmitted.
@@ -99,6 +99,6 @@ bool UnbundleAny(T& result, absl::Cord& data) {
   return true;
 }
 
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute
 
-#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_FED_SQL_ANY_BUNDLE_H_
+#endif  // CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_ANY_BUNDLE_H_

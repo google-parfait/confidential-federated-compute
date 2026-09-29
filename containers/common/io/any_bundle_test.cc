@@ -12,57 +12,62 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "containers/fed_sql/any_bundle.h"
+#include "containers/common/io/any_bundle.h"
 
 #include <string>
 
 #include "absl/strings/cord.h"
-#include "containers/common/time_budget/budget.pb.h"
-#include "containers/fed_sql/range_tracker.pb.h"
 #include "gmock/gmock.h"
+#include "google/protobuf/any.pb.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/struct.pb.h"
 #include "gtest/gtest.h"
 
-namespace confidential_federated_compute::fed_sql {
+namespace confidential_federated_compute {
 namespace {
 
+using ::google::protobuf::ListValue;
+using ::google::protobuf::Struct;
+
+Struct CreateTestStruct() {
+  Struct state;
+  (*state.mutable_fields())["key1"].set_number_value(10);
+  (*state.mutable_fields())["key2"].set_string_value("value2");
+  return state;
+}
+
 TEST(AnyBundleTest, BundleAndUnbundleSuccess) {
-  RangeTrackerState state;
-  state.add_keys("key1");
-  state.add_values(10);
-  state.add_values(20);
+  Struct state = CreateTestStruct();
 
   absl::Cord payload("Some payload data");
   absl::Cord bundled = BundleAny(state, payload);
 
-  RangeTrackerState unbundled_state;
+  Struct unbundled_state;
   absl::Cord unbundled_payload = bundled;
   EXPECT_TRUE(UnbundleAny(unbundled_state, unbundled_payload));
 
-  EXPECT_EQ(unbundled_state.keys(0), "key1");
-  EXPECT_EQ(unbundled_state.values(0), 10);
-  EXPECT_EQ(unbundled_state.values(1), 20);
+  EXPECT_EQ(unbundled_state.fields().at("key1").number_value(), 10);
+  EXPECT_EQ(unbundled_state.fields().at("key2").string_value(), "value2");
   EXPECT_EQ(std::string(unbundled_payload), "Some payload data");
 }
 
 TEST(AnyBundleTest, UnbundleMismatchedMessageType) {
-  RangeTrackerState state;
-  state.add_keys("key1");
-  absl::Cord bundled = BundleAny(state, absl::Cord("data"));
+  absl::Cord bundled = BundleAny(CreateTestStruct(), absl::Cord("data"));
 
-  BudgetState mismatched_state;
+  ListValue mismatched_state;
   absl::Cord unbundled_payload = bundled;
   EXPECT_FALSE(UnbundleAny(mismatched_state, unbundled_payload));
 }
 
 TEST(AnyBundleTest, UnbundleMissingAnySize) {
-  RangeTrackerState state;
+  Struct state;
   absl::Cord unbundled_payload("");
   EXPECT_FALSE(UnbundleAny(state, unbundled_payload));
 }
 
 TEST(AnyBundleTest, UnbundleInsufficientAnyData) {
-  RangeTrackerState state;
-  state.add_keys("key1");
+  Struct state = CreateTestStruct();
   absl::Cord bundled = BundleAny(state, absl::Cord("data"));
 
   // Truncate before Any message finished
@@ -71,8 +76,7 @@ TEST(AnyBundleTest, UnbundleInsufficientAnyData) {
 }
 
 TEST(AnyBundleTest, UnbundleMissingPayloadSize) {
-  RangeTrackerState state;
-  state.add_keys("key1");
+  Struct state = CreateTestStruct();
   google::protobuf::Any any;
   any.PackFrom(state);
   std::string any_serialized = any.SerializeAsString();
@@ -92,8 +96,7 @@ TEST(AnyBundleTest, UnbundleMissingPayloadSize) {
 }
 
 TEST(AnyBundleTest, UnbundleIncompletePayload) {
-  RangeTrackerState state;
-  state.add_keys("key1");
+  Struct state = CreateTestStruct();
   absl::Cord payload("payload");
   absl::Cord bundled = BundleAny(state, payload);
 
@@ -102,4 +105,4 @@ TEST(AnyBundleTest, UnbundleIncompletePayload) {
 }
 
 }  // namespace
-}  // namespace confidential_federated_compute::fed_sql
+}  // namespace confidential_federated_compute

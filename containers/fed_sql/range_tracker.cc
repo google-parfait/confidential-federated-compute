@@ -22,7 +22,7 @@
 #include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "containers/fed_sql/any_bundle.h"
+#include "containers/common/io/any_bundle.h"
 #include "containers/fed_sql/range_tracker.pb.h"
 
 namespace confidential_federated_compute::fed_sql {

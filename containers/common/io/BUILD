@@ -20,6 +20,34 @@ package(
 )
 
 cc_library(
+    name = "any_bundle",
+    hdrs = ["any_bundle.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_protobuf//:any_cc_proto",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
+    ],
+)
+
+cc_test(
+    name = "any_bundle_test",
+    size = "small",
+    srcs = ["any_bundle_test.cc"],
+    deps = [
+        ":any_bundle",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_protobuf//:any_cc_proto",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//:struct_cc_proto",
+        "@com_google_protobuf//src/google/protobuf/io",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "checkpoint_utils",
     srcs = ["checkpoint_utils.cc"],
     hdrs = ["checkpoint_utils.h"],
