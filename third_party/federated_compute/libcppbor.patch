@@ -1,0 +1,11 @@
+--- fcp/confidentialcompute/BUILD
++++ fcp/confidentialcompute/BUILD
+@@ -116,7 +116,7 @@ config_setting(
+ 
+ CBOR_OPTIONAL_DEPS = select({
+     ":cbor_supported": [
+-        "//third_party/libcppbor",
++        "@libcppbor",
+     ],
+     "//conditions:default": [
+     ],

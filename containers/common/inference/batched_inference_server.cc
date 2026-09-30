@@ -21,14 +21,19 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "cc/containers/sdk/encryption_key_handle.h"
 #include "cc/containers/sdk/signing_key_handle.h"
 #include "containers/common/inference/batched_inference_engine.h"
 #include "containers/common/inference/batched_inference_fn.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/fns/confidential_transform_server.h"
 #include "containers/fns/fn_factory.h"
+#include "fcp/protos/confidentialcompute/message_description.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "fcp/protos/confidentialcompute/private_logger_uploads_config.pb.h"
 #include "google/protobuf/any.pb.h"
+#include "google/protobuf/descriptor.pb.h"
 #include "grpcpp/grpcpp.h"
 
 namespace confidential_federated_compute::inference {
@@ -37,9 +42,13 @@ namespace {
 using ::confidential_federated_compute::fns::FnFactory;
 using ::confidential_federated_compute::fns::FnFactoryProvider;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
+using ::fcp::confidentialcompute::
+    BatchedInferenceContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
+using ::fcp::confidentialcompute::MessageDescription;
 using ::google::protobuf::Any;
+using ::google::protobuf::FileDescriptorSet;
 using ::grpc::Server;
 using ::grpc::ServerBuilder;
 using ::oak::containers::sdk::InstanceEncryptionKeyHandle;
@@ -57,18 +66,53 @@ FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
              const Any& configuration, const Any& config_constraints,
              const WriteConfigurationMap& write_configuration_map)
              -> absl::StatusOr<std::unique_ptr<FnFactory>> {
-    InferenceInitializeConfiguration init_config;
-    if (!configuration.UnpackTo(&init_config)) {
-      return absl::InvalidArgumentError(
-          "Failed to unpack InferenceInitializeConfiguration");
+    BatchedInferenceContainerInitializeConfiguration container_config;
+    if (!configuration.UnpackTo(&container_config)) {
+      InferenceInitializeConfiguration legacy_init_config;
+      if (!configuration.UnpackTo(&legacy_init_config)) {
+        return absl::InvalidArgumentError(
+            "Failed to unpack BatchedInferenceContainerInitializeConfiguration "
+            "or InferenceInitializeConfiguration");
+      }
+      *container_config.mutable_inference_init_config() =
+          std::move(legacy_init_config);
     }
+
+    std::shared_ptr<MessageFactory> message_factory = nullptr;
+    std::string on_device_query_name;
+    if (container_config.has_private_logger_uploads_config()) {
+      const MessageDescription& message_description =
+          container_config.private_logger_uploads_config()
+              .message_description();
+      if (message_description.message_descriptor_set().empty() ||
+          message_description.message_name().empty()) {
+        return absl::InvalidArgumentError(
+            "If private_logger_uploads_config is set, both "
+            "message_descriptor_set and message_name must be set within "
+            "message_description.");
+      }
+      FileDescriptorSet descriptor_set;
+      if (!descriptor_set.ParseFromString(
+              message_description.message_descriptor_set())) {
+        return absl::InvalidArgumentError(
+            "Failed to parse logged_message_descriptor_set.");
+      }
+      ABSL_ASSIGN_OR_RETURN(
+          message_factory,
+          FileDescriptorSetMessageFactory::Create(
+              descriptor_set, message_description.message_name()));
+      on_device_query_name = container_config.private_logger_uploads_config()
+                                 .on_device_query_name();
+    }
+
     const InferenceConfiguration& inference_config =
-        init_config.inference_config();
+        container_config.inference_init_config().inference_config();
     std::shared_ptr<BatchedInferenceEngine> batched_inference_engine =
         batched_inference_engine_provider->GetEngineForInferenceConfig(
             inference_config);
-    return CreateBatchedInferenceFnFactory(batched_inference_engine,
-                                           inference_config);
+    return CreateBatchedInferenceFnFactory(
+        batched_inference_engine, inference_config, std::move(message_factory),
+        std::move(on_device_query_name));
   };
 }
 

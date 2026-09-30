@@ -112,15 +112,18 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-c6y4H8THI/0Ptzo8tzfydA1fdpumvmGFnnpaiUDzlpQ=",
+    integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
+    patch_cmds = [
+        "sed -i 's|//third_party/libcppbor|@libcppbor|g' fcp/confidentialcompute/BUILD",
+    ],
     patches = [
         "//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    strip_prefix = "federated-compute-d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5",
-    url = "https://github.com/google-parfait/federated-compute/archive/d91525f46ad7ac0eb063565b3c9b5279dcf2d7e5.tar.gz",
+    strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
+    url = "https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz",
 )
 
 http_archive(
