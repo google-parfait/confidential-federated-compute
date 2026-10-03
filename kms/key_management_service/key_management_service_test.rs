@@ -1006,6 +1006,142 @@ async fn authorize_confidential_transform_with_keyset_keys() {
 
 #[gtest]
 #[tokio::test]
+async fn authorize_confidential_transform_without_initial_uploads_omits_all_keyset_keys() {
+    let now = Arc::new(AtomicI64::new(0));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let mut payload_signer = MockPayloadSigner::new();
+    payload_signer.expect_sign().returning(|_, _| Ok(Default::default()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, payload_signer);
+
+    // The transform only reads intermediates (no src 0).
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![3, 4],
+            dst_node_ids: vec![5],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
+        pipelines: [(
+            "test".into(),
+            LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+        )]
+        .into(),
+        ..Default::default()
+    }
+    .encode_to_vec();
+
+    // Add keys to keyset 1 (one of which expires before the pipeline
+    // invocation intermediates), keyset 2, and keyset 4 (which is not in the
+    // RegisterPipelineInvocation request). Since the transform doesn't read
+    // initial uploads, all of them should be reported as omitted, including
+    // keys that a transform reading src 0 would have received.
+    let intermediates_exp = 100;
+    let mut omitted_key_ids = Vec::new();
+    for (keyset_id, exp) in [(1, 90), (1, 110), (2, 120), (4, 130)] {
+        now.fetch_add(1, Ordering::Relaxed); // Avoid ambiguous creation times.
+        let request = RotateKeysetRequest {
+            keyset_id,
+            ttl: Some(Duration { seconds: exp - now.load(Ordering::Relaxed), nanos: 0 }),
+        };
+        kms.rotate_keyset(request.into_request()).await.expect("rotate_keyset failed");
+
+        let request = DeriveKeysRequest {
+            keyset_id,
+            authorized_logical_pipeline_policies_hashes: vec![
+                Sha256::hash(&logical_pipeline_policies).into(),
+            ],
+        };
+        let response = kms.derive_keys(request.into_request()).await.expect("derive_keys failed");
+        let cwt =
+            CoseSign1::from_slice(response.into_inner().public_keys.first().unwrap()).unwrap();
+        let cose_key = ClaimsSet::from_slice(&cwt.payload.unwrap())
+            .unwrap()
+            .rest
+            .into_iter()
+            .find(|(name, _)| name == &ClaimName::PrivateUse(PUBLIC_KEY_CLAIM))
+            .and_then(|(_, value)| value.into_bytes().ok())
+            .unwrap();
+        omitted_key_ids.push(CoseKey::from_slice(&cose_key).unwrap().key_id);
+    }
+
+    let request = RegisterPipelineInvocationRequest {
+        logical_pipeline_name: "test".into(),
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        intermediates_ttl: Some(Duration {
+            seconds: intermediates_exp - now.load(Ordering::Relaxed),
+            nanos: 0,
+        }),
+        keyset_ids: vec![1, 2, 3],
+        authorized_logical_pipeline_policies: vec![logical_pipeline_policies.clone()],
+        include_keys_in_response: false,
+    };
+    let response = kms
+        .register_pipeline_invocation(request.into_request())
+        .await
+        .expect("register_pipeline_invocation failed");
+
+    let request = AuthorizeConfidentialTransformRequest {
+        invocation_id: response.into_inner().invocation_id,
+        pipeline_variant_policy: variant_policy.encode_to_vec(),
+        evidence: Some(get_test_evidence()),
+        endorsements: Some(get_test_endorsements()),
+        tag: "tag".into(),
+    };
+    let response = kms
+        .authorize_confidential_transform(request.into_request())
+        .await
+        .expect("authorize_confidential_transform failed")
+        .into_inner();
+
+    let (_, plaintext, associated_data) = ServerEncryptor::decrypt_async(
+        &response.protected_response.unwrap().convert().unwrap(),
+        &get_test_encryption_key_handle(),
+    )
+    .await
+    .expect("failed to decrypt response");
+
+    // Only the intermediate decryption keys (for src nodes 3 and 4) should be
+    // provided; no keyset decryption keys.
+    let protected_response = ProtectedResponse::decode(plaintext.as_slice())
+        .expect("failed to decode ProtectedResponse");
+    assert_that!(
+        protected_response,
+        pat!(ProtectedResponse { decryption_keys: len(eq(2)), result_encryption_keys: len(eq(1)) })
+    );
+    let decryption_key_ids = protected_response
+        .decryption_keys
+        .iter()
+        .map(|key| CoseKey::from_slice(key).unwrap().key_id)
+        .collect::<Vec<_>>();
+    for key_id in &omitted_key_ids {
+        expect_that!(decryption_key_ids, not(contains(eq(key_id))));
+    }
+
+    // The AssociatedData should contain the ids of all keyset keys. Storage
+    // returns keys ordered by (random) key id, so compare without ordering.
+    let mut associated_data = AssociatedData::decode(associated_data.as_slice())
+        .expect("failed to decode AssociatedData");
+    associated_data.omitted_decryption_key_ids.sort();
+    omitted_key_ids.sort();
+    assert_that!(
+        associated_data,
+        pat!(AssociatedData {
+            omitted_decryption_key_ids: eq(&omitted_key_ids),
+            omitted_decryption_key_ids_include_all_keysets: eq(&true),
+            ..
+        })
+    );
+}
+
+#[gtest]
+#[tokio::test]
 async fn authorize_confidential_transform_with_intermediate_keys() {
     let storage_client = FakeStorageClient::default();
     assert_that!(storage_client.update(get_init_request()).await, ok(anything()));

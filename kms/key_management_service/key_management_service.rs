@@ -142,8 +142,8 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
     /// Encodes the cluster's signing key as a COSE key.
     fn build_cluster_cose_key(key: &ecdsa::PublicKey<ec::P256>) -> Vec<u8> {
         let encoded_point = key.to_x962_uncompressed();
-        // Uncompressed X9.62 starts with 0x04, then contains the x and y coordinates.
-        // For P256, each coordinate is 32 bytes.
+        // Uncompressed X9.62 starts with 0x04, then contains the x and y
+        // coordinates. For P256, each coordinate is 32 bytes.
         let x = &encoded_point.as_ref()[1..33];
         let y = &encoded_point.as_ref()[33..];
         CoseKeyBuilder::new_ec2_pub_key(EllipticCurve::P_256, x.into(), y.into())
@@ -203,8 +203,10 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
     }
 
     /// Derives a transform's decryption keys (`src_node_ids`), result
-    /// encryption keys (`dst_node_ids`), and the ids of decryption keys that
-    /// were omitted because they expire before the pipeline invocation.
+    /// encryption keys (`dst_node_ids`), and the ids of keyset decryption keys
+    /// that were omitted, e.g. because they expire before the pipeline
+    /// invocation, belong to a different keyset, or the transform doesn't read
+    /// from initial uploads (src 0).
     async fn derive_transform_keys(
         &self,
         state: &PipelineInvocationStateValue,
@@ -228,68 +230,69 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
                 .collect::<Vec<_>>(),
         )
         .context("failed to derive decryption keys")?;
-        // If the transform reads from initial uploads (src 0), then we need to
-        // provide non-intermediate keys.
+        // Keyset (non-intermediate) decryption keys are only provided if the
+        // transform reads from initial uploads (src 0). However, the ids of all
+        // keyset keys are always enumerated so that every transform receives
+        // the full set of active key ids (provided + omitted), as promised by
+        // `omitted_decryption_key_ids_include_all_keysets`.
+        let reads_initial_uploads = src_node_ids.contains(&0);
         let mut omitted_decryption_key_ids = Vec::new();
-        if src_node_ids.contains(&0) {
-            let response = self
-                .storage_client
-                .read(ReadRequest {
-                    ranges: vec![
-                        Self::create_range(
-                            StorageKey::KeysetKey {
-                                keyset_id: u64::MIN,
-                                key_id: MIN_KEYSET_KEY_ID,
-                            },
-                            Some(StorageKey::KeysetKey {
-                                keyset_id: u64::MAX,
-                                key_id: MAX_KEYSET_KEY_ID,
-                            }),
-                        )
-                        .unwrap(),
-                    ],
-                })
-                .await?;
-            for entry in response.entries {
-                let (keyset_id, key_id) = match entry.key.as_slice().try_into() {
-                    Ok(StorageKey::KeysetKey { keyset_id, key_id }) => (keyset_id, key_id),
-                    _ => unreachable!(),
-                };
+        let response = self
+            .storage_client
+            .read(ReadRequest {
+                ranges: vec![
+                    Self::create_range(
+                        StorageKey::KeysetKey { keyset_id: u64::MIN, key_id: MIN_KEYSET_KEY_ID },
+                        Some(StorageKey::KeysetKey {
+                            keyset_id: u64::MAX,
+                            key_id: MAX_KEYSET_KEY_ID,
+                        }),
+                    )
+                    .unwrap(),
+                ],
+            })
+            .await?;
+        for entry in response.entries {
+            let (keyset_id, key_id) = match entry.key.as_slice().try_into() {
+                Ok(StorageKey::KeysetKey { keyset_id, key_id }) => (keyset_id, key_id),
+                _ => unreachable!(),
+            };
 
-                // Record that blocked policies were omitted.
-                for hash in &state.blocked_authorized_logical_pipeline_policies_hashes {
+            // Record that blocked policies were omitted.
+            for hash in &state.blocked_authorized_logical_pipeline_policies_hashes {
+                omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
+            }
+
+            // Skip entries if the transform doesn't read initial uploads, from
+            // other keysets, or that expire before the pipeline invocation
+            // expires.
+            if !reads_initial_uploads
+                || !state.keyset_ids.contains(&keyset_id)
+                || Self::timestamp_lt(&entry.expiration, state_expiration)
+            {
+                for hash in &state.authorized_logical_pipeline_policies_hashes {
                     omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
                 }
+                continue;
+            }
 
-                // Skip entries from other keysets or that expire before the
-                // pipeline invocation expires.
-                if !state.keyset_ids.contains(&keyset_id)
-                    || Self::timestamp_lt(&entry.expiration, state_expiration)
-                {
-                    for hash in &state.authorized_logical_pipeline_policies_hashes {
-                        omitted_decryption_key_ids.push(get_derived_key_id(&key_id, hash));
-                    }
+            let key = match KeysetKeyValue::decode(entry.value.as_slice()) {
+                Ok(key) => key,
+                Err(err) => {
+                    // Skip keys that cannot be decoded.
+                    warn!("failed to decode keyset key: {:?}", err);
                     continue;
                 }
-
-                let key = match KeysetKeyValue::decode(entry.value.as_slice()) {
-                    Ok(key) => key,
-                    Err(err) => {
-                        // Skip keys that cannot be decoded.
-                        warn!("failed to decode keyset key: {:?}", err);
-                        continue;
-                    }
-                };
-                decryption_keys.append(
-                    &mut derive_private_keys(
-                        key.algorithm,
-                        &key_id,
-                        &key.ikm,
-                        &state.authorized_logical_pipeline_policies_hashes,
-                    )
-                    .context("failed to derive decryption keys")?,
-                );
-            }
+            };
+            decryption_keys.append(
+                &mut derive_private_keys(
+                    key.algorithm,
+                    &key_id,
+                    &key.ikm,
+                    &state.authorized_logical_pipeline_policies_hashes,
+                )
+                .context("failed to derive decryption keys")?,
+            );
         }
 
         let result_encryption_keys = derive_public_keys(
