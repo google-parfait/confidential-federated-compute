@@ -26,14 +26,18 @@ namespace confidential_federated_compute::fns {
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
     fcp::confidentialcompute::WriteRequest write_request,
-    std::string unencrypted_data, Context& context) {
+    std::string unencrypted_data,
+    fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+    Context& context) {
   size_t unencrypted_data_size = unencrypted_data.size();
   KV input;
   input.data = std::move(unencrypted_data);
   input.blob_id = GetBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
-  MapContext map_context(context, ExtractAssociatedMetadata(
-                                      write_request.first_request_metadata()));
+  MapContext map_context(
+      context,
+      ExtractAssociatedMetadata(write_request.first_request_metadata()),
+      std::move(protected_metadata));
   absl::StatusOr<KV> output = Map(std::move(input), map_context);
   if (!output.ok()) {
     return ToWriteFinishedResponse(output.status());

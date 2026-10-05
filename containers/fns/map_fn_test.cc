@@ -19,6 +19,8 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/cord.h"
+#include "containers/common/io/any_bundle.h"
 #include "containers/fns/fn.h"
 #include "containers/testing/mocks.h"
 #include "gmock/gmock.h"
@@ -33,6 +35,7 @@ using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -169,6 +172,38 @@ TEST_F(MapFnTest, FinalizeCallsFinalizeReplica) {
 TEST_F(MapFnTest, CommitIsNoOp) {
   fcp::confidentialcompute::CommitRequest request;
   EXPECT_THAT(session_->Commit(request, context_), IsOk());
+}
+
+TEST_F(MapFnTest, WritePropagatesProtectedMetadataToOutput) {
+  auto session = std::make_unique<MockEncryptedMapFn>();
+  BlobMetadata marker;
+  marker.set_total_size_bytes(7);
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(marker);
+
+  EXPECT_CALL(*session, Map(_, _))
+      .WillOnce([](Session::KV input,
+                   MapFn::MapContext& context) -> absl::StatusOr<Session::KV> {
+        BlobMetadata unpacked;
+        EXPECT_TRUE(context.UnpackProtectedMetadata(&unpacked));
+        return Session::KV("output_data");
+      });
+  Session::KV emitted_kv;
+  EXPECT_CALL(context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  ASSERT_THAT(
+      session->Write(WriteRequest(), "somedata", protected_metadata, context_),
+      IsOk());
+  // The protected metadata is bundled together with the emitted data.
+  ProtectedMetadata emitted_metadata;
+  absl::Cord emitted_data(emitted_kv.data);
+  ASSERT_TRUE(UnbundleAny(emitted_metadata, emitted_data));
+  EXPECT_EQ(emitted_data, "output_data");
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
+  BlobMetadata unpacked;
+  EXPECT_TRUE(emitted_metadata.metadata(0).UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.total_size_bytes(), 7);
 }
 
 }  // namespace

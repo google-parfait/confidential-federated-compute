@@ -37,6 +37,7 @@ cc_test(
     srcs = ["any_bundle_test.cc"],
     deps = [
         ":any_bundle",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",

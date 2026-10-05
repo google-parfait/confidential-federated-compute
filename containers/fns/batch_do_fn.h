@@ -86,9 +86,14 @@ class BatchDoFn : public Fn {
 
   // final: accumulates unencrypted_data into internal buffer, preserving
   // key and blob_id from the WriteRequest.
+  //
+  // TODO: Propagate protected metadata to Do(). It is currently dropped.
+  using Fn::Write;
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
-      std::string unencrypted_data, Context& context) override final;
+      std::string unencrypted_data,
+      fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+      Context& context) override final;
 
   // final: calls Do() with all accumulated inputs. The buffer is moved
   // out and cleared before calling Do() for defensive cleanup.

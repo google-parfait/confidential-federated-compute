@@ -17,6 +17,7 @@
 #include <string>
 
 #include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/io/coded_stream.h"
@@ -102,6 +103,134 @@ TEST(AnyBundleTest, UnbundleIncompletePayload) {
 
   absl::Cord truncated = bundled.Subcord(0, bundled.size() - 1);
   EXPECT_FALSE(UnbundleAny(state, truncated));
+}
+
+TEST(AnyBundleTest, UnbundleFailureLeavesCordUnchanged) {
+  absl::Cord bundled = BundleAny(CreateTestStruct(), absl::Cord("data"));
+  absl::Cord data = bundled;
+  ListValue mismatched_state;
+  EXPECT_FALSE(UnbundleAny(mismatched_state, data));
+  EXPECT_EQ(data, bundled);
+}
+
+TEST(AnyBundleTest, StringBundleAndUnbundleSuccess) {
+  std::string data(BundleAny(CreateTestStruct(), absl::Cord("payload")));
+
+  Struct unbundled_state;
+  EXPECT_TRUE(UnbundleAny(unbundled_state, data));
+  EXPECT_EQ(unbundled_state.fields().at("key1").number_value(), 10);
+  EXPECT_EQ(data, "payload");
+}
+
+TEST(AnyBundleTest, StringUnbundleEmptyPayload) {
+  std::string data(BundleAny(CreateTestStruct(), absl::Cord()));
+
+  Struct unbundled_state;
+  EXPECT_TRUE(UnbundleAny(unbundled_state, data));
+  EXPECT_EQ(data, "");
+}
+
+TEST(AnyBundleTest, StringUnbundleMismatchedTypeLeavesDataUnchanged) {
+  std::string bundled(BundleAny(CreateTestStruct(), absl::Cord("data")));
+  std::string data = bundled;
+
+  ListValue mismatched_state;
+  EXPECT_FALSE(UnbundleAny(mismatched_state, data));
+  EXPECT_EQ(data, bundled);
+}
+
+TEST(AnyBundleTest, StringUnbundleNotABundleLeavesDataUnchanged) {
+  std::string data = "FCv1 this is not a bundle";
+  Struct state;
+  EXPECT_FALSE(UnbundleAny(state, data));
+  EXPECT_EQ(data, "FCv1 this is not a bundle");
+}
+
+TEST(AnyBundleTest, StringUnbundleTruncatedPayloadLeavesDataUnchanged) {
+  std::string bundled(BundleAny(CreateTestStruct(), absl::Cord("payload")));
+  std::string data = bundled.substr(0, bundled.size() - 1);
+  std::string original = data;
+
+  Struct state;
+  EXPECT_FALSE(UnbundleAny(state, data));
+  EXPECT_EQ(data, original);
+}
+
+TEST(AnyBundleTest, ParseDelimitedAnyAdvancesInputToPayload) {
+  std::string bundled(BundleAny(CreateTestStruct(), absl::Cord("payload")));
+  absl::string_view input = bundled;
+
+  Struct state;
+  EXPECT_TRUE(internal::ParseDelimitedAny(state, input));
+  EXPECT_EQ(state.fields().at("key1").number_value(), 10);
+  EXPECT_EQ(input, "payload");
+}
+
+TEST(AnyBundleTest, ParseDelimitedAnyMismatchedTypeLeavesInputUnchanged) {
+  std::string bundled(BundleAny(CreateTestStruct(), absl::Cord("payload")));
+  absl::string_view input = bundled;
+
+  ListValue mismatched_state;
+  EXPECT_FALSE(internal::ParseDelimitedAny(mismatched_state, input));
+  EXPECT_EQ(input, bundled);
+}
+
+TEST(AnyBundleTest, ParseDelimitedAnyTruncatedLeavesInputUnchanged) {
+  std::string bundled(BundleAny(CreateTestStruct(), absl::Cord("payload")));
+  std::string truncated = bundled.substr(0, bundled.size() - 1);
+  absl::string_view input = truncated;
+
+  Struct state;
+  EXPECT_FALSE(internal::ParseDelimitedAny(state, input));
+  EXPECT_EQ(input, truncated);
+}
+
+// Binary payload large enough to need multi-byte size varints, containing
+// NUL bytes and bytes that look like varint continuation bytes.
+std::string CreateBinaryPayload() {
+  std::string payload;
+  for (int i = 0; i < 100000; ++i) {
+    payload.push_back(static_cast<char>(i % 256));
+  }
+  return payload;
+}
+
+TEST(AnyBundleTest, CordRoundTripLargeBinaryPayload) {
+  Struct state = CreateTestStruct();
+  std::string payload = CreateBinaryPayload();
+  // Build the payload from several chunks so that the bundle isn't flat.
+  absl::Cord payload_cord;
+  for (size_t i = 0; i < payload.size(); i += 4096) {
+    payload_cord.Append(payload.substr(i, 4096));
+  }
+
+  absl::Cord data = BundleAny(state, payload_cord);
+  EXPECT_GT(data.size(), payload.size());
+
+  Struct unbundled_state;
+  ASSERT_TRUE(UnbundleAny(unbundled_state, data));
+  EXPECT_EQ(unbundled_state.fields_size(), 2);
+  EXPECT_EQ(unbundled_state.fields().at("key1").number_value(), 10);
+  EXPECT_EQ(unbundled_state.fields().at("key2").string_value(), "value2");
+  EXPECT_EQ(data, payload);
+}
+
+TEST(AnyBundleTest, StringRoundTripLargeBinaryPayloadInPlace) {
+  Struct state = CreateTestStruct();
+  std::string payload = CreateBinaryPayload();
+
+  std::string data(BundleAny(state, absl::Cord(payload)));
+  EXPECT_GT(data.size(), payload.size());
+  const char* buffer = data.data();
+
+  Struct unbundled_state;
+  ASSERT_TRUE(UnbundleAny(unbundled_state, data));
+  EXPECT_EQ(unbundled_state.fields_size(), 2);
+  EXPECT_EQ(unbundled_state.fields().at("key1").number_value(), 10);
+  EXPECT_EQ(unbundled_state.fields().at("key2").string_value(), "value2");
+  EXPECT_EQ(data, payload);
+  // The header was removed in place; the buffer was not reallocated.
+  EXPECT_EQ(data.data(), buffer);
 }
 
 }  // namespace

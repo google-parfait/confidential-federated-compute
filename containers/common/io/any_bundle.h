@@ -15,6 +15,8 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_ANY_BUNDLE_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_IO_ANY_BUNDLE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/cord.h"
@@ -56,15 +58,16 @@ absl::Cord BundleAny(T message, absl::Cord data) {
   return result;
 }
 
-// Unbundles the given Cord into the message and payload data, returning true
-// if the unbundling is successful. The unbundled message is stored in the
-// `result` parameter and the unbundled payload data is stored in the `data`
-// parameter overriding the original bundle data.
+namespace internal {
+
+// Parses the bundle header (the delimited Any followed by the payload size)
+// from the front of `input` and unpacks the message into `result`. On
+// success, returns true and advances `input` past the header, so that it
+// holds exactly the payload. Returns false without modifying `input` if it is
+// not a valid bundle of a message of type T (`result` may be modified).
 template <typename T>
-bool UnbundleAny(T& result, absl::Cord& data) {
-  absl::string_view flattened = data.Flatten();
-  google::protobuf::io::ArrayInputStream stream(flattened.data(),
-                                                flattened.size());
+bool ParseDelimitedAny(T& result, absl::string_view& input) {
+  google::protobuf::io::ArrayInputStream stream(input.data(), input.size());
   google::protobuf::io::CodedInputStream coded_stream(&stream);
 
   uint64_t any_size;
@@ -90,12 +93,41 @@ bool UnbundleAny(T& result, absl::Cord& data) {
     return false;
   }
 
-  int pos = coded_stream.CurrentPosition();
-  if (pos + payload_size != flattened.size()) {
+  size_t pos = coded_stream.CurrentPosition();
+  if (pos > input.size() || payload_size != input.size() - pos) {
     return false;
   }
+  input.remove_prefix(pos);
+  return true;
+}
 
-  data.RemovePrefix(pos);
+}  // namespace internal
+
+// Unbundles the given Cord into the message and payload data, returning true
+// if the unbundling is successful. The unbundled message is stored in the
+// `result` parameter and the unbundled payload data is stored in the `data`
+// parameter overriding the original bundle data. If unbundling fails, `data`
+// is left unchanged.
+template <typename T>
+bool UnbundleAny(T& result, absl::Cord& data) {
+  absl::string_view input = data.Flatten();
+  if (!internal::ParseDelimitedAny(result, input)) {
+    return false;
+  }
+  data.RemovePrefix(data.size() - input.size());
+  return true;
+}
+
+// Same as above, but for data held in a std::string. The payload is moved to
+// the front of `data` in place, so no additional copy of the payload is made.
+// If unbundling fails, `data` is left unchanged.
+template <typename T>
+bool UnbundleAny(T& result, std::string& data) {
+  absl::string_view input = data;
+  if (!internal::ParseDelimitedAny(result, input)) {
+    return false;
+  }
+  data.erase(0, data.size() - input.size());
   return true;
 }
 

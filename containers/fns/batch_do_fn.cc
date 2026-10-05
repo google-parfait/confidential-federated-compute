@@ -29,8 +29,11 @@
 namespace confidential_federated_compute::fns {
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
-BatchDoFn::Write(fcp::confidentialcompute::WriteRequest write_request,
-                 std::string unencrypted_data, Context& context) {
+BatchDoFn::Write(
+    fcp::confidentialcompute::WriteRequest write_request,
+    std::string unencrypted_data,
+    fcp::confidentialcompute::ProtectedMetadata /*protected_metadata*/,
+    Context& context) {
   size_t data_size = unencrypted_data.size();
   Session::KV input;
   input.data = std::move(unencrypted_data);

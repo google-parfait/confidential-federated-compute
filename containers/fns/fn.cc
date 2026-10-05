@@ -18,11 +18,18 @@
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "containers/common/io/any_bundle.h"
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute::fns {
+
+using ::fcp::confidentialcompute::ProtectedMetadata;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
+using ::fcp::confidentialcompute::WriteRequest;
 
 namespace {
 
@@ -36,9 +43,13 @@ void MaybeAttachMetadata(
 
 }  // namespace
 
-Fn::FnContext::FnContext(Context& session_context,
-                         fcp::confidentialcompute::AssociatedMetadata metadata)
-    : session_context_(session_context), metadata_(std::move(metadata)) {}
+Fn::FnContext::FnContext(
+    Context& session_context,
+    fcp::confidentialcompute::AssociatedMetadata metadata,
+    fcp::confidentialcompute::ProtectedMetadata protected_metadata)
+    : session_context_(session_context),
+      metadata_(std::move(metadata)),
+      protected_metadata_(std::move(protected_metadata)) {}
 
 bool Fn::FnContext::Emit(fcp::confidentialcompute::ReadResponse read_response) {
   return session_context_.Emit(std::move(read_response));
@@ -51,6 +62,13 @@ bool Fn::FnContext::EmitUnencrypted(Session::KV kv) {
 
 bool Fn::FnContext::EmitEncrypted(int reencryption_key_index, Session::KV kv) {
   MaybeAttachMetadata(kv, metadata_);
+  // Bundle the context's protected metadata together with the data so that
+  // it is encrypted along with it. Outputs without protected metadata keep
+  // the legacy (unbundled) format.
+  if (protected_metadata_.metadata_size() > 0) {
+    kv.data = std::string(
+        BundleAny(protected_metadata_, absl::Cord(std::move(kv.data))));
+  }
   return session_context_.EmitEncrypted(reencryption_key_index, std::move(kv));
 }
 
@@ -64,6 +82,21 @@ bool Fn::FnContext::EmitReleasable(int reencryption_key_index, Session::KV kv,
   MaybeAttachMetadata(kv, metadata_);
   return session_context_.EmitReleasable(reencryption_key_index, std::move(kv),
                                          src_state, dst_state, release_token_);
+}
+
+absl::StatusOr<WriteFinishedResponse> Fn::Write(WriteRequest write_request,
+                                                std::string unencrypted_data,
+                                                Context& context) {
+  // Protected metadata is only ever produced by FnContext::EmitEncrypted, so
+  // it is only looked for in encrypted inputs; unencrypted inputs come from
+  // the untrusted side and are always passed through unchanged.
+  ProtectedMetadata protected_metadata;
+  if (!write_request.first_request_metadata().has_hpke_plus_aead_data() ||
+      !UnbundleAny(protected_metadata, unencrypted_data)) {
+    protected_metadata.Clear();
+  }
+  return Write(std::move(write_request), std::move(unencrypted_data),
+               std::move(protected_metadata), context);
 }
 
 void Fn::FnContext::IncrementCounter(absl::string_view name) {

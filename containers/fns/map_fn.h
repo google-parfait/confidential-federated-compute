@@ -34,9 +34,12 @@ class MapFn : public Fn {
   // Metadata methods and GetCounters remain accessible.
   class MapContext : public FnContext {
    public:
-    MapContext(Context& session_context,
-               fcp::confidentialcompute::AssociatedMetadata metadata)
-        : FnContext(session_context, std::move(metadata)) {}
+    MapContext(
+        Context& session_context,
+        fcp::confidentialcompute::AssociatedMetadata metadata,
+        fcp::confidentialcompute::ProtectedMetadata protected_metadata = {})
+        : FnContext(session_context, std::move(metadata),
+                    std::move(protected_metadata)) {}
 
    private:
     // Hide all Emit methods — Map returns exactly one value,
@@ -49,7 +52,8 @@ class MapFn : public Fn {
 
   // Processes an input element. The input KV.data is unencrypted. Returns a
   // KV containing the corresponding output element along with any
-  // metadata.
+  // metadata. Protected metadata from the input (as modified via the
+  // MapContext) is bundled with the output if it is emitted encrypted.
   virtual absl::StatusOr<KV> Map(KV input, MapContext& context) = 0;
 
   // Controls how the output KV is emitted. Override to return a
@@ -59,9 +63,12 @@ class MapFn : public Fn {
     return std::nullopt;
   }
 
+  using Fn::Write;
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
-      std::string unencrypted_data, Context& context) override final;
+      std::string unencrypted_data,
+      fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+      Context& context) override final;
 
   // No-op for MapFn.
   absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
