@@ -67,6 +67,12 @@ class SqlDataIngressDoFn : public fns::DoFn {
   absl::Status Do(Session::KV input, DoContext& context) override;
 
  private:
+  // Builds the SQL input table from the parsed checkpoint. If a
+  // `message_factory_` is configured (private logger uploads), the checkpoint
+  // is expected to contain serialized messages; otherwise it is expected to
+  // contain one tensor per input schema column.
+  absl::StatusOr<Input> CreateInput(CheckpointParser& parser) const;
+
   SqlConfiguration sql_configuration_;
   std::shared_ptr<MessageFactory> message_factory_;
   std::string on_device_query_name_;
@@ -93,6 +99,27 @@ class SqlDataIngressFnFactory : public fns::FnFactory {
 };
 
 }  // namespace
+
+absl::StatusOr<Input> SqlDataIngressDoFn::CreateInput(
+    CheckpointParser& parser) const {
+  if (message_factory_ != nullptr) {
+    return CreateFromMessageCheckpoint(&parser, *message_factory_,
+                                       on_device_query_name_);
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto tensor_map, parser.LoadAllTensors());
+  std::vector<Tensor> tensors;
+  tensors.reserve(sql_configuration_.input_schema.column_size());
+  for (const auto& col : sql_configuration_.input_schema.column()) {
+    auto it = tensor_map.find(col.name());
+    if (it == tensor_map.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing required column in input: ", col.name()));
+    }
+    tensors.push_back(std::move(it->second));
+  }
+  return Input::CreateFromTensors(std::move(tensors));
+}
 
 // This function executes the SQL query on the input data, and emits the result
 // as an encrypted checkpoint. The output checkpoint will contain one tensor
@@ -122,20 +149,7 @@ absl::Status SqlDataIngressDoFn::Do(KV input, DoContext& context) {
       std::unique_ptr<CheckpointParser> parser,
       parser_factory.Create(absl::Cord(std::move(input.data))));
 
-  ABSL_ASSIGN_OR_RETURN(auto tensor_map, parser->LoadAllTensors());
-  std::vector<Tensor> tensors;
-  tensors.reserve(sql_configuration_.input_schema.column_size());
-  for (const auto& col : sql_configuration_.input_schema.column()) {
-    auto it = tensor_map.find(col.name());
-    if (it == tensor_map.end()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Missing required column in input: ", col.name()));
-    }
-    tensors.push_back(std::move(it->second));
-  }
-
-  ABSL_ASSIGN_OR_RETURN(Input sql_input,
-                        Input::CreateFromTensors(std::move(tensors)));
+  ABSL_ASSIGN_OR_RETURN(Input sql_input, CreateInput(*parser));
 
   ABSL_ASSIGN_OR_RETURN(RowSet row_set, RowSet::Create(&sql_input));
   ABSL_ASSIGN_OR_RETURN(

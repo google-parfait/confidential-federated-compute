@@ -18,19 +18,26 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
+#include "google/protobuf/descriptor.h"
 #include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/message.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
@@ -56,6 +63,7 @@ using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointBuilderFactory;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::MutableStringData;
 using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::testing::_;
@@ -390,39 +398,241 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedCheckpointSucceeds) {
               testing::ElementsAre("example1", "example2", "example3"));
 }
 
-TEST(ProvideSqlDataIngressFnFactoryTest, ParsesPrivateLoggerConfigSucceeds) {
-  SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
-    raw_sql: "SELECT text AS result FROM input"
-    database_schema {
-      table {
-        name: "input"
-        column { name: "text" type: STRING }
-        create_table_sql: "CREATE TABLE input (text TEXT)"
+// Helper for the private logger tests. Builds a dynamic message type
+//
+//   message TestMessage {
+//     string text = 1;
+//   }
+//
+// and an initialize configuration whose private_logger_uploads_config
+// describes it.
+class PrivateLoggerTestHelper {
+ public:
+  static constexpr absl::string_view kQueryName = "test_query";
+
+  PrivateLoggerTestHelper() {
+    google::protobuf::FileDescriptorProto file_proto = PARSE_TEXT_PROTO(R"pb(
+      name: "test.proto"
+      package: "confidential_federated_compute.sql_data_ingress"
+      message_type {
+        name: "TestMessage"
+        field { name: "text" number: 1 type: TYPE_STRING label: LABEL_OPTIONAL }
       }
+    )pb");
+    *file_descriptor_set_.add_file() = file_proto;
+
+    const google::protobuf::FileDescriptor* file_descriptor =
+        pool_.BuildFile(file_proto);
+    CHECK_NE(file_descriptor, nullptr);
+    descriptor_ = file_descriptor->FindMessageTypeByName("TestMessage");
+    CHECK_NE(descriptor_, nullptr);
+    prototype_ = factory_.GetPrototype(descriptor_);
+  }
+
+  std::string SerializeMessage(absl::string_view text) {
+    std::unique_ptr<google::protobuf::Message> message(prototype_->New());
+    message->GetReflection()->SetString(
+        message.get(), descriptor_->FindFieldByName("text"), std::string(text));
+    return message->SerializeAsString();
+  }
+
+  Any CreateConfig(absl::string_view raw_sql) {
+    SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
+      database_schema {
+        table {
+          name: "input"
+          column { name: "text" type: STRING }
+          column { name: "confidential_compute_event_time" type: STRING }
+          create_table_sql: "CREATE TABLE input (text TEXT, "
+                            "confidential_compute_event_time TEXT)"
+        }
+      }
+      output_columns { name: "result" type: STRING }
+    )pb");
+    sql_query.set_raw_sql(std::string(raw_sql));
+    SqlDataIngressContainerInitializeConfiguration init_config;
+    *init_config.mutable_sql_query() = sql_query;
+    auto* pl_config = init_config.mutable_private_logger_uploads_config();
+    pl_config->set_on_device_query_name(std::string(kQueryName));
+    auto* md = pl_config->mutable_message_description();
+    md->set_message_descriptor_set(file_descriptor_set_.SerializeAsString());
+    md->set_message_name(descriptor_->full_name());
+    Any config;
+    config.PackFrom(init_config);
+    return config;
+  }
+
+  // Builds a checkpoint in the private logger upload format: a string tensor
+  // of serialized messages and a string tensor of event times, both prefixed
+  // with the on-device query name.
+  absl::StatusOr<std::string> CreateMessageCheckpoint(
+      std::vector<std::string> serialized_messages,
+      std::vector<std::string> event_times) {
+    auto entry_tensor = Tensor::Create(
+        DataType::DT_STRING,
+        TensorShape({static_cast<int64_t>(serialized_messages.size())}),
+        CreateStringData(std::move(serialized_messages)));
+    if (!entry_tensor.ok()) return entry_tensor.status();
+    auto time_tensor =
+        Tensor::Create(DataType::DT_STRING,
+                       TensorShape({static_cast<int64_t>(event_times.size())}),
+                       CreateStringData(std::move(event_times)));
+    if (!time_tensor.ok()) return time_tensor.status();
+
+    FederatedComputeCheckpointBuilderFactory factory;
+    auto builder = factory.Create();
+    auto status = builder->Add(
+        absl::StrCat(kQueryName, "/",
+                     fcp::confidential_compute::kPrivateLoggerEntryKey),
+        *entry_tensor);
+    if (!status.ok()) return status;
+    status = builder->Add(
+        absl::StrCat(kQueryName, "/",
+                     fcp::confidential_compute::kEventTimeColumnName),
+        *time_tensor);
+    if (!status.ok()) return status;
+    auto ckpt = builder->Build();
+    if (!ckpt.ok()) return ckpt.status();
+    return std::string(ckpt->Flatten());
+  }
+
+ private:
+  static std::unique_ptr<MutableStringData> CreateStringData(
+      std::vector<std::string> values) {
+    auto data = std::make_unique<MutableStringData>(values.size());
+    for (auto& value : values) {
+      data->Add(std::move(value));
     }
-    output_columns { name: "result" type: STRING }
-  )pb");
+    return data;
+  }
+
+  google::protobuf::FileDescriptorSet file_descriptor_set_;
+  google::protobuf::DescriptorPool pool_;
+  const google::protobuf::Descriptor* descriptor_ = nullptr;
+  google::protobuf::DynamicMessageFactory factory_;
+  const google::protobuf::Message* prototype_ = nullptr;
+};
+
+TEST(SqlDataIngressFnPrivateLoggerTest, CreateFactorySucceeds) {
+  PrivateLoggerTestHelper helper;
+  auto factory = ProvideSqlDataIngressFnFactory(
+      helper.CreateConfig("SELECT text AS result FROM input"), Any(), {});
+  ASSERT_THAT(factory, IsOk());
+  EXPECT_THAT((*factory)->CreateFn(), IsOk());
+}
+
+TEST(SqlDataIngressFnPrivateLoggerTest, MissingMessageNameFails) {
+  PrivateLoggerTestHelper helper;
+  Any config = helper.CreateConfig("SELECT text AS result FROM input");
   SqlDataIngressContainerInitializeConfiguration init_config;
-  *init_config.mutable_sql_query() = sql_query;
-
-  auto* pl_config = init_config.mutable_private_logger_uploads_config();
-  pl_config->set_on_device_query_name("test_query");
-
-  google::protobuf::FileDescriptorSet fds;
-  auto* fd = fds.add_file();
-  fd->set_name("dummy.proto");
-  auto* mt = fd->add_message_type();
-  mt->set_name("dummy_name");
-
-  auto* md = pl_config->mutable_message_description();
-  md->set_message_descriptor_set(fds.SerializeAsString());
-  md->set_message_name("dummy_name");
-
-  Any config;
+  ASSERT_TRUE(config.UnpackTo(&init_config));
+  init_config.mutable_private_logger_uploads_config()
+      ->mutable_message_description()
+      ->clear_message_name();
   config.PackFrom(init_config);
 
-  auto factory = ProvideSqlDataIngressFnFactory(config, Any(), {});
-  EXPECT_THAT(factory, IsOk());
+  EXPECT_THAT(ProvideSqlDataIngressFnFactory(config, Any(), {}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(SqlDataIngressFnPrivateLoggerTest, EmitEncryptedCheckpointSucceeds) {
+  PrivateLoggerTestHelper helper;
+  auto factory = ProvideSqlDataIngressFnFactory(
+      helper.CreateConfig("SELECT text AS result FROM input"), Any(), {});
+  ASSERT_THAT(factory, IsOk());
+  auto fn = (*factory)->CreateFn();
+  ASSERT_THAT(fn, IsOk());
+
+  auto checkpoint = helper.CreateMessageCheckpoint(
+      {helper.SerializeMessage("example1"),
+       helper.SerializeMessage("example2")},
+      {"2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z"});
+  ASSERT_THAT(checkpoint, IsOk());
+
+  WriteRequest request;
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob_id");
+
+  StrictMock<MockContext> context;
+  std::string emitted_data;
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
+      .WillOnce([&emitted_data](int, Session::KV kv) {
+        emitted_data = std::move(kv.data);
+        EXPECT_EQ(kv.blob_id, "blob_id");
+        return true;
+      });
+
+  ASSERT_THAT((*fn)->Write(request, *checkpoint, context), IsOk());
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(emitted_data));
+  ASSERT_THAT(parser, IsOk());
+  auto result_tensor = (*parser)->GetTensor("result");
+  ASSERT_THAT(result_tensor, IsOk());
+  EXPECT_EQ(result_tensor->dtype(), DataType::DT_STRING);
+  EXPECT_THAT(result_tensor->AsSpan<absl::string_view>(),
+              testing::ElementsAre("example1", "example2"));
+}
+
+TEST(SqlDataIngressFnPrivateLoggerTest, EventTimeColumnIsQueryable) {
+  PrivateLoggerTestHelper helper;
+  auto factory = ProvideSqlDataIngressFnFactory(
+      helper.CreateConfig(
+          "SELECT confidential_compute_event_time AS result FROM input"),
+      Any(), {});
+  ASSERT_THAT(factory, IsOk());
+  auto fn = (*factory)->CreateFn();
+  ASSERT_THAT(fn, IsOk());
+
+  auto checkpoint = helper.CreateMessageCheckpoint(
+      {helper.SerializeMessage("example1")}, {"2026-01-01T00:00:00Z"});
+  ASSERT_THAT(checkpoint, IsOk());
+
+  WriteRequest request;
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob_id");
+
+  StrictMock<MockContext> context;
+  std::string emitted_data;
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
+      .WillOnce([&emitted_data](int, Session::KV kv) {
+        emitted_data = std::move(kv.data);
+        return true;
+      });
+
+  ASSERT_THAT((*fn)->Write(request, *checkpoint, context), IsOk());
+
+  FederatedComputeCheckpointParserFactory parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(emitted_data));
+  ASSERT_THAT(parser, IsOk());
+  auto result_tensor = (*parser)->GetTensor("result");
+  ASSERT_THAT(result_tensor, IsOk());
+  EXPECT_THAT(result_tensor->AsSpan<absl::string_view>(),
+              testing::ElementsAre("2026-01-01T00:00:00Z"));
+}
+
+TEST(SqlDataIngressFnPrivateLoggerTest, TensorCheckpointFails) {
+  PrivateLoggerTestHelper helper;
+  auto factory = ProvideSqlDataIngressFnFactory(
+      helper.CreateConfig("SELECT text AS result FROM input"), Any(), {});
+  ASSERT_THAT(factory, IsOk());
+  auto fn = (*factory)->CreateFn();
+  ASSERT_THAT(fn, IsOk());
+
+  // A plain tensor checkpoint has no `<query_name>/entry` tensor.
+  auto checkpoint = CreateInputCheckpoint({"example1"});
+  ASSERT_THAT(checkpoint, IsOk());
+
+  WriteRequest request;
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob_id");
+
+  StrictMock<MockContext> context;
+  EXPECT_THAT((*fn)->Write(request, *checkpoint, context),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace
