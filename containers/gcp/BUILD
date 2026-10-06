@@ -95,6 +95,12 @@ py_binary(
 )
 
 py_test(
+    name = "update_server_registry_test",
+    srcs = ["update_server_registry_test.py"],
+    deps = [":update_server_registry"],
+)
+
+py_test(
     name = "verify_registry_test",
     srcs = ["verify_registry_test.py"],
     data = [
@@ -442,11 +448,6 @@ image_digest_flag(
     build_setting_default = "",
 )
 
-int_flag(
-    name = "server_max_age_days",
-    build_setting_default = 60,
-)
-
 image_digest_flag(
     name = "min_sw_tcb_date",
     build_setting_default = "",
@@ -485,7 +486,6 @@ generate_policy(
     min_swversion = ":min_swversion",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
-    server_max_age_days = ":server_max_age_days",
     server_model = ":server_model",
     verifier_type = "ITA",
 )
@@ -509,7 +509,6 @@ generate_policy(
     min_swversion = ":min_swversion",
     registry_file = ":server_image_registry.json",
     server_attestation = ":server_attestation",
-    server_max_age_days = ":server_max_age_days",
     server_model = ":server_model",
     verifier_type = "GCA",
 )
@@ -526,7 +525,7 @@ genrule(
     name = "gen_metadata_ita",
     srcs = [":gen_policy_ita"],
     outs = ["client_metadata_ita.json"],
-    cmd = "$(location :generate_client_metadata) --policy_file=$(location :gen_policy_ita) --alts_enabled=true --jwks_endpoint=https://portal.trustauthority.intel.com/certs --out=$@",
+    cmd = "$(execpath :generate_client_metadata) --policy_file=$(execpath :gen_policy_ita) --alts_enabled=true --jwks_endpoint=https://portal.trustauthority.intel.com/certs --out=$@",
     tools = [":generate_client_metadata"],
 )
 
@@ -534,7 +533,7 @@ genrule(
     name = "gen_metadata_gca",
     srcs = [":gen_policy_gca"],
     outs = ["client_metadata_gca.json"],
-    cmd = "$(location :generate_client_metadata) --policy_file=$(location :gen_policy_gca) --alts_enabled=true --jwks_endpoint=https://www.googleapis.com/service_accounts/v1/metadata/jwk/signer@confidentialspace-sign.iam.gserviceaccount.com --out=$@",
+    cmd = "$(execpath :generate_client_metadata) --policy_file=$(execpath :gen_policy_gca) --alts_enabled=true --jwks_endpoint=https://www.googleapis.com/service_accounts/v1/metadata/jwk/signer@confidentialspace-sign.iam.gserviceaccount.com --out=$@",
     tools = [":generate_client_metadata"],
 )
 

@@ -1,7 +1,14 @@
 """Generates an attestation policy textproto from a server image registry.
 
-Filters registry entries by model, attestation flavor, and max age, then
-writes a policy file with the matching digests.
+Filters registry entries by model and attestation flavor, then writes a policy
+file with the matching digests. Every matching entry in the registry is
+included: expiry of old server images is handled when the registry is updated
+(see update_server_registry.py), not here.
+
+This script must be a pure function of its inputs (the registry file and the
+command-line flags). In particular it must not consult the wall clock: it runs
+as a cached Bazel action on several builders, and any non-hermetic input makes
+the resulting client bundle non-reproducible.
 
 Usage:
     bazelisk run //:generate_policy -- \
@@ -10,7 +17,6 @@ Usage:
         --verifier_type=ITA \
         --model=gemma4_e4b \
         --attestation=ita_alts \
-        --max_age_days=60 \
         --max_sw_tcb_age_days=540 \
         --max_hw_tcb_age_days=540
 
@@ -21,7 +27,6 @@ output incorporated into the other bazel targets in this directory.
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
 
 
 def main():
@@ -38,8 +43,6 @@ def main():
                         help="Filter by model name (empty = all).")
     parser.add_argument("--attestation", default="",
                         help="Filter by attestation flavor (empty = all).")
-    parser.add_argument("--max_age_days", type=int, default=60,
-                        help="Max age in days for registry entries.")
     parser.add_argument("--min_sw_tcb_date", default="",
                         help="Minimum software TCB date.")
     parser.add_argument("--min_hw_tcb_date", default="",
@@ -55,7 +58,6 @@ def main():
     with open(args.registry) as f:
         registry = json.load(f)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=args.max_age_days)
     digests = []
 
     for entry in registry.get("images", []):
@@ -63,15 +65,6 @@ def main():
             continue
         if args.attestation and entry.get("attestation") != args.attestation:
             continue
-        try:
-            created = datetime.fromisoformat(
-                entry["created"].replace("Z", "+00:00"))
-            if created < cutoff:
-                print(f"Skipping stale: {entry['digest'][:20]}... "
-                      f"(created {entry['created']})", file=sys.stderr)
-                continue
-        except (KeyError, ValueError):
-            pass  # Accept entries without valid dates
         digests.append(entry["digest"])
 
     with open(args.output, "w") as f:
@@ -88,8 +81,8 @@ def main():
         for d in digests:
             f.write(f'expected_image_digest: "{d}"\n')
 
-    print(f"Policy ({args.verifier_type}): {len(digests)} digest(s), "
-          f"max_age={args.max_age_days}d", file=sys.stderr)
+    print(f"Policy ({args.verifier_type}): {len(digests)} digest(s)",
+          file=sys.stderr)
     for i, d in enumerate(digests):
         print(f"  [{i+1}] {d}", file=sys.stderr)
 

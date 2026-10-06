@@ -199,7 +199,10 @@ two containers. It is generated at client build time from
 - Policy generator:
   [`generate_policy.py`](../generate_policy.py) — reads
   [`server_image_registry.json`](../server_image_registry.json), filters entries by model/attestation
-  flavor/age, and writes the `policy.textproto` file.
+  flavor, and writes the `policy.textproto` file. Every matching registry
+  entry is included; stale server images are removed from the registry by
+  [`update_server_registry.py`](../update_server_registry.py) so that the
+  policy is a pure function of the committed sources.
 - Client verifier:
   [`attestation_token_verifier.cc`](../attestation_token_verifier.cc) —
   the C++ implementation that verifies the ITA JWT signature using

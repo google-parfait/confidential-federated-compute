@@ -68,10 +68,13 @@ expected_image_digest: "{digest}"
         print("Generating policy (%s) [manual digest]:\n%s" % (ctx.attr.verifier_type, content))
         ctx.actions.write(output = out, content = content)
     elif ctx.file.registry_file:
-        # Auto mode: run generate_policy.py at execution time for date filtering.
+        # Auto mode: run generate_policy.py over the registry. The action must
+        # stay a pure function of its declared inputs (registry file + flags) so
+        # that every builder produces the same policy.textproto from the same
+        # commit; old server images are pruned from the registry itself by
+        # update_server_registry.py rather than filtered here.
         model_filter = ctx.attr.server_model[BuildSettingInfo].value if ctx.attr.server_model else ""
         attest_filter = ctx.attr.server_attestation[BuildSettingInfo].value if ctx.attr.server_attestation else ""
-        max_age = ctx.attr.server_max_age_days[IntSettingInfo].value if ctx.attr.server_max_age_days else 60
 
         args = ctx.actions.args()
         args.add(ctx.file.registry_file, format = "--registry=%s")
@@ -81,7 +84,6 @@ expected_image_digest: "{digest}"
             args.add(model_filter, format = "--model=%s")
         if attest_filter:
             args.add(attest_filter, format = "--attestation=%s")
-        args.add(max_age, format = "--max_age_days=%s")
         args.add(min_sw_date, format = "--min_sw_tcb_date=%s")
         args.add(min_hw_date, format = "--min_hw_tcb_date=%s")
         args.add(max_sw_age, format = "--max_sw_tcb_age_days=%s")
@@ -139,9 +141,6 @@ generate_policy = rule(
         ),
         "server_attestation": attr.label(
             doc = "Build flag to filter registry by attestation flavor.",
-        ),
-        "server_max_age_days": attr.label(
-            doc = "Build flag: max age in days for registry entries (default: 60).",
         ),
         "min_sw_tcb_date": attr.label(
             doc = "Build flag: minimum software TCB date.",

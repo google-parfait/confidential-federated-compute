@@ -2,13 +2,13 @@
 # build_client_image.sh — Build a batched inference GCP client (Oak) container.
 #
 # Reads approved server digests from server_image_registry.json and bakes them
-# into the client's attestation policy. Filters by model, attestation flavor,
-# and max server image age.
+# into the client's attestation policy. Filters by model and attestation
+# flavor. All matching registry entries are accepted; old server images are
+# removed from the registry by update_server_registry.py.
 #
 # Usage:
 #   ./build_client_image.sh --model=gemma4_e4b
 #   ./build_client_image.sh --model=gemma4_31b --attestation=gca --no-alts
-#   ./build_client_image.sh --model=gemma4_e4b --max_age_days=30
 
 set -euo pipefail
 
@@ -16,7 +16,6 @@ set -euo pipefail
 ATTESTATION="ita"
 ALTS=true
 MODEL=""
-MAX_AGE_DAYS=60
 MIN_SW_TCB_DATE=""
 MIN_HW_TCB_DATE=""
 MAX_SW_TCB_AGE_DAYS=540
@@ -31,7 +30,6 @@ for arg in "$@"; do
     --attestation=*)  ATTESTATION="${arg#*=}" ;;
     --alts)           ALTS=true ;;
     --no-alts)        ALTS=false ;;
-    --max_age_days=*) MAX_AGE_DAYS="${arg#*=}" ;;
     --min_sw_tcb_date=*) MIN_SW_TCB_DATE="${arg#*=}" ;;
     --min_hw_tcb_date=*) MIN_HW_TCB_DATE="${arg#*=}" ;;
     --max_sw_tcb_age_days=*) MAX_SW_TCB_AGE_DAYS="${arg#*=}" ;;
@@ -46,7 +44,6 @@ for arg in "$@"; do
       echo "  --attestation    Attestation provider: ita or gca (default: ita)"
       echo "  --alts           Use ALTS transport (default: true)"
       echo "  --no-alts        Disable ALTS transport"
-      echo "  --max_age_days   Max age of server images to accept (default: 60)"
       echo "  --min_sw_tcb_date Minimum software TCB date (RFC3339 timestamp)"
       echo "  --min_hw_tcb_date Minimum hardware TCB date (RFC3339 timestamp)"
       echo "  --max_sw_tcb_age_days Maximum software TCB age in days (default: 540)"
@@ -95,7 +92,6 @@ echo "  Building client container"
 echo "══════════════════════════════════════════════════════════════"
 echo "  Model filter:       $MODEL"
 echo "  Attestation:        $ATTESTATION (server filter: $SERVER_ATTESTATION)"
-echo "  Max server age:     ${MAX_AGE_DAYS} days"
 echo "  Min SW TCB date:    $MIN_SW_TCB_DATE"
 echo "  Min HW TCB date:    $MIN_HW_TCB_DATE"
 echo "  Max SW TCB age:     $MAX_SW_TCB_AGE_DAYS days"
@@ -111,7 +107,6 @@ echo ""
 BAZEL_CMD=(
   bazelisk build -c opt "$CLIENT_TARGET"
   "--//:server_attestation=$SERVER_ATTESTATION"
-  "--//:server_max_age_days=$MAX_AGE_DAYS"
   "--//:min_sw_tcb_date=$MIN_SW_TCB_DATE"
   "--//:min_hw_tcb_date=$MIN_HW_TCB_DATE"
   "--//:max_sw_tcb_age_days=$MAX_SW_TCB_AGE_DAYS"
@@ -136,7 +131,7 @@ echo "════════════════════════�
 echo "  SUCCESS"
 echo "══════════════════════════════════════════════════════════════"
 echo "  Client bundle built: $CLIENT_TARGET"
-echo "  Approved servers:    model=$MODEL attestation=$SERVER_ATTESTATION max_age=${MAX_AGE_DAYS}d"
+echo "  Approved servers:    model=$MODEL attestation=$SERVER_ATTESTATION"
 echo ""
 
 # Show baked-in server digests from the generated policy.
