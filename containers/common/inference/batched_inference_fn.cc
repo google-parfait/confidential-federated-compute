@@ -15,6 +15,7 @@
 #include "containers/common/inference/batched_inference_fn.h"
 
 #include <algorithm>
+#include <optional>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,10 +26,12 @@
 #include "absl/strings/str_join.h"
 #include "containers/common/inference/batched_inference_engine.h"
 #include "containers/common/inference/inference_model_helper.h"
+#include "containers/common/io/checkpoint_utils.h"
 #include "containers/common/io/tabular/input.h"
 #include "containers/common/io/tabular/row_set.h"
 #include "containers/fns/do_fn.h"
 #include "containers/fns/fn.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -56,13 +59,11 @@ namespace {
 // during a Write() if
 //   there's enough to fill an inference batch.
 //
-// - Add support for handling protobuf inputs (that require a message factory),
-// to match FedSql.
-//
 // - ...
 
 using ::confidential_federated_compute::inference::InferenceOutputProcessor;
 using ::confidential_federated_compute::inference::InferencePromptProcessor;
+using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::InferenceTask;
@@ -399,9 +400,13 @@ class BatchedInferenceFn final
  public:
   explicit BatchedInferenceFn(
       std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
-      InferenceConfiguration inference_config)
+      InferenceConfiguration inference_config,
+      std::shared_ptr<MessageFactory> message_factory,
+      std::string on_device_query_name)
       : batched_inference_engine_(batched_inference_engine),
-        inference_config_(std::move(inference_config)) {}
+        inference_config_(std::move(inference_config)),
+        message_factory_(std::move(message_factory)),
+        on_device_query_name_(std::move(on_device_query_name)) {}
 
   ~BatchedInferenceFn() {}
 
@@ -426,66 +431,100 @@ class BatchedInferenceFn final
 
   std::shared_ptr<BatchedInferenceEngine> batched_inference_engine_;
   InferenceConfiguration inference_config_;
+  std::shared_ptr<MessageFactory> message_factory_;
+  std::string on_device_query_name_;
   std::vector<std::unique_ptr<BlobLevelWorkItem>> uncommitted_blob_items_;
 };
 
+// Failures caused by the inference configuration or by the contents of the
+// blob are reported as InvalidArgument. InternalError is reserved for
+// unexpected conditions that indicate a bug.
 absl::Status BatchedInferenceFn::Do(Session::KV kv, DoContext& context) {
   auto blob_item = std::make_unique<BlobLevelWorkItem>(kv.key, kv.blob_id);
   absl::Status task_unpack_status =
       UnpackTasksForBlob(inference_config_, blob_item.get());
   if (!task_unpack_status.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to unpack inference tasks: ", task_unpack_status));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to unpack inference tasks: ", task_unpack_status.message()));
   }
   FederatedComputeCheckpointParserFactory parser_factory;
   absl::StatusOr<std::unique_ptr<CheckpointParser>> parser =
       parser_factory.Create(absl::Cord(std::move(kv.data)));
   if (!parser.ok()) {
-    return absl::InternalError(absl::StrCat(
-        "Failed to construct a checkpoint parser: ", parser.status()));
-  }
-  absl::flat_hash_set<std::string> output_columns;
-  for (const auto& task_item : blob_item->task_items) {
-    if (!task_item->output_column_name.empty()) {
-      output_columns.insert(task_item->output_column_name);
-    }
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to construct a checkpoint parser: ",
+                     parser.status().message()));
   }
 
-  absl::StatusOr<absl::flat_hash_map<std::string, Tensor>> name_to_tensor_or =
-      parser->get()->LoadAllTensors();
-  if (!name_to_tensor_or.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to load all tensors from checkpoint: ",
-                     name_to_tensor_or.status()));
-  }
-  std::vector<Tensor> tensors;
-  tensors.reserve(name_to_tensor_or->size());
-  std::optional<size_t> num_rows;
-  for (auto& [name, tensor] : *name_to_tensor_or) {
-    if (output_columns.contains(name)) {
-      continue;
-    }
-    if (!num_rows.has_value()) {
-      num_rows.emplace(tensor.num_elements());
-    } else if (num_rows.value() != tensor.num_elements()) {
+  if (message_factory_ != nullptr) {
+    absl::StatusOr<Input> input_or = CreateFromMessageCheckpoint(
+        parser->get(), *message_factory_, on_device_query_name_);
+    if (!input_or.ok()) {
       return absl::InvalidArgumentError(
-          "Checkpoint has columns with differing numbers of rows.");
+          absl::StrCat("Failed to create input from message checkpoint: ",
+                       input_or.status().message()));
     }
-    tensors.push_back(std::move(tensor));
+    blob_item->input = std::make_unique<Input>(std::move(*input_or));
+  } else {
+    absl::flat_hash_set<std::string> output_columns;
+    for (const auto& task_item : blob_item->task_items) {
+      if (!task_item->output_column_name.empty()) {
+        output_columns.insert(task_item->output_column_name);
+      }
+    }
+
+    // The privacy ID, if present, is a scalar tensor rather than a column, so
+    // it's passed to the Input separately. It must be read before
+    // LoadAllTensors(), which moves all tensors out of the parser.
+    std::optional<std::string> privacy_id;
+    absl::StatusOr<std::string> privacy_id_or = GetPrivacyId(**parser);
+    if (privacy_id_or.ok()) {
+      privacy_id = *std::move(privacy_id_or);
+    } else if (!absl::IsNotFound(privacy_id_or.status())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to read privacy ID from checkpoint: ",
+                       privacy_id_or.status().message()));
+    }
+
+    absl::StatusOr<absl::flat_hash_map<std::string, Tensor>> name_to_tensor_or =
+        parser->get()->LoadAllTensors();
+    if (!name_to_tensor_or.ok()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to load all tensors from checkpoint: ",
+                       name_to_tensor_or.status().message()));
+    }
+
+    std::vector<Tensor> tensors;
+    tensors.reserve(name_to_tensor_or->size());
+    for (auto& [name, tensor] : *name_to_tensor_or) {
+      if (name == kPrivacyIdColumnName || output_columns.contains(name)) {
+        continue;
+      }
+      tensors.push_back(std::move(tensor));
+    }
+    // Input::CreateFromTensors validates that all columns are one-dimensional
+    // and have the same number of rows.
+    auto input_or = Input::CreateFromTensors(
+        std::move(tensors), /*metadata=*/"", std::move(privacy_id));
+    if (!input_or.ok()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to create input from tensors: ",
+                       input_or.status().message()));
+    }
+    blob_item->input = std::make_unique<Input>(std::move(*input_or));
   }
-  auto input_or = Input::CreateFromTensors(std::move(tensors));
-  if (!input_or.ok()) {
-    return absl::InternalError(absl::StrCat(
-        "Failed to create input from tensors: ", input_or.status()));
-  }
-  blob_item->input = std::make_unique<Input>(std::move(*input_or));
+
   for (auto& task_item : blob_item->task_items) {
     absl::Status call_unpack_status = UnpackCallsForTask(
         *blob_item->input, inference_config_.runtime_config().max_prompt_size(),
         task_item.get());
     if (!call_unpack_status.ok()) {
-      return absl::InternalError(absl::StrCat(
-          "Failed to unpack calls for inference task: ", call_unpack_status));
+      // Preserve the status code, since UnpackCallsForTask distinguishes
+      // invalid inputs (InvalidArgument) from unexpected failures (Internal).
+      return absl::Status(
+          call_unpack_status.code(),
+          absl::StrCat("Failed to unpack calls for inference task: ",
+                       call_unpack_status.message()));
     }
   }
   uncommitted_blob_items_.push_back(std::move(blob_item));
@@ -685,27 +724,37 @@ class BatchedInferenceFnFactory
  public:
   explicit BatchedInferenceFnFactory(
       std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
-      InferenceConfiguration inference_config)
+      InferenceConfiguration inference_config,
+      std::shared_ptr<MessageFactory> message_factory,
+      std::string on_device_query_name)
       : batched_inference_engine_(batched_inference_engine),
-        inference_config_(std::move(inference_config)) {}
+        inference_config_(std::move(inference_config)),
+        message_factory_(std::move(message_factory)),
+        on_device_query_name_(std::move(on_device_query_name)) {}
 
   absl::StatusOr<std::unique_ptr<fns::Fn>> CreateFn() const override {
-    return std::make_unique<BatchedInferenceFn>(batched_inference_engine_,
-                                                inference_config_);
+    return std::make_unique<BatchedInferenceFn>(
+        batched_inference_engine_, inference_config_, message_factory_,
+        on_device_query_name_);
   }
 
  private:
   std::shared_ptr<BatchedInferenceEngine> batched_inference_engine_;
   InferenceConfiguration inference_config_;
+  std::shared_ptr<MessageFactory> message_factory_;
+  std::string on_device_query_name_;
 };
 
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> CreateBatchedInferenceFnFactory(
     std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
-    InferenceConfiguration inference_config) {
+    InferenceConfiguration inference_config,
+    std::shared_ptr<MessageFactory> message_factory,
+    std::string on_device_query_name) {
   return std::make_unique<BatchedInferenceFnFactory>(
-      batched_inference_engine, std::move(inference_config));
+      batched_inference_engine, std::move(inference_config),
+      std::move(message_factory), std::move(on_device_query_name));
 }
 
 }  // namespace confidential_federated_compute::inference

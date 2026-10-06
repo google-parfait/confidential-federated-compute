@@ -25,7 +25,7 @@ bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_a
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "confidential-federated-compute")
-bazel_dep(name = "federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 bazel_dep(name = "googleapis", version = "0.0.0-20260223-edfe7983", repo_name = "com_google_googleapis")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
 bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
@@ -61,9 +61,10 @@ local_path_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-foMhdKIUdcju4zGoFQCGAFIb1wCEnWAaD2Ne05kELcA=",
-    strip_prefix = "federated-compute-9b2e0fdd3a319a8a206c1097d650f11ea402363a",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/9b2e0fdd3a319a8a206c1097d650f11ea402363a.tar.gz"],
+    integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
+    patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
+    strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz"],
 )
 
 archive_override(
@@ -77,7 +78,7 @@ archive_override(
 internal_configure = use_extension("@pybind11_bazel//:internal_configure.bzl", "internal_configure_extension")
 use_repo(internal_configure, "pybind11")
 
-fcp_deps = use_extension("@federated-compute//fcp:extensions.bzl", "fcp_deps")
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
 use_repo(fcp_deps, "bazel_toolchains", "libcppbor", "org_tensorflow_federated")
 
 http_archive(

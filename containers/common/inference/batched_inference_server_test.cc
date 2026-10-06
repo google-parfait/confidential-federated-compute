@@ -35,10 +35,12 @@
 #include "containers/blob_metadata.h"
 #include "containers/common/inference/batched_inference_engine.h"
 #include "containers/common/inference/batched_inference_test_utils.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
 #include "fcp/base/compression.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/confidentialcompute/constants.h"
 #include "fcp/confidentialcompute/cose.h"
 #include "fcp/confidentialcompute/crypto.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
@@ -46,12 +48,19 @@
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/kms.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
+#include "fcp/protos/confidentialcompute/private_logger_uploads_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/message.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::inference {
@@ -513,6 +522,141 @@ TEST_F(BatchedInferenceServerTest, MultipleCommits) {
                                   write_no)}));
     }
   }
+  FinalizeSession(session_stream);
+}
+
+TEST_F(BatchedInferenceServerTest, SingleWriteWithCommitPrivateLogger) {
+  EXPECT_CALL(*mock_batched_inference_engine_, DoBatchedInference(_))
+      .Times(1)
+      .WillOnce(Invoke([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& prompt : prompts) {
+          results.push_back("Processed: " + prompt);
+        }
+        return results;
+      }));
+
+  google::protobuf::FileDescriptorSet descriptor_set;
+  auto* file_proto = descriptor_set.add_file();
+  file_proto->set_name("test_log.proto");
+  file_proto->set_package("test");
+  file_proto->set_syntax("proto3");
+  auto* msg_proto = file_proto->add_message_type();
+  msg_proto->set_name("TestLogEntry");
+  auto* field_proto = msg_proto->add_field();
+  field_proto->set_name("transcript");
+  field_proto->set_number(1);
+  field_proto->set_label(
+      google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
+  field_proto->set_type(google::protobuf::FieldDescriptorProto::TYPE_STRING);
+
+  auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
+  Decryptor decryptor(std::vector<absl::string_view>(
+      {session_priv_key_cose, session_priv_key_cose}));
+
+  auto handshake_encryptor =
+      ClientEncryptor::Create(server_public_key_).value();
+  AuthorizeConfidentialTransformResponse::ProtectedResponse protected_resp;
+  protected_resp.add_result_encryption_keys(session_pub_key_cose);
+  protected_resp.add_decryption_keys(session_priv_key_cose);
+  AuthorizeConfidentialTransformResponse::AssociatedData associated_data;
+  auto encrypted_handshake = handshake_encryptor
+                                 ->Encrypt(protected_resp.SerializeAsString(),
+                                           associated_data.SerializeAsString())
+                                 .value();
+
+  grpc::ClientContext init_context;
+  InitializeResponse init_response;
+  auto init_stream = stub_->StreamInitialize(&init_context, &init_response);
+  StreamInitializeRequest init_request;
+  init_request.mutable_initialize_request()->set_max_num_sessions(1);
+  *init_request.mutable_initialize_request()->mutable_protected_response() =
+      encrypted_handshake;
+
+  fcp::confidentialcompute::BatchedInferenceContainerInitializeConfiguration
+      container_init_config;
+  *container_init_config.mutable_inference_init_config()
+       ->mutable_inference_config() = testing::GetInferenceConfigForTest();
+  auto* pl_config =
+      container_init_config.mutable_private_logger_uploads_config();
+  pl_config->set_on_device_query_name("my_query");
+  pl_config->mutable_message_description()->set_message_name(
+      "test.TestLogEntry");
+  pl_config->mutable_message_description()->set_message_descriptor_set(
+      descriptor_set.SerializeAsString());
+  init_request.mutable_initialize_request()->mutable_configuration()->PackFrom(
+      container_init_config);
+
+  ASSERT_TRUE(init_stream->Write(init_request));
+  ASSERT_TRUE(init_stream->WritesDone());
+  ASSERT_THAT(FromGrpcStatus(init_stream->Finish()), IsOk());
+
+  grpc::ClientContext session_context;
+  SessionStream session_stream = stub_->Session(&session_context);
+  SessionRequest config_req;
+  config_req.mutable_configure()->set_chunk_size(1024 * 1024);
+  ASSERT_TRUE(session_stream->Write(config_req));
+  SessionResponse config_resp;
+  ASSERT_TRUE(session_stream->Read(&config_resp));
+
+  // Build PrivateLogger checkpoint payload.
+  auto message_factory_or = FileDescriptorSetMessageFactory::Create(
+      descriptor_set, "test.TestLogEntry");
+  ASSERT_THAT(message_factory_or.status(), IsOk());
+  auto msg1 = (*message_factory_or)->NewMessage();
+  msg1->GetReflection()->SetString(
+      msg1.get(), msg1->GetDescriptor()->FindFieldByName("transcript"), "bark");
+  tensorflow_federated::aggregation::FederatedComputeCheckpointBuilderFactory
+      builder_factory;
+  auto builder = builder_factory.Create();
+  const std::string entry_col_name = absl::StrCat(
+      "my_query/", fcp::confidential_compute::kPrivateLoggerEntryKey);
+  const std::string time_col_name = absl::StrCat(
+      "my_query/", fcp::confidential_compute::kEventTimeColumnName);
+  ASSERT_THAT(
+      builder->Add(entry_col_name,
+                   tensorflow_federated::aggregation::Tensor(
+                       std::vector<std::string>{msg1->SerializeAsString()},
+                       entry_col_name)),
+      IsOk());
+  ASSERT_THAT(builder->Add(time_col_name,
+                           tensorflow_federated::aggregation::Tensor(
+                               std::vector<std::string>{"2026-01-01T00:00:00Z"},
+                               time_col_name)),
+              IsOk());
+  auto input_ckpt = builder->Build();
+  ASSERT_THAT(input_ckpt.status(), IsOk());
+
+  WriteInferenceDataToSession(session_stream, session_pub_key_cose, "test_blob",
+                              std::string(input_ckpt->Flatten()));
+  std::vector<std::string> responses;
+  absl::StatusOr<std::unique_ptr<SessionResponse>> read_result =
+      ReadResponsesFromSession(session_stream, decryptor, &responses);
+  EXPECT_THAT(read_result.status(), IsOk());
+  EXPECT_TRUE(read_result.value()->has_write());
+  EXPECT_TRUE(responses.empty());
+
+  WriteCommitToSession(session_stream);
+  read_result = ReadResponsesFromSession(session_stream, decryptor, &responses);
+  EXPECT_THAT(read_result.status(), IsOk());
+  EXPECT_TRUE(read_result.value()->has_commit());
+  ASSERT_EQ(responses.size(), 1);
+
+  tensorflow_federated::aggregation::FederatedComputeCheckpointParserFactory
+      parser_factory;
+  auto parser = parser_factory.Create(absl::Cord(responses[0]));
+  ASSERT_THAT(parser.status(), IsOk());
+  auto out_tensors = (*parser)->LoadAllTensors();
+  ASSERT_THAT(out_tensors.status(), IsOk());
+  ASSERT_TRUE(out_tensors->contains("transcript"));
+  EXPECT_THAT(out_tensors->at("transcript").AsSpan<absl::string_view>(),
+              ::testing::ElementsAre("bark"));
+  ASSERT_TRUE(out_tensors->contains("topic"));
+  EXPECT_THAT(out_tensors->at("topic").AsSpan<absl::string_view>(),
+              ::testing::ElementsAre("Processed: Hello, bark"));
+  ASSERT_TRUE(
+      out_tensors->contains(fcp::confidential_compute::kEventTimeColumnName));
+
   FinalizeSession(session_stream);
 }
 

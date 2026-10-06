@@ -15,12 +15,14 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_BATCHED_INFERENCE_FN_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_INFERENCE_BATCHED_INFERENCE_FN_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "containers/common/inference/batched_inference_engine.h"
+#include "containers/common/io/tabular/input.h"
 #include "containers/fns/fn_factory.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
@@ -29,7 +31,9 @@ namespace confidential_federated_compute::inference {
 
 absl::StatusOr<std::unique_ptr<fns::FnFactory>> CreateBatchedInferenceFnFactory(
     std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
-    fcp::confidentialcompute::InferenceConfiguration inference_config);
+    fcp::confidentialcompute::InferenceConfiguration inference_config,
+    std::shared_ptr<MessageFactory> message_factory = nullptr,
+    std::string on_device_query_name = "");
 
 }  // namespace confidential_federated_compute::inference
 
