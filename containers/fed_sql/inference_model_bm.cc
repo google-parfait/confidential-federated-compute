@@ -106,14 +106,15 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
     inference_configuration.gemma_configuration->model_weight_path =
         model_weight_path;
 
-    model_ = std::make_unique<InferenceModel>();
     absl::Time start_time = absl::Now();
-    auto status = model_->BuildModel(inference_configuration);
-    if (!status.ok()) {
-      state.SkipWithError(
-          (std::string("Failed to build model: ") + status.ToString()).c_str());
+    auto model_or = InferenceModel::BuildModel(inference_configuration);
+    if (!model_or.ok()) {
+      state.SkipWithError((std::string("Failed to build model: ") +
+                           model_or.status().ToString())
+                              .c_str());
       return;
     }
+    model_ = std::make_unique<InferenceModel>(std::move(*model_or));
     LOG(INFO) << "Initializing model took " << absl::Now() - start_time;
   }
 

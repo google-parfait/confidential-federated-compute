@@ -22,6 +22,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "containers/common/inference/inference_model_helper.h"
 #include "containers/common/io/tabular/input.h"
@@ -33,13 +34,34 @@
 
 namespace confidential_federated_compute::fed_sql {
 
-// Shared across sessions — holds model weights (read-only after init).
-// ThreadingContext/MatMulEnv are shared and access is serialized via mutex.
-struct SharedGemmaCppModel {
+// Holds Gemma model weights (read-only after init) along with its
+// ThreadingContext and MatMulEnv, whose access is serialized via mutex.
+struct GemmaCppModel {
   std::unique_ptr<gcpp::Gemma> gemma;
   std::unique_ptr<gcpp::ThreadingContext> ctx;
   std::unique_ptr<gcpp::MatMulEnv> env;
-  absl::Mutex mutex;  // Serializes GenerateBatch calls
+  // Serializes GenerateBatch calls. This is technically redundant/inefficient
+  // since we're mostly using a shared read-only model in practice, and with
+  // such a shared read-only model we could in fact support concurrent
+  // inferences on multiple threads. We should consider improving this
+  // implementation.
+  absl::Mutex mutex;
+};
+
+// Holds LlamaCppModel resources.
+struct LlamaCppModel {
+ private:
+  // Define the custom deleter privately inside the struct
+  struct LlamaModelDeleter {
+    void operator()(llama_model* model) const {
+      if (model) {
+        llama_model_free(model);
+      }
+    }
+  };
+
+ public:
+  std::unique_ptr<llama_model, LlamaModelDeleter> llama_;
 };
 
 // Session configuration for running inference using gemma.cpp engine.
@@ -62,8 +84,9 @@ struct SessionInferenceConfiguration {
       initialize_configuration;
   std::optional<SessionGemmaCppConfiguration> gemma_configuration;
   std::optional<SessionLlamaCppConfiguration> llama_configuration;
-  // Shared Gemma model (read-only weights) for reuse across sessions.
-  std::shared_ptr<SharedGemmaCppModel> shared_gemma_model;
+  // Optional pre-built Gemma model (read-only weights) for reuse across
+  // sessions. If null, BuildModel builds a new GemmaCppModel.
+  std::shared_ptr<GemmaCppModel> shared_gemma_model;
 };
 
 // An LLM model that can be invoked to run inference before the per-client
@@ -72,20 +95,20 @@ class InferenceModel {
  public:
   virtual ~InferenceModel() = default;
 
-  absl::Status BuildModel(
+  InferenceModel(InferenceModel&&) = default;
+  InferenceModel& operator=(InferenceModel&&) = default;
+
+  InferenceModel(const InferenceModel&) = delete;
+  InferenceModel& operator=(const InferenceModel&) = delete;
+
+  static absl::StatusOr<InferenceModel> BuildModel(
       const SessionInferenceConfiguration& inference_configuration);
-  // Sets a shared Gemma model (pre-built, read-only weights) from
-  // config.shared_gemma_model instead of building a new one. Per-call
-  // ThreadingContext, MatMulEnv, and KVCache are allocated during inference.
-  absl::Status SetSharedGemmaCppModel(
-      const SessionInferenceConfiguration& config);
   // Runs inference on the given input. The input is expected to contain the
   // columns required by the inference task. The output column produced by
   // the inference model will be added to the input.
   absl::Status RunInference(Input& input);
-  bool HasModel() const;
-  const std::optional<SessionInferenceConfiguration>&
-  GetInferenceConfiguration() const;
+  const SessionInferenceConfiguration& GetInferenceConfiguration() const;
+  std::shared_ptr<GemmaCppModel> GetGemmaCppModel() const;
 
   struct InferenceOutput {
     ::tensorflow_federated::aggregation::Tensor tensor;
@@ -93,37 +116,18 @@ class InferenceModel {
     std::vector<size_t> per_row_output_counts;
   };
 
+ protected:
+  InferenceModel(
+      SessionInferenceConfiguration inference_configuration,
+      std::variant<std::shared_ptr<GemmaCppModel>, LlamaCppModel> model);
+
  private:
-  struct NoModel {};
-  struct GemmaCppModel {
-    std::unique_ptr<gcpp::Gemma> gemma_;
-    std::unique_ptr<gcpp::MatMulEnv> env_;
-    std::unique_ptr<gcpp::ThreadingContext> ctx_;
-  };
-  struct LlamaCppModel {
-   private:
-    // Define the custom deleter privately inside the struct
-    struct LlamaModelDeleter {
-      void operator()(llama_model* model) const {
-        if (model) {
-          llama_model_free(model);
-        }
-      }
-    };
-
-   public:
-    std::unique_ptr<llama_model, LlamaModelDeleter> llama_;
-    ;
-  };
-
   // Builds a gemma.cpp compatible model from the given Gemma config.
-  // This function assumes that the model_ is already a GemmaCppModel.
-  virtual absl::Status BuildGemmaCppModel(
-      const SessionGemmaCppConfiguration& gemma_config);
+  static absl::StatusOr<std::shared_ptr<GemmaCppModel>> BuildGemmaCppModel(
+      const SessionInferenceConfiguration& inference_configuration);
 
   // Builds a llama.cpp model from the given Llama config.
-  // This function assumes that the model_ is already a LlamaModel.
-  virtual absl::Status BuildLlamaCppModel(
+  static absl::StatusOr<LlamaCppModel> BuildLlamaCppModel(
       const SessionLlamaCppConfiguration& llama_config);
 
   // Runs inference with the gemma.cpp model using given prompt over all rows
@@ -160,8 +164,8 @@ class InferenceModel {
       const std::string& combined_prompt, LlamaCppModel& llama_model,
       const llama_vocab* vocab);
 
-  std::optional<SessionInferenceConfiguration> inference_configuration_;
-  std::variant<NoModel, GemmaCppModel, LlamaCppModel> model_;
+  SessionInferenceConfiguration inference_configuration_;
+  std::variant<std::shared_ptr<GemmaCppModel>, LlamaCppModel> model_;
   inference::InferencePromptProcessor prompt_processor_;
   inference::InferenceOutputProcessor output_processor_;
 };

@@ -173,7 +173,7 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
       aggregator_;
   const std::vector<tensorflow_federated::aggregation::Intrinsic>& intrinsics_;
   std::optional<const SqlConfiguration> sql_configuration_;
-  InferenceModel inference_model_;
+  std::optional<InferenceModel> inference_model_;
   // Partially processed uncommitted inputs that will be accumulated the next
   // time SessionCommit is called.
   std::vector<Input> uncommitted_inputs_;

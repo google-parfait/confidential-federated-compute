@@ -27,10 +27,12 @@ namespace confidential_federated_compute::fed_sql::testing {
 
 class MockInferenceModel : public InferenceModel {
  public:
-  MOCK_METHOD(absl::Status, BuildGemmaCppModel,
-              (const SessionGemmaCppConfiguration& gemma_config), (override));
-  MOCK_METHOD(absl::Status, BuildLlamaCppModel,
-              (const SessionLlamaCppConfiguration& llama_config), (override));
+  explicit MockInferenceModel(
+      SessionInferenceConfiguration config,
+      std::variant<std::shared_ptr<GemmaCppModel>, LlamaCppModel> model =
+          std::make_shared<GemmaCppModel>())
+      : InferenceModel(std::move(config), std::move(model)) {}
+
   MOCK_METHOD(absl::StatusOr<InferenceModel::InferenceOutput>,
               RunGemmaCppInference,
               (const fcp::confidentialcompute::Prompt& prompt,

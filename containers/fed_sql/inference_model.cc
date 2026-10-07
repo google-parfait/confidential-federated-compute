@@ -65,43 +65,47 @@ constexpr size_t kDefaultMaxBatchSize = 1;
 
 }  // namespace
 
-absl::Status InferenceModel::BuildGemmaCppModel(
-    const SessionGemmaCppConfiguration& gemma_config) {
-  GemmaCppModel& gemma_model = std::get<GemmaCppModel>(model_);
+InferenceModel::InferenceModel(
+    SessionInferenceConfiguration inference_configuration,
+    std::variant<std::shared_ptr<GemmaCppModel>, LlamaCppModel> model)
+    : inference_configuration_(std::move(inference_configuration)),
+      model_(std::move(model)) {}
+
+absl::StatusOr<std::shared_ptr<GemmaCppModel>>
+InferenceModel::BuildGemmaCppModel(
+    const SessionInferenceConfiguration& inference_configuration) {
+  if (!inference_configuration.gemma_configuration.has_value()) {
+    return absl::InvalidArgumentError(
+        "Missing session gemma.cpp configuration.");
+  }
+  const auto& gemma_config = *inference_configuration.gemma_configuration;
+  auto gemma_model = std::make_shared<GemmaCppModel>();
   LoaderArgs loader_args(gemma_config.tokenizer_path,
                          gemma_config.model_weight_path);
   InferenceArgs inference_args;
   size_t seq_len =
-      inference_configuration_->initialize_configuration.inference_config()
+      inference_configuration.initialize_configuration.inference_config()
           .runtime_config()
           .seq_len();
   if (seq_len > 0) {
     inference_args.seq_len = seq_len;
   }
   ThreadingArgs threading_args;
-  gemma_model.ctx_ = std::make_unique<ThreadingContext>(threading_args);
-  gemma_model.gemma_ =
-      std::make_unique<Gemma>(loader_args, inference_args, *gemma_model.ctx_);
-  gemma_model.env_ = std::make_unique<MatMulEnv>(*gemma_model.ctx_);
-  return absl::OkStatus();
-}
-
-absl::Status InferenceModel::SetSharedGemmaCppModel(
-    const SessionInferenceConfiguration& config) {
-  if (!config.shared_gemma_model || !config.shared_gemma_model->gemma) {
+  ThreadingContext loading_ctx(threading_args);
+  try {
+    gemma_model->gemma =
+        std::make_unique<Gemma>(loader_args, inference_args, loading_ctx);
+  } catch (const std::exception& e) {
     return absl::InvalidArgumentError(
-        "SessionInferenceConfiguration must contain a valid shared Gemma "
-        "model.");
+        absl::StrCat("Failed to load gemma.cpp model: ", e.what()));
   }
-  inference_configuration_ = config;
-  model_.emplace<GemmaCppModel>();
-  return absl::OkStatus();
+  gemma_model->ctx = std::make_unique<ThreadingContext>(threading_args);
+  gemma_model->env = std::make_unique<MatMulEnv>(*gemma_model->ctx);
+  return gemma_model;
 }
 
-absl::Status InferenceModel::BuildLlamaCppModel(
+absl::StatusOr<LlamaCppModel> InferenceModel::BuildLlamaCppModel(
     const SessionLlamaCppConfiguration& llama_config) {
-  LlamaCppModel& llama_model_ref = std::get<LlamaCppModel>(model_);
-
   llama_model_params model_params = llama_model_default_params();
   model_params.n_gpu_layers = llama_config.n_gpu_layers;
 
@@ -111,45 +115,47 @@ absl::Status InferenceModel::BuildLlamaCppModel(
   if (raw_model == NULL) {
     return absl::InternalError("Unable to load the llama.cpp model.");
   }
+  LlamaCppModel llama_model;
   // Reset the unique_ptr to take ownership of the llama_model.
-  llama_model_ref.llama_.reset(raw_model);
+  llama_model.llama_.reset(raw_model);
 
-  return absl::OkStatus();
+  return llama_model;
 }
 
-absl::Status InferenceModel::BuildModel(
+absl::StatusOr<InferenceModel> InferenceModel::BuildModel(
     const SessionInferenceConfiguration& inference_configuration) {
-  inference_configuration_ = inference_configuration;
   switch (inference_configuration.initialize_configuration
               .model_init_config_case()) {
     case InferenceInitializeConfiguration::kGemmaInitConfig: {
-      if (!inference_configuration.gemma_configuration.has_value()) {
-        return absl::InvalidArgumentError(
-            "Missing session gemma.cpp configuration.");
+      if (inference_configuration.shared_gemma_model != nullptr) {
+        if (inference_configuration.shared_gemma_model->gemma == nullptr) {
+          return absl::InvalidArgumentError(
+              "SessionInferenceConfiguration must contain a valid shared Gemma "
+              "model.");
+        }
+        return InferenceModel(inference_configuration,
+                              inference_configuration.shared_gemma_model);
       }
-      model_.emplace<GemmaCppModel>();
-      ABSL_RETURN_IF_ERROR(BuildGemmaCppModel(
-          inference_configuration.gemma_configuration.value()));
-      break;
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<GemmaCppModel> gemma_model,
+                            BuildGemmaCppModel(inference_configuration));
+      return InferenceModel(inference_configuration, std::move(gemma_model));
     }
     case InferenceInitializeConfiguration::kLlamaCppInitConfig: {
       if (!inference_configuration.llama_configuration.has_value()) {
         return absl::InvalidArgumentError(
             "Missing session llama.cpp configuration.");
       }
-      model_.emplace<LlamaCppModel>();
-      ABSL_RETURN_IF_ERROR(BuildLlamaCppModel(
-          inference_configuration.llama_configuration.value()));
-      break;
+      ABSL_ASSIGN_OR_RETURN(
+          LlamaCppModel llama_model,
+          BuildLlamaCppModel(*inference_configuration.llama_configuration));
+      return InferenceModel(inference_configuration, std::move(llama_model));
     }
     default:
       return absl::UnimplementedError(
           absl::StrCat("Unsupported model_init_config_case: ",
                        inference_configuration.initialize_configuration
                            .model_init_config_case()));
-      break;
   }
-  return absl::OkStatus();
 }
 
 absl::StatusOr<InferenceModel::InferenceOutput>
@@ -165,25 +171,18 @@ InferenceModel::RunGemmaCppInference(
     return InferenceOutput{std::move(tensor), std::vector<size_t>()};
   }
 
-  // Determine which Gemma model to use: shared or per-session.
-  Gemma* gemma;
-  GemmaCppModel* gemma_model_ptr = nullptr;
-  if (inference_configuration_->shared_gemma_model &&
-      inference_configuration_->shared_gemma_model->gemma) {
-    gemma = inference_configuration_->shared_gemma_model->gemma.get();
-  } else {
-    gemma_model_ptr = &std::get<GemmaCppModel>(model_);
-    gemma = gemma_model_ptr->gemma_.get();
-  }
+  GemmaCppModel& gemma_model =
+      *std::get<std::shared_ptr<GemmaCppModel>>(model_);
+  Gemma* gemma = gemma_model.gemma.get();
 
   RuntimeConfig inference_runtime_config =
-      inference_configuration_->initialize_configuration.inference_config()
+      inference_configuration_.initialize_configuration.inference_config()
           .runtime_config();
   size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
                                ? inference_runtime_config.max_prompt_size()
                                : kMaxPromptSize;
   size_t config_max_output_tokens =
-      inference_configuration_->initialize_configuration.inference_config()
+      inference_configuration_.initialize_configuration.inference_config()
           .runtime_config()
           .max_generated_tokens();
   size_t max_output_tokens = config_max_output_tokens > 0
@@ -198,20 +197,8 @@ InferenceModel::RunGemmaCppInference(
   std::vector<size_t> per_row_output_counts;
   per_row_output_counts.reserve(row_count);
 
-  // Determine which MatMulEnv and allocator to use.
-  gcpp::MatMulEnv* env_ptr;
-  gcpp::Allocator* allocator_ptr;
-  bool using_shared_model = inference_configuration_->shared_gemma_model &&
-                            inference_configuration_->shared_gemma_model->env;
-  if (using_shared_model) {
-    env_ptr = inference_configuration_->shared_gemma_model->env.get();
-    allocator_ptr =
-        &inference_configuration_->shared_gemma_model->ctx->allocator;
-  } else {
-    GemmaCppModel* per_session_model = &std::get<GemmaCppModel>(model_);
-    env_ptr = per_session_model->env_.get();
-    allocator_ptr = &per_session_model->ctx_->allocator;
-  }
+  gcpp::MatMulEnv* env_ptr = gemma_model.env.get();
+  gcpp::Allocator* allocator_ptr = &gemma_model.ctx->allocator;
   TimingInfo timing_info;
 
   size_t max_batch_size = inference_runtime_config.max_batch_size() > 0
@@ -286,12 +273,9 @@ InferenceModel::RunGemmaCppInference(
         .verbosity = 0,
         .batch_stream_token = batch_stream_token,
     };
-    // Serialize GenerateBatch calls when using the shared model's thread pool.
+    // Serialize GenerateBatch calls on this model's thread pool / MatMulEnv.
     {
-      std::optional<absl::MutexLock> lock;
-      if (using_shared_model) {
-        lock.emplace(&inference_configuration_->shared_gemma_model->mutex);
-      }
+      absl::MutexLock lock(&gemma_model.mutex);
       try {
         gemma->GenerateBatch(runtime_config, all_queries, *env_ptr,
                              timing_info);
@@ -354,7 +338,7 @@ absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
 
   // Set the max_output_tokens to the value in the RuntimeConfig if provided.
   size_t config_max_output_tokens =
-      inference_configuration_->initialize_configuration.inference_config()
+      inference_configuration_.initialize_configuration.inference_config()
           .runtime_config()
           .max_generated_tokens();
   size_t max_output_tokens = config_max_output_tokens > 0
@@ -482,7 +466,7 @@ InferenceModel::RunLlamaCppInference(
     return absl::InternalError("Failed to get llama vocab");
   }
   RuntimeConfig inference_runtime_config =
-      inference_configuration_->initialize_configuration.inference_config()
+      inference_configuration_.initialize_configuration.inference_config()
           .runtime_config();
   size_t max_prompt_size = inference_runtime_config.max_prompt_size() > 0
                                ? inference_runtime_config.max_prompt_size()
@@ -573,13 +557,8 @@ absl::Status InferenceModel::DuplicateColumnsForMultipleRows(
 }
 
 absl::Status InferenceModel::RunInference(Input& input) {
-  if (!HasModel()) {
-    return absl::UnimplementedError(
-        "Model must be initialized before running inference.");
-  }
-
   for (const auto& inference_task :
-       inference_configuration_->initialize_configuration.inference_config()
+       inference_configuration_.initialize_configuration.inference_config()
            .inference_task()) {
     if (!inference_task.has_prompt()) {
       return absl::InvalidArgumentError(
@@ -614,7 +593,7 @@ absl::Status InferenceModel::RunInference(Input& input) {
     }
 
     InferenceOutput inference_output;
-    if (std::holds_alternative<GemmaCppModel>(model_)) {
+    if (std::holds_alternative<std::shared_ptr<GemmaCppModel>>(model_)) {
       ABSL_ASSIGN_OR_RETURN(
           inference_output,
           RunGemmaCppInference(inference_task.prompt(), input,
@@ -654,13 +633,17 @@ absl::Status InferenceModel::RunInference(Input& input) {
   return absl::OkStatus();
 }
 
-bool InferenceModel::HasModel() const {
-  return !std::holds_alternative<NoModel>(model_);
+const SessionInferenceConfiguration& InferenceModel::GetInferenceConfiguration()
+    const {
+  return inference_configuration_;
 }
 
-const std::optional<SessionInferenceConfiguration>&
-InferenceModel::GetInferenceConfiguration() const {
-  return inference_configuration_;
+std::shared_ptr<GemmaCppModel> InferenceModel::GetGemmaCppModel() const {
+  if (const auto* gemma_model =
+          std::get_if<std::shared_ptr<GemmaCppModel>>(&model_)) {
+    return *gemma_model;
+  }
+  return nullptr;
 }
 
 }  // namespace confidential_federated_compute::fed_sql

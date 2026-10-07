@@ -171,16 +171,10 @@ KmsFedSqlSession::KmsFedSqlSession(
   CHECK_OK(SqliteAdapter::Initialize());
   range_tracker_.SetExpiredKeys(config.expired_key_ids);
   if (config.inference_configuration.has_value()) {
-    if (config.inference_configuration->shared_gemma_model &&
-        config.inference_configuration->shared_gemma_model->gemma) {
-      // Use the shared Gemma model (no per-session weight loading).
-      CHECK_OK(inference_model_.SetSharedGemmaCppModel(
-          config.inference_configuration.value()));
-    } else {
-      // Fallback: build a per-session model (e.g., for llama.cpp).
-      CHECK_OK(
-          inference_model_.BuildModel(config.inference_configuration.value()));
-    }
+    auto model_or =
+        InferenceModel::BuildModel(config.inference_configuration.value());
+    CHECK_OK(model_or.status());
+    inference_model_ = std::move(*model_or);
   }
 };
 
@@ -316,13 +310,11 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     input = CreateFromMessageCheckpoint(parser->get(), *message_factory_,
                                         on_device_query_name_);
   } else {
-    auto model_inference_configuration =
-        inference_model_.GetInferenceConfiguration();
     auto inference_config =
-        model_inference_configuration.has_value()
+        inference_model_.has_value()
             ? std::optional<InferenceConfiguration>(
-                  model_inference_configuration->initialize_configuration
-                      .inference_config())
+                  inference_model_->GetInferenceConfiguration()
+                      .initialize_configuration.inference_config())
             : std::nullopt;
     absl::StatusOr<std::vector<Tensor>> contents = Deserialize(
         sql_configuration_->input_schema, parser->get(), inference_config);
@@ -354,8 +346,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
         "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
         input.status()));
   }
-  if (inference_model_.HasModel()) {
-    ABSL_RETURN_IF_ERROR(inference_model_.RunInference(*input));
+  if (inference_model_.has_value()) {
+    ABSL_RETURN_IF_ERROR(inference_model_->RunInference(*input));
   }
 
   // Uniqueness check: use privacy ID in time-window budget mode, blob ID
